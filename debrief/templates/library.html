@@ -1,0 +1,731 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Debrief Library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a timing-screen debrief inside the app window. Summary strip first, then the lap compare
+   workbench (splits, map, telemetry), best possible lap, corner cards, pace, habits, plan.
+   Lap A / you = blue, lap B / comparison = orange, fastest segment = timing purple. */
+:root{
+  --bg:#f3f4f6; --panel:#ffffff; --ink:#161a1f; --ink2:#47505a; --muted:#68717b;
+  --line:#e3e6ea; --axis:#c4c9d0; --band:#f2f4f6; --track:#dfe3e8; --hi:#eef3fb;
+  --a:#2a78d6; --b:#eb6834; --mid:#d6dade; --pb:#6250d6; --pbbg:#ece9fb;
+  --warn:#a66c00; --good:#0a7a2f; --bad:#c43c3c;
+  --h1:#e6effb; --h7:#0d366b;
+  --shadow:0 8px 28px rgba(20,26,34,.14);
+  /* legacy aliases used by the library page */
+  --fg:var(--ink); --fg2:var(--ink2); --grid:var(--line); --me:var(--a); --ref:var(--b); --lose:var(--bad); --gain:var(--a);
+  --display:"Barlow Condensed","Arial Narrow","Roboto Condensed",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --t-xs:11.5px; --t-sm:13px; --t-md:15px; --t-lg:18px; --t-xl:24px; --t-2xl:38px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1114; --panel:#161a1e; --ink:#eceff2; --ink2:#b8bfc7; --muted:#8b949d;
+  --line:#262b31; --axis:#3b424a; --band:#1b2025; --track:#2b3138; --hi:#1b2430;
+  --a:#3987e5; --b:#d95926; --mid:#3b4047; --pb:#9085e9; --pbbg:#262240;
+  --warn:#e2a83a; --good:#3dbb63; --bad:#e66767;
+  --h1:#1a2430; --h7:#9ec5f4; --shadow:0 8px 28px rgba(0,0,0,.5); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1114; --panel:#161a1e; --ink:#eceff2; --ink2:#b8bfc7; --muted:#8b949d;
+  --line:#262b31; --axis:#3b424a; --band:#1b2025; --track:#2b3138; --hi:#1b2430;
+  --a:#3987e5; --b:#d95926; --mid:#3b4047; --pb:#9085e9; --pbbg:#262240;
+  --warn:#e2a83a; --good:#3dbb63; --bad:#e66767;
+  --h1:#1a2430; --h7:#9ec5f4; --shadow:0 8px 28px rgba(0,0,0,.5); color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{scroll-behavior:smooth;scroll-padding-top:56px}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:var(--t-md);line-height:1.5}
+.wrap{max-width:1200px;margin:0 auto;padding-block:var(--s5) var(--s7);padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));display:grid;gap:var(--s7)}
+h1,h2,h3{margin:0;line-height:1.1;text-wrap:balance}
+h1{font-family:var(--display);font-weight:700;font-size:var(--t-2xl);letter-spacing:.005em}
+h2{font-family:var(--display);font-weight:700;font-size:var(--t-xl);letter-spacing:.01em}
+h3{font-size:var(--t-md);font-weight:600}
+p{margin:0;max-width:72ch}
+a{color:var(--a)}
+.eyebrow{font-family:var(--mono);font-size:var(--t-xs);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.mono,.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.lede{color:var(--ink2);max-width:76ch;font-size:var(--t-md)}
+.note{font-size:var(--t-sm);color:var(--muted);max-width:90ch}
+section{display:grid;gap:var(--s4);min-width:0}
+.sechead{display:grid;gap:var(--s1)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:var(--s4) var(--s4);display:grid;gap:var(--s3);min-width:0;align-content:start}
+.panel>h3{display:flex;justify-content:space-between;gap:var(--s2);align-items:baseline;flex-wrap:wrap}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:var(--s4)}
+.chart{width:100%;min-width:0;overflow-x:auto}
+.chart svg{display:block}
+.legend{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s4);font-size:var(--t-sm);color:var(--ink2);align-items:center}
+.k{display:inline-block;width:16px;height:0;border-top:2.5px solid;vertical-align:4px;margin-right:6px}
+.k.me,.k.a{border-color:var(--a)} .k.ref,.k.b{border-color:var(--b)}
+.k.dot{width:9px;height:9px;border:none;border-radius:50%;vertical-align:0}
+.k.box{width:11px;height:11px;border:none;border-radius:2px;vertical-align:-1px}
+.k.ring{width:9px;height:9px;border:1.5px solid var(--warn);border-radius:50%;vertical-align:0;background:transparent}
+
+/* header (shared with library) */
+header{display:grid;gap:var(--s2)}
+.chiprow,.topline{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center;color:var(--ink2);font-size:var(--t-sm)}
+.chip{font-family:var(--mono);font-size:var(--t-xs);letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--axis);color:var(--ink2);padding:2px 8px;border-radius:999px;white-space:nowrap}
+.chip.sess{border-color:transparent;background:var(--ink);color:var(--panel)}
+a.chip{text-decoration:none}
+.sub{color:var(--ink2);font-size:var(--t-sm);display:flex;flex-wrap:wrap;gap:2px 0}
+.sub span:not(:last-child)::after{content:"·";margin:0 8px;color:var(--muted)}
+
+/* jump nav */
+.jump{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);margin-block:calc(-1 * var(--s6)) calc(-1 * var(--s5));padding-block:var(--s2)}
+.jump a{font-size:var(--t-sm);color:var(--ink2);text-decoration:none;padding:4px 10px;border-radius:4px;white-space:nowrap}
+.jump a:hover{background:var(--band);color:var(--ink)}
+.jump a.on{color:var(--ink);background:var(--panel);box-shadow:inset 0 -2px 0 var(--a)}
+
+/* summary */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));background:var(--panel);border:1px solid var(--line);border-radius:6px}
+.stat{padding:var(--s4);display:grid;gap:2px;align-content:start;min-width:0;border-left:1px solid var(--line)}
+.stat:first-child{border-left:none}
+.stat .lab{font-size:var(--t-sm);color:var(--ink2)}
+.stat .v{font-family:var(--mono);font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.25;white-space:nowrap}
+.stat .v.small{font-size:var(--t-lg);font-family:var(--body);font-weight:500;white-space:normal;color:var(--ink2);line-height:1.35;padding-block:4px}
+.stat .v .u{font-size:var(--t-sm);color:var(--muted);margin-left:3px;font-weight:400}
+.stat .ctx{font-size:var(--t-sm);color:var(--muted);line-height:1.4}
+.stat .ctx b{color:var(--ink2);font-weight:500}
+.story{font-size:var(--t-lg);line-height:1.6;max-width:70ch;color:var(--ink)}
+.story b{font-weight:600}
+
+/* compare workbench */
+.controls{display:flex;flex-wrap:wrap;gap:var(--s3) var(--s4);align-items:end}
+.controls label{display:grid;gap:4px;font-size:var(--t-xs);color:var(--muted);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase}
+.controls label .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+select,input[type=search]{font:inherit;font-family:var(--body);font-size:14px;text-transform:none;letter-spacing:0;color:var(--ink);background:var(--panel);border:1px solid var(--axis);border-radius:5px;padding:6px 10px;min-width:220px;max-width:100%}
+button{font:inherit;font-size:var(--t-sm);color:var(--ink);background:var(--panel);border:1px solid var(--axis);border-radius:5px;padding:6px 10px;cursor:pointer;white-space:nowrap}
+button:hover{background:var(--band)}
+button.ghost{border-color:transparent;color:var(--ink2)}
+button.ghost:hover{color:var(--ink)}
+button[aria-pressed="true"]{border-color:var(--a);background:var(--hi)}
+select:focus-visible,button:focus-visible,[tabindex]:focus-visible,a:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+.presets{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center}
+.presets .lab{font-size:var(--t-sm);color:var(--muted);margin-right:2px}
+.result{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s4);align-items:baseline;padding-top:var(--s3);border-top:1px solid var(--line)}
+.result .big{font-family:var(--mono);font-size:var(--t-xl);font-weight:600;font-variant-numeric:tabular-nums}
+.result .what{color:var(--ink2);font-size:var(--t-md)}
+.cmpgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:var(--s5);align-items:start}
+@media (max-width:860px){.cmpgrid{grid-template-columns:minmax(0,1fr)}}
+.subhead{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2);flex-wrap:wrap;font-size:var(--t-sm);color:var(--ink2)}
+.subhead b{color:var(--ink);font-weight:600;font-size:var(--t-md)}
+.scale{display:flex;align-items:center;gap:8px;font-size:var(--t-sm);color:var(--ink2);flex-wrap:wrap}
+.scale .bar{height:8px;width:120px;border-radius:4px;background:linear-gradient(90deg,var(--a),var(--mid),var(--b))}
+.splits{display:grid;gap:2px}
+.split{display:grid;grid-template-columns:44px 1fr 74px;align-items:center;gap:var(--s2);padding:3px 6px;border-radius:4px;cursor:pointer;font-size:var(--t-sm)}
+.split:hover,.split.on{background:var(--band)}
+.split .id{font-family:var(--mono);font-weight:600}
+.split .val{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.split .bars{position:relative;height:14px}
+.split .bars .zero{position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--axis)}
+.split .bars i{position:absolute;top:2px;height:10px;border-radius:2px}
+.split.total{cursor:default;border-top:1px solid var(--line);border-radius:0;margin-top:4px;padding-top:7px}
+.split.total:hover{background:none}
+.mapbox svg{width:100%;height:auto;display:block}
+.telehead{display:flex;justify-content:space-between;align-items:center;gap:var(--s2);flex-wrap:wrap}
+#zoomInfo{font-size:var(--t-sm);color:var(--ink2)}
+#overlay{cursor:crosshair;touch-action:pan-y}
+.empty{border:1px dashed var(--axis);border-radius:6px;padding:var(--s4);color:var(--ink2);font-size:var(--t-sm);display:grid;gap:4px;background:var(--band)}
+.empty b{color:var(--ink)}
+
+/* best possible lap */
+.pbhead{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s6);align-items:baseline}
+.pbhead .n{display:grid}
+.pbhead .n span:first-child{font-size:var(--t-sm);color:var(--ink2)}
+.pbhead .n b{font-family:var(--mono);font-size:var(--t-xl);font-weight:600;font-variant-numeric:tabular-nums}
+.pbhead .n b.pb{color:var(--pb)}
+.ribbon{display:flex;gap:2px;height:44px;border-radius:4px;overflow:hidden}
+.ribbon div{min-width:0;display:grid;place-content:center;text-align:center;font-size:var(--t-xs);line-height:1.2;background:var(--band);color:var(--ink2);font-family:var(--mono);overflow:hidden;white-space:nowrap}
+.ribbon div.pb{background:var(--pbbg);color:var(--ink);box-shadow:inset 0 3px 0 var(--pb)}
+.ribbon div b{font-weight:600;color:var(--ink)}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:var(--t-sm)}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-family:var(--mono);font-size:var(--t-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:400;white-space:nowrap}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+tbody tr:last-child td{border-bottom:none}
+tfoot td{border-top:1px solid var(--axis);border-bottom:none;font-weight:600}
+.lapchip{font-family:var(--mono);font-size:var(--t-sm);padding:1px 7px;border-radius:999px;background:var(--band);white-space:nowrap}
+.lapchip.pb{background:var(--pbbg);color:var(--ink);box-shadow:inset 0 0 0 1px var(--pb)}
+.gbar{display:inline-block;height:8px;border-radius:2px;background:var(--pb);vertical-align:0;margin-left:8px}
+.better{color:var(--good)} .worse{color:var(--bad)}
+
+/* corner cards */
+.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:var(--s4)}
+.ccard{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:var(--s4);display:grid;gap:var(--s3);align-content:start;min-width:0}
+.ccard .top{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--s2)}
+.ccard .cid{font-family:var(--display);font-size:30px;font-weight:700;line-height:1}
+.ccard .where{font-size:var(--t-sm);color:var(--muted);margin-top:2px}
+.rank{font-family:var(--mono);font-size:var(--t-xs);padding:2px 8px;border-radius:999px;border:1px solid var(--axis);color:var(--ink2);white-space:nowrap}
+.rank.hot{border-color:var(--ink);color:var(--ink);font-weight:600}
+.cstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s2)}
+.cstats div{display:grid;min-width:0}
+.cstats span{font-size:var(--t-xs);color:var(--muted);white-space:nowrap}
+.cstats b{font-family:var(--mono);font-size:var(--t-md);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.coach{font-size:var(--t-sm);line-height:1.55;color:var(--ink)}
+.coach.ref{color:var(--ink2)}
+.ccard .actions{display:flex;justify-content:flex-start}
+.spark{position:relative}
+
+/* pace */
+.pacegrid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:var(--s4)}
+@media (max-width:860px){.pacegrid{grid-template-columns:minmax(0,1fr)}}
+.facts{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s5);font-size:var(--t-sm);color:var(--ink2)}
+.facts b{font-family:var(--mono);color:var(--ink);font-weight:600}
+
+/* habits */
+.ggwrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--s3)}
+
+/* plan */
+.plan{display:grid;gap:0;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+.step{display:grid;grid-template-columns:28px 1fr auto;gap:2px var(--s4);padding:var(--s4);align-items:start;border-top:1px solid var(--line)}
+.step:first-child{border-top:none}
+.step .rk{grid-row:span 2;font-family:var(--mono);font-size:var(--t-md);font-weight:600;color:var(--muted)}
+.step h3{font-size:var(--t-md)}
+.step .gainv{grid-row:span 2;font-family:var(--mono);font-size:var(--t-sm);color:var(--ink2);text-align:right;white-space:nowrap}
+.step .gainv b{display:block;font-size:var(--t-lg);color:var(--ink)}
+.step p{font-size:var(--t-sm);color:var(--ink2)}
+
+footer{border-top:1px solid var(--line);padding-top:var(--s4);display:grid;gap:var(--s2);font-size:var(--t-sm);color:var(--muted)}
+footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
+
+/* tooltips */
+#readout,#tip{position:fixed;z-index:20;pointer-events:none;background:var(--panel);border:1px solid var(--axis);border-radius:6px;padding:8px 10px;font-size:12.5px;box-shadow:var(--shadow)}
+#readout{min-width:220px}
+#tip{max-width:300px}
+#tip b{font-family:var(--mono);font-size:13.5px;display:block;margin-bottom:2px}
+.ro-h{font-family:var(--mono);font-weight:600;margin-bottom:4px}
+.ro-row{display:grid;grid-template-columns:62px 1fr 1fr;gap:8px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.ro-row .ro-k{color:var(--muted);font-family:var(--body)}
+.ro-row b{font-weight:600}
+.ro-row .ca{color:var(--a)} .ro-row .cb{color:var(--b)}
+.ro-row b.ca,.ro-row span.cb{font-weight:600}
+.ro-ref{color:var(--ink2)}
+/* library page helpers */
+.verdictlist{margin:0;padding-left:20px;display:grid;gap:6px;max-width:80ch}
+.chart.wide svg{min-width:640px}
+.scrollhint{display:none}
+</style>
+
+</head><body>
+<style>
+.lib .stat .ctx{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lib .pbv{color:var(--pb);font-weight:600}
+.lib header .stats{margin-top:var(--s3)}
+.lib tr.pick{cursor:pointer}
+.lib tr.pick:hover td{background:var(--band)}
+.lib tr.pick.on td{background:color-mix(in srgb,var(--a) 10%,var(--panel))}
+.lib tr.pick.on td:first-child{box-shadow:inset 3px 0 0 var(--a)}
+.lib tr.pick:focus-visible{outline:2px solid var(--a);outline-offset:-2px}
+.lib .apx{color:var(--muted);font-size:12px;display:block}
+.lib .progctl{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end;justify-content:space-between}
+.lib .chart svg text{font-family:var(--mono)}
+.lib .panel h3 .u{font-family:var(--body);font-size:13px;font-weight:400;color:var(--muted);letter-spacing:0;margin-left:6px}
+.lib .single{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 20px}
+.lib .single div{display:grid;gap:2px}
+.lib .single .v{font-family:var(--mono);font-size:20px;font-weight:600}
+.lib .single .s{font-size:12.5px;color:var(--ink2)}
+.lib .weak{display:grid;gap:0}
+.lib .wrow{display:grid;grid-template-columns:minmax(150px,1.1fr) minmax(130px,1fr) minmax(170px,1.3fr) minmax(120px,1fr);gap:8px 18px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+.lib .wrow:last-child{border-bottom:none}
+.lib .wrow.head{padding-top:0;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lib .wid{font-family:var(--mono);font-weight:600}
+.lib .wid .apx{font-weight:400;font-family:var(--body)}
+.lib .strip{display:flex;gap:3px;flex-wrap:wrap}
+.lib .strip i{width:12px;height:12px;border-radius:2px;background:var(--band);box-shadow:inset 0 0 0 1px var(--line)}
+.lib .strip i.hit{background:var(--a);box-shadow:none}
+.lib .wn{font-size:13.5px}
+.lib .wn b{font-family:var(--mono);font-weight:600}
+.lib .wv{font-size:13.5px;color:var(--ink2)}
+.lib .wv b{font-family:var(--mono);font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+@media (max-width:760px){.lib .wrow{grid-template-columns:1fr 1fr}.lib .wrow.head{display:none}}
+.lib th button{all:unset;cursor:pointer;display:inline-flex;gap:4px;align-items:center}
+.lib th button:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+.lib th button .ar{opacity:.35;font-size:10px}
+.lib th[aria-sort] button .ar{opacity:1;color:var(--ink)}
+.lib .tcount{font-size:12.5px;color:var(--muted);margin-left:auto}
+.lib .controls{align-items:end}
+.lib .controls select{min-width:260px}
+.lib td a{font-weight:600}
+.lib .tchip{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--warn);border:1px solid currentColor;border-radius:3px;padding:0 5px;margin-left:6px;vertical-align:1px}
+.lib .empty{display:grid;gap:8px;justify-items:start}
+.lib .hidden{display:none}
+.lib #progress{grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))}
+.lib #progress .panel{grid-template-rows:auto 1fr}
+.lib #progress .chart{align-self:end;overflow:hidden}
+.lib #progress .chart svg{width:100%;height:auto}
+.lib .phead{display:grid;gap:8px;align-content:start}
+.lib .lc{text-transform:none;font-size:12px}
+.lib td.nw{white-space:nowrap}
+/* tabs: Progress / Season / Goals (hash routing: #season, #goals) */
+.lib .tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);margin-block:calc(-1 * var(--s5)) calc(-1 * var(--s4));padding-block:var(--s2)}
+.lib .tabs a{font-size:var(--t-sm);color:var(--ink2);text-decoration:none;padding:5px 12px;border-radius:4px;white-space:nowrap}
+.lib .tabs a:hover{background:var(--band);color:var(--ink)}
+.lib .tabs a[aria-current="page"]{color:var(--ink);background:var(--panel);box-shadow:inset 0 -2px 0 var(--a)}
+.lib .tabpane{display:grid;gap:var(--s7);min-width:0}
+.lib .pbchip{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--pb);background:var(--pbbg);border-radius:3px;padding:1px 5px;margin-left:6px;vertical-align:1px;font-weight:600}
+.lib .firstchip{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:3px;padding:0 5px;margin-left:6px;vertical-align:1px}
+.lib .season-stats .stat .v{font-size:24px}
+.lib .delta-up{color:var(--good)} .lib .delta-down{color:var(--bad)}
+.lib .chart.bars svg{width:100%;height:auto}
+.lib .seasongrid{grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))}
+.lib .seasongrid .panel{grid-template-rows:auto 1fr}
+.lib .seasongrid .chart{align-self:end;overflow:hidden}
+.lib .seasongrid .chart svg{width:100%;height:auto}
+.lib .est{font-size:12px;color:var(--muted)}
+/* goals */
+.lib .goals{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr));gap:var(--s4)}
+.lib .goal{display:grid;gap:var(--s3)}
+.lib .goal .gnums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s2)}
+.lib .goal .gnums div{display:grid;min-width:0}
+.lib .goal .gnums span{font-size:var(--t-xs);color:var(--muted)}
+.lib .goal .gnums b{font-family:var(--mono);font-size:var(--t-lg);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.lib .gbarbox{height:10px;border-radius:5px;background:var(--band);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.lib .gbarbox i{display:block;height:100%;background:var(--a);border-radius:5px}
+.lib .goal.done .gbarbox i{background:var(--good)}
+.lib .gchip{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;border-radius:3px;padding:1px 6px;white-space:nowrap}
+.lib .gchip.done{color:var(--good);border:1px solid currentColor}
+.lib .gchip.todo{color:var(--ink2);border:1px solid var(--axis)}
+.lib .goal .spark svg{width:100%;height:auto;display:block}
+.lib .goal .gnote{font-size:var(--t-sm);color:var(--ink2)}
+</style>
+<div class="wrap lib">
+<header>
+  <div class="chiprow"><span class="chip">Debrief</span><span class="chip" id="count"></span><span class="chip hidden" id="testchip">Includes test data</span></div>
+  <span class="eyebrow">Garage 61 race reviews</span>
+  <h1>Progress</h1>
+  <p class="lede" id="lede">Your pace and consistency across every race you've reviewed. Pick a track and car below to see how they have moved.</p>
+  <div class="stats" id="totals"></div>
+</header>
+<nav class="tabs" aria-label="Library views"><a href="#overview" data-tab="overview">Progress</a><a href="#season" data-tab="season">Season</a><a href="#goals" data-tab="goals">Goals<span id="goalcount"></span></a></nav>
+
+<div class="tabpane" id="tab-overview">
+
+<section id="pbsec">
+  <div class="sechead"><span class="eyebrow">Personal bests</span><h2>Best lap per track and car</h2><p class="lede">Select a row to show its progress and weak spots below.</p></div>
+  <div class="panel"><div class="tablewrap"><table id="pbs"></table></div></div>
+</section>
+
+<section id="progsec">
+  <div class="progctl">
+    <div class="sechead"><span class="eyebrow">Progress</span><h2 id="progtitle">Lap time over time</h2></div>
+    <div class="controls"><label for="combo">Track and car<select id="combo"></select></label></div>
+  </div>
+  <div class="two" id="progress"></div>
+</section>
+
+<section id="weaksec">
+  <div class="sechead"><span class="eyebrow">Recurring weak spots</span><h2>Where the time keeps going</h2><p class="lede" id="weaklede"></p></div>
+  <div class="panel"><div class="weak" id="weak"></div></div>
+</section>
+
+<section>
+  <div class="sechead"><span class="eyebrow">All reviews</span><h2>Races</h2></div>
+  <div class="controls">
+    <label for="filt">Search<input id="filt" type="search" placeholder="Track or car"></label>
+    <label for="tfilt">Track and car<select id="tfilt"></select></label>
+    <span class="tcount" id="tcount"></span>
+  </div>
+  <div class="panel"><div class="tablewrap"><table id="list"></table></div></div>
+</section>
+</div>
+
+<div class="tabpane" id="tab-season" hidden>
+  <section>
+    <div class="progctl">
+      <div class="sechead"><span class="eyebrow">Season</span><h2 id="seasontitle">Your season</h2><p class="lede" id="seasonlede"></p></div>
+      <div class="controls"><label for="seasonpick">Season<select id="seasonpick"></select></label></div>
+    </div>
+    <div class="stats season-stats" id="seasonstats"></div>
+  </section>
+  <section id="irsec">
+    <div class="sechead"><span class="eyebrow">iRating</span><h2>iRating over time</h2></div>
+    <div class="panel" id="irpanel"></div>
+  </section>
+  <section>
+    <div class="sechead"><span class="eyebrow">Activity</span><h2>Races per season</h2></div>
+    <div class="panel" id="perseason"></div>
+  </section>
+  <section>
+    <div class="sechead"><span class="eyebrow">Pace</span><h2>Pace per track and car</h2><p class="lede">Best and median lap in each reviewed race. Lower is faster.</p></div>
+    <div class="two seasongrid" id="pacegrid"></div>
+  </section>
+  <section>
+    <div class="sechead"><span class="eyebrow">Results</span><h2>Finishes, incidents and safety rating</h2></div>
+    <div id="resultsbox" class="two"></div>
+  </section>
+  <section id="conssec">
+    <div class="sechead"><span class="eyebrow">Consistency</span><h2>Consistency score over time</h2></div>
+    <div class="panel" id="conspanel"></div>
+  </section>
+</div>
+
+<div class="tabpane" id="tab-goals" hidden>
+  <section>
+    <div class="sechead"><span class="eyebrow">Goals</span><h2>Lap-time goals</h2><p class="lede">Your target for each track and car against the best lap you've reviewed there. Add or change goals in the Goals view of the Debrief app.</p></div>
+    <div class="goals" id="goals"></div>
+  </section>
+</div>
+</div>
+<div id="tip" hidden></div>
+
+<script>window.ROWS=/*ROWS*/[];window.EXTRA=/*EXTRA*/null;</script>
+<script>
+(function(){
+const R=(window.ROWS||[]).filter(r=>r&&isFinite(r.best));
+const $=id=>document.getElementById(id);const NS='http://www.w3.org/2000/svg';
+function el(t,a,x){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(x!=null)e.textContent=x;return e}
+function h(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+const ok=v=>typeof v==='number'&&isFinite(v);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=s=>{if(!ok(s))return '–';const m=Math.floor(s/60);return m+':'+(s-m*60).toFixed(3).padStart(6,'0')};
+const fmtTick=(s,step)=>{const m=Math.floor(s/60),r=s-m*60,d=step<1?1:0;return m+':'+r.toFixed(d).padStart(d?4:2,'0')};
+const fmtD=(v,d=3)=>ok(v)?(v<0?'−':'+')+Math.abs(v).toFixed(d)+' s':'–';
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const dparts=s=>{const m=/^(\d{4})-(\d\d)-(\d\d)/.exec(s||'');return m?[+m[1],+m[2],+m[3]]:null};
+const fmtDate=(s,year=true)=>{const p=dparts(s);return p?MON[p[1]-1]+' '+p[2]+(year?', '+p[0]:''):(s||'Undated')};
+const tOf=r=>{const st=Date.parse(r.started_at);if(isFinite(st))return st;const p=dparts(r.date);return p?Date.UTC(p[0],p[1]-1,p[2],12):0};
+const comboName=r=>(r.track_short||r.track)+' · '+r.car;
+const plural=(n,w,ws)=>n+' '+(n===1?w:(ws||w+'s'));
+// personal best of a combo: only races whose best is clean count (best_clean false = every lap flagged or partial)
+const pbOf=a=>{const c=a.filter(r=>r.best_clean!==false),pool=c.length?c:a;return pool.reduce((p,r)=>r.best<p.best?r:p,pool[0])};
+
+// ---------- groups
+const groups=new Map();
+R.forEach(r=>{const k=r.combo||(r.track+'|'+r.car);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r)});
+groups.forEach(a=>a.sort((x,y)=>tOf(x)-tOf(y)));
+const combos=[...groups.entries()].map(([k,a])=>({k,a,last:a[a.length-1]})).sort((x,y)=>tOf(y.last)-tOf(x.last));
+
+// ---------- header
+$('count').textContent=plural(R.length,'review');
+if(R.some(r=>r.test_data))$('testchip').classList.remove('hidden');
+(function totals(){
+  const host=$('totals');const sum=(f)=>R.reduce((s,r)=>s+(ok(f(r))?f(r):0),0);
+  const tracks=[...new Set(R.map(r=>r.track))],cars=[...new Set(R.map(r=>r.car))];
+  const dates=R.map(r=>r.date).filter(Boolean).sort();
+  const shorts=[...new Set(R.map(r=>r.track_short||r.track))];
+  const items=[
+    ['Races reviewed',R.length,dates.length?'Since '+fmtDate(dates[0]):'None yet'],
+    ['Laps analysed',sum(r=>r.analysed),sum(r=>r.clean)+' clean'],
+    ['Tracks driven',tracks.length,shorts.join(', ')||'None yet'],
+    ['Cars driven',cars.length,cars.join(', ')||'None yet']];
+  items.forEach(([l,v,s])=>{const k=h('div','stat');k.append(h('span','lab',l),h('span','v',String(v)),h('span','ctx',s));k.lastChild.title=s;host.append(k)});
+})();
+
+if(!R.length){
+  ['pbsec','progsec','weaksec'].forEach(id=>$(id).classList.add('hidden'));
+  $('lede').textContent='No reviews yet. Run "Review last race" after your next race and it will appear here.';
+}
+
+// ---------- personal bests
+let current=combos.length?combos[0].k:null;
+function pbTable(){
+  const t=$('pbs');t.replaceChildren();t.style.minWidth='640px';
+  t.innerHTML='<thead><tr><th>Track</th><th>Car</th><th class="n">Best lap</th><th>Set on</th><th class="n">Races</th><th class="n">Since first review</th></tr></thead>';
+  const tb=h('tbody');
+  combos.forEach(c=>{const a=c.a;const pb=pbOf(a);
+    const tr=h('tr','pick'+(c.k===current?' on':''));tr.tabIndex=0;tr.setAttribute('aria-selected',c.k===current);
+    const tdT=h('td');tdT.append(h('b',null,pb.track_short||pb.track));tdT.title=pb.track;
+    const tdD=h('td');const a2=h('a',null,fmtDate(pb.date));a2.href=pb.path;tdD.append(a2);
+    let since;if(a.length<2)since=h('td','n note','First review');
+    else{const d=pb.best-a[0].best;since=h('td','n '+(d<-0.0005?'better':''),d<-0.0005?fmtD(d):(pb===a[0]?'Set in first review':fmtD(d)))}
+    tr.append(tdT,h('td',null,pb.car),h('td','n pbv',fmt(pb.best)),tdD,h('td','n',String(a.length)),since);
+    const go=()=>{select(c.k);$('progsec').scrollIntoView({behavior:'smooth',block:'start'})};
+    tr.addEventListener('click',e=>{if(e.target.closest('a'))return;go()});
+    tr.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}});
+    tb.append(tr)});
+  t.append(tb);
+}
+
+// ---------- combo select
+function fillSelect(sel,withAll){sel.replaceChildren();if(withAll){const o=h('option',null,'All tracks and cars');o.value='';sel.append(o)}
+  combos.forEach(c=>{const o=h('option',null,comboName(c.last)+' ('+c.a.length+')');o.value=c.k;sel.append(o)})}
+fillSelect($('combo'),false);fillSelect($('tfilt'),true);
+$('combo').addEventListener('change',e=>select(e.target.value));
+
+// ---------- tooltip
+const tip=$('tip');
+function showTip(html,x,y){tip.innerHTML=html;tip.hidden=false;const w=tip.offsetWidth,hh=tip.offsetHeight;
+  let L=x+14,T=y+14;if(L+w>innerWidth-8)L=x-w-14;if(T+hh>innerHeight-8)T=y-hh-14;tip.style.left=Math.max(8,L)+'px';tip.style.top=Math.max(8,T)+'px'}
+const hideTip=()=>{tip.hidden=true};
+
+// ---------- line chart (shared time axis, one y axis)
+function niceStep(span,target){const raw=span/target;const steps=[0.01,0.02,0.05,0.1,0.2,0.25,0.5,1,2,5,10,20,25,30,50,60,100,200,250,500,1000];return steps.find(s=>s>=raw)||1000}
+function lineChart(arr,series,o){
+  const W=Math.max(300,Math.round(o.width||520)),H=250,ml=58,mr=74,mt=14,mb=34;
+  const vals=arr.flatMap(r=>series.map(s=>r[s.key])).filter(ok);
+  let lo=Math.min(...vals),hi=Math.max(...vals);if(hi-lo<o.minSpan){const c=(hi+lo)/2;lo=c-o.minSpan/2;hi=c+o.minSpan/2}
+  const step=niceStep(hi-lo,4);lo=Math.floor((lo-step*0.15)/step)*step;hi=Math.ceil((hi+step*0.15)/step)*step;if(o.zero)lo=Math.max(0,lo);
+  const ts=arr.map(tOf);let t0=Math.min(...ts),t1=Math.max(...ts);const pad=Math.max((t1-t0)*0.04,86400000*0.5);t0-=pad;t1+=pad;
+  const X=t=>ml+(t-t0)/(t1-t0)*(W-ml-mr),Y=v=>mt+(o.invert?(v-lo)/(hi-lo):1-(v-lo)/(hi-lo))*(H-mt-mb);
+  const s=el('svg',{viewBox:`0 0 ${W} ${H}`,width:W,height:H,role:'img','aria-label':o.label});
+  for(let v=lo;v<=hi+1e-9;v+=step){const y=Y(v);s.append(el('line',{x1:ml,x2:W-mr,y1:y,y2:y,stroke:'var(--line)','stroke-width':1}));
+    s.append(el('text',{x:ml-8,y:y+4,'text-anchor':'end','font-size':11,fill:'var(--muted)'},o.tick(v,step)))}
+  s.append(el('line',{x1:ml,x2:W-mr,y1:H-mb,y2:H-mb,stroke:'var(--axis)','stroke-width':1}));
+  // x ticks: race dates, skipping ones that would collide
+  const yr=new Set(arr.map(r=>r.date.slice(0,4))).size>1;const xs=ts.map(X);const keep=[];
+  xs.forEach((x,i)=>{s.append(el('line',{x1:x,x2:x,y1:H-mb,y2:H-mb+4,stroke:'var(--axis)'}));
+    if(!keep.length||x-xs[keep[keep.length-1]]>=50)keep.push(i);else if(i===xs.length-1){keep[keep.length-1]=i}});
+  keep.forEach(i=>s.append(el('text',{x:xs[i],y:H-mb+18,'text-anchor':'middle','font-size':10.5,fill:'var(--muted)'},fmtDate(arr[i].date,yr).replace(/, \d\d(\d\d)$/," '$1"))));
+  const marks=[];
+  series.forEach(se=>{const pts=arr.map((r,i)=>ok(r[se.key])?[X(ts[i]),Y(r[se.key])]:null).filter(Boolean);
+    if(pts.length>1)s.append(el('polyline',{points:pts.map(p=>p.join(',')).join(' '),fill:'none',stroke:se.color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'}));
+    const cs=pts.map(p=>{const c=el('circle',{cx:p[0],cy:p[1],r:4,fill:se.color,stroke:'var(--panel)','stroke-width':2});s.append(c);return c});marks.push(cs);
+    const lp=pts[pts.length-1],lr=arr[arr.length-1];if(lp&&se.endLabel)s.append(el('text',{x:lp[0]+9,y:lp[1]+4,'font-size':11.5,'font-weight':600,fill:'var(--ink)'},se.endLabel(lr[se.key])))});
+  // hover: nearest race
+  const rule=el('line',{y1:mt,y2:H-mb,stroke:'var(--axis)','stroke-width':1,visibility:'hidden'});s.insertBefore(rule,s.querySelector('polyline')||null);
+  const hit=el('rect',{x:ml-10,y:0,width:W-ml-mr+20,height:H,fill:'transparent'});s.append(hit);
+  const move=e=>{const b=s.getBoundingClientRect();const px=(e.clientX-b.left)/b.width*W;let bi=0,bd=1e9;ts.forEach((t,i)=>{const d=Math.abs(X(t)-px);if(d<bd){bd=d;bi=i}});
+    const x=X(ts[bi]);rule.setAttribute('x1',x);rule.setAttribute('x2',x);rule.setAttribute('visibility','visible');
+    marks.forEach(cs=>cs.forEach((c,i)=>c.setAttribute('r',i===bi?6:4)));
+    const r=arr[bi];showTip('<b>'+esc(fmtDate(r.date))+'</b>'+series.map(se=>'<div>'+esc(se.name)+': <span class="mono">'+esc(se.fmt(r[se.key]))+'</span></div>').join('')+(r.test_data?'<div class="note">Test data</div>':''),e.clientX,e.clientY)};
+  hit.addEventListener('mousemove',move);hit.addEventListener('mouseleave',()=>{rule.setAttribute('visibility','hidden');marks.forEach(cs=>cs.forEach(c=>c.setAttribute('r',4)));hideTip()});
+  return s;
+}
+
+function panel(title,unit,desc){const p=h('div','panel');const hd=h('div','phead');const t=h('h3',null,title);if(unit)t.append(h('span','u',unit));hd.append(t);if(desc)hd.append(h('p','note',desc));p.append(hd);p.head=hd;return p}
+
+let redraw=null;
+function progress(c){
+  const host=$('progress');host.replaceChildren();redraw=null;const a=c.a,last=c.last;
+  $('progtitle').textContent=comboName(last);
+  if(a.length<2){const r=a[0];const p=panel('One race so far');p.style.gridColumn='1 / -1';
+    p.append(h('p',null,'Progress lines appear after your second review at '+(r.track_short||r.track)+' in the '+r.car+'. Here is where you start from.'));
+    const g=h('div','single');[['Best lap',fmt(r.best),'Lap '+(r.best_lap??'?')],['Median lap',fmt(r.median),'Half your laps were quicker'],['Consistency',ok(r.std)?r.std.toFixed(2)+' s':'–','Spread of clean laps'],['Clean laps',r.clean+' of '+r.laps,fmtDate(r.date)]]
+      .forEach(([l,v,s])=>{const d=h('div');d.append(h('span','eyebrow',l),h('span','v',v),h('span','s',s));g.append(d)});
+    p.append(g);host.append(p);return}
+  const first=a[0];const pb=pbOf(a);
+  const dB=pb.best-first.best,dM=ok(last.median)&&ok(first.median)?last.median-first.median:null;
+  const p1=panel('Lap time','best and median, per race',
+    'Best lap '+(dB<-0.0005?'down '+Math.abs(dB).toFixed(3)+' s':'unchanged')+' since your first review here. Median lap '+(dM==null?'not recorded':(dM<0?'down ':'up ')+Math.abs(dM).toFixed(3)+' s')+' from first to latest race. Lower is faster.');
+  const lg=h('div','legend');lg.innerHTML='<span><i class="k me"></i>Best lap</span><span><i class="k" style="border-color:var(--muted)"></i>Median lap</span>';p1.head.append(lg);
+  const c1=h('div','chart');p1.append(c1);const c2=h('div','chart');
+  host.append(p1);const cw=()=>c1.clientWidth;
+  const draw1=()=>c1.replaceChildren(lineChart(a,[
+    {key:'best',name:'Best',color:'var(--a)',fmt:fmt,endLabel:fmt},
+    {key:'median',name:'Median',color:'var(--muted)',fmt:fmt}],
+    {label:'Best and median lap per race at '+comboName(last),minSpan:1,tick:fmtTick,width:cw()}));
+  const sd=a.filter(r=>ok(r.std));const dS=sd.length>1?sd[sd.length-1].std-sd[0].std:null;
+  const p2=panel('Consistency','σ of clean laps, per race',
+    (dS==null?'Not enough data yet.':'σ went from '+sd[0].std.toFixed(2)+' s to '+sd[sd.length-1].std.toFixed(2)+' s. Lower means your clean laps were closer together.'));
+  p2.append(c2);host.append(p2);
+  const draw2=()=>c2.replaceChildren(lineChart(a,[{key:'std',name:'σ',color:'var(--a)',fmt:v=>ok(v)?v.toFixed(3)+' s':'–',endLabel:v=>v.toFixed(2)+' s'}],
+    {label:'Lap time spread per race at '+comboName(last),minSpan:0.4,zero:true,tick:(v,st)=>v.toFixed(st<0.1?2:1),width:c2.clientWidth}));
+  draw1();draw2();redraw=()=>{draw1();draw2()};
+}
+
+// ---------- recurring weak spots (corners matched by apex position)
+function weak(c){
+  const host=$('weak');host.replaceChildren();const a=c.a,N=a.length;
+  const L=c.last.L||4000,tol=Math.max(60,0.02*L);
+  const canon=[];const add=(cc,ri,isLatest)=>{let best=null,bd=1e9;
+    if(ok(cc.apex_m))canon.forEach(k=>{const d=Math.abs(k.apex-cc.apex_m);if(d<bd&&d<=tol&&!(ri in k.per)){bd=d;best=k}});
+    if(!best&&!ok(cc.apex_m))best=canon.find(k=>k.id===cc.id&&!(ri in k.per));
+    if(!best){best={apex:cc.apex_m,id:isLatest?cc.id:null,per:{}};canon.push(best)}
+    best.per[ri]=cc};
+  const order=[...a.keys()].reverse();
+  order.forEach(ri=>(a[ri].corners||[]).forEach(cc=>add(cc,ri,ri===N-1)));
+  const rows=canon.map(k=>{const hits=a.map((_,i)=>k.per[i]&&k.per[i].rank<=2);const av=Object.values(k.per).map(x=>x.avail).filter(ok);
+    return {k,hits,n:hits.filter(Boolean).length,avg:av.length?av.reduce((s,v)=>s+v,0)/av.length:0,seen:av.length}}).filter(r=>r.n>0)
+    .sort((x,y)=>y.n-x.n||y.avg-x.avg).slice(0,6);
+  $('weaklede').textContent=N<2?'With one review at '+(c.last.track_short||c.last.track)+', these are the two corners from that race. A pattern needs more races.':
+    'Corners that ranked first or second for time on the table, across your '+N+' reviews at '+(c.last.track_short||c.last.track)+' in the '+c.last.car+'. Corners are matched between races by apex position; names follow your latest review.';
+  if(!rows.length){host.append(h('p','note','No corner data in these reviews.'));return}
+  const hd=h('div','wrow head');['Corner','Top two','Each race, oldest first','Avg time on the table'].forEach(x=>hd.append(h('span',null,x)));host.append(hd);
+  rows.forEach(r=>{const w=h('div','wrow');
+    const id=h('span','wid',r.k.id||'Corner');id.append(h('span','apx',ok(r.k.apex)?'Apex ~'+Math.round(r.k.apex).toLocaleString('en-US')+' m':''));
+    const nn=h('span','wn');nn.innerHTML='<b>'+esc(r.n)+'</b> of '+esc(N)+' race'+(N===1?'':'s');
+    const st=h('span','strip');st.setAttribute('aria-label','Top two in '+r.n+' of '+N+' races');
+    r.hits.forEach((x,i)=>{const q=h('i',x?'hit':'');const cc=r.k.per[i];q.title=fmtDate(a[i].date)+': '+(cc?'ranked #'+cc.rank+', ~'+cc.avail.toFixed(2)+' s':'not detected');st.append(q)});
+    const v=h('span','wv');v.innerHTML='<b>~'+esc(r.avg.toFixed(2))+' s</b> a lap';
+    w.append(id,nn,st,v);host.append(w)});
+  host.append(h('p','note','Time on the table is your median through the corner minus your quicker laps there (25th percentile). It shows where your laps varied most, not a guaranteed gain.'));
+}
+
+function select(k){current=k;const c=combos.find(x=>x.k===k);if(!c)return;$('combo').value=k;pbTable();progress(c);weak(c)}
+
+// ---------- race table
+const COLS=[
+  {k:'date',l:'Date',v:r=>tOf(r)},{k:'track',l:'Track',v:r=>(r.track_short||r.track).toLowerCase()},{k:'car',l:'Car',v:r=>r.car.toLowerCase()},
+  {k:'best',l:'Best',n:1,v:r=>r.best},{k:'median',l:'Median',n:1,v:r=>r.median},{k:'std',l:'σ',lc:1,n:1,v:r=>r.std},
+  {k:'clean',l:'Clean laps',n:1,v:r=>r.laps?r.clean/r.laps:0}];
+const hasIR=R.some(r=>ok(r.irating)),hasRes=R.some(r=>r.result&&ok(r.result.finish_pos));
+if(hasIR)COLS.push({k:'ir',l:'iRating',n:1,v:r=>ok(r.irating)?r.irating:null});
+if(hasRes)COLS.push({k:'fin',l:'Finish',n:1,v:r=>r.result&&ok(r.result.finish_pos)?r.result.finish_pos:null});
+COLS.push({k:'top',l:'Top corner',v:r=>-(r.top_corner_avail||0)});
+let sortK='date',sortDir=-1;
+function table(){
+  const q=$('filt').value.trim().toLowerCase(),cf=$('tfilt').value;
+  let rows=R.filter(r=>(!cf||(r.combo||(r.track+'|'+r.car))===cf)&&(!q||[r.track,r.track_short,r.car,r.date].join(' ').toLowerCase().includes(q)));
+  const col=COLS.find(c=>c.k===sortK);rows=[...rows].sort((x,y)=>{const a=col.v(x),b=col.v(y);if(a==null)return 1;if(b==null)return -1;return (a<b?-1:a>b?1:0)*sortDir});
+  const t=$('list');t.replaceChildren();t.style.minWidth=(760+(hasIR?70:0)+(hasRes?70:0))+'px';
+  const tr0=h('tr');COLS.forEach(c=>{const th=h('th',c.n?'n':null);const b=h('button');b.type='button';b.append(c.lc?h('span','lc',c.l):document.createTextNode(c.l));
+    const ar=h('span','ar',c.k===sortK?(sortDir<0?'▼':'▲'):'▲▼');ar.setAttribute('aria-hidden','true');b.append(ar);
+    if(c.k===sortK)th.setAttribute('aria-sort',sortDir<0?'descending':'ascending');
+    b.addEventListener('click',()=>{if(sortK===c.k)sortDir=-sortDir;else{sortK=c.k;sortDir=(c.k==='date')?-1:1}table()});th.append(b);tr0.append(th)});
+  const th=h('thead');th.append(tr0);t.append(th);const tb=h('tbody');
+  rows.forEach(r=>{const tr=h('tr');const td=h('td');const a=h('a',null,r.track_short||r.track);a.href=r.path;a.title=r.track;td.append(a);
+    const dd=h('td','mono nw',fmtDate(r.date));if(r.test_data)dd.append(h('span','tchip','test'));
+    const tdB=h('td','n nw',fmt(r.best));const pb=r.pb||null;
+    if(pb&&pb.is_pb){const c=h('span','pbchip','PB');c.title='New personal best here: '+fmtD(pb.delta)+' vs your previous best '+fmt(pb.previous_best)+(pb.previous_date?' ('+fmtDate(pb.previous_date)+')':'');tdB.prepend(c);c.style.margin='0 6px 0 0'}
+    else if(pb&&pb.first_time){const c=h('span','firstchip','First');c.title='Your first reviewed race at this track and car';tdB.prepend(c);c.style.margin='0 6px 0 0'}
+    tr.append(dd,td,h('td','nw',r.car),tdB,h('td','n',fmt(r.median)),h('td','n',ok(r.std)?r.std.toFixed(2):'–'),
+      h('td','n',r.clean+'/'+r.laps));
+    if(hasIR)tr.append(h('td','n',ok(r.irating)?String(r.irating):'–'));
+    if(hasRes){const rs=r.result;tr.append(h('td','n',rs&&ok(rs.finish_pos)?'P'+rs.finish_pos+(ok(rs.field_size)?'/'+rs.field_size:''):'–'))}
+    tr.append(h('td','nw',r.top_corner_id?r.top_corner_id+' ~'+(r.top_corner_avail||0).toFixed(2)+' s':(r.top_corner||'–')));tb.append(tr)});
+  if(!rows.length){const tr=h('tr');const td=h('td','note',R.length?'No races match that filter.':'No reviews yet.');td.colSpan=COLS.length;tr.append(td);tb.append(tr)}
+  t.append(tb);$('tcount').textContent=rows.length===R.length?plural(R.length,'race'):rows.length+' of '+R.length+' races';
+}
+$('filt').addEventListener('input',table);$('tfilt').addEventListener('change',table);
+table();
+if(current)select(current);else pbTable();
+
+// ================================================================ Season tab
+const EX=(window.EXTRA&&typeof window.EXTRA==='object')?window.EXTRA:{};
+const SEAS=(EX.season&&Array.isArray(EX.season.seasons))?EX.season.seasons:[];
+const seasonOf=r=>(r.season&&r.season.name)||'Unknown season';
+const intFmt=v=>ok(v)?String(Math.round(v)):'–';
+const sgn=(v,d=0)=>ok(v)?(v>0?'+':v<0?'−':'±')+Math.abs(v).toFixed(d):'–';
+(function seasonPicker(){const sel=$('seasonpick');const o=h('option',null,'All seasons');o.value='';sel.append(o);
+  const names=SEAS.length?SEAS.map(x=>x.name):[...new Set(R.map(seasonOf))];
+  names.forEach(n=>{const e=SEAS.find(x=>x.name===n);const op=h('option',null,n+(e&&e.estimated?' (by date)':'')+' ('+(e?e.races:R.filter(r=>seasonOf(r)===n).length)+')');op.value=n;sel.append(op)});
+  sel.addEventListener('change',renderSeason)})();
+let seasonRedraw=null;
+function barChart(items,o){ // items: [{label,value,sub}]
+  const W=Math.max(300,Math.round(o.width||520)),H=200,ml=36,mr=12,mt=18,mb=40;
+  const s=el('svg',{viewBox:`0 0 ${W} ${H}`,width:W,height:H,role:'img','aria-label':o.label});
+  const mx=Math.max(1,...items.map(i=>i.value));const step=niceStep(mx,4)<1?1:Math.ceil(niceStep(mx,4));const top=Math.ceil(mx/step)*step;
+  const Y=v=>mt+(1-v/top)*(H-mt-mb);
+  for(let v=0;v<=top+1e-9;v+=step){const y=Y(v);s.append(el('line',{x1:ml,x2:W-mr,y1:y,y2:y,stroke:'var(--line)'}));s.append(el('text',{x:ml-6,y:y+4,'text-anchor':'end','font-size':11,fill:'var(--muted)'},String(v)))}
+  const bw=Math.min(64,(W-ml-mr)/Math.max(1,items.length)*0.6),gap=(W-ml-mr)/Math.max(1,items.length);
+  items.forEach((it,i)=>{const cx=ml+gap*(i+0.5),y=Y(it.value);
+    const b=el('rect',{x:cx-bw/2,y,width:bw,height:Math.max(0,H-mb-y),rx:3,fill:it.on===false?'var(--mid)':'var(--a)'});s.append(b);
+    s.append(el('text',{x:cx,y:y-5,'text-anchor':'middle','font-size':12,'font-weight':600,fill:'var(--ink)'},String(it.value)));
+    s.append(el('text',{x:cx,y:H-mb+16,'text-anchor':'middle','font-size':11,fill:'var(--ink2)'},it.label));
+    if(it.sub)s.append(el('text',{x:cx,y:H-mb+30,'text-anchor':'middle','font-size':10,fill:'var(--muted)'},it.sub));
+    b.addEventListener('mousemove',e=>showTip('<b>'+esc(it.full)+'</b>'+it.tip,e.clientX,e.clientY));b.addEventListener('mouseleave',hideTip)});
+  s.append(el('line',{x1:ml,x2:W-mr,y1:H-mb,y2:H-mb,stroke:'var(--axis)'}));
+  return s;
+}
+function statStrip(host,items){host.replaceChildren();items.forEach(([l,v,c,cls])=>{const k=h('div','stat');const vv=h('span','v'+(cls?' '+cls:''),v);k.append(h('span','lab',l),vv,h('span','ctx',c));k.lastChild.title=c;host.append(k)})}
+function renderSeason(){
+  const pick=$('seasonpick').value;const rows=R.filter(r=>!pick||seasonOf(r)===pick).slice().sort((a,b)=>tOf(a)-tOf(b));
+  const se=SEAS.find(x=>x.name===pick);
+  $('seasontitle').textContent=pick||'All seasons';
+  $('seasonlede').textContent=!R.length?'No reviews yet. Your season fills in as you review races.':
+    (se&&se.estimated?'This season is worked out from race dates (these reviews were made before Debrief recorded seasons). ':'')+
+    plural(rows.length,'reviewed race')+(pick?'':' across '+plural(new Set(R.map(seasonOf)).size,'season'))+'.';
+  const irs=rows.filter(r=>ok(r.irating));const res=rows.filter(r=>r.result&&ok(r.result.finish_pos));
+  const fin=res.map(r=>r.result.finish_pos),inc=res.map(r=>r.result.incidents).filter(ok),src=res.map(r=>r.result.sr_change).filter(ok);
+  const irD=irs.length>1?irs[irs.length-1].irating-irs[0].irating:null;const srT=src.length?src.reduce((a,b)=>a+b,0):null;
+  statStrip($('seasonstats'),[
+    ['Races reviewed',String(rows.length),rows.length?fmtDate(rows[0].date,false)+' to '+fmtDate(rows[rows.length-1].date,false):'None yet'],
+    ['iRating',irs.length?String(irs[irs.length-1].irating):'–',irD==null?(irs.length?'One race with iRating':'Not in these reviews'):sgn(irD)+' from '+irs[0].irating+' (first to latest race)',irD>0?'delta-up':irD<0?'delta-down':''],
+    ['Average finish',fin.length?'P'+(fin.reduce((a,b)=>a+b,0)/fin.length).toFixed(1):'–',fin.length?'Best P'+Math.min(...fin)+' in '+plural(fin.length,'result'):'Add from a review'],
+    ['Incidents per race',inc.length?(inc.reduce((a,b)=>a+b,0)/inc.length).toFixed(1):'–',inc.length?plural(inc.reduce((a,b)=>a+b,0),'incident')+' in '+plural(inc.length,'race'):'From results you add'],
+    ['Safety rating',srT==null?'–':sgn(srT,2),srT==null?'From results you add':'Total change across '+plural(src.length,'result'),srT>0?'delta-up':srT<0?'delta-down':'']]);
+  const draws=[];
+  // iRating
+  const irp=$('irpanel');irp.replaceChildren();
+  const hd=h('div','phead');const t=h('h3',null,'iRating');t.append(h('span','u','at the start of each reviewed race'));hd.append(t);
+  hd.append(h('p','note',irs.length?'From Garage 61 (your rating on the race laps). '+(irD==null?'':'Change from first to latest race shown: '+sgn(irD)+'.'):'Reviews made with Debrief v2 or later record your iRating. Older reviews don’t have it.'));irp.append(hd);
+  if(irs.length){const c=h('div','chart');irp.append(c);draws.push(()=>c.replaceChildren(lineChart(irs,[{key:'irating',name:'iRating',color:'var(--a)',fmt:intFmt,endLabel:intFmt}],
+    {label:'iRating over time',minSpan:60,tick:v=>String(Math.round(v)),width:c.clientWidth})))}
+  // races per season (always all seasons, selected one highlighted)
+  const ps=$('perseason');ps.replaceChildren();
+  const list=(SEAS.length?SEAS.slice():[...new Set(R.map(seasonOf))].map(n=>({name:n,shortName:n,races:R.filter(r=>seasonOf(r)===n).length,combos:[]}))).reverse();
+  if(!list.length)ps.append(h('p','note','No races yet.'));
+  else{const c=h('div','chart bars');ps.append(c);
+    draws.push(()=>c.replaceChildren(barChart(list.map(x=>({label:x.shortName||x.name,full:x.name+(x.estimated?' (by date)':''),value:x.races,on:!pick||pick===x.name,
+      sub:(x.combos&&x.combos.length?plural(x.combos.length,'combo'):'')+(x.estimated?' · by date':''),
+      tip:(x.combos||[]).map(cb=>'<div>'+esc(cb.track_short)+' · '+esc(cb.car)+': <span class="mono">'+esc(cb.races)+'</span></div>').join('')+(ok(x.irating_change)?'<div>iRating '+esc(sgn(x.irating_change))+'</div>':'')})),
+      {label:'Races reviewed per season',width:c.clientWidth})));
+    ps.append(h('p','note','Seasons shown "(by date)" are estimated from race dates for reviews made before Debrief recorded seasons.'))}
+  // pace per combo
+  const pg=$('pacegrid');pg.replaceChildren();const byC=new Map();rows.forEach(r=>{const k=r.combo||(r.track+'|'+r.car);if(!byC.has(k))byC.set(k,[]);byC.get(k).push(r)});
+  if(!byC.size)pg.append(h('p','note','No races in this season.'));
+  [...byC.values()].sort((a,b)=>b.length-a.length).forEach(a=>{const last=a[a.length-1];const pb=pbOf(a);
+    const d=a.length>1?a[a.length-1].best-a[0].best:null;
+    const p=panel(comboName(last),plural(a.length,'race'),a.length<2?'One race: best '+fmt(last.best)+'.':'Best lap '+fmt(pb.best)+'. First to latest race: '+fmtD(d)+' (negative = quicker).');
+    const lg=h('div','legend');lg.innerHTML='<span><i class="k me"></i>Best lap</span><span><i class="k" style="border-color:var(--muted)"></i>Median lap</span>';p.head.append(lg);
+    const c=h('div','chart');p.append(c);pg.append(p);
+    draws.push(()=>c.replaceChildren(lineChart(a,[{key:'best',name:'Best',color:'var(--a)',fmt:fmt,endLabel:fmt},{key:'median',name:'Median',color:'var(--muted)',fmt:fmt}],
+      {label:'Best and median lap per race at '+comboName(last),minSpan:1,tick:fmtTick,width:c.clientWidth})))});
+  // results
+  const rb=$('resultsbox');rb.replaceChildren();
+  if(!res.length){const e=h('div','empty');e.style.gridColumn='1 / -1';e.append(h('b',null,'No race results yet'),h('span',null,'Open a review in the Debrief app and choose "Add race result" to record your finish, incidents and iRating/SR change. They show up here.'));rb.append(e)}
+  else{const arr=res.map(r=>Object.assign({},r,{fin:r.result.finish_pos,inc:r.result.incidents}));
+    const p1=panel('Finishing position','lower is better',plural(res.length,'race')+' with a result. Best P'+Math.min(...fin)+'.');const c1=h('div','chart');p1.append(c1);rb.append(p1);
+    draws.push(()=>c1.replaceChildren(lineChart(arr,[{key:'fin',name:'Finish',color:'var(--a)',fmt:v=>ok(v)?'P'+v:'–',endLabel:v=>'P'+v}],{label:'Finishing position per race',minSpan:4,invert:true,zero:true,tick:v=>v<1?'':'P'+Math.round(v),width:c1.clientWidth})));
+    const ai=arr.filter(r=>ok(r.inc));if(ai.length){const p2=panel('Incidents','per race',inc.length?'Average '+(inc.reduce((a,b)=>a+b,0)/inc.length).toFixed(1)+' per race.':'');const c2=h('div','chart');p2.append(c2);rb.append(p2);
+      draws.push(()=>c2.replaceChildren(lineChart(ai,[{key:'inc',name:'Incidents',color:'var(--b)',fmt:v=>ok(v)?v+'x':'–',endLabel:v=>v+'x'}],{label:'Incidents per race',minSpan:4,zero:true,tick:v=>String(Math.round(v)),width:c2.clientWidth})))}
+    const p3=panel('Results','as you entered them');p3.style.gridColumn='1 / -1';const tw=h('div','tablewrap');const tb=h('table');tb.style.minWidth='720px';
+    tb.innerHTML='<thead><tr><th>Date</th><th>Track</th><th>Car</th><th class="n">Start</th><th class="n">Finish</th><th class="n">Places</th><th class="n">Inc</th><th class="n">iRating</th><th class="n">SR</th></tr></thead>';
+    const body=h('tbody');res.slice().reverse().forEach(r=>{const x=r.result;const tr=h('tr');const a=h('a',null,r.track_short||r.track);a.href=r.path;const td=h('td');td.append(a);
+      const pg2=ok(x.positions_gained)?x.positions_gained:null;
+      tr.append(h('td','mono nw',fmtDate(r.date)),td,h('td','nw',r.car),h('td','n',ok(x.start_pos)?'P'+x.start_pos:'–'),h('td','n','P'+x.finish_pos+(ok(x.field_size)?'/'+x.field_size:'')),
+        h('td','n '+(pg2>0?'better':pg2<0?'worse':''),pg2==null?'–':sgn(pg2)),h('td','n',ok(x.incidents)?x.incidents+'x':'–'),
+        h('td','n '+(x.irating_change>0?'better':x.irating_change<0?'worse':''),ok(x.irating_change)?sgn(x.irating_change):(ok(x.irating_after)?String(x.irating_after):'–')),
+        h('td','n '+(x.sr_change>0?'better':x.sr_change<0?'worse':''),ok(x.sr_change)?sgn(x.sr_change,2):(ok(x.sr_after)?x.sr_after.toFixed(2):'–')));body.append(tr)});
+    tb.append(body);tw.append(tb);p3.append(tw,h('p','note','Places = start minus finish (positive = you gained places). iRating and SR show the change when you entered before and after.'));rb.append(p3)}
+  // consistency
+  const cs=rows.filter(r=>r.consistency&&ok(r.consistency.score)).map(r=>Object.assign({},r,{cons:r.consistency.score}));
+  $('conssec').classList.toggle('hidden',!cs.length);const cp=$('conspanel');cp.replaceChildren();
+  if(cs.length){const hd2=h('div','phead');const t2=h('h3',null,'Consistency score');t2.append(h('span','u','0-100, higher = laps closer together'));hd2.append(t2);
+    const lc=cs[cs.length-1].consistency;hd2.append(h('p','note','Latest: '+lc.score+(lc.label?' ('+lc.label+')':'')+'. Only reviews made with Debrief v2 or later have a score.'));cp.append(hd2);
+    const c=h('div','chart');cp.append(c);draws.push(()=>c.replaceChildren(lineChart(cs,[{key:'cons',name:'Score',color:'var(--a)',fmt:intFmt,endLabel:intFmt}],{label:'Consistency score per race',minSpan:20,tick:v=>String(Math.round(v)),width:c.clientWidth})))}
+  seasonRedraw=()=>draws.forEach(f=>f());seasonRedraw();
+}
+
+// ================================================================ Goals tab
+const GOALS=Array.isArray(EX.goals)?EX.goals.filter(x=>x&&x.goal&&ok(x.goal.target_s)):[];
+if(GOALS.length)$('goalcount').textContent=' ('+GOALS.length+')';
+function goalSpark(gp){const hs=(gp.history||[]).filter(x=>ok(x.best));const W=320,H=70,m=6;const s=el('svg',{viewBox:`0 0 ${W} ${H}`,width:W,height:H,role:'img','aria-label':'Best lap per race against the target'});
+  const tg=gp.goal.target_s;const vs=hs.map(x=>x.best).concat([tg]);let lo=Math.min(...vs),hi=Math.max(...vs);if(hi-lo<0.5){const c=(hi+lo)/2;lo=c-0.25;hi=c+0.25}
+  const X=i=>hs.length<2?W/2:m+i/(hs.length-1)*(W-2*m),Y=v=>m+(1-(v-lo)/(hi-lo))*(H-2*m);
+  s.append(el('line',{x1:m,x2:W-m,y1:Y(tg),y2:Y(tg),stroke:'var(--good)','stroke-dasharray':'4 4','stroke-width':1.5}));
+  s.append(el('text',{x:m,y:Y(tg)>H/2?Y(tg)-4:Y(tg)+12,'text-anchor':'start','font-size':10,fill:'var(--good)','font-family':'var(--mono)'},'target'));
+  if(hs.length>1){let run=1e9;const pr=hs.map((x,i)=>{run=Math.min(run,x.best);return [X(i),Y(run)]});
+    s.append(el('polyline',{points:hs.map((x,i)=>X(i)+','+Y(x.best)).join(' '),fill:'none',stroke:'var(--muted)','stroke-width':1,'stroke-dasharray':'2 3'}));
+    s.append(el('polyline',{points:pr.map(p=>p.join(',')).join(' '),fill:'none',stroke:'var(--a)','stroke-width':2}))}
+  hs.forEach((x,i)=>{const c=el('circle',{cx:X(i),cy:Y(x.best),r:3.5,fill:x.best===gp.best?'var(--pb)':'var(--a)',stroke:'var(--panel)','stroke-width':1.5});s.append(c);
+    c.addEventListener('mousemove',e=>showTip('<b>'+esc(fmtDate(x.date))+'</b>Best '+esc(fmt(x.best)),e.clientX,e.clientY));c.addEventListener('mouseleave',hideTip)});
+  return s}
+function renderGoals(){const host=$('goals');host.replaceChildren();
+  if(!GOALS.length){const e=h('div','empty');e.append(h('b',null,'No goals yet'),h('span',null,'Set a target lap time for a track and car in the Goals view of the Debrief app. Progress shows up here.'));host.append(e);return}
+  GOALS.forEach(gp=>{const g=gp.goal;const p=h('div','panel goal'+(gp.achieved?' done':''));
+    const r0=R.find(r=>r.track===g.track)||null;const tn=(r0&&r0.track_short)||g.track;
+    const hd=h('h3',null,tn+' · '+g.car);hd.append(h('span','gchip '+(gp.achieved?'done':'todo'),gp.achieved?'Achieved':(ok(gp.best)?'In progress':'Not raced yet')));p.append(hd);
+    const nums=h('div','gnums');[['Target',fmt(g.target_s)],['Your best',ok(gp.best)?fmt(gp.best):'–'],['To find',ok(gp.gap)?(gp.gap<=0?'Done ('+fmtD(gp.gap)+')':fmtD(gp.gap)):'–']]
+      .forEach(([l,v])=>{const d=h('div');d.append(h('span',null,l),h('b',null,v));nums.append(d)});p.append(nums);
+    const bar=h('div','gbarbox');bar.setAttribute('role','progressbar');bar.setAttribute('aria-valuemin','0');bar.setAttribute('aria-valuemax','100');
+    const pc=ok(gp.pct)?Math.round(gp.pct*100):0;bar.setAttribute('aria-valuenow',String(pc));bar.setAttribute('aria-label','Progress toward target');const fill=h('i');fill.style.width=pc+'%';bar.append(fill);p.append(bar);
+    p.append(h('p','note',!ok(gp.best)?'No reviewed races here yet.':gp.achieved?'You hit the target, set '+fmtDate(gp.best_date)+'.':
+      (ok(gp.pct)&&gp.races>1?pc+'% of the way from your first reviewed best ('+fmt(gp.first_best)+') to the target.':'Progress shows once you have a second race here.')+' '+plural(gp.races,'race')+' reviewed.'));
+    if((gp.history||[]).length){const sp=h('div','spark');sp.append(goalSpark(gp));p.append(sp);
+      const lg=h('div','legend');lg.innerHTML='<span><i class="k me"></i>Best so far</span><span><i class="k" style="border-color:var(--muted);border-top-style:dotted"></i>Each race</span><span><i class="k" style="border-color:var(--good);border-top-style:dashed"></i>Target</span>';p.append(lg)}
+    if(g.note)p.append(h('p','gnote',g.note));
+    if(gp.best_path){const a=h('a',null,'Open the race with your best lap');a.href=gp.best_path;a.style.fontSize='13px';p.append(a)}
+    host.append(p)})}
+
+// ================================================================ tabs (#overview, #season, #goals)
+const TABS=['overview','season','goals'];let curTab=null;
+function showTab(name){if(!TABS.includes(name))name='overview';
+  TABS.forEach(t=>{$('tab-'+t).hidden=t!==name});
+  document.querySelectorAll('.tabs a').forEach(a=>{if(a.dataset.tab===name)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+  const changed=curTab!==null&&curTab!==name;curTab=name;hideTip();
+  if(name==='season')renderSeason();else if(name==='goals')renderGoals();else if(redraw)redraw();
+  if(changed)window.scrollTo(0,0)}
+addEventListener('hashchange',()=>showTab(location.hash.slice(1)));
+showTab(location.hash.slice(1));
+
+addEventListener('scroll',hideTip,{passive:true});
+let rt=0,lastW=innerWidth;addEventListener('resize',()=>{if(innerWidth===lastW)return;lastW=innerWidth;clearTimeout(rt);rt=setTimeout(()=>{if(curTab==='season'&&seasonRedraw)seasonRedraw();else if(redraw)redraw()},120)});
+})();
+
+</script>
+</body></html>

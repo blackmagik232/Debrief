@@ -1,0 +1,70 @@
+# PyInstaller spec for the installed Debrief app (one folder, no console window).
+#
+# Build from the repository root:
+#     pip install -r requirements.txt pyinstaller
+#     pyinstaller packaging/debrief.spec --noconfirm --clean
+# Output: dist/Debrief/Debrief.exe (plus its _internal folder). The Inno Setup script
+# packaging/debrief.iss turns that folder into Debrief-Setup-<version>.exe.
+import re
+from pathlib import Path
+
+from PyInstaller.utils.hooks import collect_submodules
+
+ROOT = Path(SPECPATH).resolve().parent          # SPECPATH = the folder this spec is in (packaging/)
+PKG = ROOT / "debrief"
+VERSION = re.search(r'^__version__\s*=\s*"([^"]+)"', (PKG / "__init__.py").read_text(encoding="utf-8"), re.M).group(1)
+
+# Bundled files keep the package layout, because the code finds them next to its own modules
+# (debrief/templates, debrief/desktop/ui, debrief/desktop/icon.png). settings.example.toml goes to the
+# bundle root (sys._MEIPASS), where app.RES points when frozen.
+datas = [(str(p), "debrief/templates") for p in sorted((PKG / "templates").glob("*.html"))]
+datas += [(str(p), "debrief/desktop/ui") for p in sorted((PKG / "desktop" / "ui").iterdir()) if p.is_file()]
+datas += [(str(PKG / "desktop" / "icon.png"), "debrief/desktop"),
+          (str(PKG / "desktop" / "debrief.ico"), "debrief/desktop"),
+          (str(ROOT / "settings.example.toml"), ".")]
+
+# app.optional_module() imports feature modules by name (prep, goals, results, team, ...), which
+# PyInstaller can't see, so include every debrief module. make_icon is a build-time helper (needs Pillow).
+hiddenimports = collect_submodules("debrief", filter=lambda name: not name.endswith(".make_icon"))
+
+excludes = ["tkinter", "_tkinter", "turtle", "turtledemo", "idlelib", "lib2to3", "pydoc_data",
+            "test", "tests", "pytest", "_pytest", "playwright", "PIL", "matplotlib", "IPython",
+            "setuptools", "pip", "debrief.desktop.make_icon",
+            # optional extras requests/urllib3 can use when present; Debrief doesn't need them
+            "cryptography", "OpenSSL", "psutil", "yaml", "chardet"]
+
+a = Analysis(
+    [str(ROOT / "packaging" / "launcher.py")],
+    pathex=[str(ROOT)],
+    binaries=[],
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    runtime_hooks=[],
+    excludes=excludes,
+    noarchive=False,
+)
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,       # one-folder build: the DLLs and data sit next to the exe
+    name="Debrief",
+    icon=str(PKG / "desktop" / "debrief.ico"),
+    console=False,               # windowed: no black console box
+    debug=False,
+    strip=False,
+    upx=False,                   # UPX-packed exes trip antivirus more often
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    name="Debrief",
+)
+print(f"Debrief {VERSION}: spec loaded from {ROOT}")

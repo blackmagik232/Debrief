@@ -1,0 +1,134 @@
+# Builds the Debrief Windows installer.
+#  * every push / pull request / manual run: tests, PyInstaller build, smoke tests, installer artifact
+#  * a tag like v2.0.0: also publishes a GitHub Release with Debrief-Setup-<version>.exe attached
+name: Build Windows installer
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed only to create the release on tags
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Read version
+        id: ver
+        run: |
+          $v = (python -c "import debrief; print(debrief.__version__)").Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $v) { throw "Couldn't read __version__ from debrief/__init__.py" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Debrief version $v"
+          if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne "v$v") {
+            throw "Tag $env:GITHUB_REF_NAME doesn't match __version__ $v (expected v$v)"
+          }
+
+      # Tests that need the mock Garage 61 data or Playwright print SKIPPED here (neither is on the runner).
+      - name: Test analysis
+        run: python tests/test_analysis.py
+      - name: Test library
+        run: python tests/test_library.py
+      - name: Test desktop
+        run: python tests/test_desktop.py
+
+      - name: Build with PyInstaller
+        run: pyinstaller packaging/debrief.spec --noconfirm --clean
+
+      - name: Smoke test the built app
+        run: |
+          $data = Join-Path $env:LOCALAPPDATA "Debrief"
+          Remove-Item (Join-Path $data "selftest.json") -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath "dist\Debrief\Debrief.exe" -ArgumentList "--selftest" -Wait -PassThru
+          $json = Join-Path $data "selftest.json"
+          if (Test-Path $json) { Get-Content $json } else { Write-Host "selftest.json is missing" }
+          if (Test-Path (Join-Path $data "debrief.log")) { Get-Content (Join-Path $data "debrief.log") -Tail 40 }
+          if ($p.ExitCode -ne 0) { throw "Debrief.exe --selftest exited with $($p.ExitCode)" }
+          $r = Get-Content $json -Raw | ConvertFrom-Json
+          if (-not $r.ok -or -not $r.frozen) { throw "selftest.json doesn't report ok/frozen" }
+          if (-not (Test-Path (Join-Path $data "settings.toml"))) { throw "first start didn't create settings.toml" }
+
+      - name: Install Inno Setup if needed
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+            $known = "${env:ProgramFiles(x86)}\Inno Setup 6"
+            if (Test-Path "$known\ISCC.exe") {
+              Write-Host "Inno Setup found at $known"
+            } else {
+              choco install innosetup -y --no-progress
+            }
+            "${env:ProgramFiles(x86)}\Inno Setup 6" >> $env:GITHUB_PATH
+          }
+
+      - name: Build installer
+        run: |
+          iscc /DAppVersion=${{ steps.ver.outputs.version }} packaging\debrief.iss
+          if ($LASTEXITCODE -ne 0) { throw "iscc failed ($LASTEXITCODE)" }
+          Get-Item "dist-installer\Debrief-Setup-${{ steps.ver.outputs.version }}.exe"
+
+      - name: Silent install smoke test
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          $setup = Resolve-Path "dist-installer\Debrief-Setup-$v.exe"
+          $p = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/CURRENTUSER","/NORESTART","/LOG=install.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 40; throw "setup exited with $($p.ExitCode)" }
+          $app = Join-Path $env:LOCALAPPDATA "Programs\Debrief"
+          $exe = Join-Path $app "Debrief.exe"
+          if (-not (Test-Path $exe)) { Get-Content install.log -Tail 40; throw "Debrief.exe not installed at $exe" }
+          $data = Join-Path $env:LOCALAPPDATA "Debrief"
+          Remove-Item (Join-Path $data "selftest.json") -ErrorAction SilentlyContinue
+          $q = Start-Process -FilePath $exe -ArgumentList "--selftest" -Wait -PassThru
+          Get-Content (Join-Path $data "selftest.json") -ErrorAction SilentlyContinue
+          if ($q.ExitCode -ne 0) { throw "installed Debrief.exe --selftest exited with $($q.ExitCode)" }
+          $lnk = Join-Path ([Environment]::GetFolderPath("Programs")) "Debrief.lnk"
+          if (-not (Test-Path $lnk)) { throw "Start menu shortcut missing: $lnk" }
+
+          # uninstall: program files go, the user's data stays
+          $un = Join-Path $app "unins000.exe"
+          Start-Process -FilePath $un -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait
+          for ($i = 0; $i -lt 60 -and (Test-Path $exe); $i++) { Start-Sleep -Seconds 1 }   # the uninstaller finishes from a temp copy
+          if (Test-Path $exe) { throw "uninstall left Debrief.exe behind" }
+          if (-not (Test-Path (Join-Path $data "settings.toml"))) { throw "uninstall removed the user's settings" }
+          Write-Host "Install, selftest and uninstall all OK"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Debrief-Setup-${{ steps.ver.outputs.version }}
+          path: dist-installer/Debrief-Setup-${{ steps.ver.outputs.version }}.exe
+          if-no-files-found: error
+
+      - name: Publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          gh release create "$env:GITHUB_REF_NAME" "dist-installer\Debrief-Setup-$v.exe" `
+            --repo "$env:GITHUB_REPOSITORY" --title "Debrief $v" --generate-notes

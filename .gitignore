@@ -1,0 +1,33 @@
+# --- private: never commit (token, downloaded Garage 61 data, logs, browser profile)
+settings.toml
+settings*.toml
+!settings.example.toml
+.cache/
+.edge-profile/
+.debrief-running
+debrief.log
+*.log
+*.tmp
+selftest.json
+
+# --- Python / virtual environment
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# --- build outputs (PyInstaller, Inno Setup)
+build/
+dist/
+dist-installer/
+*.spec.bak
+
+# --- test and screenshot output (review libraries, screenshots)
+Debrief Reviews/
+testlib/
+test-lib*/
+screens/
+shots/
+*.png
+!debrief/desktop/icon.png

@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Debrief</title>
+<link rel="icon" type="image/png" href="static/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="static/tokens.css">
+<link rel="stylesheet" href="static/app.css">
+<script>try{const t=localStorage.getItem('debrief-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
+</head><body>
+<aside class="side" aria-label="Debrief">
+  <div class="brand">
+    <img src="static/icon.png" alt="" width="34" height="34">
+    <div><div class="name">Debrief</div><div class="eyebrow">Garage 61 race reviews</div></div>
+  </div>
+  <button id="btnReview" class="btn primary big" type="button">
+    <span class="lbl">Review last race</span>
+    <span class="minibar" aria-hidden="true"><i></i></span>
+  </button>
+  <nav class="nav">
+    <button type="button" class="navbtn" data-nav="library">Library</button>
+    <button type="button" class="navbtn" data-nav="season">Season</button>
+    <button type="button" class="navbtn" data-nav="goals">Goals</button>
+    <button type="button" class="navbtn" data-nav="prep">Prep</button>
+    <button type="button" class="navbtn" data-nav="team">Team</button>
+    <button type="button" class="navbtn" data-nav="settings">Settings</button>
+  </nav>
+  <div class="revhead"><span class="eyebrow">Past reviews</span><span class="eyebrow" id="revcount"></span></div>
+  <div id="revlist" class="revlist" role="list"></div>
+  <div class="sidefoot">
+    <div class="seg" role="radiogroup" aria-label="Theme">
+      <button type="button" role="radio" data-theme-set="auto">Auto</button>
+      <button type="button" role="radio" data-theme-set="light">Light</button>
+      <button type="button" role="radio" data-theme-set="dark">Dark</button>
+    </div>
+  </div>
+</aside>
+
+<main id="main">
+  <div id="banner" class="banner" hidden role="alert"></div>
+
+  <section id="vFrame" class="view frameview" hidden>
+    <div class="framebar" id="frameBar" hidden>
+      <span class="fbtext" id="fbText"></span>
+      <span class="row">
+        <span class="pill" id="fbPill" hidden></span>
+        <button type="button" class="btn" id="fbResult" hidden>Add race result</button>
+        <button type="button" class="btn" id="fbPrep" hidden>Pick another track</button>
+        <button type="button" class="btn primary" id="fbTeam" hidden>Refresh team data</button>
+      </span>
+    </div>
+    <iframe id="frame" title="Review"></iframe>
+  </section>
+
+  <section id="vWelcome" class="view pad" hidden>
+    <div class="col">
+      <span class="eyebrow">Debrief</span>
+      <h1 id="welcomeTitle">Welcome.</h1>
+      <p class="lede" id="welcomeText">No reviews yet. When your race has uploaded to Garage 61, click Review last race.</p>
+      <div class="row" id="welcomeActions">
+        <button type="button" class="btn primary" data-act="review">Review last race</button>
+        <button type="button" class="btn" data-nav="settings">Settings</button>
+      </div>
+
+      <ol class="guide" id="guide" hidden aria-label="Getting started">
+        <li class="gstep" id="gs1">
+          <span class="gnum" aria-hidden="true">1</span>
+          <div class="gbody">
+            <h3>Get a free Garage 61 account</h3>
+            <p class="note">Sign up at <a href="https://garage61.net" target="_blank" rel="noreferrer">garage61.net</a> and connect your iRacing account there. To compare laps with your teammates, ask to join the <b>Midfield Menace</b> team on Garage 61.</p>
+          </div>
+        </li>
+        <li class="gstep" id="gs2">
+          <span class="gnum" aria-hidden="true">2</span>
+          <div class="gbody">
+            <h3>Ask for your personal token</h3>
+            <p class="note">Go to <a href="https://garage61.net/developer" target="_blank" rel="noreferrer">garage61.net/developer</a> and request a personal API token. It's free for personal, non-commercial use. Garage 61 looks at each request by hand, so it can take a little while to arrive.</p>
+          </div>
+        </li>
+        <li class="gstep" id="gs3">
+          <span class="gnum" aria-hidden="true">3</span>
+          <form class="gbody" id="fGuideToken" autocomplete="off">
+            <h3>Paste your token here</h3>
+            <p class="note">It's saved on this PC only, and Debrief never shows it again. Debrief then checks the connection (about six Garage 61 requests).</p>
+            <label class="field" for="gTok"><span>Your Garage 61 token</span>
+              <input id="gTok" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste here">
+            </label>
+            <div class="row"><button type="submit" class="btn primary" id="gTokSave">Save and check</button><span class="msg" id="gTokMsg" role="status"></span></div>
+            <div class="progress small" id="gChkProg" hidden><div class="bar" id="gChkBar"><i></i></div></div>
+            <ul class="results" id="gChkOut" hidden></ul>
+          </form>
+        </li>
+        <li class="gstep" id="gs4">
+          <span class="gnum" aria-hidden="true">4</span>
+          <div class="gbody">
+            <h3>Review your last race</h3>
+            <p class="note">Once your race has uploaded to Garage 61, Debrief finds it and builds the review. The first one takes a minute or so.</p>
+            <div class="row"><button type="button" class="btn primary" data-act="review" id="gReview" disabled>Review last race</button></div>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="vJob" class="view pad" hidden aria-live="polite">
+    <div class="col">
+      <span class="eyebrow" id="jobEyebrow">Working</span>
+      <h1 id="jobTitle">Reviewing your last race</h1>
+      <div class="progress"><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="jobBar"><i></i></div><span class="pct num" id="jobPct">0%</span></div>
+      <p class="now" id="jobNow">Starting...</p>
+      <div class="callout err" id="jobErr" hidden>
+        <h3 id="jobErrTitle">The review stopped</h3>
+        <p id="jobErrMsg"></p>
+        <div class="row">
+          <button type="button" class="btn primary" data-act="retry">Try again</button>
+          <button type="button" class="btn" data-nav="settings">Settings</button>
+        </div>
+      </div>
+      <div class="panel">
+        <span class="eyebrow">Steps</span>
+        <ol class="steps" id="jobSteps"></ol>
+      </div>
+      <p class="note">Debrief paces its requests to Garage 61 (about one per second) and reuses laps it has already downloaded, so the first run takes a little while.</p>
+    </div>
+  </section>
+
+  <section id="vPrep" class="view pad" hidden>
+    <div class="col">
+      <span class="eyebrow">Track prep</span>
+      <h1>Prep</h1>
+      <p class="lede">Get ready for your next race: your history at the track, where teammates are quicker, the corners that keep costing you, and a practice plan.</p>
+      <div class="panel">
+        <div class="phead"><h3>Tracks and cars you have raced</h3></div>
+        <div id="prepCombos" class="list"></div>
+      </div>
+      <form class="panel" id="fPrepAny" autocomplete="off">
+        <div class="phead"><h3>Any track and car</h3></div>
+        <p class="note" id="prepListNote">Search Garage 61's track and car lists.</p>
+        <div class="row" id="prepLoadRow" hidden><button type="button" class="btn" id="btnPrepLists">Load track and car lists</button><span class="msg" id="prepLoadMsg" role="status"></span></div>
+        <div class="grid2" id="prepSearch" hidden>
+          <label class="field" for="prepTrack"><span>Track</span><input id="prepTrack" type="search" list="dlTracks" placeholder="Start typing a track" spellcheck="false"></label>
+          <label class="field" for="prepCar"><span>Car</span><input id="prepCar" type="search" list="dlCars" placeholder="Start typing a car" spellcheck="false"></label>
+        </div>
+        <datalist id="dlTracks"></datalist><datalist id="dlCars"></datalist>
+        <div class="row" id="prepGoRow" hidden><button type="submit" class="btn primary">Build prep page</button><span class="msg" id="prepMsg" role="status"></span></div>
+      </form>
+      <div class="panel" id="prepPagesPanel" hidden>
+        <div class="phead"><h3>Prep pages you've built</h3></div>
+        <div id="prepPages" class="list"></div>
+      </div>
+      <p class="note">A prep page uses a handful of Garage 61 requests (teammates' best laps at that track and car). Debrief shows the exact number when it's done.</p>
+    </div>
+  </section>
+
+  <section id="vGoals" class="view pad" hidden>
+    <div class="col">
+      <span class="eyebrow">Targets</span>
+      <h1>Goals</h1>
+      <p class="lede">Set a target lap time for a track and car. Debrief tracks how close your reviewed races get.</p>
+      <div class="panel">
+        <div class="phead"><h3>Your goals</h3><span class="msg" id="goalListMsg" role="status"></span></div>
+        <div id="goalList" class="list"></div>
+      </div>
+      <form class="panel" id="fGoal" autocomplete="off">
+        <div class="phead"><h3 id="goalFormTitle">Add a goal</h3></div>
+        <label class="field" for="goalCombo"><span>Track and car</span><select id="goalCombo"></select></label>
+        <div class="grid2">
+          <label class="field" for="goalTime"><span>Target lap time</span><input id="goalTime" type="text" inputmode="decimal" placeholder="1:23.500" spellcheck="false"></label>
+          <label class="field" for="goalNote"><span>Note (optional)</span><input id="goalNote" type="text" maxlength="300" placeholder="e.g. before the end of the season"></label>
+        </div>
+        <div class="row"><button type="submit" class="btn primary" id="goalSave">Save goal</button><button type="button" class="btn" id="goalCancel" hidden>Cancel</button><span class="msg" id="goalMsg" role="status"></span></div>
+      </form>
+    </div>
+  </section>
+
+  <section id="vTeam" class="view pad" hidden>
+    <div class="col">
+      <span class="eyebrow">Team hub</span>
+      <h1 id="teamTitle">Team</h1>
+      <p class="lede">Leaderboards for the tracks and cars you race, who owns each corner, and how you stack up against each teammate.</p>
+      <div class="panel">
+        <div class="phead"><h3>Get the latest from Garage 61</h3></div>
+        <p class="note">Looks at your six most recent tracks and cars. A first refresh uses up to about 60 Garage 61 requests (less if you've raced fewer combinations); refreshing again within ten minutes uses none. Debrief shows the exact number afterwards.</p>
+        <div class="row"><button type="button" class="btn primary" data-act="team">Refresh team data</button><span class="msg" id="teamMsg" role="status"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="vSettings" class="view pad" hidden>
+    <div class="col">
+      <span class="eyebrow">Debrief</span>
+      <h1>Settings</h1>
+      <p class="note" id="setFileErr" hidden></p>
+
+      <form class="panel" id="fToken" autocomplete="off">
+        <div class="phead"><h3>Garage 61 token</h3><span class="pill" id="tokStatus">Checking...</span></div>
+        <p class="note">Find your token at <a href="https://garage61.net/developer" target="_blank" rel="noreferrer">garage61.net/developer</a> under your developer app. It's saved in settings.toml on this PC and Debrief never shows it again.</p>
+        <label class="field" for="tok"><span>Paste your token</span>
+          <input id="tok" name="tok" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste here">
+        </label>
+        <div class="row"><button type="submit" class="btn primary">Save token</button><span class="msg" id="tokMsg" role="status"></span></div>
+      </form>
+
+      <div class="panel" id="pCheck">
+        <div class="phead"><h3>Connection</h3></div>
+        <p class="note">Checks the token and what your account can see. It uses about six Garage 61 requests.</p>
+        <div class="row"><button type="button" class="btn" id="btnCheck">Check connection</button><span class="msg" id="chkMsg" role="status"></span></div>
+        <div class="progress small" id="chkProg" hidden><div class="bar" id="chkBar"><i></i></div></div>
+        <ul class="results" id="chkOut" hidden></ul>
+      </div>
+
+      <form class="panel" id="fOpts">
+        <div class="phead"><h3>Review options</h3></div>
+        <label class="field" for="refs"><span>Comparison laps</span>
+          <select id="refs"><option value="0">None</option><option value="1">1</option><option value="2">2</option><option value="3">3 (most)</option></select>
+        </label>
+        <p class="note">Laps from your teammates and drivers you follow on Garage 61. Each one adds a request or two.</p>
+        <label class="check" for="prac"><input id="prac" type="checkbox"><span>Also review practice and qualifying sessions</span></label>
+        <div class="row"><button type="submit" class="btn">Save options</button><span class="msg" id="optMsg" role="status"></span></div>
+      </form>
+
+      <form class="panel" id="fTeam">
+        <div class="phead"><h3>Team</h3><span class="pill" id="teamStatus"></span></div>
+        <p class="note">The Garage 61 team the Team hub and Prep pages compare you with.</p>
+        <label class="field" for="teamSel" id="teamSelWrap" hidden><span>Your team</span><select id="teamSel"></select></label>
+        <div class="row"><button type="submit" class="btn" id="teamSave" hidden>Save team</button><button type="button" class="btn" id="btnTeams" hidden>Load my teams</button><span class="msg" id="teamSetMsg" role="status"></span></div>
+      </form>
+
+      <details class="panel" id="pIracing">
+        <summary><h3>iRacing (optional)</h3></summary>
+        <p class="note">iRacing's own data (official finishing positions, iRating and safety rating changes) needs API credentials that iRacing issues on request to individual developers. You don't need them: you can type a race result into any review. If iRacing gives you a client ID and secret, paste them here and Debrief will use them once that feature is switched on. They're saved in settings.toml on this PC and never shown again.</p>
+        <form class="gridf" id="fIracing" autocomplete="off">
+          <div class="row"><span class="pill" id="irIdStatus">Client ID: not saved</span><span class="pill" id="irSecStatus">Client secret: not saved</span></div>
+          <label class="field" for="irId"><span>Client ID</span><input id="irId" type="password" autocomplete="off" spellcheck="false" placeholder="Paste here"></label>
+          <label class="field" for="irSecret"><span>Client secret</span><input id="irSecret" type="password" autocomplete="off" spellcheck="false" placeholder="Paste here"></label>
+          <div class="row"><button type="submit" class="btn">Save</button><button type="button" class="btn" id="irClear" hidden>Remove</button><span class="msg" id="irMsg" role="status"></span></div>
+        </form>
+      </details>
+
+      <div class="panel">
+        <div class="phead"><h3>Library folder</h3></div>
+        <p class="mono path" id="libPath">...</p>
+        <div class="row"><button type="button" class="btn" id="btnFolder">Open folder</button><span class="msg" id="folderMsg" role="status"></span></div>
+      </div>
+
+      <div class="panel" id="pAbout">
+        <div class="phead"><h3>About</h3><span class="pill" id="aboutVersion">Debrief</span></div>
+        <p class="note" id="aboutText"></p>
+        <p class="mono path" id="dataPath"></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<dialog id="dlgResult" aria-labelledby="resTitle">
+  <form id="fResult" method="dialog" autocomplete="off">
+    <div class="phead"><h3 id="resTitle">Race result</h3><button type="button" class="btn ghost" id="resClose" aria-label="Close">Close</button></div>
+    <p class="note">From the iRacing results page. Only the finishing position is needed; leave the rest blank if you like.</p>
+    <div class="grid3">
+      <label class="field" for="r_finish_pos"><span>Finished</span><input id="r_finish_pos" name="finish_pos" type="number" min="1" max="200" required></label>
+      <label class="field" for="r_start_pos"><span>Started</span><input id="r_start_pos" name="start_pos" type="number" min="1" max="200"></label>
+      <label class="field" for="r_field_size"><span>Cars in race</span><input id="r_field_size" name="field_size" type="number" min="1" max="200"></label>
+      <label class="field" for="r_incidents"><span>Incidents</span><input id="r_incidents" name="incidents" type="number" min="0" max="999"></label>
+      <label class="field" for="r_laps_led"><span>Laps led</span><input id="r_laps_led" name="laps_led" type="number" min="0" max="2000"></label>
+      <label class="field" for="r_sof"><span>Strength of field</span><input id="r_sof" name="sof" type="number" min="0" max="20000"></label>
+      <label class="field" for="r_irating_before"><span>iRating before</span><input id="r_irating_before" name="irating_before" type="number" min="0" max="20000"></label>
+      <label class="field" for="r_irating_after"><span>iRating after</span><input id="r_irating_after" name="irating_after" type="number" min="0" max="20000"></label>
+      <span></span>
+      <label class="field" for="r_sr_before"><span>Safety rating before</span><input id="r_sr_before" name="sr_before" type="number" min="0" max="10" step="0.01"></label>
+      <label class="field" for="r_sr_after"><span>Safety rating after</span><input id="r_sr_after" name="sr_after" type="number" min="0" max="10" step="0.01"></label>
+    </div>
+    <label class="field wide" for="r_notes"><span>Notes</span><textarea id="r_notes" name="notes" maxlength="500" rows="3" placeholder="Anything worth remembering about this race"></textarea></label>
+    <div class="row"><button type="submit" class="btn primary" id="resSave">Save result</button><button type="button" class="btn" id="resDelete" hidden>Delete result</button><span class="msg" id="resMsg" role="status"></span></div>
+  </form>
+</dialog>
+<script src="static/app.js"></script>
+</body></html>

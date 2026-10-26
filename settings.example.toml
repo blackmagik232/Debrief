@@ -1,0 +1,25 @@
+# Debrief settings. Copy this file to settings.toml and fill in your token.
+# Keep settings.toml private: it holds your Garage 61 token. Never share it or post it.
+
+# Your personal access token from https://garage61.net/developer (the developer app you set up there).
+token = "PASTE-YOUR-GARAGE61-TOKEN-HERE"
+
+# Where reviews are saved. Leave as-is for Documents\Debrief Reviews.
+library_folder = "~/Documents/Debrief Reviews"
+# To use another folder, put the path in single quotes, e.g.  library_folder = 'D:\Racing\Reviews'
+
+# How many comparison laps to pull (from teammates and drivers you follow). Max 3.
+max_reference_laps = 3
+
+# Also review practice and qualifying sessions, not just races.
+include_practice = false
+
+# Your Garage 61 team, for the Team hub and Prep pages. Pick it in Settings > Team, or type its
+# short name from the team's Garage 61 web address.
+team_slug = "midfield-menace"
+
+# OPTIONAL: iRacing data API credentials. iRacing only issues these on request, and nothing in
+# Debrief needs them today. If iRacing gives you a client ID and secret, paste them in
+# Settings > iRacing (optional) instead of here. Keep them private, like the token.
+# iracing_client_id = ""
+# iracing_client_secret = ""

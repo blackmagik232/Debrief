@@ -199,6 +199,12 @@ class Garage61:
         d = self._cached(key, lambda: self._get("laps", params), max_age_s=0 if fresh else 600)
         return (d or {}).get("items", [])
 
+    def search_laps_page(self, **params) -> list:
+        """GET /laps, never cached: used by the history sync, which keeps its own store of laps
+        (so a full history isn't saved twice). One request."""
+        d = self._get("laps", params)
+        return list((d or {}).get("items") or []) if isinstance(d, dict) else []
+
     def my_statistics(self, start_iso: str):
         """Driving statistics (one row per car/track/day). Used to find which tracks to search,
         because the laps search requires a track."""

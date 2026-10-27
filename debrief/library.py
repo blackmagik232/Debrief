@@ -32,11 +32,11 @@ def slugify(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", str(s).lower()).strip("-")[:40]
 
 
-def review_dir(folder, laps, track_name, car_name) -> Path:
+def review_dir(folder, laps, track_name, car_name, suffix: str = "") -> Path:
     start = min((g(l, "start_time", "startTime", default="") or "") for l in laps)
     day = local_day(start) or "undated"
     ev = str(g(laps[0], "event", default="event"))[-6:].lower()
-    d = Path(folder) / "reviews" / f"{day}_{slugify(track_name)}_{slugify(car_name)}_{ev}"
+    d = Path(folder) / "reviews" / (f"{day}_{slugify(track_name)}_{slugify(car_name)}_{ev}" + (f"_{suffix}" if suffix else ""))
     d.mkdir(parents=True, exist_ok=True)
     return d
 

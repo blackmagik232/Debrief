@@ -19,7 +19,12 @@
     <span class="lbl">Review last race</span>
     <span class="minibar" aria-hidden="true"><i></i></span>
   </button>
+  <button type="button" id="syncStrip" class="syncstrip" data-nav="sessions" hidden>
+    <span class="dot" aria-hidden="true"></span><span id="syncText">Synced</span>
+    <span class="minibar" aria-hidden="true"><i id="syncBar"></i></span>
+  </button>
   <nav class="nav">
+    <button type="button" class="navbtn" data-nav="sessions">Sessions</button>
     <button type="button" class="navbtn" data-nav="library">Library</button>
     <button type="button" class="navbtn" data-nav="season">Season</button>
     <button type="button" class="navbtn" data-nav="goals">Goals</button>
@@ -126,6 +131,33 @@
     </div>
   </section>
 
+  <section id="vSessions" class="view pad" hidden>
+    <div class="col">
+      <span class="eyebrow">Your Garage 61 history</span>
+      <h1>Sessions</h1>
+      <p class="lede">Every race, qualifying and practice session you've driven, kept up to date from Garage 61. Pick one to review it.</p>
+      <div class="panel">
+        <div class="phead"><h3 id="sessSyncTitle">Sync</h3><span class="pill" id="sessSyncPill"></span></div>
+        <p class="note" id="sessSyncNote"></p>
+        <div class="progress small" id="sessProg" hidden><div class="bar" id="sessBar"><i></i></div></div>
+        <p class="now" id="sessNow" hidden></p>
+        <div class="row"><button type="button" class="btn primary" id="btnSync">Sync now</button><button type="button" class="btn" id="btnSyncStop" hidden>Pause</button><span class="msg" id="sessMsg" role="status"></span></div>
+      </div>
+      <div class="panel">
+        <div class="phead"><h3>Sessions</h3>
+          <div class="seg" role="radiogroup" aria-label="Show" id="sessFilter">
+            <button type="button" role="radio" data-f="all" aria-checked="true">All</button>
+            <button type="button" role="radio" data-f="3">Races</button>
+            <button type="button" role="radio" data-f="2">Qualifying</button>
+            <button type="button" role="radio" data-f="1">Practice</button>
+          </div>
+        </div>
+        <div id="sessList" class="list"></div>
+        <div class="row" id="sessMoreRow" hidden><button type="button" class="btn" id="sessMore">Show more</button></div>
+      </div>
+    </div>
+  </section>
+
   <section id="vPrep" class="view pad" hidden>
     <div class="col">
       <span class="eyebrow">Track prep</span>
@@ -219,6 +251,14 @@
         <p class="note">Laps from your teammates and drivers you follow on Garage 61. Each one adds a request or two.</p>
         <label class="check" for="prac"><input id="prac" type="checkbox"><span>Also review practice and qualifying sessions</span></label>
         <div class="row"><button type="submit" class="btn">Save options</button><span class="msg" id="optMsg" role="status"></span></div>
+      </form>
+
+      <form class="panel" id="fSync">
+        <div class="phead"><h3>History sync</h3></div>
+        <p class="note">Debrief keeps a copy of all your Garage 61 laps (races, qualifying and practice). The first sync downloads everything, paced at about one request a second, so it can take a while; you can keep using Debrief, and it carries on next time if you close it. After that, each sync only asks for new laps.</p>
+        <label class="check" for="syncOpen"><input id="syncOpen" type="checkbox"><span>Sync each time Debrief opens</span></label>
+        <label class="check" for="syncTel"><input id="syncTel" type="checkbox"><span>Also save telemetry for my best lap of every session (one request per session, saved once)</span></label>
+        <div class="row"><button type="submit" class="btn">Save sync options</button><span class="msg" id="syncOptMsg" role="status"></span></div>
       </form>
 
       <form class="panel" id="fTeam">

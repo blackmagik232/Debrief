@@ -144,3 +144,22 @@ dialog form{display:grid;gap:14px}
 .gbody{display:grid;gap:10px;align-content:start;min-width:0}
 .gbody h3{font-size:22px}
 .gbody .field{max-width:460px}
+
+/* ---------- history sync */
+.syncstrip{font:inherit;font-family:var(--mono);font-size:11.5px;color:var(--fg2);background:none;border:1px solid var(--grid);border-radius:5px;padding:6px 9px;display:grid;grid-template-columns:auto 1fr;gap:4px 8px;align-items:center;text-align:left;cursor:pointer}
+.syncstrip:hover{background:var(--band)}
+.syncstrip .dot{width:7px;height:7px;border-radius:50%;background:var(--good)}
+.syncstrip.busy .dot{background:var(--me);animation:syncpulse 1.2s ease-in-out infinite}
+.syncstrip.warn .dot{background:var(--warn)}
+.syncstrip .minibar{grid-column:1/-1;background:var(--grid)}
+.syncstrip .minibar i{background:var(--me)}
+.syncstrip.busy .minibar{display:block}
+@keyframes syncpulse{50%{opacity:.35}}
+#sessFilter{grid-template-columns:repeat(4,auto)}
+#sessFilter button{padding:5px 10px}
+.sess .when{font-family:var(--mono);font-size:12px;color:var(--muted);min-width:96px}
+.sess .kind{font-family:var(--mono);font-size:11px;letter-spacing:.04em;text-transform:uppercase;border-radius:3px;padding:2px 6px;border:1px solid var(--axis);color:var(--fg2)}
+.sess .kind.race{border-color:var(--me);color:var(--me)}
+.sess .kind.practice{border-color:var(--good);color:var(--good)}
+.sess .kind.qualifying{border-color:var(--warn);color:var(--warn)}
+@media (prefers-reduced-motion:reduce){.syncstrip.busy .dot{animation:none}}

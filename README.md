@@ -36,6 +36,10 @@ If Windows shows a blue "Windows protected your PC" box, click **More info → R
 ## Using it
 
 - **Review last race**: finds your newest race on Garage 61, builds the review and opens it. Progress shows in the window.
+- **Sessions**: every race, qualifying and practice session you've driven, newest first, with laps and best lap. Click **Review** on any of them (practice and qualifying reviews get their own folder next to the race's).
+  - **History sync**: the first time, Debrief downloads your whole Garage 61 history. It's paced at about one request a second, so a big history takes a while; you can keep using Debrief meanwhile, and if you close it the sync carries on from where it stopped next time. After that, Debrief catches up each time it opens (only new laps, usually a few requests) and **Sync now** does it on demand. Starting a review pauses a running sync.
+  - It also saves telemetry for your best lap of every session (once each). Both can be switched off in Settings > History sync.
+  - From a command prompt: `python -m debrief sync`.
 - **Library**: your personal bests, progress over time per track and car, and the corners that keep costing you time.
 - **Past reviews** in the sidebar open any earlier race.
 - **Add race result** (bar at the top of an open review): type in where you started and finished, incidents, iRating and safety rating from the iRacing results page. Only the finishing position is needed. You can edit or delete it later. No Garage 61 requests.

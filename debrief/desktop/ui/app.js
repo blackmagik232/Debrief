@@ -45,9 +45,9 @@ document.querySelectorAll('[data-theme-set]').forEach(b=>b.addEventListener('cli
 setTheme(getTheme());
 
 /* ---------- views */
-const VIEWS=['vFrame','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam'];
+const VIEWS=['vFrame','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam','vSessions'];
 const FRAME_VIEWS=['review','library','season','prepPage','teamPage'];
-const NAV_OF={library:'library',season:'season',goals:'goals',prep:'prep',prepPage:'prep',team:'team',teamPage:'team',settings:'settings'};
+const NAV_OF={sync:'sessions',sessions:'sessions',library:'library',season:'season',goals:'goals',prep:'prep',prepPage:'prep',team:'team',teamPage:'team',settings:'settings'};
 let current={view:null,dir:null};
 function show(view){VIEWS.forEach(v=>$(v).hidden=(v!==view))}
 function markNav(){
@@ -134,9 +134,10 @@ $('frame').addEventListener('load',()=>{
 
 document.addEventListener('click',e=>{
   const n=e.target.closest('[data-nav]');
-  if(n){({library:openLibrary,season:openSeason,goals:openGoals,prep:openPrep,team:openTeam,settings:openSettings})[n.dataset.nav]();return}
+  if(n){({sessions:openSessions,library:openLibrary,season:openSeason,goals:openGoals,prep:openPrep,team:openTeam,settings:openSettings})[n.dataset.nav]();return}
   const a=e.target.closest('[data-act]');if(!a)return;
   if(a.dataset.act==='review')startJob('review');
+  else if(a.dataset.act==='sync')startSync(false);
   else if(a.dataset.act==='team')startJob('team');
   else if(a.dataset.act==='retry'&&lastStart)startJob(lastStart.kind,lastStart.body);
 });
@@ -159,21 +160,22 @@ async function loadReviews(){
 }
 
 /* ---------- jobs: review / prep / team share the progress screen; check stays in Settings */
-const TITLES={review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
+const TITLES={sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
 const STOPPED={review:'The review stopped',prep:'The prep page stopped',team:'The team refresh stopped'};
 let handled=new Set(),polling=false,lastJob=null,lastStart=null;
 async function startJob(kind,body){
-  if(lastJob&&lastJob.state==='running'){
+  if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){
     if(lastJob.kind===kind&&kind!=='check')openJob();
     else banner('Debrief is busy: '+(lastJob.title||TITLES[lastJob.kind]||'a job').toLowerCase()+'. Wait for it to finish.',true);
     return false}
   let r;try{r=await post(kind,body)}catch(e){connectionLost();return false}
   if(!r.ok){banner(r.error||'Could not start.',true);return false}
+  if(lastJob&&lastJob.kind==='sync'&&lastJob.state==='running')banner('History sync paused for this. It carries on next time.');
   lastStart={kind,body};lastJob={state:'running',kind,id:r.id};
   resetJobView(kind);openJob();poll();return true;
 }
 async function startCheck(){
-  if(lastJob&&lastJob.state==='running'){banner('Debrief is busy: '+(lastJob.title||'a job').toLowerCase()+'. Wait for it to finish.',true);return}
+  if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){banner('Debrief is busy: '+(lastJob.title||'a job').toLowerCase()+'. Wait for it to finish.',true);return}
   setMsg('chkMsg','Checking...');setMsg('tokMsg','');$('btnCheck').disabled=true;
   let r;try{r=await post('check')}catch(e){connectionLost();return}
   if(!r.ok){$('btnCheck').disabled=false;setMsg('chkMsg',r.error,'bad');return}
@@ -208,7 +210,9 @@ function render(s){
   btn.querySelector('.lbl').textContent=busy?'Reviewing... '+Math.round((s.frac||0)*100)+'%':'Review last race';
   btn.querySelector('.minibar i').style.width=Math.round((s.frac||0)*100)+'%';
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('busy',s.state==='running'&&NAV_OF[s.kind]===b.dataset.nav));
+  if(s.kind==='sync')renderSync(s);else if(sessData)renderStrip(sessData.summary,s);
   if(s.kind==='review'||s.kind==='prep'||s.kind==='team'){
+    if(s.kind==='review'&&s.title&&s.state==='running')TITLES.review=s.title;
     setBar(s.frac||0);$('jobNow').textContent=s.state==='error'?'Stopped.':(s.message||'');
     if($('jobTitle').textContent!==TITLES[s.kind]&&s.state==='running')resetJobView(s.kind);
     const ol=$('jobSteps');const steps=s.steps||[];
@@ -244,10 +248,86 @@ function render(s){
       checkOk=s.state==='done';
       setMsg('gTokMsg',checkOk?'Connection works. You\'re ready for step 4.':'The connection check failed. Check the token and paste it again.',checkOk?'ok':'bad');
       updateGuide();
-      if(s.state==='done'){loadSettings();loadTeams(false)}
+      if(s.state==='done'){loadSettings();loadTeams(false);loadSessions().then(()=>startSync(true))}
     }
   }
 }
+
+/* ---------- Sessions + history sync */
+let sessData=null,sessFilter='all',sessShown=60;
+const KIND={1:'practice',2:'qualifying',3:'race'};
+function ago(iso){const t=Date.parse(iso||'');if(!isFinite(t))return '';const m=Math.round((Date.now()-t)/60000);
+  if(m<1)return 'just now';if(m<60)return m+' min ago';const h=Math.round(m/60);if(h<24)return h+' hour'+(h===1?'':'s')+' ago';
+  return fmtDate(new Date(t).toISOString())}
+function localWhen(iso){const t=Date.parse(iso||'');if(!isFinite(t))return fmtDate(iso);const d=new Date(t);
+  return MON[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
+function syncLine(sum){if(!sum)return 'Not synced yet';if(!sum.synced)return sum.stopped?'History sync paused':'Not synced yet';
+  return 'Synced '+ago(sum.last_sync)}
+function renderStrip(sum,job){const el=$('syncStrip');if(!tokenSaved){el.hidden=true;return}el.hidden=false;
+  const busy=job&&job.state==='running'&&job.kind==='sync';
+  el.classList.toggle('busy',!!busy);el.classList.toggle('warn',!busy&&!!sum&&(!sum.synced||sum.stopped));
+  $('syncText').textContent=busy?'Syncing... '+Math.round((job.frac||0)*100)+'%':syncLine(sum);
+  $('syncBar').style.width=busy?Math.round((job.frac||0)*100)+'%':'0'}
+async function loadSessions(){let j;try{j=await api('sessions')}catch(e){connectionLost();return null}
+  if(j&&j.ok)sessData=j;renderStrip(sessData&&sessData.summary,lastJob);return sessData}
+function renderSessions(){
+  const j=sessData||{},sum=j.summary,busy=lastJob&&lastJob.state==='running'&&lastJob.kind==='sync';
+  if(j.token===false){$('sessSyncNote').textContent='Add your Garage 61 token in Settings first.';$('btnSync').disabled=true}
+  else{$('btnSync').disabled=!!busy;
+    const n=sum?sum.sessions:0;
+    $('sessSyncTitle').textContent=busy?'Syncing...':(sum&&sum.synced?'Up to date':'Not synced yet');
+    const pill=$('sessSyncPill');pill.textContent=syncLine(sum);pill.className='pill'+(sum&&sum.synced&&!sum.stopped?' ok':' no');
+    let note=sum&&sum.synced?n+' session'+(n===1?'':'s')+' and '+sum.laps+' laps from '+sum.combos+' track and car combination'+(sum.combos===1?'':'s')+'.':
+      'The first sync downloads your whole Garage 61 history, paced at about one request a second. You can keep using Debrief while it runs.';
+    if(sum&&sum.telemetry_left)note+=' Telemetry still to download for '+sum.telemetry_left+' session'+(sum.telemetry_left===1?'':'s')+'.';
+    if(sum&&sum.synced&&ok(sum.last_requests))note+=' Last sync used '+sum.last_requests+' Garage 61 request'+(sum.last_requests===1?'':'s')+'.';
+    if(j.sync_on_open)note+=' Debrief syncs each time it opens.';
+    $('sessSyncNote').textContent=note}
+  $('btnSyncStop').hidden=!busy;$('sessProg').hidden=!busy;$('sessNow').hidden=!busy;
+  const host=$('sessList');host.replaceChildren();
+  const all=(j.sessions||[]).filter(s=>sessFilter==='all'||String(s.type)===sessFilter);
+  if(!all.length)host.append(h('p','note',(j.sessions||[]).length?'No sessions of this kind yet.':(busy?'Your sessions will appear here when the sync finishes.':'No sessions yet. Click Sync now.')));
+  all.slice(0,sessShown).forEach(s=>{const row=h('div','item sess');const tx=h('div','itx');
+    const top=h('span','row');top.append(h('span','when',localWhen(s.start)),h('span','kind '+(KIND[s.type]||''),s.session||'Session'));
+    tx.append(top,h('b',null,s.track),h('span','sub2',s.car));
+    const line=h('span','sub2');line.append(document.createTextNode(s.laps+' lap'+(s.laps===1?'':'s')+' · best '),h('b','num',fmtT(s.best)));
+    if(s.best_clean==null&&s.best!=null)line.append(document.createTextNode(' (no clean laps)'));tx.append(line);
+    const acts=h('span','row');
+    if(s.review){const b=h('button','btn','Open review');b.type='button';b.addEventListener('click',()=>openReview(s.review));acts.append(b)}
+    if(s.event&&[1,2,3].includes(s.type)&&s.track_id!=null&&s.car_id!=null){
+      const b=h('button','btn'+(s.review?'':' primary'),s.review?'Review again':'Review');b.type='button';
+      b.addEventListener('click',()=>startJob('review',{event:s.event,session_type:s.type,track_id:s.track_id,car_id:s.car_id}));acts.append(b)}
+    row.append(tx,acts);host.append(row)});
+  $('sessMoreRow').hidden=all.length<=sessShown;
+}
+async function openSessions(){current={view:'sessions',dir:null};show('vSessions');markNav();
+  await loadSessions();if(current.view==='sessions')renderSessions()}
+function renderSync(s){
+  renderStrip(sessData&&sessData.summary,s);
+  if(current.view==='sessions'){$('btnSyncStop').hidden=s.state!=='running';$('sessProg').hidden=s.state!=='running';$('sessNow').hidden=s.state!=='running';
+    $('sessBar').firstElementChild.style.width=Math.round((s.frac||0)*100)+'%';$('sessNow').textContent=s.message||'';$('btnSync').disabled=s.state==='running';
+    if(s.state==='running')$('sessSyncTitle').textContent='Syncing...'}
+  if((s.state==='done'||s.state==='error')&&!handled.has(s.id)){handled.add(s.id);
+    if(s.state==='error'){setMsg('sessMsg',s.error,'bad');if(current.view!=='sessions'&&s.error)banner('History sync stopped: '+s.error,true,9000)}
+    else{const r=(s.result&&s.result.sync)||{};
+      if(r.stopped)setMsg('sessMsg','Paused. The next sync carries on from here.');
+      else{setMsg('sessMsg',r.first?'Your history is downloaded.':(r.new_laps?r.new_laps+' new lap'+(r.new_laps===1?'':'s')+'.':'Nothing new.'),'ok');
+        if(r.first)banner('Your Garage 61 history is synced: '+(r.sessions||0)+' sessions.');
+        else if(r.new_laps)banner('Synced '+r.new_laps+' new lap'+(r.new_laps===1?'':'s')+' from Garage 61.')}}
+    loadSessions().then(()=>{if(current.view==='sessions')renderSessions()})}
+}
+async function startSync(auto){
+  if(lastJob&&lastJob.state==='running'){if(!auto&&lastJob.kind!=='sync')banner('Debrief is busy: '+(lastJob.title||'a job').toLowerCase()+'. Sync when it\'s done.',true);return}
+  let r;try{r=await post('sync',{auto:!!auto})}catch(e){if(!auto)connectionLost();return}
+  if(!r.ok){if(!auto)setMsg('sessMsg',r.error||'Could not start the sync.','bad');return}
+  if(r.skipped)return;
+  setMsg('sessMsg','');lastJob={state:'running',kind:'sync',id:r.id,frac:0};renderSync(lastJob);poll()}
+$('btnSync').addEventListener('click',()=>startSync(false));
+$('btnSyncStop').addEventListener('click',async()=>{try{await post('sync-stop')}catch(e){}setMsg('sessMsg','Pausing...')});
+$('sessMore').addEventListener('click',()=>{sessShown+=120;renderSessions()});
+document.querySelectorAll('#sessFilter [data-f]').forEach(b=>b.addEventListener('click',()=>{sessFilter=b.dataset.f;sessShown=60;
+  document.querySelectorAll('#sessFilter [data-f]').forEach(x=>x.setAttribute('aria-checked',String(x===b)));renderSessions()}));
+setInterval(()=>{if(!(lastJob&&lastJob.state==='running'))renderStrip(sessData&&sessData.summary,lastJob)},60000);
 
 /* ---------- Prep */
 let combosCache=null;
@@ -389,6 +469,7 @@ function fillSettings(v){
   const st=$('tokStatus');st.textContent=v.token_saved?'Token saved (ends in '+v.token_hint+')':'No token saved yet';
   st.className='pill '+(v.token_saved?'ok':'no');
   $('refs').value=String(v.max_reference_laps);$('prac').checked=!!v.include_practice;
+  $('syncOpen').checked=v.sync_on_open!==false;$('syncTel').checked=v.sync_telemetry!=='none';
   $('libPath').textContent=v.library_folder||'Not set yet. It will be Documents\\Debrief Reviews once settings are saved.';
   const fe=$('setFileErr');fe.hidden=!v.error;fe.textContent=v.error||'';fe.className='note msg bad';
   teamSlug=v.team_slug||teamSlug;
@@ -454,6 +535,10 @@ $('fOpts').addEventListener('submit',async e=>{e.preventDefault();setMsg('optMsg
   try{r=await post('settings',{max_reference_laps:+$('refs').value,include_practice:$('prac').checked})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('optMsg',r.error,'bad');return}
   fillSettings(r.settings);setMsg('optMsg','Saved.','ok')});
+$('fSync').addEventListener('submit',async e=>{e.preventDefault();setMsg('syncOptMsg','Saving...');let r;
+  try{r=await post('settings',{sync_on_open:$('syncOpen').checked,sync_telemetry:$('syncTel').checked?'best':'none'})}catch(err){connectionLost();return}
+  if(!r.ok){setMsg('syncOptMsg',r.error,'bad');return}
+  fillSettings(r.settings);setMsg('syncOptMsg','Saved.','ok')});
 $('btnFolder').addEventListener('click',async()=>{let r;try{r=await post('open-folder')}catch(e){connectionLost();return}
   setMsg('folderMsg',r.ok?'Opened in File Explorer.':r.error,r.ok?'ok':'')});
 
@@ -461,8 +546,11 @@ $('btnFolder').addEventListener('click',async()=>{let r;try{r=await post('open-f
 (async function init(){
   await loadSettings();
   const groups=await loadReviews();
+  await loadSessions();
   let s=null;try{s=await api('status')}catch(e){}
-  if(s&&s.state==='running'){lastJob=s;if(s.kind!=='check'){resetJobView(s.kind);openJob()}poll();return}
+  if(s&&s.state==='running'){lastJob=s;if(s.kind==='sync'){renderSync(s);if(groups.length)openLibrary();else welcome()}
+    else if(s.kind!=='check'){resetJobView(s.kind);openJob()}poll();return}
   if(groups.length)openLibrary();else welcome();
+  if(tokenSaved)startSync(true);   // catch up with Garage 61 every time Debrief opens
 })();
 })();

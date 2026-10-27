@@ -87,6 +87,7 @@ def selftest() -> int:
         from .. import report
         import numpy  # noqa: F401  (bundled dependencies import)
         import requests  # noqa: F401
+        from .. import sync  # noqa: F401  (history sync)
         checks["imports"] = True
         tpl = Path(report.TPL)
         for name in ("review.html", "library.html", "prep.html", "team.html"):

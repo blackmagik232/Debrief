@@ -78,6 +78,8 @@ def public_view() -> dict:
         "token_hint": ("…" + str(raw["token"]).strip()[-4:]) if has else None,
         "max_reference_laps": 3,
         "include_practice": False,
+        "sync_on_open": bool(raw.get("sync_on_open", True)),
+        "sync_telemetry": "none" if str(raw.get("sync_telemetry", "best")).lower() == "none" else "best",
         "library_folder": None,
         "team_slug": str(raw.get("team_slug") or app.DEFAULT_TEAM).strip().lower() or app.DEFAULT_TEAM,
         # present/absent only: the values are never sent to the page
@@ -142,6 +144,16 @@ def save(updates: dict) -> dict:
         if not isinstance(v, bool):  # bool("false") is True; only accept a real true/false
             raise ValueError("Practice and qualifying must be on or off.")
         clean["include_practice"] = v
+    if "sync_on_open" in updates:
+        v = updates["sync_on_open"]
+        if not isinstance(v, bool):
+            raise ValueError("Sync when Debrief opens must be on or off.")
+        clean["sync_on_open"] = v
+    if "sync_telemetry" in updates:
+        v = updates["sync_telemetry"]
+        if v not in ("best", "none"):
+            raise ValueError("Pick whether the sync downloads telemetry.")
+        clean["sync_telemetry"] = v
     if "team_slug" in updates:
         slug = str(updates["team_slug"] or "").strip().lower()
         if not _SLUG_OK.match(slug):

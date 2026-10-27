@@ -85,6 +85,20 @@ def clean_result_fields(raw) -> dict:
     return out
 
 
+def clean_review_params(raw) -> dict:
+    """Optional body of POST api/review: a synced session to review. Empty = your newest race."""
+    if not isinstance(raw, dict) or not raw.get("event"):
+        return {}
+    ev = raw.get("event")
+    if not isinstance(ev, str) or not re.match(r"^[A-Za-z0-9_-]{1,80}$", ev):
+        raise ValueError("That session wasn't found.")
+    st = raw.get("session_type")
+    if st not in (1, 2, 3) or isinstance(st, bool):
+        raise ValueError("That session wasn't found.")
+    return {"event": ev, "session_type": st, "track_id": _pos_int(raw.get("track_id"), "track"),
+            "car_id": _pos_int(raw.get("car_id"), "car")}
+
+
 def clean_goal(raw) -> dict:
     if not isinstance(raw, dict):
         raise ValueError("Bad request.")
@@ -161,16 +175,39 @@ def design_tokens() -> str:
 
 # ---------------------------------------------------------------- background jobs
 JOB_TITLES = {"review": "Reviewing your last race", "check": "Checking the connection",
-              "prep": "Building your track prep page", "team": "Updating the team hub"}
+              "prep": "Building your track prep page", "team": "Updating the team hub",
+              "sync": "Syncing your Garage 61 history"}
 
 
 class Jobs:
-    """One background job at a time: a review, a connection check, a prep page or a team refresh."""
+    """One background job at a time: a review, a connection check, a prep page, a team refresh or a
+    history sync. A sync gives way: starting anything else pauses it (it resumes on the next sync)."""
 
     def __init__(self):
         self.lock = threading.Lock()
         self.seq = 0
         self.st = {"state": "idle"}
+        self.stop_sync = threading.Event()
+        self.thread = None
+
+    @property
+    def kind(self):
+        with self.lock:
+            return self.st.get("kind") if self.st.get("state") == "running" else None
+
+    def pause_sync(self, wait_s: float = 20.0) -> bool:
+        """Ask a running sync to stop at its next checkpoint and wait for it. True if nothing is running now."""
+        t = None
+        with self.lock:
+            if self.st.get("state") != "running":
+                return True
+            if self.st.get("kind") != "sync":
+                return False
+            self.stop_sync.set()
+            t = self.thread
+        if t is not None:
+            t.join(wait_s)
+        return not self.running
 
     def snapshot(self):
         with self.lock:
@@ -184,14 +221,23 @@ class Jobs:
     def start(self, kind: str, params: dict | None = None) -> dict:
         if kind not in JOB_TITLES:
             raise ValueError(kind)
+        if kind != "sync" and self.kind == "sync":
+            self.pause_sync()
         with self.lock:
             if self.st.get("state") == "running":
                 return {"ok": False, "error": "Debrief is already busy with: " + self.st.get("title", "a job") + "."}
             self.seq += 1
-            self.st = {"state": "running", "kind": kind, "id": self.seq, "title": JOB_TITLES[kind], "frac": 0.0,
+            title = JOB_TITLES[kind]
+            if kind == "review" and (params or {}).get("event"):
+                title = "Reviewing your " + {1: "practice session", 2: "qualifying session"}.get((params or {}).get("session_type"), "race")
+            self.st = {"state": "running", "kind": kind, "id": self.seq, "title": title, "frac": 0.0,
                        "message": "Starting...", "steps": [], "started": time.time()}
             jid = self.seq
-        threading.Thread(target=self._run, args=(kind, jid, dict(params or {})), daemon=True, name=f"job-{kind}").start()
+            if kind == "sync":
+                self.stop_sync.clear()
+            self.thread = threading.Thread(target=self._run, args=(kind, jid, dict(params or {})), daemon=True,
+                                           name=f"job-{kind}")
+            self.thread.start()
         return {"ok": True, "id": jid}
 
     def _progress(self, jid):
@@ -204,7 +250,7 @@ class Jobs:
                 msg = str(msg)
                 self.st["message"] = msg.strip()
                 # per-lap telemetry ticks update the message only; real steps go in the list
-                if not msg.startswith("Telemetry for lap "):
+                if not msg.startswith(("Telemetry for lap ", "Telemetry for session ")):
                     self.st["steps"].append(msg.strip())
                     del self.st["steps"][:-60]
         return cb
@@ -217,8 +263,12 @@ class Jobs:
         try:
             cfg = app.load_settings()
             if kind == "review":
-                page = app.cmd_review(cfg, None, open_after=False, progress=cb)
+                page = app.cmd_review(cfg, params.get("event"), open_after=False, progress=cb,
+                                      session_kind=params.get("session_type"), track_id=params.get("track_id"),
+                                      car_id=params.get("car_id"))
                 result = {"review": Path(page).parent.name}
+            elif kind == "sync":
+                result = {"sync": app.cmd_sync(cfg, progress=cb, should_stop=self.stop_sync.is_set)}
             elif kind == "prep":
                 page = app.cmd_prep(cfg, params["track_id"], params["car_id"], progress=cb)
                 result = {"page": _lib_rel(cfg, page)}
@@ -338,6 +388,8 @@ class DebriefServer(ThreadingHTTPServer):
                 self.last_ping = max(self.last_ping, now)
             prev = now
             idle = now - self.last_ping
+            if idle > self.timeout_s and self.jobs.kind == "sync":
+                self.jobs.pause_sync(10.0)   # a sync never keeps Debrief open: it resumes next time
             if idle > self.timeout_s and not self.jobs.running:
                 app.say(f"Window closed (no heartbeat for {idle:.0f}s). Stopping.")
                 self.stopping.set()
@@ -447,7 +499,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"groups": self.server.reviews.list(lib), "folder": str(lib)})
         if r.startswith("lib/"):
             return self._lib(r[len("lib/"):])
-        if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/pages"):
+        if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/pages", "api/sessions"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -557,6 +609,28 @@ class Handler(BaseHTTPRequestHandler):
         results = self._module("results")
         return self._json({"ok": True, "review": d.name, "result": results.load(d)})
 
+    def _get_sessions(self, q):
+        """Your synced sessions (races, qualifying, practice), newest first. Never a request."""
+        cfg = self._cfg()
+        api = self._cache_api(cfg)
+        if api is None:
+            return self._json({"ok": True, "token": False, "summary": None, "sessions": []})
+        from .. import sync
+        store = sync.Store.for_api(api)
+        dirs = sorted((p.parent.name for p in (Path(cfg["library_folder"]) / "reviews").glob("*/review.json")),
+                      reverse=True)
+        rows = []
+        for s in store.sessions():
+            ev = str(s.get("event") or "")
+            name = None
+            if ev:  # review folders end with the event's last 6 characters (+ _practice / _qualifying)
+                end = "_" + ev[-6:].lower() + {1: "_practice", 2: "_qualifying"}.get(s.get("type"), "")
+                name = next((d for d in dirs if d.endswith(end)), None)
+            rows.append({k: s.get(k) for k in ("key", "event", "track_id", "car_id", "track", "car", "type", "session",
+                                                 "start", "laps", "clean_laps", "best", "best_clean")} | {"review": name})
+        return self._json({"ok": True, "token": True, "summary": store.summary(), "sessions": rows,
+                           "sync_on_open": cfg.get("sync_on_open", True)})
+
     def _get_pages(self, q):
         """Pages built by the Prep and Team views, so the window can offer to reopen them."""
         cfg = self._cfg()
@@ -630,7 +704,17 @@ class Handler(BaseHTTPRequestHandler):
             self.server.bye()
             return self._json({"ok": True})
         if r == "api/review":
-            return self._json(self.server.jobs.start("review"))
+            try:
+                params = clean_review_params(body)
+            except ValueError as e:
+                return self._json({"ok": False, "error": str(e)}, 400)
+            return self._json(self.server.jobs.start("review", params))
+        if r == "api/sync":
+            return self._post_sync(body)
+        if r == "api/sync-stop":
+            if self.server.jobs.kind == "sync":
+                self.server.jobs.stop_sync.set()
+            return self._json({"ok": True})
         if r == "api/check":
             return self._json(self.server.jobs.start("check"))
         if r in ("api/prep", "api/team", "api/goals", "api/result"):
@@ -666,6 +750,24 @@ class Handler(BaseHTTPRequestHandler):
         return self._nf()
 
     # ---------- POST endpoints for the new views
+    def _post_sync(self, body):
+        """Start a history sync. auto=true (the window just opened) only syncs when it's switched on,
+        a token is saved, nothing else is running and the last sync is over 10 minutes old."""
+        try:
+            cfg = self._cfg()
+        except ValueError as e:
+            return self._json({"ok": False, "error": str(e)}, 400)
+        if body.get("auto") is True:
+            api = self._cache_api(cfg)
+            if api is None or not cfg.get("sync_on_open", True) or self.server.jobs.running:
+                return self._json({"ok": True, "skipped": True})
+            from .. import sync
+            if not sync.due(sync.Store.for_api(api)):
+                return self._json({"ok": True, "skipped": True})
+        elif self.server.jobs.kind == "sync":
+            return self._json({"ok": True, "id": self.server.jobs.snapshot().get("id"), "already": True})
+        return self._json(self.server.jobs.start("sync"))
+
     def _post_prep(self, body):
         tid, cid = _pos_int(body.get("track_id"), "track"), _pos_int(body.get("car_id"), "car")
         self._cfg()

@@ -7,6 +7,7 @@ Usage:
     python -m debrief library         rebuild the library home page
     python -m debrief prep --track ID --car ID   build a track prep page for one track and car
     python -m debrief team            update the Midfield Menace team hub
+    python -m debrief sync            download your Garage 61 history (races and practice)
 """
 from __future__ import annotations
 
@@ -146,6 +147,9 @@ def load_settings() -> dict:
     cfg["max_reference_laps"] = max(0, min(3, int(cfg.get("max_reference_laps", 3))))
     cfg["include_practice"] = bool(cfg.get("include_practice", False))
     cfg["team_slug"] = str(cfg.get("team_slug") or DEFAULT_TEAM).strip().lower() or DEFAULT_TEAM
+    # history sync: catch up with Garage 61 each time the window opens; telemetry "best" or "none"
+    cfg["sync_on_open"] = bool(cfg.get("sync_on_open", True))
+    cfg["sync_telemetry"] = "none" if str(cfg.get("sync_telemetry", "best")).strip().lower() == "none" else "best"
     # optional iRacing data API credentials: only stored here; nothing runs with them by default
     for k in ("iracing_client_id", "iracing_client_secret"):
         cfg[k] = str(cfg.get(k) or "").strip()
@@ -350,7 +354,9 @@ def _stepper(progress):
     return step
 
 
-def cmd_review(cfg, event_id=None, open_after=True, progress=None):
+def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=None, track_id=None, car_id=None):
+    """Review your newest race, or (from the Sessions page) one synced session: event_id plus its
+    session_kind (1 practice, 2 qualifying, 3 race) and track/car, so no search is needed."""
     step = _stepper(progress)
     step("Connecting to Garage 61...", 0.02)
     api = make_api(cfg)
@@ -359,7 +365,9 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None):
     my_name = " ".join(filter(None, [g(me, "firstName", "firstname"), g(me, "lastName", "lastname")])) or slug
     step(f"Connected to Garage 61 as {my_name}.", 0.06)
     sessions = [1, 2, 3] if cfg["include_practice"] else [3]
-    ev_track = ev_car = None
+    if session_kind in (1, 2, 3):
+        sessions = [session_kind]
+    ev_track, ev_car = track_id, car_id
     if not event_id:
         step("Finding your most recent race...", 0.08)
         event_id, ev_track, ev_car = find_last_event(api, sessions, cfg["cache_dir"])
@@ -375,7 +383,7 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None):
     laps = [l for l in all_laps if session_type(l) in sessions]
     if not laps:
         keys = sorted(all_laps[0].keys()) if all_laps else []
-        raise SystemExit("That event has no race laps for you." +
+        raise SystemExit(("That session has no laps for you." if session_kind else "That event has no race laps for you.") +
                          (f" (Lap fields seen: {', '.join(keys)})" if keys else ""))
     car, track = g(laps[0], "car_id", "carId", "car"), g(laps[0], "track_id", "trackId", "track")
     car_name, track_name = name_of(api, "car", car), name_of(api, "track", track)
@@ -413,7 +421,8 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None):
     starts = [lap_start_dt(l) for l in laps if lap_start_dt(l)]
     meta = {"driver": my_name, "event_id": event_id, "car": car_name, "track": track_name,
             "started_at": min(starts).isoformat() if starts else "",
-            "session": "Race" if sessions == [3] else "Session",
+            "session": {1: "Practice", 2: "Qualifying", 3: "Race"}.get(sessions[0], "Session")
+                       if len(sessions) == 1 else "Session",
             # the owner likes "Sir" in his own (source) install; installed copies for teammates stay neutral
             "salutation": "" if getattr(sys, "frozen", False) else "Sir",
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
@@ -428,7 +437,9 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None):
         raise SystemExit(f"Couldn't build the review: {e}")
     data["meta"]["requests"] = api.requests_made
     step("Saving the review and updating the library...", 0.95)
-    out_dir = library.review_dir(cfg["library_folder"], laps, track_name, car_name)
+    # a practice or qualifying review of the same event gets its own folder, next to the race's
+    out_dir = library.review_dir(cfg["library_folder"], laps, track_name, car_name,
+                                 suffix={1: "practice", 2: "qualifying"}.get(session_kind, ""))
     # personal-best check against earlier reviews of this track and car (no Garage 61 requests)
     try:
         data["pb"] = library.pb_for(cfg["library_folder"], data, exclude_dir=out_dir.name)
@@ -534,6 +545,16 @@ def cmd_team(cfg, progress=None, open_after=False) -> Path:
     return Path(page)
 
 
+def cmd_sync(cfg, progress=None, should_stop=None, open_after=False) -> dict:
+    """Bring the local copy of your Garage 61 history up to date (see sync.py). The first run
+    downloads everything; after that only new laps. Stops cleanly when should_stop() is True."""
+    from . import sync
+    step = _stepper(progress)
+    step("Connecting to Garage 61...", 0.01)
+    api = make_api(cfg)
+    return sync.run(api, log=say, progress=progress, should_stop=should_stop, telemetry=cfg.get("sync_telemetry", "best"))
+
+
 def cmd_check(cfg, progress=None, open_after=False):
     """Test the token. Returns the result lines. open_after is accepted for symmetry (nothing to open)."""
     lines = []
@@ -577,6 +598,7 @@ def main(argv=None):
     pp.add_argument("--track", type=int, required=True, help="Garage 61 track id")
     pp.add_argument("--car", type=int, required=True, help="Garage 61 car id")
     pp.add_argument("--no-open", action="store_true")
+    sub.add_parser("sync", help="download your Garage 61 history (first time: everything; then new laps)")
     tp = sub.add_parser("team", help="update the team hub")
     tp.add_argument("--no-open", action="store_true")
     a = ap.parse_args(argv)
@@ -593,6 +615,8 @@ def main(argv=None):
             cmd_prep(cfg, a.track, a.car, open_after=not a.no_open)
         elif a.cmd == "team":
             cmd_team(cfg, open_after=not a.no_open)
+        elif a.cmd == "sync":
+            cmd_sync(cfg)
         else:
             cmd_review(cfg, getattr(a, "event", None), open_after=not getattr(a, "no_open", False))
     except Garage61Error as e:

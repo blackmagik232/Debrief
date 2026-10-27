@@ -14,6 +14,13 @@ max_reference_laps = 3
 # Also review practice and qualifying sessions, not just races.
 include_practice = false
 
+# History sync: Debrief keeps a copy of all your Garage 61 laps (races, qualifying and practice).
+# The first sync downloads everything; after that each sync only asks for new laps.
+# sync_on_open: catch up automatically each time Debrief opens.
+# sync_telemetry: "best" also saves telemetry for your best lap of every session; "none" skips it.
+sync_on_open = true
+sync_telemetry = "best"
+
 # Your Garage 61 team, for the Team hub and Prep pages. Pick it in Settings > Team, or type its
 # short name from the team's Garage 61 web address.
 team_slug = "midfield-menace"

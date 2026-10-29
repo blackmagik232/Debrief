@@ -24,11 +24,17 @@ FEATURE_MODULES = ("engine", "report", "library", "prep", "goals", "results", "t
                    "analysis_plus", "schedule", "series", "notes", "prepare", "updater", "insights")
 
 
+_REFRESH_DONE: set = set()
+REFRESH_PAUSE = threading.Event()   # set while a job runs: the refresh steps aside between reviews
+
+
 def _refresh_reviews():
-    """Once per page-layout version: re-render saved reviews in the new layout (no Garage 61 requests)."""
+    """Once per page-layout version: re-render saved reviews in the new layout (no Garage 61 requests).
+    Gives way to your jobs (it pauses between reviews and the server restarts it when the job ends)."""
     try:
         from .. import report
-        n = report.refresh_all(app.load_settings()["library_folder"], log=app.say)
+        n = report.refresh_all(app.load_settings()["library_folder"], log=app.say,
+                               should_stop=REFRESH_PAUSE.is_set, done=_REFRESH_DONE)
         if n:
             app.say(f"Refreshed {n} saved review(s) to the new page layout.")
     except SystemExit:
@@ -150,6 +156,13 @@ def selftest() -> int:
     import time
     import urllib.request
     from .. import __version__
+    # a selftest must never hang a build: after 90 s, write every thread's stack to selftest-hang.txt and exit
+    import faulthandler
+    try:
+        _hang = open(app.HERE / "selftest-hang.txt", "w", encoding="utf-8")
+        faulthandler.dump_traceback_later(90, exit=True, file=_hang)
+    except Exception:  # noqa: BLE001
+        _hang = None
     checks, error = {}, None
     srv = None
     try:
@@ -235,6 +248,13 @@ def selftest() -> int:
     except (OSError, ValueError, AttributeError):
         pass
     app.say(f"Selftest {'passed' if ok else 'FAILED'}: {line}")
+    try:
+        faulthandler.cancel_dump_traceback_later()
+        if _hang:
+            _hang.close()
+            (app.HERE / "selftest-hang.txt").unlink()
+    except Exception:  # noqa: BLE001
+        pass
     return 0 if ok else 1
 
 
@@ -282,6 +302,8 @@ def main(argv=None):
     _after_update(srv)
     threading.Thread(target=srv.watchdog, daemon=True, name="watchdog").start()
     # tracked, so the watchdog, an update and new jobs wait for it (it rewrites saved reviews)
+    srv.jobs.refresh_fn = _refresh_reviews
+    srv.jobs.refresh_pause = REFRESH_PAUSE
     srv.jobs.run_background("refresh", _refresh_reviews)
     if not a.no_browser:
         try:

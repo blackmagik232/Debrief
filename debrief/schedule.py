@@ -121,12 +121,21 @@ def split_track(name) -> tuple[str, str]:
     return (m.group(1), m.group(2)) if m else (s, "")
 
 
+# generic words that some sources add to a venue's name and others leave out
+# ('Mount Panorama Circuit' and 'Mount Panorama Motor Racing Circuit')
+_VENUE_FILLER = {"motor", "racing", "circuit", "raceway", "racecourse", "motorsport", "motorsports"}
+
+
 def _layout(name):
     venue, config = split_track(name)
     v = tuple(_words(venue, _VENUE_STOP))
+    core = tuple(w for w in v if w not in _VENUE_FILLER)
+    v = core or v
     c = set(_words(config, _CONFIG_STOP))
-    if c and c == set(_words(venue, _CONFIG_STOP)):
-        c = set()   # 'Summit Point Raceway - Summit Point Raceway': the layout is just the venue's name
+    if c and c <= set(_words(venue, _CONFIG_STOP)):
+        # 'Summit Point Raceway - Summit Point Raceway', 'Sebring International Raceway - International':
+        # the layout is just (part of) the venue's own name, i.e. its default layout
+        c = set()
     return v, c
 
 
@@ -170,7 +179,16 @@ def same_car(a, b) -> bool:
     if ka and kb and ka != kb:
         return False
     ta, tb = _words(a, _CAR_STOP), _words(b, _CAR_STOP)
-    return bool(ta) and sorted(ta) == sorted(tb)
+    if not ta or not tb:
+        return False
+    if sorted(ta) == sorted(tb):
+        return True
+    # words some sources add or leave out: 'Global Mazda MX-5 Cup', 'Porsche 963 GTP' (its own class)
+    cls = ka or kb
+    benign = {"global", "fanatec"} | (set(_words(cls, _CAR_STOP)) if cls else set())
+    sa, sb = set(ta), set(tb)
+    extra = sa ^ sb
+    return bool(sa & sb - benign) and extra <= benign
 
 
 class Matcher:

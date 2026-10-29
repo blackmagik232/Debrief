@@ -55,9 +55,11 @@ def atomic_write(path: Path, text: str) -> None:
         raise
 
 
-def refresh_all(library_folder, log=None) -> int:
+def refresh_all(library_folder, log=None, should_stop=None, done=None) -> int:
     """Re-render every saved review with the current page layout, from its review.json (no requests).
-    Runs once per layout version (marker file .layout in the library). Returns how many were redone."""
+    Runs once per layout version (marker file .layout in the library). Returns how many were redone.
+    should_stop() -> True pauses it between reviews (the marker isn't written, so it carries on later);
+    done is a set of review folders already redone in this run, so a resumed run skips them."""
     lib = Path(library_folder)
     marker = lib / ".layout"
     try:
@@ -66,12 +68,20 @@ def refresh_all(library_folder, log=None) -> int:
     except OSError:
         pass
     n = 0
+    done = done if done is not None else set()
     for p in sorted((lib / "reviews").glob("*/review.json")):
+        if p.parent.name in done:
+            continue
+        if should_stop and should_stop():
+            return n
         try:
+            before = p.stat().st_mtime_ns
             data = json.loads(p.read_text(encoding="utf-8"))
             if isinstance(data, dict) and data.get("laps"):
-                write(p.parent, data)
-                n += 1
+                if p.stat().st_mtime_ns == before:   # a review saved meanwhile is already in the new layout
+                    write(p.parent, data)
+                    n += 1
+            done.add(p.parent.name)
         except Exception as e:  # noqa: BLE001  (one odd review mustn't stop the rest)
             if log:
                 log(f"  Couldn't refresh {p.parent.name}: {e}")

@@ -245,6 +245,8 @@ class Jobs:
         self.on_update_started = None   # set by the server: close Debrief so the installer can replace it
         self.closing = False            # set while Debrief closes for an update: no new jobs
         self.background = {}            # name -> thread: quiet housekeeping that writes the library
+        self.refresh_fn = None          # the saved-review refresh: pauses for jobs, restarts after them
+        self.refresh_pause = None
 
     def run_background(self, name: str, fn) -> bool:
         """Run housekeeping (the saved-review refresh) on a tracked thread: the watchdog, the update and
@@ -314,9 +316,12 @@ class Jobs:
             return {"ok": False, "error": "Debrief is closing to install an update."}
         if kind != "sync" and self.kind == "sync":
             self.pause_sync()
+        # the saved-review refresh steps aside: it stops after the review it's writing (well under a second)
+        if self.refresh_pause is not None:
+            self.refresh_pause.set()
         if not self.wait_background(30.0):
             return {"ok": False, "error": "Debrief is still updating your saved reviews to the new page layout. "
-                                          "Try again in a minute."}
+                                          "Try again in a moment."}
         with self.lock:
             if self.closing:
                 return {"ok": False, "error": "Debrief is closing to install an update."}
@@ -396,6 +401,17 @@ class Jobs:
             self.st["result"] = result
             self.st["frac"] = self.st["frac"] if error else 1.0
             self.st["finished"] = time.time()
+        self._resume_refresh()
+
+    def _resume_refresh(self):
+        """After a job, carry on with the saved-review refresh if it was paused before finishing."""
+        if self.refresh_fn is None or self.refresh_pause is None or self.closing:
+            return
+        self.refresh_pause.clear()
+        try:
+            self.run_background("refresh", self.refresh_fn)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _run_update(cb) -> dict:

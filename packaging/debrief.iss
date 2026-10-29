@@ -107,6 +107,22 @@ begin
   end;
 end;
 
+// Windows won't rename a folder while a closing Debrief still has files open in it, so keep trying for up
+// to a minute (an older Debrief that started this update closes itself a few seconds after starting it).
+function RenameRetry(const Src, Dst: String): Boolean;
+var
+  i: Integer;
+begin
+  Result := RenameFile(Src, Dst);
+  i := 0;
+  while (not Result) and (i < 120) do
+  begin
+    Sleep(500);
+    Result := RenameFile(Src, Dst);
+    i := i + 1;
+  end;
+end;
+
 function SwapInNewVersion(const AppDir: String): Boolean;
 var
   Exe: String;
@@ -121,7 +137,7 @@ begin
   if DirExists(AppDir + '\_internal.old') then
     DelTree(AppDir + '\_internal.old', True, True, True);
   DeleteFile(Exe + '.old');
-  if DirExists(AppDir + '\_internal') and not RenameFile(AppDir + '\_internal', AppDir + '\_internal.old') then
+  if DirExists(AppDir + '\_internal') and not RenameRetry(AppDir + '\_internal', AppDir + '\_internal.old') then
   begin
     Log('Could not move the old _internal folder aside; the old version was kept.');
     Exit;
@@ -132,7 +148,7 @@ begin
     RenameFile(AppDir + '\_internal.old', AppDir + '\_internal');
     Exit;
   end;
-  if FileExists(Exe) and not RenameFile(Exe, Exe + '.old') then
+  if FileExists(Exe) and not RenameRetry(Exe, Exe + '.old') then
   begin
     Log('Could not move the old Debrief.exe aside; putting the old version back.');
     RenameFile(AppDir + '\_internal', AppDir + '\_internal.new');

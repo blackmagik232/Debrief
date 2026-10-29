@@ -31,3 +31,5 @@ screens/
 shots/
 *.png
 !debrief/desktop/icon.png
+selftest-hang.txt
+selftest.json

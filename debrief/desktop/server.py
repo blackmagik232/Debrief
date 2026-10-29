@@ -247,6 +247,11 @@ class Jobs:
         self.background = {}            # name -> thread: quiet housekeeping that writes the library
         self.refresh_fn = None          # the saved-review refresh: pauses for jobs, restarts after them
         self.refresh_pause = None
+        self.bg_progress = {}           # name -> {"done": k, "total": n} (the refresh reports it per review)
+
+    def set_background_progress(self, name: str, done: int, total: int) -> None:
+        with self.lock:
+            self.bg_progress[name] = {"done": int(done), "total": int(total)}
 
     def run_background(self, name: str, fn) -> bool:
         """Run housekeeping (the saved-review refresh) on a tracked thread: the watchdog, the update and
@@ -300,8 +305,11 @@ class Jobs:
         with self.lock:
             out = json.loads(json.dumps(self.st))
             bg = [k for k, t in self.background.items() if t.is_alive()]
+            prog = {k: dict(v) for k, v in self.bg_progress.items() if k in bg}
         if bg:
             out["background"] = bg
+        if prog:
+            out["background_progress"] = prog
         return out
 
     @property
@@ -521,6 +529,27 @@ class ReviewIndex:
         return [{"track": short_track_name(k[0]), "track_full": k[0], "car": k[1], "reviews": groups[k]} for k in order]
 
 
+class RowsCache:
+    """library.list_reviews rows, re-read only when a review.json changes (the Skills bar asks on every open)."""
+    def __init__(self):
+        self.key, self.val = None, []
+        self.lock = threading.Lock()
+
+    def rows(self, folder: Path) -> list:
+        ps = list((Path(folder) / "reviews").glob("*/review.json"))
+        try:
+            key = (str(folder), len(ps), max((p.stat().st_mtime_ns for p in ps), default=0))
+        except OSError:
+            key = None
+        with self.lock:
+            if key is not None and key == self.key:
+                return self.val
+        rows = library.list_reviews(folder)
+        with self.lock:
+            self.key, self.val = key, rows
+        return rows
+
+
 # ---------------------------------------------------------------- server
 class DebriefServer(ThreadingHTTPServer):
     daemon_threads = True
@@ -532,6 +561,7 @@ class DebriefServer(ThreadingHTTPServer):
         self.port = self.server_address[1]
         self.jobs = Jobs()
         self.reviews = ReviewIndex()
+        self.profile_cache = RowsCache()
         self.timeout_s = heartbeat_timeout
         self.last_ping = time.monotonic() + max(0.0, startup_grace - heartbeat_timeout)
         self.stopping = threading.Event()
@@ -721,7 +751,7 @@ class Handler(BaseHTTPRequestHandler):
         if r.startswith("lib/"):
             return self._lib(r[len("lib/"):])
         if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/pages", "api/sessions", "api/prepare",
-                 "api/notes", "api/update"):
+                 "api/notes", "api/update", "api/profile"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -824,6 +854,30 @@ class Handler(BaseHTTPRequestHandler):
         goals = self._module("goals")
         folder = cfg["library_folder"]
         return self._json({"ok": True, "goals": goals.load(folder), "progress": goals.progress(folder)})
+
+    def _get_profile(self, q):
+        """Driver profile (skill trends) summary for the window's Skills page bar. Library data only, never a
+        request. The full profile is on the library page (#skills); this says whether there is one yet and
+        whether the saved-review refresh is still adding skill scores to older reviews."""
+        lib = self._library_folder()
+        snap = self.server.jobs.snapshot()
+        refresh = (snap.get("background_progress") or {}).get("refresh") if "refresh" in (snap.get("background") or []) else None
+        out = {"ok": True, "available": False, "n_races": 0, "weakest": None, "refreshing": refresh}
+        profile = app.optional_module("profile")
+        if lib is None or profile is None:
+            return self._json(out)
+        rows = self.server.profile_cache.rows(lib)
+        try:
+            prof = profile.build(rows)
+        except Exception:  # noqa: BLE001
+            app.say("ERROR building the driver profile:\n" + traceback.format_exc())
+            return self._json(out)
+        if isinstance(prof, dict):
+            out["available"] = True
+            out["n_races"] = prof.get("n_races") or 0
+            w = prof.get("weakest")
+            out["weakest"] = w if isinstance(w, dict) else None
+        return self._json(out)
 
     def _get_result(self, q):
         cfg = self._cfg()

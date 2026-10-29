@@ -1,0 +1,22 @@
+{
+ "version": 1,
+ "params": {
+  "ref": "p25_clean",
+  "min_clean": 6,
+  "min_ref": 3,
+  "min_corner_laps": 5,
+  "noise_s": 0.01,
+  "brake_off_pct": 5,
+  "thr_commit_pct": 50,
+  "min_phase_cells": 2,
+  "caps_pm": {
+   "braking": 5.0,
+   "entry": 5.0,
+   "mid": 5.0,
+   "exit": 5.0,
+   "overall": 12.0
+  }
+ },
+ "reason": "not_enough_clean_laps",
+ "n_clean": 5
+}

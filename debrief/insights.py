@@ -32,6 +32,15 @@ OVERLAP_BAD = 0.3        # s/lap: both pedals at once
 LAP1_BAD = 1.0           # s: lap 1 slower than the median
 REF_LAP = 90.0           # the lap time the seconds above are written for
 TECH_KEYS = ("brake_on", "min_mph", "exit_mph", "full_thr", "coast_s", "gear")
+MAX_TIPS = 3
+# 2.3 (technique_plus / brake_spread / skills)
+SPREAD_BAD_LABELS = ("varies", "all over")
+SPREAD_MIN_N = 8            # clean laps with a brake point before a brake-spread item is shown
+PHASE_MIN_PM = 2.0          # per-mille of lap time: a phase must lose at least this much ...
+PHASE_MIN_SHARE = 0.4       # ... and at least this share of the total typical-vs-better gap
+PHASE_WORDS = {"braking": "in the braking zones", "entry": "between turning in and the slowest point",
+               "mid": "between the slowest point and getting back on the throttle", "exit": "on corner exits"}
+_TP_SKIP_NOTES = ("Not enough clean laps", "look the same on your quicker and slower laps")
 
 
 def _scale(median) -> float:
@@ -176,6 +185,41 @@ def _lap_list(v) -> list:
     return sorted(set(out))
 
 
+def _and(a):
+    a = [str(x) for x in a]
+    return a[0] if len(a) == 1 else ", ".join(a[:-1]) + " and " + a[-1] if a else ""
+
+
+def _tp_notes(data: dict) -> dict:
+    """corner id -> first useful technique_plus note (2.3 reviews only). Steering notes only when the
+    telemetry really had steering."""
+    tp = data.get("technique_plus") if isinstance(data.get("technique_plus"), dict) else {}
+    steer = bool((tp.get("channels") or {}).get("steering")) if isinstance(tp.get("channels"), dict) else False
+    out = {}
+    for c in tp.get("corners") or []:
+        if not isinstance(c, dict) or not c.get("id"):
+            continue
+        for note in c.get("notes") or []:
+            if not isinstance(note, str) or any(k in note for k in _TP_SKIP_NOTES):
+                continue
+            if not steer and "steering" in note.lower():
+                continue
+            out[c["id"]] = note
+            break
+    return out
+
+
+def _brake_spread(data: dict):
+    bs = data.get("brake_spread")
+    if isinstance(bs, dict):
+        return bs
+    try:   # report.write sets it (2.3); work it out here too so insights alone gives the same answer
+        from . import technique_plus
+        return technique_plus.spread_for_review(data)
+    except Exception:
+        return None
+
+
 def build(data: dict) -> dict:
     corners = [c for c in data.get("corners") or [] if isinstance(c, dict) and c.get("id")]
     tech = {t["id"]: t for t in data.get("technique") or [] if isinstance(t, dict) and t.get("id")}
@@ -225,6 +269,11 @@ def build(data: dict) -> dict:
                                    "ref": _nums((t or {}).get("ref")), "quick": _nums((t or {}).get("quick"))},
                        "times": {"best_t": _f(c.get("best_t")), "typical_t": typ_t, "p25_t": p25, "ref_t": ref_t},
                        "corners": [c["id"]], "laps": _lap_list([c.get("best_lap")] if c.get("best_lap") is not None else [])})
+    tp_notes = _tp_notes(data)
+    for it in ranked:   # 2.3: the corner's first technique note goes with its tips (3 at most)
+        note = tp_notes.get(it["corner"])
+        if note and note not in it["tips"]:
+            it["tips"] = it["tips"][:MAX_TIPS - 1] + [note]
     ranked.sort(key=lambda x: -x["gain"])
     by_id = {c["id"]: c for c in corners}
     out["tips"] = {cid: corner_tips(_with_quick(t, by_id.get(cid), clean_set), "best")[:3] for cid, t in tech.items()}
@@ -333,6 +382,42 @@ def build(data: dict) -> dict:
         good("locked", "Repeatable corners", "You hit the same time lap after lap in " +
              (", ".join(locked) if len(locked) < len(corners) else "every corner") + ".",
              detail=f"Middle half of your clean laps within {VARY_GOOD:.2f} s in {len(locked)} corner(s).", corners=locked)
+
+    # 2.3: brake-point repeatability (works on old reviews from corners[].per_lap)
+    bs = _brake_spread(data)
+    spread = [c for c in (bs or {}).get("corners") or [] if isinstance(c, dict) and c.get("id")
+              and _f(c.get("iqr_m")) is not None and isinstance(c.get("n"), int)]
+    loose = sorted([c for c in spread if c.get("label") in SPREAD_BAD_LABELS and c["n"] >= SPREAD_MIN_N],
+                   key=lambda c: -c["iqr_m"])[:3]
+    if loose:
+        first = loose[0]
+        names = [f"{first['id']} (about {first['iqr_m']:.0f} m between laps)"] + [c["id"] for c in loose[1:]]
+        bad("brake_spread", "Brake point moves around",
+            f"Your brake point moved around in {_and(names)}.",
+            detail="Middle half of your clean laps' brake points spanned " +
+                   ", ".join(f"{c['iqr_m']:.0f} m in {c['id']}" for c in loose) + ".",
+            corners=[c["id"] for c in loose])
+    locked_b = [c["id"] for c in spread if c.get("label") == "locked"]
+    if len(spread) >= 2 and len(locked_b) * 2 >= len(spread):
+        good("brake_markers", "Same brake marker every lap",
+             f"You braked at the same marker lap after lap in {_and(locked_b)}.",
+             detail=f"Middle half of your clean laps' brake points within {5} m in {len(locked_b)} of {len(spread)} braking corners.",
+             corners=locked_b)
+
+    # 2.3: which part of the corner the typical-vs-better gap sits in (skills, when it could score)
+    sk = data.get("skills") if isinstance(data.get("skills"), dict) else None
+    if sk and not sk.get("reason") and isinstance(sk.get("phases"), dict):
+        tot = _f((sk.get("overall") or {}).get("loss_s")) if isinstance(sk.get("overall"), dict) else None
+        cands = [(p, v) for p, v in sk["phases"].items() if p in PHASE_WORDS and isinstance(v, dict)
+                 and _f(v.get("loss_pm")) is not None and _f(v.get("loss_s")) is not None]
+        if cands and tot and tot > 0:
+            p, v = max(cands, key=lambda pv: pv[1]["loss_pm"])
+            if v["loss_pm"] >= PHASE_MIN_PM and v["loss_s"] >= PHASE_MIN_SHARE * tot:
+                bad("phase", "Where in the corner",
+                    f"Most of the gap between your typical and better laps was {PHASE_WORDS[p]} "
+                    f"(about {v['loss_s']:.2f} s a lap).", round(v["loss_s"], 2),
+                    detail=(f"{v['loss_s']:.2f} s of the {tot:.2f} s a lap between your typical lap (median of clean laps) "
+                            "and your better laps (your quickest quarter of clean laps)."))
 
     score = _f(con.get("score"))
     off_n = con.get("off_pace_n") if isinstance(con.get("off_pace_n"), int) else None

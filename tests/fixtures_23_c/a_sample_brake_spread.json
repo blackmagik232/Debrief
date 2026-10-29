@@ -1,0 +1,35 @@
+{
+ "version": 1,
+ "corners": [
+  {
+   "id": "C3",
+   "n": 14,
+   "iqr_m": 9.0,
+   "std_m": 7.4,
+   "median_m": 1040.0,
+   "label": "steady",
+   "laps": {
+    "1": 1035.0,
+    "2": 1045.0
+   }
+  },
+  {
+   "id": "C5",
+   "n": 12,
+   "iqr_m": 27.5,
+   "std_m": 19.0,
+   "median_m": 2390.0,
+   "label": "all over",
+   "laps": {
+    "1": 2370.0,
+    "2": 2400.0
+   }
+  }
+ ],
+ "params": {
+  "locked_m": 5,
+  "steady_m": 12,
+  "varies_m": 25,
+  "min_laps": 6
+ }
+}

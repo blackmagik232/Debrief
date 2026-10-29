@@ -1,0 +1,117 @@
+{
+ "version": 1,
+ "kind": "practice",
+ "params": {
+  "min_run_laps": 3,
+  "min_trend_clean": 5,
+  "min_progress_clean": 3,
+  "min_target_clean": 5,
+  "min_gain_s": 0.03,
+  "refuel_l": 1.0,
+  "break_factor": 1.6,
+  "break_pad_s": 30.0,
+  "push_within": 0.01
+ },
+ "runs": [
+  {
+   "id": 1,
+   "laps": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "boundary": "start",
+   "best_t": 75.117,
+   "best_lap": 3,
+   "best_clean": true,
+   "median_t": 75.146,
+   "clean": 6,
+   "trend_s_per_lap": 0.0056,
+   "fuel_start_l": 40.0
+  },
+  {
+   "id": 2,
+   "laps": [
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+   ],
+   "boundary": "gap",
+   "best_t": 75.0,
+   "best_lap": 12,
+   "best_clean": true,
+   "median_t": 75.062,
+   "clean": 7,
+   "trend_s_per_lap": 0.0017,
+   "fuel_start_l": 38.5
+  },
+  {
+   "id": 3,
+   "laps": [
+    17,
+    18,
+    19,
+    20,
+    21
+   ],
+   "boundary": "gap",
+   "best_t": 75.0,
+   "best_lap": 18,
+   "best_clean": true,
+   "median_t": 75.035,
+   "clean": 5,
+   "trend_s_per_lap": -0.0096,
+   "fuel_start_l": 40.0
+  }
+ ],
+ "progress": {
+  "first_median_t": 75.146,
+  "last_median_t": 75.035,
+  "delta_t": -0.111,
+  "first_run": 1,
+  "last_run": 3,
+  "n_first": 6,
+  "n_last": 5,
+  "corners": [
+   {
+    "id": "C1",
+    "first_t": 15.0,
+    "last_t": 15.0,
+    "delta_t": 0.0
+   },
+   {
+    "id": "C2",
+    "first_t": 15.146,
+    "last_t": 15.035,
+    "delta_t": -0.111
+   }
+  ]
+ },
+ "targets": [
+  {
+   "corner": "C2",
+   "target_t": 15.0,
+   "typical_t": 15.035,
+   "gain_s": 0.035,
+   "from_laps": [
+    18,
+    19,
+    20
+   ],
+   "n": 5,
+   "brake_on": 1850.0,
+   "min_mph": 60.0,
+   "full_thr": 2100.0,
+   "gear": 3,
+   "source": "run"
+  }
+ ],
+ "quali": null
+}

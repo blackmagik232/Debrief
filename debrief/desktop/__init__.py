@@ -21,11 +21,14 @@ from .. import app
 # Feature modules the window loads by name (app.optional_module / lazy imports). The selftest imports
 # each one, so a build that leaves one out fails in CI instead of on someone's PC.
 FEATURE_MODULES = ("engine", "report", "library", "prep", "goals", "results", "team", "sync",
-                   "analysis_plus", "schedule", "series", "notes", "prepare", "updater", "insights")
+                   "analysis_plus", "schedule", "series", "notes", "prepare", "updater", "insights",
+                   # 2.3 "Know your driving"
+                   "technique_plus", "skills", "session_review", "profile")
 
 
 _REFRESH_DONE: set = set()
 REFRESH_PAUSE = threading.Event()   # set while a job runs: the refresh steps aside between reviews
+_JOBS = None                        # the server's Jobs, so the refresh can report how far it has got
 
 
 def _refresh_reviews():
@@ -33,8 +36,11 @@ def _refresh_reviews():
     Gives way to your jobs (it pauses between reviews and the server restarts it when the job ends)."""
     try:
         from .. import report
+        def progress(k, total):
+            if _JOBS is not None:
+                _JOBS.set_background_progress("refresh", k, total)
         n = report.refresh_all(app.load_settings()["library_folder"], log=app.say,
-                               should_stop=REFRESH_PAUSE.is_set, done=_REFRESH_DONE)
+                               should_stop=REFRESH_PAUSE.is_set, done=_REFRESH_DONE, progress=progress)
         if n:
             app.say(f"Refreshed {n} saved review(s) to the new page layout.")
     except SystemExit:
@@ -205,6 +211,7 @@ def selftest() -> int:
         checks["page"] = get("", b'id="vWelcome"')
         checks["api/status"] = get("api/status", b'"state"')
         checks["api/settings"] = get("api/settings", b'"version"')
+        checks["api/profile"] = get("api/profile", b'"available"')   # the Skills page bar (2.3)
         # the Prepare page's data builds (schedule, series and track cards) without settings or a schedule
         import tempfile
         from .. import prepare
@@ -261,6 +268,7 @@ def selftest() -> int:
 
 
 def main(argv=None):
+    global _JOBS
     ap = argparse.ArgumentParser(prog="debrief.desktop")
     ap.add_argument("--no-browser", action="store_true", help="don't open a window; print the URL")
     ap.add_argument("--selftest", action="store_true",
@@ -304,6 +312,7 @@ def main(argv=None):
     _after_update(srv)
     threading.Thread(target=srv.watchdog, daemon=True, name="watchdog").start()
     # tracked, so the watchdog, an update and new jobs wait for it (it rewrites saved reviews)
+    _JOBS = srv.jobs
     srv.jobs.refresh_fn = _refresh_reviews
     srv.jobs.refresh_pause = REFRESH_PAUSE
     srv.jobs.run_background("refresh", _refresh_reviews)

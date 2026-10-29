@@ -1,0 +1,38 @@
+{
+ "version": 1,
+ "caps_pm": {
+  "braking": 5,
+  "entry": 5,
+  "mid": 5,
+  "exit": 5,
+  "overall": 12
+ },
+ "groups": [
+  {
+   "key": "all",
+   "label": "All cars",
+   "races": 14,
+   "phases": {
+    "exit": {
+     "latest": 51,
+     "best_score": 74,
+     "trend": {
+      "slope_pm_per_week": -0.12,
+      "change_pm": -0.9,
+      "direction": "improving",
+      "n": 9,
+      "days": 49
+     },
+     "races": [],
+     "weekly": [],
+     "seasons": []
+    }
+   }
+  }
+ ],
+ "weakest": {
+  "group": "all",
+  "phase": "exit"
+ },
+ "n_races": 14
+}

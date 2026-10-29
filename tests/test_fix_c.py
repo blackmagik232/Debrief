@@ -785,7 +785,8 @@ def test_l8_lock_retry_budget():
 
 # ================================================================ lead additions
 def test_layout_bumped_for_new_review_page():
-    assert report.LAYOUT == "2.2.2"
+    # at least the 2.2.2 layout (2.3 bumps it again; test_23_d pins the current value)
+    assert tuple(int(x) for x in report.LAYOUT.split(".")) >= (2, 2, 2)
 
 
 def test_lib_csp_blocks_network_like_templates():

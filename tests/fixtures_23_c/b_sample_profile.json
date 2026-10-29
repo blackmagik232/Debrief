@@ -1,0 +1,1227 @@
+{
+ "version": 1,
+ "caps_pm": {
+  "braking": 5.0,
+  "entry": 5.0,
+  "mid": 5.0,
+  "exit": 5.0,
+  "overall": 12.0
+ },
+ "params": {
+  "min_clean": 6,
+  "trend_min_races": 4,
+  "trend_min_days": 14,
+  "trend_min_change_pm": 0.5,
+  "trend_method": "theil_sen",
+  "weakest_last": 5
+ },
+ "groups": [
+  {
+   "key": "all",
+   "label": "All cars",
+   "races": 6,
+   "phases": {
+    "braking": {
+     "latest": 83,
+     "latest_loss_pm": 0.85,
+     "best_score": 83,
+     "trend": {
+      "slope_pm_per_week": -0.05,
+      "change_pm": -0.25,
+      "direction": "steady",
+      "n": 6,
+      "days": 35,
+      "span_ok": true
+     },
+     "weekly": [
+      {
+       "week": "2026-W37",
+       "loss_pm": 1.1,
+       "n": 1
+      },
+      {
+       "week": "2026-W38",
+       "loss_pm": 1.05,
+       "n": 1
+      },
+      {
+       "week": "2026-W39",
+       "loss_pm": 1.0,
+       "n": 1
+      },
+      {
+       "week": "2026-W40",
+       "loss_pm": 0.95,
+       "n": 1
+      },
+      {
+       "week": "2026-W41",
+       "loss_pm": 0.9,
+       "n": 1
+      },
+      {
+       "week": "2026-W42",
+       "loss_pm": 0.85,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 3",
+       "loss_pm": 1.1,
+       "n": 1
+      },
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 0.95,
+       "n": 5
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-10_sample_0",
+       "date": "2026-09-10",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 12,
+       "loss_pm": 1.1,
+       "score": 78
+      },
+      {
+       "dir": "2026-09-17_sample_1",
+       "date": "2026-09-17",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 13,
+       "loss_pm": 1.05,
+       "score": 79
+      },
+      {
+       "dir": "2026-09-24_sample_2",
+       "date": "2026-09-24",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 14,
+       "loss_pm": 1.0,
+       "score": 80
+      },
+      {
+       "dir": "2026-10-01_sample_3",
+       "date": "2026-10-01",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 15,
+       "loss_pm": 0.95,
+       "score": 81
+      },
+      {
+       "dir": "2026-10-08_sample_4",
+       "date": "2026-10-08",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 16,
+       "loss_pm": 0.9,
+       "score": 82
+      },
+      {
+       "dir": "2026-10-15_sample_5",
+       "date": "2026-10-15",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 17,
+       "loss_pm": 0.85,
+       "score": 83
+      }
+     ]
+    },
+    "entry": {
+     "latest": 74,
+     "latest_loss_pm": 1.3,
+     "best_score": 74,
+     "trend": {
+      "slope_pm_per_week": -0.02,
+      "change_pm": -0.1,
+      "direction": "steady",
+      "n": 6,
+      "days": 35,
+      "span_ok": true
+     },
+     "weekly": [
+      {
+       "week": "2026-W37",
+       "loss_pm": 1.4,
+       "n": 1
+      },
+      {
+       "week": "2026-W38",
+       "loss_pm": 1.38,
+       "n": 1
+      },
+      {
+       "week": "2026-W39",
+       "loss_pm": 1.36,
+       "n": 1
+      },
+      {
+       "week": "2026-W40",
+       "loss_pm": 1.34,
+       "n": 1
+      },
+      {
+       "week": "2026-W41",
+       "loss_pm": 1.32,
+       "n": 1
+      },
+      {
+       "week": "2026-W42",
+       "loss_pm": 1.3,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 3",
+       "loss_pm": 1.4,
+       "n": 1
+      },
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 1.34,
+       "n": 5
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-10_sample_0",
+       "date": "2026-09-10",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 12,
+       "loss_pm": 1.4,
+       "score": 72
+      },
+      {
+       "dir": "2026-09-17_sample_1",
+       "date": "2026-09-17",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 13,
+       "loss_pm": 1.38,
+       "score": 72
+      },
+      {
+       "dir": "2026-09-24_sample_2",
+       "date": "2026-09-24",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 14,
+       "loss_pm": 1.36,
+       "score": 73
+      },
+      {
+       "dir": "2026-10-01_sample_3",
+       "date": "2026-10-01",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 15,
+       "loss_pm": 1.34,
+       "score": 73
+      },
+      {
+       "dir": "2026-10-08_sample_4",
+       "date": "2026-10-08",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 16,
+       "loss_pm": 1.32,
+       "score": 74
+      },
+      {
+       "dir": "2026-10-15_sample_5",
+       "date": "2026-10-15",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 17,
+       "loss_pm": 1.3,
+       "score": 74
+      }
+     ]
+    },
+    "mid": {
+     "latest": 88,
+     "latest_loss_pm": 0.6,
+     "best_score": 88,
+     "trend": {
+      "slope_pm_per_week": 0.0,
+      "change_pm": 0.0,
+      "direction": "steady",
+      "n": 6,
+      "days": 35,
+      "span_ok": true
+     },
+     "weekly": [
+      {
+       "week": "2026-W37",
+       "loss_pm": 0.6,
+       "n": 1
+      },
+      {
+       "week": "2026-W38",
+       "loss_pm": 0.6,
+       "n": 1
+      },
+      {
+       "week": "2026-W39",
+       "loss_pm": 0.6,
+       "n": 1
+      },
+      {
+       "week": "2026-W40",
+       "loss_pm": 0.6,
+       "n": 1
+      },
+      {
+       "week": "2026-W41",
+       "loss_pm": 0.6,
+       "n": 1
+      },
+      {
+       "week": "2026-W42",
+       "loss_pm": 0.6,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 3",
+       "loss_pm": 0.6,
+       "n": 1
+      },
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 0.6,
+       "n": 5
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-10_sample_0",
+       "date": "2026-09-10",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 12,
+       "loss_pm": 0.6,
+       "score": 88
+      },
+      {
+       "dir": "2026-09-17_sample_1",
+       "date": "2026-09-17",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 13,
+       "loss_pm": 0.6,
+       "score": 88
+      },
+      {
+       "dir": "2026-09-24_sample_2",
+       "date": "2026-09-24",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 14,
+       "loss_pm": 0.6,
+       "score": 88
+      },
+      {
+       "dir": "2026-10-01_sample_3",
+       "date": "2026-10-01",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 15,
+       "loss_pm": 0.6,
+       "score": 88
+      },
+      {
+       "dir": "2026-10-08_sample_4",
+       "date": "2026-10-08",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 16,
+       "loss_pm": 0.6,
+       "score": 88
+      },
+      {
+       "dir": "2026-10-15_sample_5",
+       "date": "2026-10-15",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 17,
+       "loss_pm": 0.6,
+       "score": 88
+      }
+     ]
+    },
+    "exit": {
+     "latest": 72,
+     "latest_loss_pm": 1.4,
+     "best_score": 72,
+     "trend": {
+      "slope_pm_per_week": -0.3,
+      "change_pm": -1.5,
+      "direction": "improving",
+      "n": 6,
+      "days": 35,
+      "span_ok": true
+     },
+     "weekly": [
+      {
+       "week": "2026-W37",
+       "loss_pm": 2.9,
+       "n": 1
+      },
+      {
+       "week": "2026-W38",
+       "loss_pm": 2.6,
+       "n": 1
+      },
+      {
+       "week": "2026-W39",
+       "loss_pm": 2.3,
+       "n": 1
+      },
+      {
+       "week": "2026-W40",
+       "loss_pm": 2.0,
+       "n": 1
+      },
+      {
+       "week": "2026-W41",
+       "loss_pm": 1.7,
+       "n": 1
+      },
+      {
+       "week": "2026-W42",
+       "loss_pm": 1.4,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 3",
+       "loss_pm": 2.9,
+       "n": 1
+      },
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 2.0,
+       "n": 5
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-10_sample_0",
+       "date": "2026-09-10",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 12,
+       "loss_pm": 2.9,
+       "score": 42
+      },
+      {
+       "dir": "2026-09-17_sample_1",
+       "date": "2026-09-17",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 13,
+       "loss_pm": 2.6,
+       "score": 48
+      },
+      {
+       "dir": "2026-09-24_sample_2",
+       "date": "2026-09-24",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 14,
+       "loss_pm": 2.3,
+       "score": 54
+      },
+      {
+       "dir": "2026-10-01_sample_3",
+       "date": "2026-10-01",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 15,
+       "loss_pm": 2.0,
+       "score": 60
+      },
+      {
+       "dir": "2026-10-08_sample_4",
+       "date": "2026-10-08",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 16,
+       "loss_pm": 1.7,
+       "score": 66
+      },
+      {
+       "dir": "2026-10-15_sample_5",
+       "date": "2026-10-15",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 17,
+       "loss_pm": 1.4,
+       "score": 72
+      }
+     ]
+    },
+    "overall": {
+     "latest": 65,
+     "latest_loss_pm": 4.15,
+     "best_score": 65,
+     "trend": {
+      "slope_pm_per_week": -0.37,
+      "change_pm": -1.85,
+      "direction": "improving",
+      "n": 6,
+      "days": 35,
+      "span_ok": true
+     },
+     "weekly": [
+      {
+       "week": "2026-W37",
+       "loss_pm": 6.0,
+       "n": 1
+      },
+      {
+       "week": "2026-W38",
+       "loss_pm": 5.63,
+       "n": 1
+      },
+      {
+       "week": "2026-W39",
+       "loss_pm": 5.26,
+       "n": 1
+      },
+      {
+       "week": "2026-W40",
+       "loss_pm": 4.89,
+       "n": 1
+      },
+      {
+       "week": "2026-W41",
+       "loss_pm": 4.52,
+       "n": 1
+      },
+      {
+       "week": "2026-W42",
+       "loss_pm": 4.15,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 3",
+       "loss_pm": 6.0,
+       "n": 1
+      },
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 4.89,
+       "n": 5
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-10_sample_0",
+       "date": "2026-09-10",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 12,
+       "loss_pm": 6.0,
+       "score": 50
+      },
+      {
+       "dir": "2026-09-17_sample_1",
+       "date": "2026-09-17",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 13,
+       "loss_pm": 5.63,
+       "score": 53
+      },
+      {
+       "dir": "2026-09-24_sample_2",
+       "date": "2026-09-24",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 14,
+       "loss_pm": 5.26,
+       "score": 56
+      },
+      {
+       "dir": "2026-10-01_sample_3",
+       "date": "2026-10-01",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 15,
+       "loss_pm": 4.89,
+       "score": 59
+      },
+      {
+       "dir": "2026-10-08_sample_4",
+       "date": "2026-10-08",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 16,
+       "loss_pm": 4.52,
+       "score": 62
+      },
+      {
+       "dir": "2026-10-15_sample_5",
+       "date": "2026-10-15",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 17,
+       "loss_pm": 4.15,
+       "score": 65
+      }
+     ]
+    }
+   }
+  },
+  {
+   "key": "class:GT3",
+   "label": "GT3",
+   "races": 3,
+   "phases": {
+    "braking": {
+     "latest": 83,
+     "latest_loss_pm": 0.85,
+     "best_score": 83,
+     "trend": null,
+     "weekly": [
+      {
+       "week": "2026-W38",
+       "loss_pm": 1.05,
+       "n": 1
+      },
+      {
+       "week": "2026-W40",
+       "loss_pm": 0.95,
+       "n": 1
+      },
+      {
+       "week": "2026-W42",
+       "loss_pm": 0.85,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 0.95,
+       "n": 3
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-17_sample_1",
+       "date": "2026-09-17",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 13,
+       "loss_pm": 1.05,
+       "score": 79
+      },
+      {
+       "dir": "2026-10-01_sample_3",
+       "date": "2026-10-01",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 15,
+       "loss_pm": 0.95,
+       "score": 81
+      },
+      {
+       "dir": "2026-10-15_sample_5",
+       "date": "2026-10-15",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 17,
+       "loss_pm": 0.85,
+       "score": 83
+      }
+     ]
+    },
+    "entry": {
+     "latest": 74,
+     "latest_loss_pm": 1.3,
+     "best_score": 74,
+     "trend": null,
+     "weekly": [
+      {
+       "week": "2026-W38",
+       "loss_pm": 1.38,
+       "n": 1
+      },
+      {
+       "week": "2026-W40",
+       "loss_pm": 1.34,
+       "n": 1
+      },
+      {
+       "week": "2026-W42",
+       "loss_pm": 1.3,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 1.34,
+       "n": 3
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-17_sample_1",
+       "date": "2026-09-17",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 13,
+       "loss_pm": 1.38,
+       "score": 72
+      },
+      {
+       "dir": "2026-10-01_sample_3",
+       "date": "2026-10-01",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 15,
+       "loss_pm": 1.34,
+       "score": 73
+      },
+      {
+       "dir": "2026-10-15_sample_5",
+       "date": "2026-10-15",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 17,
+       "loss_pm": 1.3,
+       "score": 74
+      }
+     ]
+    },
+    "mid": {
+     "latest": 88,
+     "latest_loss_pm": 0.6,
+     "best_score": 88,
+     "trend": null,
+     "weekly": [
+      {
+       "week": "2026-W38",
+       "loss_pm": 0.6,
+       "n": 1
+      },
+      {
+       "week": "2026-W40",
+       "loss_pm": 0.6,
+       "n": 1
+      },
+      {
+       "week": "2026-W42",
+       "loss_pm": 0.6,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 0.6,
+       "n": 3
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-17_sample_1",
+       "date": "2026-09-17",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 13,
+       "loss_pm": 0.6,
+       "score": 88
+      },
+      {
+       "dir": "2026-10-01_sample_3",
+       "date": "2026-10-01",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 15,
+       "loss_pm": 0.6,
+       "score": 88
+      },
+      {
+       "dir": "2026-10-15_sample_5",
+       "date": "2026-10-15",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 17,
+       "loss_pm": 0.6,
+       "score": 88
+      }
+     ]
+    },
+    "exit": {
+     "latest": 72,
+     "latest_loss_pm": 1.4,
+     "best_score": 72,
+     "trend": null,
+     "weekly": [
+      {
+       "week": "2026-W38",
+       "loss_pm": 2.6,
+       "n": 1
+      },
+      {
+       "week": "2026-W40",
+       "loss_pm": 2.0,
+       "n": 1
+      },
+      {
+       "week": "2026-W42",
+       "loss_pm": 1.4,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 2.0,
+       "n": 3
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-17_sample_1",
+       "date": "2026-09-17",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 13,
+       "loss_pm": 2.6,
+       "score": 48
+      },
+      {
+       "dir": "2026-10-01_sample_3",
+       "date": "2026-10-01",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 15,
+       "loss_pm": 2.0,
+       "score": 60
+      },
+      {
+       "dir": "2026-10-15_sample_5",
+       "date": "2026-10-15",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 17,
+       "loss_pm": 1.4,
+       "score": 72
+      }
+     ]
+    },
+    "overall": {
+     "latest": 65,
+     "latest_loss_pm": 4.15,
+     "best_score": 65,
+     "trend": null,
+     "weekly": [
+      {
+       "week": "2026-W38",
+       "loss_pm": 5.63,
+       "n": 1
+      },
+      {
+       "week": "2026-W40",
+       "loss_pm": 4.89,
+       "n": 1
+      },
+      {
+       "week": "2026-W42",
+       "loss_pm": 4.15,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 4.89,
+       "n": 3
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-17_sample_1",
+       "date": "2026-09-17",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 13,
+       "loss_pm": 5.63,
+       "score": 53
+      },
+      {
+       "dir": "2026-10-01_sample_3",
+       "date": "2026-10-01",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 15,
+       "loss_pm": 4.89,
+       "score": 59
+      },
+      {
+       "dir": "2026-10-15_sample_5",
+       "date": "2026-10-15",
+       "track_short": "Indianapolis",
+       "car": "Porsche 911 GT3 R (992)",
+       "n_clean": 17,
+       "loss_pm": 4.15,
+       "score": 65
+      }
+     ]
+    }
+   }
+  },
+  {
+   "key": "class:GT4",
+   "label": "GT4",
+   "races": 3,
+   "phases": {
+    "braking": {
+     "latest": 82,
+     "latest_loss_pm": 0.9,
+     "best_score": 82,
+     "trend": null,
+     "weekly": [
+      {
+       "week": "2026-W37",
+       "loss_pm": 1.1,
+       "n": 1
+      },
+      {
+       "week": "2026-W39",
+       "loss_pm": 1.0,
+       "n": 1
+      },
+      {
+       "week": "2026-W41",
+       "loss_pm": 0.9,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 3",
+       "loss_pm": 1.1,
+       "n": 1
+      },
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 0.95,
+       "n": 2
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-10_sample_0",
+       "date": "2026-09-10",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 12,
+       "loss_pm": 1.1,
+       "score": 78
+      },
+      {
+       "dir": "2026-09-24_sample_2",
+       "date": "2026-09-24",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 14,
+       "loss_pm": 1.0,
+       "score": 80
+      },
+      {
+       "dir": "2026-10-08_sample_4",
+       "date": "2026-10-08",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 16,
+       "loss_pm": 0.9,
+       "score": 82
+      }
+     ]
+    },
+    "entry": {
+     "latest": 74,
+     "latest_loss_pm": 1.32,
+     "best_score": 74,
+     "trend": null,
+     "weekly": [
+      {
+       "week": "2026-W37",
+       "loss_pm": 1.4,
+       "n": 1
+      },
+      {
+       "week": "2026-W39",
+       "loss_pm": 1.36,
+       "n": 1
+      },
+      {
+       "week": "2026-W41",
+       "loss_pm": 1.32,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 3",
+       "loss_pm": 1.4,
+       "n": 1
+      },
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 1.34,
+       "n": 2
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-10_sample_0",
+       "date": "2026-09-10",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 12,
+       "loss_pm": 1.4,
+       "score": 72
+      },
+      {
+       "dir": "2026-09-24_sample_2",
+       "date": "2026-09-24",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 14,
+       "loss_pm": 1.36,
+       "score": 73
+      },
+      {
+       "dir": "2026-10-08_sample_4",
+       "date": "2026-10-08",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 16,
+       "loss_pm": 1.32,
+       "score": 74
+      }
+     ]
+    },
+    "mid": {
+     "latest": 88,
+     "latest_loss_pm": 0.6,
+     "best_score": 88,
+     "trend": null,
+     "weekly": [
+      {
+       "week": "2026-W37",
+       "loss_pm": 0.6,
+       "n": 1
+      },
+      {
+       "week": "2026-W39",
+       "loss_pm": 0.6,
+       "n": 1
+      },
+      {
+       "week": "2026-W41",
+       "loss_pm": 0.6,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 3",
+       "loss_pm": 0.6,
+       "n": 1
+      },
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 0.6,
+       "n": 2
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-10_sample_0",
+       "date": "2026-09-10",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 12,
+       "loss_pm": 0.6,
+       "score": 88
+      },
+      {
+       "dir": "2026-09-24_sample_2",
+       "date": "2026-09-24",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 14,
+       "loss_pm": 0.6,
+       "score": 88
+      },
+      {
+       "dir": "2026-10-08_sample_4",
+       "date": "2026-10-08",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 16,
+       "loss_pm": 0.6,
+       "score": 88
+      }
+     ]
+    },
+    "exit": {
+     "latest": 66,
+     "latest_loss_pm": 1.7,
+     "best_score": 66,
+     "trend": null,
+     "weekly": [
+      {
+       "week": "2026-W37",
+       "loss_pm": 2.9,
+       "n": 1
+      },
+      {
+       "week": "2026-W39",
+       "loss_pm": 2.3,
+       "n": 1
+      },
+      {
+       "week": "2026-W41",
+       "loss_pm": 1.7,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 3",
+       "loss_pm": 2.9,
+       "n": 1
+      },
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 2.0,
+       "n": 2
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-10_sample_0",
+       "date": "2026-09-10",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 12,
+       "loss_pm": 2.9,
+       "score": 42
+      },
+      {
+       "dir": "2026-09-24_sample_2",
+       "date": "2026-09-24",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 14,
+       "loss_pm": 2.3,
+       "score": 54
+      },
+      {
+       "dir": "2026-10-08_sample_4",
+       "date": "2026-10-08",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 16,
+       "loss_pm": 1.7,
+       "score": 66
+      }
+     ]
+    },
+    "overall": {
+     "latest": 62,
+     "latest_loss_pm": 4.52,
+     "best_score": 62,
+     "trend": null,
+     "weekly": [
+      {
+       "week": "2026-W37",
+       "loss_pm": 6.0,
+       "n": 1
+      },
+      {
+       "week": "2026-W39",
+       "loss_pm": 5.26,
+       "n": 1
+      },
+      {
+       "week": "2026-W41",
+       "loss_pm": 4.52,
+       "n": 1
+      }
+     ],
+     "seasons": [
+      {
+       "name": "2026 Season 3",
+       "loss_pm": 6.0,
+       "n": 1
+      },
+      {
+       "name": "2026 Season 4",
+       "loss_pm": 4.89,
+       "n": 2
+      }
+     ],
+     "races": [
+      {
+       "dir": "2026-09-10_sample_0",
+       "date": "2026-09-10",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 12,
+       "loss_pm": 6.0,
+       "score": 50
+      },
+      {
+       "dir": "2026-09-24_sample_2",
+       "date": "2026-09-24",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 14,
+       "loss_pm": 5.26,
+       "score": 56
+      },
+      {
+       "dir": "2026-10-08_sample_4",
+       "date": "2026-10-08",
+       "track_short": "Roval",
+       "car": "Ford Mustang GT4",
+       "n_clean": 16,
+       "loss_pm": 4.52,
+       "score": 62
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "weakest": {
+  "group": "all",
+  "phase": "exit",
+  "median_loss_pm": 2.0
+ },
+ "n_races": 6
+}

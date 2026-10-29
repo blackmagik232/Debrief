@@ -409,7 +409,10 @@ def test_layout_habit_detail_and_clickable_laps():
         r = pg.evaluate("""()=>{const li=[...document.querySelectorAll('#badList li')].find(x=>x.innerText.includes('Incidents'));
             return {det:li.querySelector('.det').textContent, laps:[...li.querySelectorAll('.src button')].map(b=>b.textContent),
             corners:[...document.querySelectorAll('#badList .src button')].map(b=>b.textContent).filter(t=>t.startsWith('C'))}}""")
-        assert "Garage 61 flagged" in r["det"] and r["laps"] == ["6", "13"] and r["corners"] == ["C1", "C2"], r
+        # 2.3 (23-A): the new brake_spread habit can add its own corner buttons after the "vary" ones
+        want = [c for b in d["insights"]["bad"] for c in b.get("corners") or []]
+        assert want[:2] == ["C1", "C2"], want
+        assert "Garage 61 flagged" in r["det"] and r["laps"] == ["6", "13"] and r["corners"] == want, r
         pg.evaluate("[...document.querySelectorAll('#badList .src button')].find(b=>b.textContent==='13').click()")
         pg.wait_for_timeout(100)
         a = pg.evaluate("document.getElementById('selA').value")

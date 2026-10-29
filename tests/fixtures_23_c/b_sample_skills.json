@@ -1,0 +1,400 @@
+{
+ "version": 1,
+ "params": {
+  "ref": "p25_clean",
+  "min_clean": 6,
+  "min_ref": 3,
+  "min_corner_laps": 5,
+  "noise_s": 0.01,
+  "brake_off_pct": 5,
+  "thr_commit_pct": 50,
+  "min_phase_cells": 2,
+  "caps_pm": {
+   "braking": 5.0,
+   "entry": 5.0,
+   "mid": 5.0,
+   "exit": 5.0,
+   "overall": 12.0
+  }
+ },
+ "reason": null,
+ "lap_t": 75.237,
+ "n_clean": 16,
+ "ref_laps": [
+  3,
+  7,
+  9,
+  12
+ ],
+ "typical_laps": [
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16
+ ],
+ "phases": {
+  "braking": {
+   "loss_s": 0.025,
+   "loss_pm": 0.33,
+   "score": 93,
+   "corners": 1,
+   "spread_s": 0.043
+  },
+  "entry": {
+   "loss_s": 0.03,
+   "loss_pm": 0.4,
+   "score": 92,
+   "corners": 2,
+   "spread_s": 0.02
+  },
+  "mid": {
+   "loss_s": 0.0,
+   "loss_pm": 0.0,
+   "score": 100,
+   "corners": 2,
+   "spread_s": 0.0
+  },
+  "exit": {
+   "loss_s": 0.15,
+   "loss_pm": 1.99,
+   "score": 60,
+   "corners": 2,
+   "spread_s": 0.083
+  }
+ },
+ "straights": {
+  "loss_s": 0.0,
+  "loss_pm": 0.0
+ },
+ "overall": {
+  "loss_s": 0.205,
+  "loss_pm": 2.72,
+  "score": 77
+ },
+ "corners": [
+  {
+   "id": "C1",
+   "lift": true,
+   "n": 16,
+   "n_ref": 4,
+   "markers": {
+    "start": 450.0,
+    "B": 700.0,
+    "R": 700.0,
+    "A": 800.0,
+    "P": 840.0,
+    "E": 1050.0
+   },
+   "loss": {
+    "approach": 0.0,
+    "braking": 0.0,
+    "entry": 0.0,
+    "mid": 0.0,
+    "exit": 0.05
+   },
+   "loss_raw": {
+    "approach": 0.0,
+    "braking": 0.0,
+    "entry": 0.0,
+    "mid": 0.0,
+    "exit": 0.05
+   },
+   "ref_t": {
+    "approach": 6.25,
+    "braking": 0.0,
+    "entry": 2.5,
+    "mid": 1.0,
+    "exit": 5.25
+   },
+   "iqr_s": {
+    "approach": 0.0,
+    "braking": 0.0,
+    "entry": 0.0,
+    "mid": 0.0,
+    "exit": 0.055
+   },
+   "per_lap": {
+    "1": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.05
+    },
+    "2": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.07
+    },
+    "3": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.0
+    },
+    "4": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.07
+    },
+    "5": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.07
+    },
+    "6": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.05
+    },
+    "7": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.0
+    },
+    "8": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.04
+    },
+    "9": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.0
+    },
+    "10": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.11
+    },
+    "11": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.04
+    },
+    "12": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.0
+    },
+    "13": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.07
+    },
+    "14": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.1
+    },
+    "15": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.02
+    },
+    "16": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.05
+    }
+   }
+  },
+  {
+   "id": "C2",
+   "lift": false,
+   "n": 16,
+   "n_ref": 4,
+   "markers": {
+    "start": 1650.0,
+    "B": 1850.0,
+    "R": 1970.0,
+    "A": 2000.0,
+    "P": 2060.0,
+    "E": 2250.0
+   },
+   "loss": {
+    "approach": 0.0,
+    "braking": 0.025,
+    "entry": 0.03,
+    "mid": 0.0,
+    "exit": 0.1
+   },
+   "loss_raw": {
+    "approach": 0.0,
+    "braking": 0.025,
+    "entry": 0.03,
+    "mid": 0.0,
+    "exit": 0.1
+   },
+   "ref_t": {
+    "approach": 5.0,
+    "braking": 3.0,
+    "entry": 0.75,
+    "mid": 1.5,
+    "exit": 4.75
+   },
+   "iqr_s": {
+    "approach": 0.0,
+    "braking": 0.0425,
+    "entry": 0.04,
+    "mid": 0.0,
+    "exit": 0.11
+   },
+   "per_lap": {
+    "1": {
+     "approach": 0.0,
+     "braking": 0.04,
+     "entry": 0.04,
+     "mid": 0.0,
+     "exit": 0.11
+    },
+    "2": {
+     "approach": 0.0,
+     "braking": 0.02,
+     "entry": 0.03,
+     "mid": 0.0,
+     "exit": 0.16
+    },
+    "3": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.0
+    },
+    "4": {
+     "approach": 0.0,
+     "braking": 0.06,
+     "entry": 0.03,
+     "mid": 0.0,
+     "exit": 0.14
+    },
+    "5": {
+     "approach": 0.0,
+     "braking": 0.01,
+     "entry": 0.05,
+     "mid": 0.0,
+     "exit": 0.14
+    },
+    "6": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.09
+    },
+    "7": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.0
+    },
+    "8": {
+     "approach": 0.0,
+     "braking": 0.05,
+     "entry": 0.03,
+     "mid": 0.0,
+     "exit": 0.14
+    },
+    "9": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.0
+    },
+    "10": {
+     "approach": 0.0,
+     "braking": 0.05,
+     "entry": 0.04,
+     "mid": 0.0,
+     "exit": 0.09
+    },
+    "11": {
+     "approach": 0.0,
+     "braking": 0.05,
+     "entry": 0.05,
+     "mid": 0.0,
+     "exit": 0.1
+    },
+    "12": {
+     "approach": 0.0,
+     "braking": 0.0,
+     "entry": 0.0,
+     "mid": 0.0,
+     "exit": 0.0
+    },
+    "13": {
+     "approach": 0.0,
+     "braking": 0.03,
+     "entry": 0.03,
+     "mid": 0.0,
+     "exit": 0.14
+    },
+    "14": {
+     "approach": 0.0,
+     "braking": 0.03,
+     "entry": 0.01,
+     "mid": 0.0,
+     "exit": 0.1
+    },
+    "15": {
+     "approach": 0.0,
+     "braking": 0.02,
+     "entry": 0.03,
+     "mid": 0.0,
+     "exit": 0.14
+    },
+    "16": {
+     "approach": 0.0,
+     "braking": 0.04,
+     "entry": 0.06,
+     "mid": 0.0,
+     "exit": 0.04
+    }
+   }
+  }
+ ]
+}

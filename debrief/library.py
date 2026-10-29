@@ -241,6 +241,14 @@ def _consistency(d: dict) -> dict | None:
     return {"score": _int(c.get("score")), "label": str(c.get("label") or ""), "std": _r(c.get("std"))}
 
 
+def _skills(d: dict) -> dict | None:
+    try:
+        from . import skills
+        return skills.compact(d.get("skills"))
+    except Exception:
+        return None
+
+
 def clean_best(d: dict):
     """The review's best lap time if it can count for PBs, goals and the team board, else None.
 
@@ -325,6 +333,9 @@ def _row(p: Path) -> dict | None:
         "season": _season(d, day),
         "consistency": _consistency(d),
         "result": _result(d, p.parent),
+        # 2.3: compact skill numbers (loss per phase, per-mille of lap time) for the Skills tab; None on
+        # reviews without a usable skills block (old reviews get one when the library refreshes)
+        "skills": _skills(d),
         "pb": None,  # filled by list_reviews (PB at the time of that race, chronologically)
     }
 
@@ -554,7 +565,14 @@ def rebuild(folder) -> Path:
         gp = goals.progress(folder, rows=rows)
     except Exception:  # a damaged goals.json must never stop the library page
         gp = []
-    extra = {"goals": gp, "season": season_summary(rows),
+    try:
+        from . import profile
+        sk = profile.build(rows)
+    except Exception as e:  # a skills problem must never stop the library page
+        import logging
+        logging.getLogger("debrief.library").exception("Skill profile failed: %s", e)
+        sk = None
+    extra = {"goals": gp, "season": season_summary(rows), "skills": sk,
              "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     html = report.render_library(rows, extra)
     out = folder / "index.html"

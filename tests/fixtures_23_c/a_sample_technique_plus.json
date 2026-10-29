@@ -1,0 +1,137 @@
+{
+ "version": 1,
+ "step_m": 5,
+ "channels": {
+  "brake": true,
+  "throttle": true,
+  "steering": false
+ },
+ "params": {
+  "brake_on_pct": 5,
+  "release_frac": 0.8,
+  "pickup_pct": 10,
+  "full_pct": 95,
+  "lift_hyst_pct": 10,
+  "steer_rev_deg": 3,
+  "min_laps": 5
+ },
+ "corners": [
+  {
+   "id": "C3",
+   "apex_m": 1205.0,
+   "n_clean": 14,
+   "lift": false,
+   "braking": {
+    "typical": {
+     "peak_at_m": 1062.0,
+     "release_start_m": 1095.0,
+     "release_end_m": 1180.0,
+     "trail_m": 85.0,
+     "off_vs_apex_m": -25.0,
+     "trail_share": 0.62,
+     "shape": [
+      0.71,
+      0.44,
+      0.18
+     ],
+     "shape_label": "gradual",
+     "held": false,
+     "n": 14
+    },
+    "better": {
+     "peak_at_m": 1064.0,
+     "release_start_m": 1100.0,
+     "release_end_m": 1190.0,
+     "trail_m": 90.0,
+     "off_vs_apex_m": -15.0,
+     "trail_share": 0.65,
+     "shape": [
+      0.72,
+      0.46,
+      0.2
+     ],
+     "shape_label": "gradual",
+     "held": false,
+     "n": 4
+    }
+   },
+   "throttle": {
+    "typical": {
+     "pickup_m": 1220.0,
+     "pickup_vs_apex_m": 15.0,
+     "ramp_m": 95.0,
+     "ramp_pct_per_10m": 8.4,
+     "lifts": 0,
+     "tv_excess_pct": 6.0,
+     "n": 14
+    },
+    "better": {
+     "pickup_m": 1212.0,
+     "pickup_vs_apex_m": 7.0,
+     "ramp_m": 85.0,
+     "ramp_pct_per_10m": 10.0,
+     "lifts": 0,
+     "tv_excess_pct": 3.0,
+     "n": 4
+    }
+   },
+   "steering": null,
+   "links": [
+    {
+     "metric": "trail_m",
+     "label": "length of your brake release",
+     "r": -0.58,
+     "n": 14,
+     "slope": -0.0011,
+     "effect_s": 0.041,
+     "better": "higher"
+    }
+   ],
+   "notes": [
+    "On your quicker laps here you tended to ease off the brake over a longer stretch (about 90 m against 85 m)."
+   ],
+   "per_lap": {
+    "5": {
+     "trail_m": 80.0,
+     "off_vs_apex_m": -30.0,
+     "release_start_m": 1095.0,
+     "release_end_m": 1175.0,
+     "peak_at_m": 1060.0,
+     "trail_share": 0.6,
+     "shape_label": "gradual",
+     "held": false,
+     "pickup_m": 1220.0,
+     "pickup_vs_apex_m": 15.0,
+     "ramp_m": 90.0,
+     "ramp_pct_per_10m": 9.4,
+     "lifts": 0,
+     "tv_excess_pct": 4.0,
+     "steer_peak_deg": null,
+     "steer_corr": null,
+     "unwind_vs_apex_m": null
+    }
+   },
+   "better_laps": [
+    3,
+    7,
+    9,
+    12
+   ]
+  },
+  {
+   "id": "C4",
+   "apex_m": 1485.0,
+   "n_clean": 3,
+   "lift": false,
+   "braking": null,
+   "throttle": null,
+   "steering": null,
+   "links": [],
+   "notes": [
+    "Not enough clean laps through this corner to say."
+   ],
+   "per_lap": {}
+  }
+ ],
+ "reason": null
+}

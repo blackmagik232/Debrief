@@ -1,0 +1,55 @@
+{
+ "version": 1,
+ "kind": "practice",
+ "runs": [
+  {
+   "id": 1,
+   "laps": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "boundary": "start",
+   "best_t": 85.9,
+   "best_lap": 6,
+   "median_t": 86.4,
+   "clean": 5,
+   "trend_s_per_lap": -0.08,
+   "fuel_start_l": 40.1
+  }
+ ],
+ "progress": {
+  "first_median_t": 86.9,
+  "last_median_t": 86.2,
+  "delta_t": -0.7,
+  "corners": [
+   {
+    "id": "C3",
+    "first_t": 7.41,
+    "last_t": 7.29,
+    "delta_t": -0.12
+   }
+  ]
+ },
+ "targets": [
+  {
+   "corner": "C3",
+   "target_t": 7.25,
+   "typical_t": 7.38,
+   "gain_s": 0.13,
+   "from_laps": [
+    9,
+    12,
+    14
+   ],
+   "brake_on": 1046.0,
+   "min_mph": 61.0,
+   "full_thr": 1290.0,
+   "gear": 3
+  }
+ ],
+ "quali": null
+}

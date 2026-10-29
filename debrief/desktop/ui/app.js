@@ -59,8 +59,8 @@ new MutationObserver(()=>$('btnMenu').setAttribute('aria-expanded',String(docume
 
 /* ---------- views */
 const VIEWS=['vFrame','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam','vSessions'];
-const FRAME_VIEWS=['review','library','season','prepPage','teamPage'];
-const NAV_OF={sync:'sessions',sessions:'sessions',library:'library',season:'season',goals:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings'};
+const FRAME_VIEWS=['review','library','season','skills','prepPage','teamPage'];
+const NAV_OF={sync:'sessions',sessions:'sessions',library:'library',season:'season',skills:'skills',goals:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings'};
 let current={view:null,dir:null};
 function show(view){VIEWS.forEach(v=>$(v).hidden=(v!==view))}
 function markNav(){
@@ -94,6 +94,10 @@ function openLibrary(){
 function openSeason(){
   if(!libFolder){current={view:'welcome'};welcome();return}
   current={view:'season',dir:null};openFrame('lib/index.html#season');markNav()}
+// Skills = the driver profile on the library page (#skills); the bar above it says how many races have scores
+function openSkills(){
+  if(!libFolder){current={view:'welcome'};welcome();return}
+  current={view:'skills',dir:null};openFrame('lib/index.html#skills');markNav();loadProfile()}
 function openPage(rel,view){current={view,dir:null,page:rel};openFrame('lib/'+rel.split('/').map(encodeURIComponent).join('/'));markNav()}
 function openSettings(){current={view:'settings',dir:null};show('vSettings');markNav();loadSettings();loadTeams(false)}
 function openJob(){current={view:'job',dir:null};show('vJob');markNav()}
@@ -119,10 +123,17 @@ function welcome(){
 let pages={team:null,prep:[]},resultFor={dir:null,result:null};
 function frameBar(){
   const v=current.view,bar=$('frameBar');
-  const want=v==='review'||v==='prepPage'||v==='teamPage';
+  const want=v==='review'||v==='prepPage'||v==='teamPage'||v==='skills';
   bar.hidden=!want;if(!want)return;
   $('fbResult').hidden=v!=='review';$('fbPrep').hidden=v!=='prepPage';$('fbTeam').hidden=v!=='teamPage';
-  const pill=$('fbPill');pill.hidden=true;
+  const pill=$('fbPill');pill.hidden=true;$('fbBar').hidden=true;
+  if(v==='skills'){const p=profileInfo,rf=p&&p.refreshing;
+    $('fbText').textContent=!p?'Driver profile':
+      (p.n_races?'Driver profile · '+p.n_races+' race'+(p.n_races===1?'':'s')+' with skill scores'+(p.weakest&&PHASE[p.weakest.phase]?' · most time to find lately: '+PHASE[p.weakest.phase]:''):
+       'Driver profile · skill scores appear after a race with at least 6 clean laps');
+    if(rf&&rf.total){pill.hidden=false;pill.className='pill';pill.textContent='Adding scores to older reviews: '+rf.done+' of '+rf.total;
+      $('fbBar').hidden=false;$('fbBar').firstElementChild.style.width=Math.round(100*rf.done/rf.total)+'%'}
+    return}
   if(v==='review'){const r=resultFor.dir===current.dir?resultFor.result:null;
     $('fbText').textContent=r?'Race result saved':'Add your finishing position, incidents and iRating to this race.';
     $('fbResult').textContent=r?'Edit race result':'Add race result';
@@ -130,6 +141,16 @@ function frameBar(){
   if(v==='prepPage')$('fbText').textContent='Track prep page';
   if(v==='teamPage')$('fbText').textContent='Team hub'+(pages.team_updated?' · updated '+fmtWhen(pages.team_updated):'');
 }
+// driver profile summary (api/profile): races with scores, the weakest phase, the saved-review refresh's progress
+const PHASE={braking:'braking',entry:'turn-in to apex',mid:'apex to throttle',exit:'corner exits',overall:'overall'};
+let profileInfo=null;
+async function loadProfile(){let j;try{j=await api('profile')}catch(e){return null}
+  if(!j||!j.ok)return null;const was=profileInfo&&profileInfo.refreshing;profileInfo=j;
+  if(current.view==='skills'){frameBar();
+    // the refresh finished while the page was open: reload it so the new scores show
+    if(was&&!j.refreshing){const u=BASE+'lib/index.html#skills';$('frame').src=fresh(u);frameHref=u}
+    if(j.refreshing){clearTimeout(loadProfile.t);loadProfile.t=setTimeout(()=>{if(current.view==='skills')loadProfile()},2500)}}
+  return j}
 async function loadPages(){try{const j=await api('pages');if(j.ok)pages=j}catch(e){}return pages}
 
 // the page in the frame says where it is (and its title) through the bridge; trust only our own frame
@@ -143,7 +164,8 @@ function framePlace(path,title){
   const rest=path.slice(BASE.length);const rel=rest.split('#')[0].split('?')[0];const hash=(rest.split('#')[1]||'');
   const m=rel.match(/^lib\/reviews\/([^/]+)\/index\.html$/);
   if(m){const dir=decodeURIComponent(m[1]);const changed=current.dir!==dir;current={view:'review',dir};if(changed)loadResult(dir)}
-  else if(rel==='lib/index.html'||rel==='lib/')current={view:hash==='season'?'season':'library',dir:null};
+  else if(rel==='lib/index.html'||rel==='lib/'){const was=current.view;current={view:hash==='season'?'season':hash==='skills'?'skills':'library',dir:null};
+    if(current.view==='skills'&&was!=='skills')loadProfile()}
   else if(/^lib\/prep\/[^/]+\.html$/.test(rel))current={view:'prepPage',dir:null,page:decodeURIComponent(rel.slice(4))};
   else if(rel==='lib/team/index.html')current={view:'teamPage',dir:null,page:'team/index.html'};
   if(title)document.title=title==='Debrief Library'?'Debrief':'Debrief · '+title;
@@ -153,7 +175,7 @@ function framePlace(path,title){
 
 document.addEventListener('click',e=>{
   const n=e.target.closest('[data-nav]');
-  if(n){({sessions:openSessions,library:openLibrary,season:openSeason,goals:openGoals,prep:openPrep,team:openTeam,settings:openSettings})[n.dataset.nav]();return}
+  if(n){({sessions:openSessions,library:openLibrary,season:openSeason,skills:openSkills,goals:openGoals,prep:openPrep,team:openTeam,settings:openSettings})[n.dataset.nav]();return}
   const a=e.target.closest('[data-act]');if(!a)return;
   if(a.dataset.act==='review')startJob('review');
   else if(a.dataset.act==='sync')startSync(false);
@@ -336,7 +358,10 @@ function renderSessions(){
     const acts=h('span','row');
     if(s.review){const b=h('button','btn','Open review');b.type='button';b.addEventListener('click',()=>openReview(s.review));acts.append(b)}
     if(s.event&&[1,2,3].includes(s.type)&&s.track_id!=null&&s.car_id!=null){
-      const b=h('button','btn'+(s.review?'':' primary'),s.review?'Review again':'Review');b.type='button';
+      // practice and qualifying get their own review (runs, targets, the qualifying lap strip)
+      const what={1:'practice',2:'qualifying'}[s.type];
+      const b=h('button','btn'+(s.review?'':' primary'),s.review?'Review again':(what?'Review '+what:'Review'));b.type='button';
+      if(what&&s.review)b.setAttribute('aria-label','Review '+what+' again');
       b.addEventListener('click',()=>startJob('review',{event:s.event,session_type:s.type,track_id:s.track_id,car_id:s.car_id}));acts.append(b)}
     row.append(tx,acts);host.append(row)});
   $('sessMoreRow').hidden=all.length<=sessShown;

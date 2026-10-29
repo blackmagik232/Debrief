@@ -335,6 +335,51 @@ td.d b{color:var(--ink);font-weight:600}
 .irow .val{font-family:var(--mono);text-align:right}
 .irow .tag{font-size:var(--t-xs);font-family:var(--mono);text-transform:uppercase;letter-spacing:.04em;color:var(--ink2);white-space:nowrap}
 
+/* 2.3: time-lost map, where in the corner, brake spread, practice and qualifying */
+.mapmode{display:inline-flex;gap:0;border:1px solid var(--axis);border-radius:5px;overflow:hidden}
+.mapmode button{border:none;border-radius:0;padding:3px 9px;font-size:var(--t-xs);font-family:var(--mono);letter-spacing:.04em;background:var(--panel)}
+.mapmode button+button{border-left:1px solid var(--axis)}
+.mapmode button[aria-pressed="true"]{background:var(--hi);color:var(--ink);box-shadow:inset 0 -2px 0 var(--a)}
+.maphead{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center;justify-content:flex-end}
+.scale .bar.loss{background:linear-gradient(90deg,var(--mid),var(--bad))}
+.losskey{font-size:var(--t-sm);color:var(--ink2);margin-top:4px}
+.losskey .scale{display:inline-flex;vertical-align:1px;margin-right:4px}
+.wic{display:grid;gap:var(--s3)}
+.wicrows{display:grid;gap:2px}
+.wicrow{display:grid;grid-template-columns:minmax(110px,150px) minmax(0,1fr) 72px 64px;gap:var(--s3);align-items:center;width:100%;text-align:left;border:1px solid transparent;background:none;padding:6px 8px;white-space:normal}
+.wicrow:hover{background:var(--band)}
+.wicrow[aria-pressed="true"]{border-color:var(--a);background:var(--hi)}
+.wicrow .nm{font-weight:600;font-size:var(--t-sm)}
+.wicrow .bar{height:10px;border-radius:2px;background:var(--band);position:relative;overflow:hidden}
+.wicrow .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--bad);border-radius:2px}
+.wicrow .v,.wicrow .sc{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;font-size:var(--t-sm);white-space:nowrap}
+.wicrow .sc small{color:var(--muted)}
+.wicfoot{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s4);font-size:var(--t-sm);color:var(--ink2);padding:0 8px}
+.wicfoot b{font-family:var(--mono);color:var(--ink);font-weight:600}
+@media (max-width:520px){.wicrow{grid-template-columns:minmax(0,1fr) 64px 56px}.wicrow .bar{grid-column:1 / -1;grid-row:2}}
+.bchip{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;border-radius:999px;border:1px solid var(--axis);color:var(--ink2);white-space:nowrap;margin-left:6px}
+.bchip.locked{border-color:var(--good);color:var(--good)}
+.bchip.varies{border-color:var(--warn);color:var(--warn)}
+.bchip.allover{border-color:var(--bad);color:var(--bad)}
+#techTable tr.tpsub th{padding-top:14px;border-bottom:1px solid var(--axis)}
+.runs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:var(--s3)}
+.run{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:var(--s3) var(--s4);display:grid;gap:2px;align-content:start}
+.run.hasbest{border-top:3px solid var(--pb)}
+.run .nm{font-family:var(--display);font-size:var(--t-lg);font-weight:700}
+.run .lp{font-size:var(--t-sm);color:var(--muted)}
+.run .row{display:flex;justify-content:space-between;gap:var(--s2);font-size:var(--t-sm);color:var(--ink2)}
+.run .row b{font-family:var(--mono);color:var(--ink);font-weight:600}
+.qstrip{display:flex;flex-wrap:wrap;gap:var(--s2)}
+.qlap{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 10px;display:grid;gap:0;min-width:96px}
+.qlap .r{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.qlap b{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums}
+.qlap span.d{font-family:var(--mono);font-size:var(--t-sm);color:var(--ink2)}
+.qlap.best{border-color:var(--pb);background:var(--pbbg)}
+.qlap.best .r{color:var(--pb)}
+.qlap.push{border-color:var(--a)}
+.qlap.cool,.qlap.warm-up{opacity:.85}
+.ctab tr.go td.tg{color:var(--good)}
+
 /* v2: stint */
 .phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:var(--s4)}
 .phase{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:var(--s4);display:grid;gap:2px;align-content:start}
@@ -363,7 +408,7 @@ td.d b{color:var(--ink);font-weight:600}
 <div class="empty" id="failNote" role="status" hidden><b>Some parts of this review couldn't be drawn.</b><span>It was probably made by an older version of Debrief. Open Sessions in the app and click Review again on this race to rebuild it; the rest of the page below still works.</span></div>
 
 <nav class="jump" id="jump" aria-label="Sections">
-  <a href="#summary">Summary</a><a href="#coach">What to work on</a><a href="#race">Race story</a><a href="#deep">All the numbers</a><a href="#compare">Compare laps</a><a href="#possible">Best possible</a><a href="#corners">Corners</a><a href="#technique">Technique</a><a href="#bestworst">Best vs worst</a><a href="#pace">Pace</a><a href="#consistency">Consistency</a><a href="#stint">Stint</a><a href="#habits">Driving style</a><a href="#plan">Practice plan</a>
+  <a href="#summary">Summary</a><a href="#coach">What to work on</a><a href="#session">Runs</a><a href="#race">Race story</a><a href="#deep">All the numbers</a><a href="#compare">Compare laps</a><a href="#possible">Best possible</a><a href="#corners">Corners</a><a href="#technique">Technique</a><a href="#bestworst">Best vs worst</a><a href="#pace">Pace</a><a href="#consistency">Consistency</a><a href="#stint">Stint</a><a href="#habits">Driving style</a><a href="#plan">Practice plan</a>
 </nav>
 
 <section id="summary" aria-label="Summary">
@@ -378,6 +423,7 @@ td.d b{color:var(--ink);font-weight:600}
   <div class="sechead"><h2>What to work on</h2><div class="verdict" id="verdict"></div><div id="storyHere"></div></div>
   <div class="coach">
     <div><div class="subhead"><b>Fix first</b><span id="fixSub">ranked by time per lap</span></div><div class="fixes" id="fixList"></div></div>
+    <div class="panel wic" id="wicPanel" hidden><h3>Where in the corner <span class="note" id="wicSub"></span></h3><p class="lede" id="wicLede">How close your typical laps are to your own better laps in each part of the corner. 100 means no difference.</p><div class="wicrows" id="wicRows"></div><div class="wicfoot" id="wicFoot"></div></div>
     <div class="hab">
       <div class="panel bad"><h3>Bad habits</h3><ul id="badList"></ul></div>
       <div class="panel good"><h3>Good habits</h3><ul id="goodList"></ul></div>
@@ -385,8 +431,16 @@ td.d b{color:var(--ink);font-weight:600}
   </div>
 </section>
 
+<section id="session" hidden>
+  <div class="sechead"><h2 id="sessTitle">Your runs</h2><p class="lede" id="sessLede"></p></div>
+  <div class="runs" id="sessRuns"></div>
+  <p class="story" id="sessProgress" hidden></p>
+  <div class="panel" id="sessQuali" hidden></div>
+  <div class="panel" id="sessTargets" hidden><h3>Targets for next session</h3><p class="lede">Times your better laps already managed this session</p><div class="tablewrap"><table class="ctab" id="sessTargetTable"></table></div><p class="note">Target is the middle time of your better laps through that corner in your latest long run. The numbers are what those laps did there; they describe your laps, not what caused the time.</p></div>
+</section>
+
 <section id="race" hidden>
-  <div class="sechead"><h2>Race story</h2><p class="lede" id="raceLede"></p></div>
+  <div class="sechead"><h2 id="raceTitle">Race story</h2><p class="lede" id="raceLede"></p></div>
   <div class="pacegrid" id="raceGrid"></div>
 </section>
 
@@ -411,8 +465,9 @@ td.d b{color:var(--ink);font-weight:600}
         <div class="splits" id="splits"></div>
       </div>
       <div class="mapbox">
-        <div class="subhead"><b>Track map</b><span class="scale"><span>A faster</span><span class="bar"></span><span>B faster</span></span></div>
+        <div class="subhead"><b>Track map</b><span class="maphead"><span class="mapmode" id="mapMode" role="group" aria-label="Colour the map by" hidden><button type="button" data-mode="ab" aria-pressed="true">A against B</button><button type="button" data-mode="loss" aria-pressed="false">Where time goes</button></span><span class="scale" id="abScale"><span>A faster</span><span class="bar"></span><span>B faster</span></span></span></div>
         <div id="trackmap"></div>
+        <p class="losskey" id="lossKey" hidden><span class="scale"><span class="bar loss"></span></span> Lighter: about the same as your better laps · Darker red: where your typical lap loses time to them.<span id="lossWhat"></span></p>
       </div>
     </div>
     <div class="telehead"><div class="subhead"><b>Telemetry</b></div><span id="zoomInfo"></span></div>
@@ -543,6 +598,7 @@ function ticks(lo,hi,n){const st=niceStep(hi-lo,n);const o=[];for(let t=Math.cei
 // ---------- 2.2.2: never let one missing key blank the page. Normalise the shapes every section reads,
 // and run each section through safe(): if it throws, that section says so and the rest still draws.
 const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
+const fin=v=>typeof v==='number'&&isFinite(v);
 D.meta=isObj(D.meta)?D.meta:{};D.laps=Array.isArray(D.laps)?D.laps.filter(l=>l&&typeof l.n==='number'&&typeof l.t==='number'&&isFinite(l.t)):[];
 D.corners=Array.isArray(D.corners)?D.corners.filter(c=>isObj(c)&&c.id!=null):[];D.style=isObj(D.style)?D.style:{};
 D.refs=Array.isArray(D.refs)?D.refs.filter(isObj):[];D.counts=isObj(D.counts)?D.counts:{};D.traces=isObj(D.traces)?D.traces:{};
@@ -737,6 +793,43 @@ const MAP=(()=>{const map=D.map||[];if(map.length<10)return null;const lat0=map.
   const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);const w=Math.max(...xs)-Math.min(...xs),hh=Math.max(...ys)-Math.min(...ys);if(!(w>0))return null;
   return {pts,minx:Math.min(...xs),miny:Math.min(...ys),w,h:hh||1}})();
 let mapDot=null,mapP=null;
+// ---------- 2.3: "Where time goes" map colouring. Typical = your clean laps, ref = your better laps
+// (D.skills.ref_laps, or the same rule worked out here for older reviews: clean laps at or under the 25th
+// percentile of clean lap times, at least the 3 quickest). Both are medians per 10 m cell, so the colour
+// shows where the middle typical lap falls behind the middle better lap. Gains are not shown as green.
+const SK=isObj(D.skills)?D.skills:null;
+const SK_OK=!!(SK&&!SK.reason&&isObj(SK.phases));
+const PHASES=['braking','entry','mid','exit'];
+const PH_NAMES={approach:'Approach',braking:'Braking',entry:'Turn-in to apex',mid:'Apex to throttle',exit:'Exit'};
+const SK_CORNERS=SK_OK&&Array.isArray(SK.corners)?SK.corners.filter(c=>isObj(c)&&c.id!=null&&isObj(c.markers)):[];
+function betterLapsJS(pool){if(pool.length<3)return [];const q=quant(pool.map(l=>l.t),0.25);let r=pool.filter(l=>l.t<=q+1e-9);if(r.length<3)r=[...pool].sort((a,b)=>a.t-b.t).slice(0,3);return r.map(l=>l.n)}
+const LOSS=safe('time-lost map',()=>{if(!HAS_TEL||!MAP)return null;const cl=cleanLaps.filter(l=>TR['me'+l.n]);if(cl.length<3)return null;
+  let ref=SK&&Array.isArray(SK.ref_laps)?SK.ref_laps.filter(n=>typeof n==='number'&&TR['me'+n]):[];const fromSkills=ref.length>0;
+  if(!ref.length)ref=betterLapsJS(cl);if(!ref.length)return null;const typ=cl.map(l=>l.n);
+  const n=Math.min(N,MAP.pts.length,...[...ref,...typ].map(k=>TR['me'+k].tt.length));if(n<10)return null;
+  const med=ks=>{const o=new Array(n);for(let i=0;i<n;i++)o[i]=median(ks.map(k=>TR['me'+k].tt[i]));return o};
+  const tTyp=med(typ),tRef=med(ref);const rate=new Array(n).fill(0);
+  for(let i=0;i<n-1;i++){const a0=Math.max(0,i-3),a1=Math.min(n-1,i+4);rate[i]=((tTyp[a1]-tTyp[a0])-(tRef[a1]-tRef[a0]))/(a1-a0)*10/STEP}
+  return {n,tTyp,tRef,rate,ref,typ,fromSkills}},'compare')||null;
+// which corner phase a track position (m) is in, from the skills markers (null without skills)
+function phaseAt(d){for(const c of SK_CORNERS){const m=c.markers;const st=[['approach',m.start,m.B],['braking',m.B,m.R],['entry',m.R,m.A],['mid',m.A,m.P],['exit',m.P,m.E]];
+  for(const dd of [d,d+L,d-L])for(const [p,a,b] of st)if(fin(a)&&fin(b)&&b-a>=STEP&&dd>=a&&dd<b)return {c,p,a,b}}return null}
+function cornerAt(d){for(const c of D.corners){if(!fin(c.start_m)||!fin(c.end_m))continue;for(const dd of [d,d+L,d-L])if(dd>=c.start_m&&dd<c.end_m)return c}return null}
+const lossBetween=(a,b)=>LOSS?(ttAt(LOSS.tTyp,b)-ttAt(LOSS.tTyp,a))-(ttAt(LOSS.tRef,b)-ttAt(LOSS.tRef,a)):0;
+function lossTip(i){const d=i*STEP;const ph=phaseAt(d);let title,line;
+  const say=(where,v)=>where+': '+(v>=0.01?'your typical lap loses about '+v.toFixed(2)+' s here to your better laps.':'your typical lap is about level with your better laps here.');
+  if(ph){const v=isObj(ph.c.loss)&&fin(ph.c.loss[ph.p])?ph.c.loss[ph.p]:Math.max(0,lossBetween(ph.a,ph.b));title=ph.c.id+' · '+PH_NAMES[ph.p];line=say(ph.c.id+' '+PH_NAMES[ph.p].toLowerCase(),v)}
+  else{const c=cornerAt(d);if(c){const v=Math.max(0,lossBetween(Math.max(0,c.start_m),Math.min(L,c.end_m)));title=String(c.id);line=say(String(c.id),v)}
+    else{const v=Math.max(0,lossBetween(Math.max(0,d-50),Math.min(L,d+50)));title='Between corners';line=say('Over these 100 m',v)}}
+  return [title,[Math.round(d).toLocaleString()+' m',line]]}
+state.mapMode='ab';state.phaseHi=null;
+function setMapMode(mode,phase){state.mapMode=LOSS?mode:'ab';state.phaseHi=state.mapMode==='loss'?(phase||null):null;
+  [...$('mapMode').querySelectorAll('button')].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===state.mapMode)));
+  $('abScale').hidden=state.mapMode!=='ab';$('lossKey').hidden=state.mapMode!=='loss';
+  const w=$('lossWhat');w.replaceChildren();if(state.phaseHi){w.append(document.createTextNode(' Outlined: every '+PH_NAMES[state.phaseHi].toLowerCase()+' stretch. '));const b=h('button','ghost','Show the whole lap');b.type='button';b.onclick=()=>setMapMode('loss',null);w.append(b)}
+  document.querySelectorAll('#wicRows .wicrow').forEach(r=>r.setAttribute('aria-pressed',String(r.dataset.phase===state.phaseHi)));
+  safe('map',renderMap,'compare')}
+safe('map colour toggle',()=>{if(!LOSS)return;const g=$('mapMode');g.hidden=false;g.querySelectorAll('button').forEach(b=>b.onclick=()=>setMapMode(b.dataset.mode,null))},'compare');
 function renderMap(){const host=$('trackmap');host.replaceChildren();if(!HAS_TEL||!TR[state.a]||!TR[state.b])return;if(!MAP){host.append(h('p','note','No GPS data in this telemetry, so there is no map.'));return}
   const W=Math.max(280,host.clientWidth||460),pad=30;const asp=Math.min(0.85,Math.max(0.45,MAP.h/MAP.w));const H=Math.round(W*asp);
   const sc=Math.min((W-2*pad)/MAP.w,(H-2*pad)/MAP.h);const ox=(W-MAP.w*sc)/2-MAP.minx*sc,oy=(H-MAP.h*sc)/2-MAP.miny*sc;
@@ -745,8 +838,12 @@ function renderMap(){const host=$('trackmap');host.replaceChildren();if(!HAS_TEL
   const poly=P.slice(0,n).map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
   s.append(el('polyline',{points:poly,fill:'none',stroke:'var(--track)','stroke-width':14,'stroke-linejoin':'round','stroke-linecap':'round'}));
   const A=TR[state.a].tt,B=TR[state.b].tt;const g=el('g',{'stroke-width':7,'stroke-linecap':'round'});
-  for(let i=0;i<n-1;i++){const a0=Math.max(0,i-3),a1=Math.min(n-1,i+4);const dv=((A[a1]-A[a0])-(B[a1]-B[a0]))/(a1-a0);const m=Math.max(-1,Math.min(1,dv/0.03));const pct=Math.round(Math.abs(m)*10)*10;
-    const col=pct===0?'var(--mid)':`color-mix(in oklab, var(${m<0?'--a':'--b'}) ${pct}%, var(--mid))`;const d=i*STEP;const out=(state.x0>0||state.x1<L)&&(d<state.x0-STEP||d>state.x1+STEP);
+  const lossMode=state.mapMode==='loss'&&LOSS;if(lossMode)s.setAttribute('aria-label','Track map coloured by where your typical lap loses time to your better laps');const og=el('g',{});s.append(og);
+  for(let i=0;i<n-1;i++){let col;
+    if(lossMode){const r=i<LOSS.n-1?LOSS.rate[i]:0;const pct=r<=0?0:Math.round(Math.min(1,r/0.01)*10)*10;col=pct===0?'var(--mid)':`color-mix(in oklab, var(--bad) ${pct}%, var(--mid))`}
+    else{const a0=Math.max(0,i-3),a1=Math.min(n-1,i+4);const dv=((A[a1]-A[a0])-(B[a1]-B[a0]))/(a1-a0);const m=Math.max(-1,Math.min(1,dv/0.03));const pct=Math.round(Math.abs(m)*10)*10;
+    col=pct===0?'var(--mid)':`color-mix(in oklab, var(${m<0?'--a':'--b'}) ${pct}%, var(--mid))`}const d=i*STEP;let out=(state.x0>0||state.x1<L)&&(d<state.x0-STEP||d>state.x1+STEP);
+    if(lossMode&&state.phaseHi){const ph=phaseAt(d+STEP/2);const on=!!(ph&&ph.p===state.phaseHi);out=!on;if(on)og.append(el('line',{x1:P[i][0].toFixed(1),y1:P[i][1].toFixed(1),x2:P[i+1][0].toFixed(1),y2:P[i+1][1].toFixed(1),stroke:'var(--ink)','stroke-width':12,'stroke-linecap':'round'}))}
     g.append(el('line',{x1:P[i][0].toFixed(1),y1:P[i][1].toFixed(1),x2:P[i+1][0].toFixed(1),y2:P[i+1][1].toFixed(1),stroke:col,'stroke-opacity':out?0.25:1}))}
   s.append(g);
   // start/finish
@@ -762,8 +859,9 @@ function renderMap(){const host=$('trackmap');host.replaceChildren();if(!HAS_TEL
     lab.addEventListener('click',()=>{const j=SEG?SEG.names.indexOf(c.id):-1;if(j>=0){state.seg=j;zoom(Math.max(0,SEG.cuts[j]-40),Math.min(L,SEG.cuts[j+1]+40));renderSplits()}});s.append(lab)});
   mapDot=el('circle',{r:6,fill:'var(--ink)',stroke:'var(--panel)','stroke-width':2,visibility:'hidden'});s.append(mapDot);
   const hit=el('polyline',{points:poly,fill:'none',stroke:'transparent','stroke-width':26,'pointer-events':'stroke'});
-  hit.addEventListener('pointermove',ev=>{const r=s.getBoundingClientRect();const x=(ev.clientX-r.left)*W/r.width,y=(ev.clientY-r.top)*H/r.height;let bi=0,bd=1e9;for(let i=0;i<n;i++){const d=(P[i][0]-x)**2+(P[i][1]-y)**2;if(d<bd){bd=d;bi=i}}setHover(bi)});
-  hit.addEventListener('pointerleave',()=>setHover(null));s.insertBefore(hit,mapDot);host.append(s)}
+  hit.addEventListener('pointermove',ev=>{const r=s.getBoundingClientRect();const x=(ev.clientX-r.left)*W/r.width,y=(ev.clientY-r.top)*H/r.height;let bi=0,bd=1e9;for(let i=0;i<n;i++){const d=(P[i][0]-x)**2+(P[i][1]-y)**2;if(d<bd){bd=d;bi=i}}
+    if(lossMode){const [t,ls]=lossTip(bi);showTip(t,ls,null,ev);mapDot.setAttribute('cx',P[bi][0]);mapDot.setAttribute('cy',P[bi][1]);mapDot.setAttribute('visibility','visible')}else setHover(bi)});
+  hit.addEventListener('pointerleave',()=>{if(lossMode){hideTip();mapDot.setAttribute('visibility','hidden')}else setHover(null)});s.insertBefore(hit,mapDot);host.append(s)}
 
 // ---------- compare: telemetry
 let cross=null,selRect=null,teleGeom=null;
@@ -869,12 +967,16 @@ safe('corners',()=>{const tb=$('cornerTable');const IN=isObj(D.insights)?D.insig
   const order={};FIXES.forEach((f,i)=>order[f.corner]=i);
   if(!D.corners.length){$('cornerTable').closest('.panel').replaceChildren(h('p','note','No corners were found in this review.'));return}
   const cs=[...D.corners].sort((a,b)=>((a.id in order)?order[a.id]:99)-((b.id in order)?order[b.id]:99)||(b.avail||0)-(a.avail||0));const hasRef=!!mainRef;
-  const hd=h('thead');const hr=h('tr');['Corner','Time to find','Your best','Typical',hasRef?'vs '+firstName(mainRef.name):null,'What to try'].filter(x=>x!=null).forEach((x,i)=>hr.append(h('th',i&&i<(hasRef?5:4)?'n':null,x)));hd.append(hr);tb.append(hd);
+  // 2.3: brake-point repeatability (D.brake_spread, old reviews get it on refresh); the column shows only when a corner has one
+  const BS={};if(isObj(D.brake_spread)&&Array.isArray(D.brake_spread.corners))D.brake_spread.corners.forEach(x=>{if(isObj(x)&&x.id!=null&&fin(x.iqr_m))BS[x.id]=x});const hasBS=Object.keys(BS).length>0;
+  const nNum=hasRef?5:4;const hd=h('thead');const hr=h('tr');['Corner','Time to find','Your best','Typical',hasRef?'vs '+firstName(mainRef.name):null,hasBS?'Brake point spread':null,'What to try'].filter(x=>x!=null).forEach((x,i)=>hr.append(h('th',i&&i<nNum?'n':null,x)));hd.append(hr);tb.append(hd);
+  if(hasBS){const p0=isObj(D.brake_spread.params)?D.brake_spread.params:{};const sm=fin(p0.steady_m)?p0.steady_m:12;$('cornerTable').closest('.panel').append(h('p','note','Brake point spread: the middle half of your clean laps braked within this distance either side of the usual point. Locked is within '+(fin(p0.locked_m)?p0.locked_m:5)+' m, steady within '+sm+' m. Corners you take with a lift, or with fewer than '+(fin(p0.min_laps)?p0.min_laps:6)+' clean laps that braked, show –.'))}
   const body=h('tbody');const rest=h('tbody');rest.hidden=true;
   cs.forEach((c,k)=>{const S=c.summary||{};const tr=h('tr','go'+(c.id in order?' top':''));const td0=h('td');td0.append(h('span','cid',c.id),h('span','meta',(S.gear!=null?'gear '+S.gear:'')+(S.min_mph!=null?' · '+Math.round(S.min_mph)+' mph':'')));tr.append(td0);
     const t2=v=>typeof v==='number'&&isFinite(v)?v.toFixed(2)+' s':'–';tr.id='corner-'+c.id;
     tr.append(h('td','n',(c.avail||0)>=0.01?c.avail.toFixed(2)+' s':'–'),h('td','n',t2(c.best_t)),h('td','n',t2(c.median_t)));
     if(hasRef)tr.append(h('td','n',c.ref_gap!=null?(c.ref_gap>0?c.ref_gap.toFixed(2)+' s slower':ab(c.ref_gap,2)+' s quicker'):'–'));
+    if(hasBS){const b=BS[c.id];const td=h('td');td.style.whiteSpace='nowrap';if(b){td.append(h('span','mono','±'+Math.round(b.iqr_m/2)+' m'));const lab=String(b.label||'');if(lab){const ch=h('span','bchip '+lab.replace(/\s+/g,''),lab);ch.title='Middle half of your clean laps braked within '+Math.round(b.iqr_m)+' m of each other ('+plural(b.n||0,'lap')+')';td.append(ch)}}else td.textContent='–';tr.append(td)}
     const tp=(Array.isArray(tips[c.id])?tips[c.id]:[]).map(String).join('; ');tr.append(h('td',null,tp?tp.charAt(0).toUpperCase()+tp.slice(1)+'.':''));
     tr.tabIndex=0;tr.title='Show '+c.id+' in Compare laps';tr.onclick=()=>showCorner(c);tr.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();showCorner(c)}};
     ((k<3||(c.avail||0)>=0.05)?body:rest).append(tr)});
@@ -1092,13 +1194,45 @@ function renderTech(){if(!TECH)return;const t=TECH.find(x=>x.id===techSel)||TECH
     if(f0!=null)s.append(el('circle',{cx:f0,cy:y,r:5,fill:col,stroke:'var(--panel)','stroke-width':1.5}));
     if(num(m.min_mph))s.append(T(X(t.apex_m)+5,y-6,Math.round(m.min_mph)+' mph',{'font-size':10.5,fill:'var(--ink)'}));
     const g=el('rect',{x:0,y:y-lh/2,width:W,height:lh,fill:'transparent'});hover(g,nm,[num(m.brake_on)?'Brakes at '+techFmt.brake_on(m.brake_on):'No braking here',num(m.min_mph)?techFmt.min_mph(m.min_mph)+' at the slowest point':'',num(m.full_thr)?'Full throttle at '+techFmt.full_thr(m.full_thr):'']);s.append(g)});
-  host.append(s);
+  s._X=X;s._ml=ml;s._W=W-mr;s._top=top;s._lh=lh;host.append(s);
   $('techLegend').innerHTML='<span><svg width="12" height="10" aria-hidden="true"><path d="M0,0 L12,0 L6,10 Z" fill="var(--ink2)"/></svg> Brakes on</span><span><i class="k dot" style="background:var(--ink2)"></i>Full throttle</span><span><i class="k" style="border-color:var(--axis);border-top-style:dashed"></i>Apex</span>';
   // table
-  const tb=$('techTable');tb.replaceChildren();const hd=h('thead');const hr=h('tr');const refNm=t.ref?firstName(t.ref_name||(mainRef&&mainRef.name)||'Them'):null;
+  const tb=$('techTable');tb.replaceChildren();var _s=s;const hd=h('thead');const hr=h('tr');const refNm=t.ref?firstName(t.ref_name||(mainRef&&mainRef.name)||'Them'):null;
   const cols=['Measure',...lanes.map(l=>l[0])];if(t.vs_ref)cols.push('Your typical vs '+refNm);cols.forEach((x,i)=>hr.append(h('th',i?'n':null,x)));hd.append(hr);tb.append(hd);const body=h('tbody');
   techRows.forEach(([k,lab])=>{const tr=h('tr');tr.append(h('td',null,lab));lanes.forEach(([,m])=>tr.append(h('td','n',num(m[k])?techFmt[k](m[k]):'–')));if(t.vs_ref){const td=h('td','d');const w=techDelta(k,t.vs_ref[k]);td.innerHTML=w==='about the same'||w==='–'?esc(w):'<b>'+esc(w)+'</b>';tr.append(td)}body.append(tr)});tb.append(body);
-  const ul=$('techNotes');ul.replaceChildren();(t.notes||[]).forEach(n=>ul.append(h('li',null,n)))}
+  const ul=$('techNotes');ul.replaceChildren();const seen=new Set();const addNote=n=>{n=String(n);if(!seen.has(n)){seen.add(n);ul.append(h('li',null,n))}};(t.notes||[]).forEach(addNote);
+  safe('technique detail',()=>techPlus(t,cols.length,_s,lanes),'technique');
+  const tp=tpCorner(t.id);if(tp&&Array.isArray(tp.notes))tp.notes.forEach(addNote)}
+// ---------- 2.3: deeper technique (D.technique_plus, new reviews only): brake release and throttle pickup
+const TP=isObj(D.technique_plus)&&Array.isArray(D.technique_plus.corners)?D.technique_plus:null;
+const TP_STEER=!!(TP&&isObj(TP.channels)&&TP.channels.steering===true);
+function tpCorner(id){if(!TP)return null;const c=TP.corners.find(x=>isObj(x)&&x.id===id);if(c)return c;
+  const ap=(cornerById[id]||{}).apex_m;if(!num(ap))return null;const tol=Math.max(60,0.02*L);let best=null,bd=1e9;TP.corners.forEach(x=>{if(isObj(x)&&num(x.apex_m)&&Math.abs(x.apex_m-ap)<=tol&&Math.abs(x.apex_m-ap)<bd){bd=Math.abs(x.apex_m-ap);best=x}});return best}
+const mFmt=v=>Math.round(v)+' m';
+const vsApex=(v,before,after)=>Math.abs(v)<2.5?'at the slowest point':Math.round(Math.abs(v))+' m '+(v<0?before:after);
+const TP_ROWS=[
+  ['braking','trail_m','Brake release length (m)',mFmt],
+  ['braking','off_vs_apex_m','Off the brake vs slowest point (m)',v=>vsApex(v,'before','after')],
+  ['braking','shape_label','Release shape',v=>String(v)],
+  ['throttle','pickup_vs_apex_m','Throttle pickup after slowest point (m)',v=>vsApex(v,'before','after')],
+  ['throttle','ramp_m','Throttle ramp to flat (m)',mFmt],
+  ['throttle','lifts','Lifts on the way to full throttle',v=>String(Math.round(v))],
+  ['steering','steer_corr','Steering corrections',v=>String(Math.round(v))]];
+function techPlus(t,ncols,svg,lanes){const c=tpCorner(t.id);if(!c)return;const pl=isObj(c.per_lap)?c.per_lap:{};const bl=isObj(pl[String(D.best.n)])?pl[String(D.best.n)]:{};
+  const grp=k=>isObj(c[k])?c[k]:null;const ok=v=>v!=null&&v!==''&&(typeof v!=='number'||isFinite(v));
+  const rows=TP_ROWS.filter(([g])=>g!=='steering'||TP_STEER).filter(([g,k])=>{const G=grp(g);return ok(bl[k])||(G&&((isObj(G.typical)&&ok(G.typical[k]))||(isObj(G.better)&&ok(G.better[k]))))});
+  const tb=$('techTable');const body=h('tbody');
+  const hr=h('tr','tpsub');hr.append(h('th',null,'Brake release and throttle pickup'),h('th','n','Best lap ('+D.best.n+')'),h('th','n','Your typical'),h('th','n','Your better laps'));for(let i=4;i<ncols;i++)hr.append(h('th'));body.append(hr);
+  if(!rows.length){const tr=h('tr');const td=h('td','note',c.lift?'You take this corner with a lift, so there is no brake release to measure.':(Array.isArray(c.notes)&&c.notes[0])||'Not enough clean laps through this corner to say.');td.colSpan=ncols;tr.append(td);body.append(tr);tb.append(body);return}
+  rows.forEach(([g,k,lab,f])=>{const G=grp(g)||{};const tr=h('tr');tr.append(h('td',null,lab));
+    [bl[k],isObj(G.typical)?G.typical[k]:null,isObj(G.better)?G.better[k]:null].forEach(v=>tr.append(h('td','n',ok(v)?f(v):'–')));for(let i=4;i<ncols;i++)tr.append(h('td'));body.append(tr)});
+  tb.append(body);
+  // brake-release marks on the lane chart: the typical lap's release on its lane, when it fits inside the chart
+  const B=grp('braking');if(!B||!svg)return;const X=svg._X;if(!X)return;
+  lanes.forEach(([nm,,col],i)=>{const m=nm==='Your typical'?B.typical:null;if(!isObj(m)||!num(m.release_start_m)||!num(m.release_end_m))return;const x0=X(m.release_start_m),x1=X(m.release_end_m);if(!(x1>x0)||x0<svg._ml||x1>svg._W)return;
+    const y=svg._top+i*svg._lh+svg._lh/2+9;svg.append(el('line',{x1:x0,x2:x1,y1:y,y2:y,stroke:col,'stroke-width':2,'stroke-dasharray':'3 2'}));
+    const hit=el('rect',{x:x0,y:y-5,width:x1-x0,height:10,fill:'transparent'});hover(hit,'Brake release, typical lap',['Easing off from '+Math.round(wrapM(m.release_start_m)).toLocaleString()+' m to '+Math.round(wrapM(m.release_end_m)).toLocaleString()+' m ('+Math.round(m.release_end_m-m.release_start_m)+' m)']);svg.append(hit)});
+  const lg=$('techLegend');if(lg&&!lg.querySelector('.tprel')){const sp=h('span','tprel');sp.append(h('i','k'),document.createTextNode('Brake release (typical lap)'));sp.firstChild.style.cssText='border-color:var(--a);border-top-style:dashed';lg.append(sp)}}
 
 // ---------- v2: best vs worst clean lap
 safe('best vs worst',()=>{if(!BW||!HAS_TEL)return;$('bestworst').hidden=false;
@@ -1276,6 +1410,25 @@ safe('what to work on',()=>{const IN=isObj(D.insights)?D.insights:null;
   list('goodList',IN.good,'Not enough clean laps to say yet.');
   const pl=$('plan');if(pl)pl.hidden=true;   // "Fix first" replaces the old practice plan
 },'coach');
+// ---------- 2.3: where in the corner (D.skills): typical laps against your own better laps, phase by phase
+const SK_REASON={no_traces:'This review has no telemetry, so the time can’t be split by corner phase.',no_corners:'No corners were found, so the time can’t be split by corner phase.',
+  not_enough_clean_laps:'Needs at least 6 clean laps to split the time by corner phase.',not_enough_better_laps:'Needs at least 3 better laps (your quickest clean laps) to split the time by corner phase.'};
+safe('where in the corner',()=>{if(!SK)return;const pn=$('wicPanel');const host=$('wicRows');
+  if(SK.reason||!SK_OK){pn.hidden=false;$('coach').hidden=false;$('wicLede').textContent=SK_REASON[SK.reason]||'Not enough clean laps to split the time by corner phase.';$('wicSub').textContent='';return}
+  const ph=PHASES.map(k=>[k,isObj(SK.phases[k])?SK.phases[k]:{}]);const mx=Math.max(0.05,...ph.map(([,x])=>num(x.loss_s)?x.loss_s:0));
+  pn.hidden=false;$('coach').hidden=false;
+  const nr=Array.isArray(SK.ref_laps)?SK.ref_laps.length:0;$('wicSub').textContent=(num(SK.n_clean)?plural(SK.n_clean,'clean lap'):'')+(nr?' · better laps: '+andList(SK.ref_laps.map(String)):'');
+  ph.forEach(([k,x])=>{const b=h(LOSS?'button':'div','wicrow');if(LOSS){b.type='button';b.setAttribute('aria-pressed','false')}b.dataset.phase=k;
+    const ls=num(x.loss_s)?x.loss_s:null;const bar=h('span','bar');const i=h('i');i.style.width=(ls?Math.max(1,ls/mx*100):0)+'%';bar.append(i);
+    const sc=h('span','sc');if(num(x.score)){sc.append(document.createTextNode(String(x.score)),h('small',null,'/100'))}else sc.textContent='–';
+    b.append(h('span','nm',PH_NAMES[k]),bar,h('span','v',ls==null?'–':(ls<0.005?'0.00':ls.toFixed(2))+' s'),sc);
+    b.title=LOSS?'Show the '+PH_NAMES[k].toLowerCase()+' stretches on the track map, coloured by where time goes':'';
+    if(LOSS)b.setAttribute('aria-label',PH_NAMES[k]+': '+(ls==null?'no data':'about '+(ls||0).toFixed(2)+' s a lap')+(num(x.score)?', score '+x.score+' out of 100':'')+(LOSS?'. Shows it on the track map.':''));
+    b.onclick=()=>{if(!LOSS)return;const on=state.mapMode==='loss'&&state.phaseHi===k;openDeep();setMapMode('loss',on?null:k);if(!on){const mb=$('trackmap');mb&&mb.scrollIntoView({block:'center'})}};host.append(b)});
+  const f=$('wicFoot');const o=isObj(SK.overall)?SK.overall:null;
+  if(o&&num(o.loss_s)){const sp=h('span');sp.append(document.createTextNode('All four together '),h('b',null,o.loss_s.toFixed(2)+' s'),document.createTextNode(' a lap'+(num(o.score)?', score '+o.score+'/100':'')));f.append(sp)}
+  const st=isObj(SK.straights)?SK.straights:null;if(st&&num(st.loss_s))f.append(h('span',null,'On the run up to each corner: '+st.loss_s.toFixed(2)+' s (not scored)'));
+  f.append(h('span',null,'This is not absolute pace and not a comparison with other drivers.'))},'coach');
 // the written race summary sits under the verdict
 safe('race summary',()=>{const st=$('story');const host=$('storyHere');if(st&&host&&!$('coach').hidden)host.append(st)});
 // race story: the lap-time chart, the early / middle / late phase cards and the pace-through-the-race chart
@@ -1292,6 +1445,53 @@ safe('race story',()=>{const rg=$('raceGrid');rg.className='';rg.style.display='
   const phases=$('phases');if(STINT&&!$('stint').hidden){if(phases&&!phases.hidden&&phases.children.length)rg.append(phases);const sp=$('stintChartPanel');if(sp)rg.append(sp);
     const n=h('p','note','The pace-through-the-race chart and the early, middle and late phases are under Race story at the top of the page.');$('stint').querySelector('.sechead').append(n)}
   $('race').hidden=false},'race');
+// ---------- 2.3: practice and qualifying (D.session_review; races have none)
+const SR=isObj(D.session_review)&&(D.session_review.kind==='practice'||D.session_review.kind==='qualifying')?D.session_review:null;
+safe('practice and qualifying',()=>{if(!SR)return;const quali=SR.kind==='qualifying';const runs=Array.isArray(SR.runs)?SR.runs.filter(isObj):[];
+  $('sessTitle').textContent=quali?'Qualifying':'Your runs';const jl=document.querySelector('#jump a[href="#session"]');if(jl)jl.textContent=quali?'Qualifying':'Runs';
+  const BWORD={gap:'after a pit or out lap',break:'after a break',refuel:'after a refuel',start:''};
+  $('sessLede').textContent=runs.length?(quali?'':'This session split into '+plural(runs.length,'run')+' wherever you pitted, took a break or refuelled. '):'';
+  const host=$('sessRuns');
+  runs.forEach((r,i)=>{const ls=Array.isArray(r.laps)?r.laps.filter(n=>typeof n==='number'):[];const hasBest=ls.includes(D.best.n);const d=h('div','run'+(hasBest?' hasbest':''));
+    d.append(h('span','nm','Run '+(r.id!=null?r.id:i+1)),h('span','lp',(ls.length?(ls.length===1?'Lap ':'Laps ')+(ls.length>2?ls[0]+'–'+ls[ls.length-1]:ls.join(', '))+' · ':'')+plural(ls.length,'lap')+(num(r.clean)?', '+r.clean+' clean':'')+(BWORD[r.boundary]?' · '+BWORD[r.boundary]:'')));
+    const row=(k,v)=>{const x=h('div','row');x.append(h('span',null,k),h('b',null,v));d.append(x)};
+    row('Best',num(r.best_t)?fmt(r.best_t)+(r.best_lap!=null?' (lap '+r.best_lap+')':''):'–');row('Median',num(r.median_t)?fmt(r.median_t):'–');
+    row('Trend',num(r.trend_s_per_lap)?(Math.abs(r.trend_s_per_lap)<0.02?'steady':sg(r.trend_s_per_lap,2)+' s a lap'):'–');
+    if(num(r.fuel_start_l))row('Fuel at start',r.fuel_start_l.toFixed(1)+' L ('+(r.fuel_start_l/3.785).toFixed(1)+' gal)');
+    host.append(d)});
+  if(!runs.length)host.append(h('p','note','Not enough laps in this session to split it into runs.'));
+  // progress
+  const P=isObj(SR.progress)?SR.progress:null;if(P&&num(P.delta_t)){const pe=$('sessProgress');pe.hidden=false;
+    const cs=(Array.isArray(P.corners)?P.corners:[]).filter(c=>isObj(c)&&num(c.delta_t));const same=Math.abs(P.delta_t)<0.05;
+    const quick=P.delta_t<0;const lead=cs.filter(c=>quick?c.delta_t<=-0.02:c.delta_t>=0.02).sort((a,b)=>quick?a.delta_t-b.delta_t:b.delta_t-a.delta_t).slice(0,2).map(c=>String(c.id));
+    const parts=[same?'Your last run’s typical lap was about the same as your first ('+sg(P.delta_t,2)+' s).':'Your last run’s typical lap was ',same?null:{b:ab(P.delta_t,1)+' s '+(quick?'quicker':'slower')},same?null:' than your first.'];
+    if(!same&&lead.length)parts.push(' Most of it came in '+andList(lead)+'.');rich(pe,parts)}
+  // targets (practice)
+  const TG=(Array.isArray(SR.targets)?SR.targets:[]).filter(t=>isObj(t)&&t.corner!=null&&num(t.target_t));
+  if(!quali&&TG.length){$('sessTargets').hidden=false;const tb=$('sessTargetTable');const hd=h('thead');const hr=h('tr');
+    ['Corner','Target','Your typical','Gain','Brake point','Slowest','Full throttle','Gear'].forEach((x,i)=>hr.append(h('th',i?'n':null,x)));hd.append(hr);tb.append(hd);const body=h('tbody');
+    TG.forEach(t=>{const tr=h('tr',cornerById[t.corner]?'go':null);const td0=h('td');td0.append(h('span','cid',String(t.corner)));const fl=Array.isArray(t.from_laps)?t.from_laps.filter(n=>typeof n==='number'):[];if(fl.length)td0.append(h('span','meta','from laps '+andList(fl.map(String))));tr.append(td0);
+      tr.append(h('td','n',t.target_t.toFixed(2)+' s'),h('td','n',num(t.typical_t)?t.typical_t.toFixed(2)+' s':'–'),h('td','n tg',num(t.gain_s)?'−'+t.gain_s.toFixed(2)+' s':'–'),
+        h('td','n',num(t.brake_on)?techFmt.brake_on(t.brake_on):'–'),h('td','n',num(t.min_mph)?techFmt.min_mph(t.min_mph):'–'),h('td','n',num(t.full_thr)?techFmt.full_thr(t.full_thr):'–'),h('td','n',t.gear!=null?String(t.gear):'–'));
+      if(cornerById[t.corner]){tr.tabIndex=0;tr.title='Show '+t.corner+' in Compare laps';tr.onclick=()=>showCorner(cornerById[t.corner]);tr.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();showCorner(cornerById[t.corner])}}}
+      body.append(tr)});tb.append(body)}
+  // qualifying lap strip
+  const Q=isObj(SR.quali)?SR.quali:null;if(quali&&Q){const qp=$('sessQuali');qp.hidden=false;qp.append(h('h3',null,'Your qualifying run'+(Q.run!=null?' (run '+Q.run+')':'')));
+    const ROLE={'warm-up':'Warm-up',best:'Best',push:'Push',cool:'Cool-down'};const strip=h('div','qstrip');
+    (Array.isArray(Q.laps)?Q.laps:[]).filter(x=>isObj(x)&&num(x.t)).forEach(x=>{const role=ROLE[x.role]?x.role:'cool';const d=h('div','qlap '+role);d.append(h('span','r',ROLE[role]+(x.index!=null?' · '+x.index:'')),h('b',null,fmt(x.t)),h('span','d',role==='best'?'Lap '+x.n:(num(x.delta_t)?sg(x.delta_t,2)+' s':'')));d.title='Lap '+x.n+(x.index!=null?', lap '+x.index+' of the run':'');strip.append(d)});
+    qp.append(strip);const facts=h('div','facts');
+    if(Q.best_index!=null)facts.append(rich(h('span'),['Your best lap came on ',{b:'lap '+Q.best_index},' of the run.']));
+    if(num(Q.second_push_delta_t))facts.append(rich(h('span'),['Your next push lap was ',{b:ab(Q.second_push_delta_t,2)+' s'},' off it.']));
+    else if(Q.best_index!=null)facts.append(h('span',null,'No second push lap within 1% of your best.'));
+    qp.append(facts);
+    const SG=(Array.isArray(Q.sector_gain)?Q.sector_gain:[]).filter(x=>isObj(x)&&num(x.best_lap_t)&&num(x.others_best_t));
+    if(SG.length){const tw=h('div','tablewrap');const t=h('table');const hd=h('thead');const hr=h('tr');['Sector','Best lap','Best on another lap','Difference'].forEach((x,i)=>hr.append(h('th',i?'n':null,x)));hd.append(hr);t.append(hd);const tb=h('tbody');
+      SG.forEach(x=>{const dd=x.best_lap_t-x.others_best_t;const tr=h('tr');tr.append(h('td','mono',String(x.name||'')),h('td','n',x.best_lap_t.toFixed(3)),h('td','n',x.others_best_t.toFixed(3)),h('td','n '+(dd>0.0005?'worse':'better'),dd>0.0005?'+'+dd.toFixed(3)+' s':'quickest'));tb.append(tr)});
+      t.append(tb);tw.append(t);qp.append(h('p','note','Best lap against your best in that sector on any other lap of the run.'),tw)}}
+  $('session').hidden=false;
+  // practice and qualifying: the race-story section becomes a session story
+  $('raceTitle').textContent='Session story';const rl=document.querySelector('#jump a[href="#race"]');if(rl)rl.textContent='Session story'},'session');
+
 // "All the numbers" starts open (it can still be folded away); links into it open it if it was folded
 const DEEP=$('deep');
 document.querySelectorAll('#jump a').forEach(a=>a.addEventListener('click',e=>{const id=a.getAttribute('href').slice(1);const t=$(id);if(t&&DEEP&&DEEP.contains(t)&&!DEEP.open){e.preventDefault();DEEP.open=true;setTimeout(()=>t.scrollIntoView(),50)}}));

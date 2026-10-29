@@ -91,6 +91,14 @@ jobs:
         run: python tests/test_integration.py
       - name: Test name matching
         run: python tests/test_match_aliases.py
+      - name: Test technique detail (2.3)
+        run: python tests/test_23_a.py
+      - name: Test skills, sessions and profile (2.3)
+        run: python tests/test_23_b.py
+      - name: Test review and library pages (2.3)
+        run: python tests/test_23_c.py
+      - name: Test shell (2.3)
+        run: python tests/test_23_d.py
 
       - name: Build with PyInstaller
         run: pyinstaller packaging/debrief.spec --noconfirm --clean

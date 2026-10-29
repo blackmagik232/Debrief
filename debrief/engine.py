@@ -106,6 +106,36 @@ def pedals_missing(raw_or_R) -> bool:
     return any(p in m for p in PEDALS)
 
 
+STEER_FLAT_DEG = 0.5   # a steering trace moving less than this over the lap is flat (zero-filled or dead)
+
+
+def lap_channels(raw_or_R) -> dict:
+    """Which channels this lap really has: the column exists (not in _missing, the 2.2.2 M5 list) AND it
+    isn't flat (np.ptp > 0; steering > 0.5 deg). Works on a parsed raw lap or a resampled R (cached on R).
+    gps = at least 10 non-zero Lat/Lon samples."""
+    x = raw_or_R or {}
+    if isinstance(x.get("_channels"), dict):
+        return x["_channels"]
+    miss = set(x.get("_missing") or [])
+
+    def live(key, col, flat=0.0):
+        a = x.get(key)
+        if col in miss or a is None or len(a) == 0:
+            return False
+        a = np.asarray(a, float)
+        a = a[np.isfinite(a)]
+        return bool(len(a) and float(np.ptp(a)) > flat)
+    # raw steering is radians, R steering is degrees ("T" is only set on R)
+    st_flat = STEER_FLAT_DEG if "T" in x else STEER_FLAT_DEG / 57.2958
+    lat = np.asarray(x.get("lat") if x.get("lat") is not None else [], float)
+    out = {"brake": live("b", "Brake"), "throttle": live("th", "Throttle"),
+           "steering": live("st", "SteeringWheelAngle", st_flat),
+           "gps": bool(np.sum(np.isfinite(lat) & (np.abs(lat) > 1e-6)) > 10)}
+    if "T" in x:
+        x["_channels"] = out
+    return out
+
+
 def coverage(raw: dict) -> float:
     """Share of the lap (0..1) the LapDistPct trace covers, after unwrapping the start/finish line."""
     p = _unwrap(raw["p"])
@@ -268,7 +298,9 @@ def _looped(R):
     T = float(R.get("T") or (tt[-1] + (tt[-1] - tt[-2] if len(tt) > 1 else 0)))
     k = min(len(d), int(600 / STEP))
     out = {}
-    for key in ("v", "b", "th", "gear", "abs"):
+    for key in ("v", "b", "th", "gear", "abs", "st"):
+        if key not in R:
+            continue
         out[key] = np.concatenate([R[key][-k:], R[key], R[key][:k]])
     out["d"] = np.concatenate([d[-k:] - L, d, d[:k] + L])
     out["tt"] = np.concatenate([tt[-k:] - T, tt, tt[:k] + T])
@@ -466,6 +498,12 @@ def _safe_float(v):
     return f if np.isfinite(f) and f > 0 else None
 
 
+def _start_s(v):
+    """Lap start (epoch seconds, 1 dp) or None."""
+    f = _safe_float(v)
+    return round(f, 1) if f is not None else None
+
+
 def _flag(lap, names):
     return any(bool(g(lap, k, default=False)) for k in names)
 
@@ -572,6 +610,9 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
     for x in laps:
         x["R"] = resample(x["raw"], x["t"], L)
     missing = sorted(set().union(*[set(x["raw"].get("_missing") or []) for x in laps]))
+    # 2.3: which channels are really there (present and not flat) on at least half the analysed laps
+    chs = [lap_channels(x["R"]) for x in laps]
+    channels = {k: sum(c[k] for c in chs) * 2 >= len(chs) for k in ("brake", "throttle", "steering", "gps")}
     if missing and log:
         log(f"  Telemetry has no {', '.join(missing)} channel(s): the numbers that need them are left out.")
 
@@ -781,7 +822,7 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
     data = {
         "meta": meta, "L": L, "step": STEP * 2,
         "laps": [{"n": x["n"], "t": x["t"], "clean": x["n"] not in outlier,
-                  "sectors": sectors.get(x["n"])} for x in laps],
+                  "sectors": sectors.get(x["n"]), "start": _start_s(x.get("start"))} for x in laps],
         # clean=False: Garage 61 flagged every lap, so this "best" is for display only (never a PB/goal)
         "best": {"n": best["n"], "t": best["t"], "clean": bool(best["clean"])}, "median": median,
         "std_clean": float(np.std(clean_t, ddof=1)) if clean and len(clean_t) > 2 else None,
@@ -790,7 +831,7 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
         "trend_per10": float(sl * 10), "trend_total": float(sl * span), "trend_line": [float(ic + sl * n) for n in nums], "outliers": outlier,
         "corners": corner_out, "heat": heat,
         "style": {str(k): v for k, v in style.items()}, "style_trend": style_trend,
-        "channels_missing": missing,
+        "channels_missing": missing, "channels": channels,
         "gg_best": gg(best["R"]), "gg_ref": gg(ref_out[0]["R"]) if ref_out else None,
         "map": ([[round(float(a), 6), round(float(b), 6)] for a, b in zip(best["R"]["lat"][::2], best["R"]["lon"][::2])]
                 if np.any(np.abs(best["R"]["lat"]) > 1e-6) else []),
@@ -809,7 +850,7 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
     # v2 extras (stint, technique, consistency, best vs worst, race context); guarded inside
     try:
         analysis_plus.extend(data, laps=laps, clean=clean, best=best, corners=corner_out, per=per,
-                             refs=ref_out, raw_laps=my_laps, log=log, pace=pace, slow_cut=slow_cut)
+                             refs=ref_out, raw_laps=my_laps, log=log, pace=pace, slow_cut=slow_cut, L=L)
     except Exception as e:  # belt and braces: extras must never cost the user the review
         if log:
             log(f"  Skipped the extra analysis ({type(e).__name__}: {e}).")

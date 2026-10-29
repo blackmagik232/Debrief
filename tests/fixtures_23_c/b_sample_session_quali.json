@@ -1,0 +1,103 @@
+{
+ "version": 1,
+ "kind": "qualifying",
+ "params": {
+  "min_run_laps": 3,
+  "min_trend_clean": 5,
+  "min_progress_clean": 3,
+  "min_target_clean": 5,
+  "min_gain_s": 0.03,
+  "refuel_l": 1.0,
+  "break_factor": 1.6,
+  "break_pad_s": 30.0,
+  "push_within": 0.01
+ },
+ "runs": [
+  {
+   "id": 1,
+   "laps": [
+    1,
+    2,
+    3,
+    4,
+    5
+   ],
+   "boundary": "start",
+   "best_t": 75.0,
+   "best_lap": 3,
+   "best_clean": true,
+   "median_t": 75.4,
+   "clean": 5,
+   "trend_s_per_lap": 0.25,
+   "fuel_start_l": null
+  }
+ ],
+ "progress": null,
+ "targets": [],
+ "quali": {
+  "run": 1,
+  "best_lap": 3,
+  "best_index": 3,
+  "push_within": 0.01,
+  "laps": [
+   {
+    "n": 1,
+    "t": 76.2,
+    "index": 1,
+    "delta_t": 1.2,
+    "role": "warm-up",
+    "clean": true
+   },
+   {
+    "n": 2,
+    "t": 75.4,
+    "index": 2,
+    "delta_t": 0.4,
+    "role": "warm-up",
+    "clean": true
+   },
+   {
+    "n": 3,
+    "t": 75.0,
+    "index": 3,
+    "delta_t": 0.0,
+    "role": "best",
+    "clean": true
+   },
+   {
+    "n": 4,
+    "t": 75.3,
+    "index": 4,
+    "delta_t": 0.3,
+    "role": "push",
+    "clean": true
+   },
+   {
+    "n": 5,
+    "t": 77.5,
+    "index": 5,
+    "delta_t": 2.5,
+    "role": "cool",
+    "clean": true
+   }
+  ],
+  "second_push_delta_t": 0.3,
+  "sector_gain": [
+   {
+    "name": "S1",
+    "best_lap_t": 24.75,
+    "others_best_t": 24.65
+   },
+   {
+    "name": "S2",
+    "best_lap_t": 25.5,
+    "others_best_t": 25.602
+   },
+   {
+    "name": "S3",
+    "best_lap_t": 24.75,
+    "others_best_t": 24.849
+   }
+  ]
+ }
+}

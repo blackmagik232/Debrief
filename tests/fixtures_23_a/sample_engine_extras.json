@@ -1,0 +1,24 @@
+{
+ "channels": {
+  "brake": true,
+  "throttle": true,
+  "steering": false,
+  "gps": true
+ },
+ "laps": [
+  {
+   "n": 1,
+   "t": 86.4,
+   "clean": true,
+   "sectors": null,
+   "start": 1790000100.0
+  },
+  {
+   "n": 2,
+   "t": 85.9,
+   "clean": true,
+   "sectors": null,
+   "start": null
+  }
+ ]
+}

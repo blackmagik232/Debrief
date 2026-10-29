@@ -287,6 +287,20 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 .lib .goal .gnums div{display:grid;min-width:0}
 .lib .goal .gnums span{font-size:var(--t-xs);color:var(--muted)}
 .lib .goal .gnums b{font-family:var(--mono);font-size:var(--t-lg);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* 2.3: skills tab */
+.lib .sktiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:var(--s3)}
+@media (max-width:520px){.lib .sktiles{grid-template-columns:repeat(2,minmax(0,1fr))}.lib .sktile .sc{font-size:24px}}
+.lib .sktile{font:inherit;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:var(--s3) var(--s4);display:grid;gap:2px;align-content:start;cursor:pointer;white-space:normal;color:var(--ink)}
+.lib .sktile:hover{background:var(--band)}
+.lib .sktile[aria-pressed="true"]{border-color:var(--a);box-shadow:inset 0 3px 0 var(--a);background:var(--panel)}
+.lib .sktile .nm{font-size:var(--t-sm);color:var(--ink2);font-weight:600}
+.lib .sktile .sc{font-family:var(--mono);font-size:28px;font-weight:600;line-height:1.2;font-variant-numeric:tabular-nums}
+.lib .sktile .sc small{font-size:var(--t-sm);color:var(--muted);font-weight:400;margin-left:2px}
+.lib .sktile .bs{font-size:var(--t-sm);color:var(--muted)}
+.lib .sktile .tr{font-size:var(--t-sm);font-weight:600;color:var(--ink2)}
+.lib .sktile .tr.improving{color:var(--good)} .lib .sktile .tr.slipping{color:var(--bad)}
+.lib .sktile.weakest .nm::after{content:" · most time lost";color:var(--bad);font-weight:400}
+.lib .sktoggles{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center;font-size:var(--t-sm);color:var(--ink2)}
 .lib .gbarbox{height:10px;border-radius:5px;background:var(--band);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
 .lib .gbarbox i{display:block;height:100%;background:var(--a);border-radius:5px}
 .lib .goal.done .gbarbox i{background:var(--good)}
@@ -304,7 +318,7 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
   <p class="lede" id="lede">Your pace and consistency across every race you've reviewed. Pick a track and car below to see how they have moved.</p>
   <div class="stats" id="totals"></div>
 </header>
-<nav class="tabs" aria-label="Library views"><a href="#overview" data-tab="overview">Progress</a><a href="#season" data-tab="season">Season</a><a href="#goals" data-tab="goals">Goals<span id="goalcount"></span></a></nav>
+<nav class="tabs" aria-label="Library views"><a href="#overview" data-tab="overview">Progress</a><a href="#season" data-tab="season">Season</a><a href="#skills" data-tab="skills">Skills</a><a href="#goals" data-tab="goals">Goals<span id="goalcount"></span></a></nav>
 
 <div class="tabpane" id="tab-overview">
 
@@ -364,6 +378,17 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
   <section id="conssec">
     <div class="sechead"><span class="eyebrow">Consistency</span><h2>Consistency score over time</h2></div>
     <div class="panel" id="conspanel"></div>
+  </section>
+</div>
+
+<div class="tabpane" id="tab-skills" hidden>
+  <section id="skills">
+    <div class="progctl">
+      <div class="sechead"><span class="eyebrow">Skills</span><h2>Where in the corner you lose time</h2><p class="lede">Each race compares your typical laps with your own better laps in that race. Lower time lost means your typical laps are closer to your best driving.</p></div>
+      <div class="controls" id="skctl"><label for="skgroup">Cars<select id="skgroup"></select></label></div>
+    </div>
+    <div class="sktiles" id="sktiles" role="group" aria-label="Pick a corner phase"></div>
+    <div class="panel" id="skpanel"></div>
   </section>
 </div>
 
@@ -734,19 +759,67 @@ function renderGoals(){const host=$('goals');host.replaceChildren();
     if(gp.best_path){const a=h('a',null,'Open the race with your best lap');a.href=gp.best_path;a.style.fontSize='13px';p.append(a)}
     host.append(p)})}
 
-// ================================================================ tabs (#overview, #season, #goals)
-const TABS=['overview','season','goals'];let curTab=null;
+// ================================================================ Skills tab (EXTRA.skills = profile.build output)
+const SKP=EX.skills&&typeof EX.skills==='object'&&Array.isArray(EX.skills.groups)?EX.skills:null;
+const SKG=SKP?SKP.groups.filter(g=>g&&g.key!=null&&g.phases&&typeof g.phases==='object'):[];
+const SK_PH=[['braking','Braking'],['entry','Turn-in to apex'],['mid','Apex to throttle'],['exit','Exit'],['overall','Overall']];
+const SK_TW={improving:'Improving',slipping:'Slipping',steady:'Steady'};
+let skSel={group:'all',phase:null,weekly:false,season:false},skRedraw=null;
+// the Monday of an ISO week (YYYY-Www) as YYYY-MM-DD, so weekly medians sit on the race date axis
+function isoWeekDay(w){const m=/^(\d{4})-W(\d\d)$/.exec(String(w||''));if(!m)return null;const y=+m[1],wk=+m[2];const j4=new Date(Date.UTC(y,0,4));const d=j4.getUTCDay()||7;const mon=new Date(j4.getTime()+((wk-1)*7-(d-1))*86400000);return mon.toISOString().slice(0,10)}
+function trendWord(t){if(!t||typeof t!=='object'||t.span_ok===false||!SK_TW[t.direction])return 'Not enough races yet';return SK_TW[t.direction]}
+(function skGroups(){const sel=$('skgroup');if(!SKG.length){$('skctl').hidden=true;return}
+  SKG.forEach(g=>{const o=h('option',null,String(g.label||g.key)+(ok(g.races)?' ('+g.races+')':''));o.value=String(g.key);sel.append(o)});
+  if(SKG.length<2)$('skctl').hidden=true;
+  sel.addEventListener('change',()=>{skSel.group=sel.value;renderSkills()})})();
+function renderSkills(){const tiles=$('sktiles'),pan=$('skpanel');tiles.replaceChildren();pan.replaceChildren();skRedraw=null;
+  const g=SKG.find(x=>String(x.key)===skSel.group)||SKG[0];
+  if(!g||!SK_PH.some(([k])=>g.phases[k]&&Array.isArray(g.phases[k].races)&&g.phases[k].races.length)){tiles.hidden=true;
+    const e=h('div','empty');e.append(h('b',null,'No skill scores yet'),h('span',null,'Skill scores appear after a race with at least 6 clean laps. Older reviews get them when Debrief refreshes the library.'));pan.append(e);return}
+  tiles.hidden=false;skSel.group=String(g.key);$('skgroup').value=skSel.group;
+  const wk=SKP.weakest&&SKP.weakest.group===g.key?SKP.weakest.phase:(SKP.weakest&&g.key==='all'?SKP.weakest.phase:null);
+  if(!skSel.phase||!g.phases[skSel.phase])skSel.phase=(wk&&g.phases[wk])?wk:'overall';
+  SK_PH.forEach(([k,lab])=>{const P=g.phases[k];if(!P)return;const b=h('button','sktile'+(k===wk?' weakest':''));b.type='button';b.setAttribute('aria-pressed',String(k===skSel.phase));
+    const sc=h('span','sc');if(ok(P.latest)){sc.append(document.createTextNode(String(P.latest)),h('small',null,'/100'))}else sc.textContent='–';
+    const tw=trendWord(P.trend);b.append(h('span','nm',lab),sc,h('span','bs','Latest race'+(ok(P.best_score)?' · best '+P.best_score:'')),h('span','tr '+(tw==='Improving'?'improving':tw==='Slipping'?'slipping':''),tw));
+    b.setAttribute('aria-label',lab+': latest score '+(ok(P.latest)?P.latest:'none')+(ok(P.best_score)?', best '+P.best_score:'')+'. '+tw+'.');
+    b.onclick=()=>{skSel.phase=k;renderSkills()};tiles.append(b)});
+  const P=g.phases[skSel.phase]||{};const lab=(SK_PH.find(x=>x[0]===skSel.phase)||[])[1]||'';
+  const races=(Array.isArray(P.races)?P.races:[]).filter(r=>r&&ok(r.loss_pm)&&dparts(r.date));
+  const hd=h('div','phead');const t=h('h3',null,lab+': time lost per race');t.append(h('span','u','‰ of the lap, lower is better'));hd.append(t);
+  const tr=P.trend;const tw=trendWord(tr);
+  hd.append(h('p','note',plural(races.length,'race')+'. '+(tw==='Not enough races yet'?'A trend shows after 4 races over at least two weeks.':tw+(ok(tr.change_pm)?' ('+(tr.change_pm<0?'−':'+')+Math.abs(tr.change_pm).toFixed(1)+' ‰ over '+plural(tr.days,'day')+')':'')+'.')+' ‰ is thousandths of your lap time: 1 ‰ on a 90 s lap is 0.09 s.'));pan.append(hd);
+  const tg=h('div','sktoggles');const mk=(key,txt)=>{const b=h('button',null,txt);b.type='button';b.setAttribute('aria-pressed',String(skSel[key]));b.onclick=()=>{skSel[key]=!skSel[key];renderSkills()};tg.append(b)};
+  const W=(Array.isArray(P.weekly)?P.weekly:[]).filter(w=>w&&ok(w.loss_pm)&&isoWeekDay(w.week));const S=(Array.isArray(P.seasons)?P.seasons:[]).filter(x=>x&&ok(x.loss_pm));
+  if(W.length)mk('weekly','Weekly median');if(S.length)mk('season','Season median');if(tg.children.length){tg.prepend(h('span',null,'Show'));pan.append(tg)}
+  if(races.length<1){pan.append(h('p','note','No races with a score in this group yet.'));return}
+  // one array on the race date axis: race points, plus weekly / season medians when switched on
+  const byDir={};R.forEach(r=>{byDir[r.dir]=r});
+  const arr=races.map(r=>({date:r.date,started_at:'',loss:r.loss_pm,score:r.score,track:r.track_short,car:r.car,path:byDir[r.dir]?byDir[r.dir].path:null}));
+  if(skSel.weekly)W.forEach(w=>arr.push({date:isoWeekDay(w.week),started_at:'',wk:w.loss_pm,n:w.n}));
+  if(skSel.season)S.forEach(x=>{const ds=races.filter(r=>byDir[r.dir]&&seasonOf(byDir[r.dir])===x.name).map(r=>r.date).sort();const d=ds.length?ds[Math.floor(ds.length/2)]:null;if(d)arr.push({date:d,started_at:'',se:x.loss_pm,sname:x.name})});
+  arr.sort((a,b)=>tOf(a)-tOf(b));
+  const series=[{key:'loss',name:'Time lost',color:'var(--a)',fmt:v=>ok(v)?v.toFixed(2)+' ‰':'–',endLabel:v=>v.toFixed(1)+' ‰'}];
+  if(skSel.weekly)series.push({key:'wk',name:'Weekly median',color:'var(--muted)',fmt:v=>ok(v)?v.toFixed(2)+' ‰':'–'});
+  if(skSel.season)series.push({key:'se',name:'Season median',color:'var(--b)',fmt:v=>ok(v)?v.toFixed(2)+' ‰':'–'});
+  const lg=h('div','legend');series.forEach(se=>{const sp=h('span');const i=h('i','k');i.style.borderColor=se.color;sp.append(i,document.createTextNode(se.name));lg.append(sp)});pan.append(lg);
+  const c=h('div','chart');pan.append(c);
+  skRedraw=()=>c.replaceChildren(lineChart(arr,series,{label:lab+' time lost per race',minSpan:1,zero:true,tick:v=>v.toFixed(v<10?1:0),width:c.clientWidth}));skRedraw();
+  pan.append(h('p','note','Scores are worked out again from the saved time lost each time the library refreshes: 100 means your typical laps matched your better laps in that part of the corner. This is not absolute pace and not a comparison with other drivers.'))}
+
+// ================================================================ tabs (#overview, #season, #skills, #goals)
+const TABS=['overview','season','skills','goals'];let curTab=null;
 function showTab(name){if(!TABS.includes(name))name='overview';
   TABS.forEach(t=>{$('tab-'+t).hidden=t!==name});
   document.querySelectorAll('.tabs a').forEach(a=>{if(a.dataset.tab===name)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
   const changed=curTab!==null&&curTab!==name;curTab=name;hideTip();
-  if(name==='season')renderSeason();else if(name==='goals')renderGoals();else if(redraw)redraw();
+  if(name==='season')renderSeason();else if(name==='goals')renderGoals();else if(name==='skills')renderSkills();else if(redraw)redraw();
   if(changed)window.scrollTo(0,0)}
 addEventListener('hashchange',()=>showTab(location.hash.slice(1)));
 showTab(location.hash.slice(1));
 
 addEventListener('scroll',hideTip,{passive:true});
-let rt=0,lastW=innerWidth;addEventListener('resize',()=>{if(innerWidth===lastW)return;lastW=innerWidth;clearTimeout(rt);rt=setTimeout(()=>{if(curTab==='season'&&seasonRedraw)seasonRedraw();else if(redraw)redraw()},120)});
+let rt=0,lastW=innerWidth;addEventListener('resize',()=>{if(innerWidth===lastW)return;lastW=innerWidth;clearTimeout(rt);rt=setTimeout(()=>{if(curTab==='season'&&seasonRedraw)seasonRedraw();else if(curTab==='skills'&&skRedraw)skRedraw();else if(redraw)redraw()},120)});
 })();
 
 </script>

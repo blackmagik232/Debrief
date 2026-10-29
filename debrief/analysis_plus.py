@@ -436,10 +436,11 @@ def _and(a):
 
 
 # ---------------------------------------------------------------- entry point
-KEYS = ("combo_ids", "irating", "season", "conditions", "stint", "technique", "consistency", "best_worst")
+KEYS = ("combo_ids", "irating", "season", "conditions", "stint", "technique", "consistency", "best_worst",
+        "technique_plus")
 
 
-def extend(data, *, laps, clean, best, corners, per, refs, raw_laps, log=None, pace=None, slow_cut=1.0):
+def extend(data, *, laps, clean, best, corners, per, refs, raw_laps, log=None, pace=None, slow_cut=1.0, L=None):
     """Add the v2 keys to `data` in place and return it.
 
     laps     engine lap dicts in lap order (n, t, clean, lap, R ...), after out-laps were dropped
@@ -451,6 +452,7 @@ def extend(data, *, laps, clean, best, corners, per, refs, raw_laps, log=None, p
     per      corner id -> lap number -> corner_metrics()
     refs     engine ref_out list (comparison laps with per-corner metrics)
     raw_laps Garage 61 lap objects for the race (for iRating, season, conditions)
+    L        lap length in metres (for technique_plus, 2.3)
     """
     data["version"] = VERSION
     for k in KEYS:
@@ -474,4 +476,7 @@ def extend(data, *, laps, clean, best, corners, per, refs, raw_laps, log=None, p
     if pace is not None and len(pace) > 2:   # spread of every Garage 61-clean lap (mistake laps included)
         data["std_clean"] = float(np.std([x["t"] for x in pace], ddof=1))
     data["best_worst"] = guard("best vs worst", lambda: best_worst(clean, corners, per, data.get("segments")))
+    from . import technique_plus   # imported here: technique_plus imports engine, which imports this module
+    data["technique_plus"] = guard("technique detail",
+                                   lambda: technique_plus.build(laps, clean, corners, per, best, L or data.get("L")))
     return data

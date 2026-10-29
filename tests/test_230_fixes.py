@@ -12,7 +12,6 @@ import json
 import math
 import random
 import shutil
-import signal
 import sys
 import tempfile
 import time
@@ -47,20 +46,20 @@ def _engine_race(n=16):
 
 
 class _Alarm:
-    """Fail (instead of hanging the suite) if the block runs longer than s seconds."""
+    """Fail (instead of hanging the suite) if the block runs longer than s seconds. Works on Windows too
+    (no SIGALRM there): a watchdog thread dumps the stacks and exits the test process with an error."""
 
     def __init__(self, s):
         self.s = s
 
     def __enter__(self):
-        def boom(*a):
-            raise TimeoutError(f"took more than {self.s} s")
-        self.old = signal.signal(signal.SIGALRM, boom)
-        signal.alarm(self.s)
+        import faulthandler
+        faulthandler.dump_traceback_later(self.s, exit=True)
+        return self
 
     def __exit__(self, *a):
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, self.old)
+        import faulthandler
+        faulthandler.cancel_dump_traceback_later()
 
 
 # ================================================================ H1: profile trend needs significance

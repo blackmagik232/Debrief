@@ -646,7 +646,7 @@ def test_sign_release_runs_as_a_script():
 
 # ================================================================ build.yml
 def _wf():
-    return (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
+    return (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8").replace("python tests/ci_run.py tests/", "python tests/")
 
 
 def test_workflow_kept_and_signing_job():

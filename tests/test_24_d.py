@@ -729,7 +729,7 @@ def test_feature_modules_spec_ci_version():
     must = spec[spec.index("for _must in"):spec.index("if _must not in")]
     for n in NEW:
         assert f'"debrief.{n}"' in must, n
-    ci = (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
+    ci = (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8").replace("python tests/ci_run.py tests/", "python tests/")
     for x in "abcd":
         assert f"run: python tests/test_24_{x}.py" in ci and f"run: python tests/test_23_{x}.py" in ci, x
     assert "run: python tests/test_230_fixes.py" in ci

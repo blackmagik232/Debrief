@@ -626,7 +626,7 @@ def test_r2_date_near_year_9999_does_not_crash():
 
 # ================================================================ CI
 def test_ci_runs_this_file():
-    yml = (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
+    yml = (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8").replace("python tests/ci_run.py tests/", "python tests/")
     assert "python tests/test_24_fixes.py" in yml
     assert yml.index("tests/test_24_d.py") < yml.index("tests/test_24_fixes.py") < yml.index("Build with PyInstaller")
 

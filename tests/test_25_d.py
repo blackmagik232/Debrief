@@ -532,9 +532,10 @@ def test_post_needs_a_saved_webhook_and_reports_discord_errors():
         nonce = js(stage()[2])["nonce"]
         assert js(stage()[2])["target"]["saved"] is False
         code, _, b = post("api/discord-post", {"nonce": nonce, "content": "x"})
-        assert code == 400 and "webhook in Settings" in js(b)["error"] and rec.count("discord.post") == 0
+        assert code == 400 and "webhook in Settings" in js(b)["error"] and rec.count("discord.post") == 0, \
+            (code, b, rec.names(), ST.read_text(encoding="utf-8"))
         code, _, b = post("api/discord-check", {})
-        assert code == 400 and rec.count("discord.check") == 0
+        assert code == 400 and rec.count("discord.check") == 0, (code, b, rec.names())
     write_settings(f'discord_webhook = "{HOOK}"\n')
     with fakes() as rec:
         nonce = js(stage()[2])["nonce"]

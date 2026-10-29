@@ -173,6 +173,10 @@ tfoot td{border-top:1px solid var(--axis);border-bottom:none;font-weight:600}
 .fix .fbody{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:var(--s2) var(--s4);align-items:start;margin-top:var(--s2)}
 @media (max-width:760px){.fix .fbody{grid-template-columns:minmax(0,1fr)}}
 .fix .fbody>*{min-width:0}
+/* 2.5: who to learn from (D.learn_from, a teammate's best lap through this corner) */
+.fix .learn{font-size:var(--t-sm);color:var(--ink2);margin-top:6px;padding:6px 10px;border-radius:4px;background:var(--band)}
+.fix .learn b{color:var(--ink);font-weight:600}
+.fix .learn a{margin-left:6px;white-space:nowrap}
 .fnums{width:100%;border-collapse:collapse;font-size:var(--t-sm)}
 .fnums th{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;text-align:right;padding:3px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
 .fnums th:first-child,.fnums td:first-child{text-align:left;padding-left:0}
@@ -1375,6 +1379,18 @@ async function drawShareCard(){const W=1200,H=630;const cv=document.createElemen
   return cv}
 $('btnShare').onclick=async()=>{const b=$('btnShare');b.disabled=true;try{const cv=await drawShareCard();const name=(fileBase+'_'+trackShort+'_'+carShort).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'_share.png';
   await new Promise((res,rej)=>cv.toBlob(bl=>{if(!bl)return rej(new Error('no image'));saveBlob(name,bl);res()},'image/png'));toast('Saved '+name+' to your downloads')}catch(e){toast('Couldn’t make the share card in this window. Try opening the review in your browser.')}finally{b.disabled=false}};
+// ---------- 2.5: share responder. The Debrief window (the parent frame) asks for the share card so it can show
+// it in its own preview before posting. This page only answers its parent, only this message type, and never
+// sends anything anywhere else itself (CSP connect-src 'none'); the reply holds just the card and its default text.
+function shareText(){const drv=String(M.driver||'').trim();let s=(drv?drv+' · ':'')+trackShort+' · '+carShort+': best '+fmt(D.best.t);
+  if(RES){const fp=Number(RES.finish_pos),spn=Number(RES.start_pos);if(isFinite(fp)&&fp>0){s+=', P'+fp;if(isFinite(spn)&&spn>0)s+=' from P'+spn}}
+  if(PB&&PB.is_pb===true)s+=', new PB';return s.slice(0,2000)}
+window.addEventListener('message',e=>{if(window.parent===window||e.source!==window.parent)return;const m=e.data;
+  if(!isObj(m)||m.type!=='debrief:share-request')return;const id=m.id;if(!((typeof id==='string'&&id.length<=128)||num(id)))return;
+  const fail=()=>window.parent.postMessage({type:'debrief:share-card',id,error:'Couldn’t make the share card in this window.'},'*');
+  drawShareCard().then(cv=>{let png=null;try{png=cv.toDataURL('image/png')}catch(_){png=null}
+    if(typeof png!=='string'||!png.startsWith('data:image/png;base64,'))return fail();
+    window.parent.postMessage({type:'debrief:share-card',id,png,text:shareText()},'*')}).catch(fail)});
 
 // ---------- 2.2.2: what to work on (fix first / bad habits / good habits) and the race story
 // Fix-first cards: each corner's numbers side by side (best lap, typical lap, comparison), the difference that
@@ -1389,6 +1405,17 @@ function fixData(f){const c=cornerById[f.corner]||{};const t=(TECH||[]).find(x=>
   const refT=n2(tm.ref_t)!=null?tm.ref_t:(num(c.p25_t)&&num(c.ref_gap)&&mainRef?c.p25_t-c.ref_gap:null);
   const times={best:n2(tm.best_t)!=null?tm.best_t:n2(c.best_t),typical:n2(tm.typical_t)!=null?tm.typical_t:n2(c.median_t),p25:n2(tm.p25_t)!=null?tm.p25_t:n2(c.p25_t),ref:refT};
   const refName=t.ref_name||(mainRef&&mainRef.name)||'Comparison';return {c,nums,times,refName}}
+// 2.5: who to learn from. D.learn_from rows come from the team page's corner kings, whose corner ids can differ
+// from this review's, so a row is matched to a Fix-first corner by apex distance (max(60 m, 2% of the lap),
+// nearest wins); a row without an apex falls back to the corner id. Text is set with textContent only.
+const LF=Array.isArray(D.learn_from)?D.learn_from.filter(x=>isObj(x)&&((typeof x.text==='string'&&x.text)||isObj(x.teammate))):[];
+function learnFor(cid){if(!LF.length)return null;const c=cornerById[cid];const tol=Math.max(60,0.02*L);
+  if(c&&num(c.apex_m)){let best=null,bd=Infinity;LF.forEach(x=>{if(!num(x.apex_m))return;const d=Math.abs(x.apex_m-c.apex_m);if(d<=tol&&d<bd){bd=d;best=x}});if(best)return best}
+  return LF.find(x=>!num(x.apex_m)&&String(x.corner)===String(cid))||null}
+function learnLine(lf,cid){const p=h('p','learn');const tm=isObj(lf.teammate)?lf.teammate:{};
+  const txt=typeof lf.text==='string'&&lf.text?lf.text:firstName(tm.name||'A teammate')+'’s best lap was '+(num(lf.gap_s)?lf.gap_s.toFixed(2)+' s ':'')+'quicker than yours through '+cid+'. Both are best laps, so this compares your best driving, not your typical lap.';
+  p.append(h('b',null,'Who to learn from: '),document.createTextNode(txt));
+  const a=h('a',null,'Team page');a.href='../../team/index.html';p.append(a);return p}
 function fixCard(f,i){const d=h('div','fix');d.append(h('span','rk',String(i+1)));const mid=h('div');const {c,nums,times,refName}=fixData(f);
   const gear=f.gear!=null?f.gear:(nums.typical&&nums.typical.gear);
   mid.append(h('h3',null,String(f.corner)+(gear!=null?' · gear '+gear:'')));
@@ -1396,6 +1423,7 @@ function fixCard(f,i){const d=h('div','fix');d.append(h('span','rk',String(i+1))
   const tips=Array.isArray(f.tips)?f.tips:((isObj(D.insights)&&isObj(D.insights.tips)&&D.insights.tips[f.corner])||[]);
   if(tips.length){const ul=h('ul');tips.forEach(t=>{t=String(t);ul.append(h('li',null,t.charAt(0).toUpperCase()+t.slice(1)+'.'))});mid.append(ul)}
   else mid.append(h('p','why','No single measure stands out between your good and typical laps here: watch it in Compare laps.'));
+  const lf=learnFor(f.corner);if(lf)mid.append(learnLine(lf,f.corner));
   const body=h('div','fbody');
   // times strip
   const tl=h('div','ftimes');const tadd=(k,v)=>{if(v==null)return;const sp=h('span');sp.append(document.createTextNode(k+' '),h('b',null,v.toFixed(2)+' s'));tl.append(sp)};

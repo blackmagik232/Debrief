@@ -1,0 +1,11 @@
+{"version": 1, "team": {"slug": "midfield-menace", "name": "Midfield Menace"}, "me": {"name": "Swazi Williams", "key": "me"},
+ "generated_at": "2026-10-28T19:00:00+00:00",
+ "combos": [{"track": "Charlotte Motor Speedway (Roval 2019)", "car": "Ford Mustang GT4", "track_id": 468, "car_id": 190,
+             "board": [{"key": "me", "name": "Swazi Williams", "t": 85.71, "is_me": true},
+                       {"key": "jordan-x", "name": "Jordan X", "t": 85.2, "is_me": false}],
+             "kings": {"length": 3600, "corners": [{"id": "C4", "apex_m": 1485.0, "start_m": 1380.0, "end_m": 1600.0,
+                        "times": {"me": 9.42, "jordan-x": 9.24},
+                        "metrics": {"me": {"brake_before_apex_m": 92, "min_mph": 61, "exit_mph": 80, "full_thr_after_apex_m": 140, "gear": 3},
+                                    "jordan-x": {"brake_before_apex_m": 81, "min_mph": 64, "exit_mph": 82, "full_thr_after_apex_m": 118, "gear": 3}},
+                        "king": "jordan-x", "your_gap": 0.18, "margin": 0.18}]}}],
+ "h2h": [], "requests": 0, "notes": []}

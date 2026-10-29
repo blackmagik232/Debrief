@@ -42,3 +42,9 @@ team_slug = "midfield-menace"
 # when share_my_cards is true.
 # team_cards_folder = "D:\\OneDrive\\Menace"
 # share_my_cards = false
+
+# Team Discord (2.5): a webhook for your team's channel, so you can post a review's share card there.
+# Paste it in Settings > Discord instead of here (Debrief checks it). Keep it private, like the token:
+# anyone with the address can post to that channel. Debrief only posts when you press Post and confirm.
+# In Discord: channel settings > Integrations > Webhooks > Copy Webhook URL.
+# discord_webhook = ""

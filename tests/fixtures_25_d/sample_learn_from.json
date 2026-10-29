@@ -1,0 +1,6 @@
+[{"corner": "C4", "apex_m": 1485.0, "teammate": {"key": "jordan-x", "name": "Jordan X"},
+  "gap_s": 0.18, "your_t": 9.42, "their_t": 9.24, "basis": "best laps",
+  "similar_pace": true, "lap_gap_pct": 0.6,
+  "how": {"brake_before_apex_m": [92, 81], "min_mph": [61, 64], "full_thr_after_apex_m": [140, 118], "gear": [3, 3]},
+  "text": "Jordan's best lap was 0.18 s quicker than yours through C4. On that lap they braked about 10 m later and carried 3 mph more through the slowest point. Both are best laps, so this compares your best driving, not your typical lap.",
+  "alt": {"key": "sam-y", "name": "Sam Y", "gap_s": 0.31}}]

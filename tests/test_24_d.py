@@ -284,7 +284,7 @@ def test_none_result_leaves_key_out():
 
 
 def test_layout_is_240_and_refresh_adds_keys():
-    assert report.LAYOUT == "2.4.0"
+    assert tuple(int(x) for x in report.LAYOUT.split(".")) >= (2, 4, 0)   # 2.4.0 or later (2.5 bumped it)
     lib = Path(tempfile.mkdtemp(dir=TMP))
     for i in range(2):
         out = lib / "reviews" / f"2026-10-0{i + 1}_r{i}"
@@ -293,7 +293,7 @@ def test_layout_is_240_and_refresh_adds_keys():
     (lib / ".layout").write_text("2.3.0", encoding="utf-8")
     with modules():
         n = report.refresh_all(lib)
-        assert n == 2 and (lib / ".layout").read_text(encoding="utf-8").strip() == "2.4.0"
+        assert n == 2 and (lib / ".layout").read_text(encoding="utf-8").strip() == report.LAYOUT
         assert report.refresh_all(lib) == 0                       # once per layout
     for p in (lib / "reviews").glob("*/review.json"):
         d = json.loads(p.read_text(encoding="utf-8"))
@@ -733,7 +733,7 @@ def test_feature_modules_spec_ci_version():
     for x in "abcd":
         assert f"run: python tests/test_24_{x}.py" in ci and f"run: python tests/test_23_{x}.py" in ci, x
     assert "run: python tests/test_230_fixes.py" in ci
-    assert debrief.__version__ == "2.4.0"
+    assert tuple(int(x) for x in debrief.__version__.split(".")) >= (2, 4, 0)
     for k in ("pos_after_lap1", "pit_stops", "penalties", "positions_lap1"):
         assert k in library._RESULT_KEYS
 
@@ -761,7 +761,7 @@ def test_selftest_passes_with_new_modules():
         app.HERE = old
     res = json.loads((home / "selftest.json").read_text(encoding="utf-8"))
     assert rc == 0 and res["ok"], res
-    assert res["version"] == "2.4.0"
+    assert res["version"] == debrief.__version__
 
 
 def test_window_security_model_unchanged():

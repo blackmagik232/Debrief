@@ -1,0 +1,10 @@
+{
+  "_about": "Release signing as shipped in 2.5 (25-B). Asset names are unchanged from 2.2.2. TEST key only: never the release key.",
+  "assets": ["Debrief-Setup-<v>.exe", "Debrief-Setup-<v>.exe.sha256", "Debrief-Setup-<v>.exe.sig"],
+  "sig_file": "one line: 128 hex characters (64-byte Ed25519 signature); the updater also accepts 88-character base64",
+  "message_v1": "Debrief release v1\n9.9.9\nDebrief-Setup-9.9.9.exe\n34688bee8e61ef871db7c9a1c2aa1d62fabb53eb208ebe2d89a78727d1739ce3\n",
+  "test_public_key": "1fcd064ec0818dd48b0d7f7988e5535003a0eb023d8be153609a0626a4de4971",
+  "test_signature": "9aaa4e3b142949ad4245150c3149a16a12f545ff29f5cf3dfd4cd6133229a333d2c51f36c0dd86ab5382acc276e11c28974dfdf90d624107abc2bf7db5757501",
+  "updater_constants": {"RELEASE_PUBKEYS": [], "RELEASE_PUBLIC_KEY": null},
+  "feature_modules": ["discord", "ed25519"]
+}

@@ -2,7 +2,8 @@
 #  * every push / pull request / manual run: tests, PyInstaller build, smoke tests, installer artifact
 #  * a new version on main, or a tag like v2.0.0: the separate "release" job signs the installer (when the
 #    DEBRIEF_SIGNING_KEY secret is set) and publishes a GitHub Release with
-#    Debrief-Setup-<version>.exe, .exe.sha256 and .exe.sig attached.
+#    Debrief-Setup-<version>.exe, .exe.sha256 and .exe.sig attached. The owner's setup guide for the key is
+#    packaging/SIGNING.md.
 #
 # Security: the build job can only read the repository (it runs third-party build tools). Only the release
 # job can write, and it only downloads the built installer, signs it and publishes it. Give the "release"
@@ -111,6 +112,14 @@ jobs:
         run: python tests/test_24_d.py
       - name: Test 2.4.0 review fixes
         run: python tests/test_24_fixes.py
+      - name: Test leaderboards and who to learn from (2.5)
+        run: python tests/test_25_a.py
+      - name: Test Discord and release signing (2.5)
+        run: python tests/test_25_b.py
+      - name: Test team and review pages (2.5)
+        run: python tests/test_25_c.py
+      - name: Test shell (2.5)
+        run: python tests/test_25_d.py
 
       - name: Build with PyInstaller
         run: pyinstaller packaging/debrief.spec --noconfirm --clean
@@ -242,26 +251,50 @@ jobs:
           name: Debrief-Setup-${{ needs.windows.outputs.version }}
           path: dist-installer
 
+      # Python for the signing script only. `cryptography` is installed here, in the release job, and
+      # nowhere else: Debrief.exe never contains it (the app verifies with debrief/ed25519.py).
+      - name: Set up Python 3.12 (signing)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the signing library (pinned)
+        run: |
+          python -m pip install --only-binary ":all:" "cryptography==46.0.3"
+
       - name: Checksum and signature
         env:
           DEBRIEF_SIGNING_KEY: ${{ secrets.DEBRIEF_SIGNING_KEY }}
         run: |
           set -euo pipefail
+          # the key is only ever in this step's environment: it is never echoed, never passed on a command
+          # line and never written to a file (sign_release.py reads it from the env var and prints only
+          # the public key). GitHub also masks the secret in logs.
           v="${{ needs.windows.outputs.version }}"
           exe="dist-installer/Debrief-Setup-$v.exe"
           test -f "$exe"
-          # checksum file for the in-app updater (it refuses to install without a matching SHA-256)
+          # checksum file for the in-app updater (it refuses to install without a matching SHA-256 while
+          # no release key is set)
           (cd dist-installer && sha256sum "Debrief-Setup-$v.exe" | tr -d '\n' > "Debrief-Setup-$v.exe.sha256")
-          key_set=$(python3 -c "import sys; sys.path.insert(0, '.'); from debrief import updater; print('yes' if updater.RELEASE_PUBLIC_KEY else 'no')")
+          key_set=$(python -c "import sys; sys.path.insert(0, '.'); from debrief import updater; print('yes' if updater.release_keys() else 'no')")
           if [ -n "${DEBRIEF_SIGNING_KEY:-}" ]; then
-            python3 packaging/sign_release.py "$exe"
+            # writes .sig and .sha256, then checks the signature with Debrief's own verifier before exiting 0;
+            # refuses if the key isn't one of RELEASE_PUBKEYS (once any is set)
+            python packaging/sign_release.py sign "$exe" --version "$v"
           elif [ "$key_set" = "yes" ]; then
-            echo "::error::debrief/updater.py has RELEASE_PUBLIC_KEY set but the DEBRIEF_SIGNING_KEY secret is missing: installed copies would refuse this release."
+            echo "::error::debrief/updater.py has RELEASE_PUBKEYS set but the DEBRIEF_SIGNING_KEY secret is missing: installed copies would refuse this release."
             exit 1
           else
-            echo "DEBRIEF_SIGNING_KEY isn't set: publishing without a signature (the app accepts that only while RELEASE_PUBLIC_KEY is None)."
+            echo "DEBRIEF_SIGNING_KEY isn't set: publishing without a signature (the app accepts that only while RELEASE_PUBKEYS is empty)."
           fi
           ls -l dist-installer
+
+      # Nothing above writes the key to disk. If a later change ever needs a key file, it must go in
+      # $RUNNER_TEMP with this prefix, and this step removes it whatever happened.
+      - name: Remove any signing key file
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP"/debrief-signing-* || true
 
       - name: Publish release
         env:

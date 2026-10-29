@@ -4,6 +4,9 @@ The token is written to settings.toml only. It is never returned to the page, lo
 or kept anywhere else: callers only ever get a short hint (the last 4 characters).
 The optional iRacing client id/secret are treated the same way, but with no hint at all:
 the page only learns whether each one is saved.
+The Discord webhook (2.5) is a secret too: its address carries a token. The page gets only
+discord_saved and discord_hint ("…1234", the end of the webhook id, never the token), and only
+discord_webhook() below hands the address to the server's Discord endpoints.
 """
 from __future__ import annotations
 
@@ -20,6 +23,11 @@ _TOKEN_OK = re.compile(r"^[\x21-\x7e]{8,4096}$")  # printable ASCII, no spaces
 _SLUG_OK = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
 _CRED_OK = re.compile(r"^[\x21-\x7e]{1,512}$")
 MAX_SALUTATION = 20
+# discord.WEBHOOK_RE (25-B, §3.1). Used only when the discord module can't be loaded, so a broken module never
+# lets a bad address in; discord.valid() is the real check.
+_WEBHOOK_RE = re.compile(r"^https://(?:(?:ptb|canary)\.)?discord(?:app)?\.com/api/webhooks/(\d{17,20})/([A-Za-z0-9_-]{60,100})$")
+BAD_WEBHOOK = ("That isn't a Discord webhook address. In Discord: channel settings > Integrations > Webhooks > "
+               "Copy Webhook URL.")
 MAX_FOLDER = 400
 
 
@@ -106,6 +114,53 @@ def cached_author_name() -> str | None:
     return name if _NAME_OK.match(name) else str(a.get("slug"))[:40]
 
 
+def _discord():
+    try:
+        from .. import discord
+        return discord
+    except Exception:  # noqa: BLE001  (a missing or broken module: the local rule below)
+        return None
+
+
+def webhook_valid(url) -> bool:
+    if not isinstance(url, str) or len(url) > 300:
+        return False
+    d = _discord()
+    if d is not None and callable(getattr(d, "valid", None)):
+        try:
+            return bool(d.valid(url))
+        except Exception:  # noqa: BLE001
+            return False
+    return bool(_WEBHOOK_RE.match(url)) and not any(c.isspace() for c in url)
+
+
+def webhook_hint(url: str) -> str:
+    """"…/1234": the last 4 digits of the webhook id (discord.hint). Never any part of the token."""
+    d = _discord()
+    if d is not None and callable(getattr(d, "hint", None)):
+        try:
+            h = d.hint(url)
+            if isinstance(h, str) and h:
+                m = _WEBHOOK_RE.match(url or "")
+                if not m or m.group(2)[-4:] not in h:   # never pass on anything that could be the token
+                    return h[:12]
+        except Exception:  # noqa: BLE001
+            pass
+    m = _WEBHOOK_RE.match(url or "")
+    return "…/" + m.group(1)[-4:] if m else "…"
+
+
+def _saved_webhook(raw: dict) -> str | None:
+    v = str(raw.get("discord_webhook") or "").strip()
+    return v if v and webhook_valid(v) else None
+
+
+def discord_webhook() -> str | None:
+    """The saved webhook address, for the server's Discord endpoints only. Never send it to the page or a log."""
+    raw, _err = _raw()
+    return _saved_webhook(raw)
+
+
 def public_view() -> dict:
     """Everything the Settings screen may show. Never includes the token itself."""
     from .. import __version__
@@ -135,7 +190,14 @@ def public_view() -> dict:
         "team_cards_folder": str(raw.get("team_cards_folder") or "").strip()[:MAX_FOLDER] or None,
         "team_cards_folder_ok": False,
         "share_my_cards": raw.get("share_my_cards") is True,
+        # 2.5 Discord webhook: saved or not, and the end of the webhook id. Never the address or its token.
+        "discord_saved": False,
+        "discord_hint": None,
     }
+    hook = _saved_webhook(raw)
+    if hook:
+        out["discord_saved"] = True
+        out["discord_hint"] = webhook_hint(hook)
     out["share_as"] = None
     if out["team_cards_folder"]:
         try:
@@ -325,6 +387,19 @@ def save(updates: dict) -> dict:
         if not isinstance(v, bool):
             raise ValueError("Sharing your track cards must be on or off.")
         clean["share_my_cards"] = v
+    if "discord_webhook" in updates:
+        v = updates["discord_webhook"]
+        bad = getattr(_discord(), "MSG_BAD_URL", None)
+        bad = bad if isinstance(bad, str) and bad else BAD_WEBHOOK
+        if v is not None and not isinstance(v, str):
+            raise ValueError(bad)
+        v = (v or "").strip()
+        if v:   # an empty box means "keep what's saved" (Remove is clear_discord)
+            if not webhook_valid(v):
+                raise ValueError(bad)
+            clean["discord_webhook"] = v
+    if updates.get("clear_discord") is True:
+        clean["discord_webhook"] = ""
     if updates.get("clear_iracing") is True:
         clean["iracing_client_id"] = ""
         clean["iracing_client_secret"] = ""

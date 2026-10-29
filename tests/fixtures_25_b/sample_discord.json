@@ -1,0 +1,19 @@
+{
+  "_about": "Shapes debrief/discord.py returns and raises (25-B), for 25-D's endpoints and tests. The webhook below is fake (well-formed, never real).",
+  "webhook_fake": "https://discord.com/api/webhooks/123456789012341234/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdEfGhIjKlMnOpQrStUvWxYz01",
+  "valid": true,
+  "hint": "…/1234",
+  "check": {"ok": true, "name": "Debrief", "channel_id": "987654321098765432"},
+  "post": {"ok": true, "id": "1300000000000000001"},
+  "log_line": "Posted to Discord (webhook …1234)",
+  "errors": {
+    "bad_url": "That isn't a Discord webhook address. In Discord: channel settings > Integrations > Webhooks > Copy Webhook URL.",
+    "gone_401_403_404": "That Discord webhook no longer works. Paste a new one in Settings.",
+    "too_big_413": "The picture is too big for Discord.",
+    "wait_429": "Discord asked Debrief to wait. Try again in a minute.",
+    "network": "Couldn't reach Discord.",
+    "not_png": "The share card isn't a PNG picture, so it wasn't posted.",
+    "too_long": "The message is too long for Discord (2000 characters at most)."
+  },
+  "limits": {"max_png_bytes": 4194304, "max_side_px": 2400, "max_content_chars": 2000}
+}

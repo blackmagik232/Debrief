@@ -6,8 +6,12 @@
 
 Debrief asks GitHub for the newest release at most once a day (one request, nothing about you is
 sent), and only when "check_updates" is on in settings.toml (it is by default). The installer is only
-run after its SHA-256 matches the checksum file published with the release and, once RELEASE_PUBLIC_KEY
-is set, after its Ed25519 signature (Debrief-Setup-x.y.z.exe.sig) checks out against that key.
+run after its SHA-256 matches the checksum file published with the release and, once a key is set in
+RELEASE_PUBKEYS, after its Ed25519 signature (Debrief-Setup-x.y.z.exe.sig) checks out against one of
+those keys. The signature covers the version, the installer's name and its SHA-256 (signed_message).
+
+Requests: 1 GitHub request per daily check; an update download is the installer plus the .sha256 and
+(once a key is set) +1 GitHub request for the .sig.
 """
 from __future__ import annotations
 
@@ -20,21 +24,30 @@ import tempfile
 import time
 from pathlib import Path
 
+from . import ed25519
+
 REPO = "blackmagik232/Debrief"
 API = f"https://api.github.com/repos/{REPO}/releases/latest"
 CHECK_EVERY_S = 24 * 3600
 MAX_INSTALLER = 200 * 1024 * 1024
 MAX_SIG = 4096
 
-# Ed25519 public key (64 hex characters) that signs every release.
-# None = signing isn't set up yet: releases are accepted on their SHA-256 alone (the 2.2.1 behaviour).
+# Ed25519 public keys (64 hex characters each) that may sign a release. A tuple, so a key can be
+# rotated: add the new key as the 2nd item, release once signed with the old key, then drop the old one.
+# Empty = signing isn't set up yet: releases are accepted on their SHA-256 alone (the 2.2.1 behaviour).
 # As soon as a key is set here, an installer with a missing or bad .sig file is NEVER installed.
-# Make a key pair with:  python packaging/sign_release.py --keygen
-# then paste the PUBLIC key here and store the SECRET key as the GitHub secret DEBRIEF_SIGNING_KEY
-# (in the "release" environment). Never commit the secret key.
-RELEASE_PUBLIC_KEY: str | None = None
-SIG_CONTEXT = "Debrief release signature v1"
+# Make a key pair with:  python packaging/sign_release.py keygen --out debrief-release-key.txt
+# then paste the PUBLIC key here, e.g. RELEASE_PUBKEYS = ("<64 hex>",)  (mind the comma), and store the
+# SECRET key as the GitHub secret DEBRIEF_SIGNING_KEY (in the "release" environment). See
+# packaging/SIGNING.md. Never commit the secret key.
+RELEASE_PUBKEYS: tuple = ()
+RELEASE_PUBLIC_KEY: str | None = None    # 2.2.2 name for a single key; still honoured (added to the tuple)
+SIG_CONTEXT = "Debrief release v1"
 TEMP_PREFIX = "debrief-update-"
+NOT_SIGNED = ("This update isn't signed by Debrief's release key, so it wasn't installed. "
+              "Download it from the release page if you trust it.")
+BAD_SIGNATURE = ("This update's signature doesn't match Debrief's release key, so it wasn't installed. "
+                 "Download it from the release page if you trust it.")
 
 
 class UpdateError(Exception):
@@ -143,110 +156,92 @@ def check(force: bool = False, now: float | None = None) -> dict:
     return out
 
 
-# ---------------------------------------------------------------- Ed25519 signature check
-# A small pure-Python verifier (RFC 8032, section 5.1.7), so the installed app needs no extra
+# ---------------------------------------------------------------- release signatures
+# The verifier is pure Python (debrief/ed25519.py, RFC 8032), so the installed app needs no extra
 # packages (the build leaves out `cryptography`). It only checks signatures; it never holds a secret.
-_P = 2 ** 255 - 19
-_L = 2 ** 252 + 27742317777372353535851937790883648493
-_D = -121665 * pow(121666, _P - 2, _P) % _P
-_SQRT_M1 = pow(2, (_P - 1) // 4, _P)
+ed25519_verify = ed25519.verify          # 2.2.2 name, kept as an alias
+_P, _L, _G = ed25519.P, ed25519.L, ed25519.G
+_pt_add, _pt_mul, _pt_equal, _pt_decode = ed25519.point_add, ed25519.point_mul, ed25519.point_equal, ed25519.point_decode
+
+_NAME_RE = r"Debrief-Setup-([\d.]+)\.exe"
 
 
-def _recover_x(y: int, sign: int):
-    if y >= _P:
-        return None
-    x2 = (y * y - 1) * pow(_D * y * y + 1, _P - 2, _P) % _P
-    if x2 == 0:
-        return None if sign else 0
-    x = pow(x2, (_P + 3) // 8, _P)
-    if (x * x - x2) % _P:
-        x = x * _SQRT_M1 % _P
-    if (x * x - x2) % _P:
-        return None
-    if (x & 1) != sign:
-        x = _P - x
-    return x
+def release_keys() -> list:
+    """The public keys (32 bytes each) a release may be signed with: RELEASE_PUBKEYS plus the 2.2.2-style
+    RELEASE_PUBLIC_KEY. [] = signing isn't set up (SHA-256 only). A mistyped key never means "don't
+    check": it refuses every update instead."""
+    raw = RELEASE_PUBKEYS
+    raw = [raw] if isinstance(raw, (str, bytes)) else list(raw or ())   # ("abc") without the comma is a str
+    if RELEASE_PUBLIC_KEY is not None:
+        raw.append(RELEASE_PUBLIC_KEY)
+    out = []
+    for k in raw:
+        if k is None:
+            continue
+        k = k.decode("ascii", "replace") if isinstance(k, bytes) else str(k)
+        k = k.strip()
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", k):
+            raise UpdateError("This copy of Debrief has a broken update key, so it can't check updates are "
+                              "genuine. Download the newest version from the release page instead.")
+        b = bytes.fromhex(k)
+        if b not in out:
+            out.append(b)
+    return out
 
 
-def _pt_add(a, b):
-    x1, y1, z1, t1 = a
-    x2, y2, z2, t2 = b
-    A = (y1 - x1) * (y2 - x2) % _P
-    B = (y1 + x1) * (y2 + x2) % _P
-    C = 2 * t1 * t2 * _D % _P
-    D = 2 * z1 * z2 % _P
-    E, F, G, H = B - A, D - C, D + C, B + A
-    return (E * F % _P, G * H % _P, F * G % _P, E * H % _P)
+def version_from_name(installer_name: str) -> str:
+    m = re.fullmatch(_NAME_RE, str(installer_name or ""))
+    if not m:
+        raise ValueError(f"{installer_name!r} isn't named like a Debrief installer (Debrief-Setup-x.y.z.exe)")
+    return m.group(1)
 
 
-def _pt_mul(k: int, pt):
-    q = (0, 1, 1, 0)
-    while k:
-        if k & 1:
-            q = _pt_add(q, pt)
-        pt = _pt_add(pt, pt)
-        k >>= 1
-    return q
+def signed_message(version: str, installer_name: str, sha256_hex: str | None = None) -> bytes:
+    """What a release signature covers (v1): the version (so an older release can't be served as a
+    newer one), the installer's file name and its SHA-256:
 
+        b"Debrief release v1\n" + version + b"\n" + installer_name + b"\n" + sha256_hex_lowercase + b"\n"
 
-def _pt_equal(a, b) -> bool:
-    return (a[0] * b[2] - b[0] * a[2]) % _P == 0 and (a[1] * b[2] - b[1] * a[2]) % _P == 0
-
-
-def _pt_decode(s: bytes):
-    if len(s) != 32:
-        return None
-    y = int.from_bytes(s, "little")
-    sign = y >> 255
-    y &= (1 << 255) - 1
-    x = _recover_x(y, sign)
-    return None if x is None else (x, y, 1, x * y % _P)
-
-
-_GY = 4 * pow(5, _P - 2, _P) % _P
-_G = (_recover_x(_GY, 0), _GY, 1, _recover_x(_GY, 0) * _GY % _P)
-
-
-def ed25519_verify(public_key: bytes, message: bytes, signature: bytes) -> bool:
-    """True only for a valid Ed25519 signature of message by public_key (RFC 8032)."""
-    try:
-        public_key, signature, message = bytes(public_key), bytes(signature), bytes(message)
-    except TypeError:
-        return False
-    if len(public_key) != 32 or len(signature) != 64:
-        return False
-    A = _pt_decode(public_key)
-    R = _pt_decode(signature[:32])
-    if A is None or R is None:
-        return False
-    S = int.from_bytes(signature[32:], "little")
-    if S >= _L:  # non-canonical S: reject (prevents malleability)
-        return False
-    h = int.from_bytes(hashlib.sha512(signature[:32] + public_key + message).digest(), "little") % _L
-    return _pt_equal(_pt_mul(S, _G), _pt_add(R, _pt_mul(h, A)))
-
-
-def signed_message(installer_name: str, sha256_hex: str) -> bytes:
-    """What a release signature covers: the installer's file name (which carries the version, so an
-    old signed installer can't be passed off as a newer one) and its SHA-256."""
-    return f"{SIG_CONTEXT}\n{installer_name}\n{sha256_hex.lower()}\n".encode("ascii")
+    The 2.2.2 two-argument form signed_message(installer_name, sha256_hex) is still accepted; it takes
+    the version from the file name, which the updater requires to match the release anyway."""
+    if sha256_hex is None:
+        installer_name, sha256_hex = version, installer_name
+        version = version_from_name(installer_name)
+    parts = [str(version), str(installer_name), str(sha256_hex).lower()]
+    if not re.fullmatch(r"[0-9a-f]{64}", parts[2]):
+        raise ValueError("sha256_hex must be 64 hex characters")
+    for x in parts[:2]:
+        if not x or not re.fullmatch(r"[0-9A-Za-z.+_-]+", x):
+            raise ValueError(f"{x!r} can't go in a signed message")
+    return (SIG_CONTEXT + "\n" + "\n".join(parts) + "\n").encode("ascii")
 
 
 def _parse_sig(text: str):
-    m = re.search(r"\b([0-9a-fA-F]{128})\b", text or "")
-    return bytes.fromhex(m.group(1)) if m else None
+    """The 64-byte signature from a .sig file: 128 hex characters (what sign_release.py writes) or one
+    line of base64 (88 characters). None if it's neither."""
+    text = text or ""
+    m = re.search(r"\b([0-9a-fA-F]{128})\b", text)
+    if m:
+        return bytes.fromhex(m.group(1))
+    m = re.match(r"\s*([A-Za-z0-9+/]{86}==)(?:\s|$)", text)
+    if m:
+        import base64
+        try:
+            b = base64.b64decode(m.group(1), validate=True)
+        except ValueError:
+            return None
+        return b if len(b) == 64 else None
+    return None
 
 
-def _public_key():
-    k = RELEASE_PUBLIC_KEY
-    if k is None:
-        return None
-    k = str(k).strip()
-    if not re.fullmatch(r"[0-9a-fA-F]{64}", k):
-        # a mistyped key must never mean "don't check": refuse every update instead
-        raise UpdateError("This copy of Debrief has a broken update key, so it can't check updates are "
-                          "genuine. Download the newest version from the release page instead.")
-    return bytes.fromhex(k)
+def verify_release(version: str, installer_name: str, sha256_hex: str, sig: bytes, keys=None) -> bool:
+    """True if sig is a valid v1 signature of this release by ANY of the keys (default: release_keys())."""
+    keys = release_keys() if keys is None else keys
+    try:
+        msg = signed_message(version, installer_name, sha256_hex)
+    except ValueError:
+        return False
+    return any(ed25519.verify(k, msg, sig) for k in keys)
 
 
 def _fetch_small(url, what: str, limit: int) -> str | None:
@@ -266,7 +261,12 @@ def _fetch_small(url, what: str, limit: int) -> str | None:
 # ---------------------------------------------------------------- download, install, clean up
 def download(info: dict, progress=None, dest_dir=None) -> Path:
     """Download the installer, check its SHA-256 and (once a release key is set) its signature.
-    Returns its path."""
+    Returns its path.
+
+    With a key in RELEASE_PUBKEYS: 1. fetch the .sig (missing or unreadable -> refused), 2. download the
+    installer and hash it, 3. build signed_message(info["latest"], name, sha), 4. verify it against any
+    key, 5. only then compare with the published SHA-256. Any failure deletes the file.
+    Without a key (today's shipped state): the published SHA-256 must be there and match."""
     import requests
     url = info.get("installer")
     if not url or not str(url).startswith("https://github.com/" + REPO + "/releases/download/"):
@@ -274,23 +274,24 @@ def download(info: dict, progress=None, dest_dir=None) -> Path:
     name = Path(str(info.get("installer_name") or "Debrief-Setup.exe")).name
     if not re.fullmatch(r"Debrief-Setup-[\d.]+\.exe", name):
         raise UpdateError("This release has no installer to download.")
-    key = _public_key()
+    keys = release_keys()
+    latest = str(info.get("latest") or "")
     sig = None
-    if key is not None:
-        latest = str(info.get("latest") or "")
+    if keys:
+        # 1. the .sig first (<= 1 KB, same release-download prefix check)
         if name != f"Debrief-Setup-{latest}.exe":
             raise UpdateError("This release's installer doesn't match its version, so it wasn't installed.")
         sig = _parse_sig(_fetch_small(info.get("sig_url"), "signature", MAX_SIG) or "")
         if sig is None:
-            raise UpdateError("This release isn't signed, so Debrief won't install it automatically. "
-                              "Download it from the release page instead.")
+            raise UpdateError(NOT_SIGNED)
     want = str(info.get("sha256") or "").lower() or None
     if want and not re.fullmatch(r"[0-9a-f]{64}", want):
         want = None
     if not want and info.get("sha256_url"):
         m = re.search(r"\b([0-9a-fA-F]{64})\b", _fetch_small(info.get("sha256_url"), "checksum", MAX_SIG) or "")
         want = m.group(1).lower() if m else None
-    if not want:
+    if not want and not keys:
+        # no key yet: the published SHA-256 is the only check, so it must be there
         raise UpdateError("This release has no checksum, so Debrief won't install it automatically. "
                           "Download it from the release page instead.")
     try:
@@ -343,13 +344,14 @@ def download(info: dict, progress=None, dest_dir=None) -> Path:
         drop()
         raise UpdateError("The download didn't finish. Try again.")
     digest = h.hexdigest().lower()
-    if digest != want:
+    # 3-4. the signature over (version, name, the sha we computed), against any release key
+    if keys and not verify_release(latest, name, digest, sig, keys):
+        drop()
+        raise UpdateError(BAD_SIGNATURE)
+    # 5. then the published checksum (with a key set it's an integrity extra; without one it's the check)
+    if want and digest != want:
         drop()
         raise UpdateError("The download didn't match its checksum, so it wasn't installed. Try again.")
-    if key is not None and not ed25519_verify(key, signed_message(name, digest), sig):
-        drop()
-        raise UpdateError("The download's signature didn't check out, so it wasn't installed. "
-                          "Download Debrief from the release page instead.")
     return out
 
 

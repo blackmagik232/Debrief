@@ -7,6 +7,7 @@ Usage:
     python -m debrief library         rebuild the library home page
     python -m debrief prep --track ID --car ID   build a track prep page for one track and car
     python -m debrief team            update the Midfield Menace team hub
+    python -m debrief weekly          update this week's team leaderboards for your series
     python -m debrief sync            download your Garage 61 history (races and practice)
 """
 from __future__ import annotations
@@ -609,6 +610,9 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     except Exception:  # noqa: BLE001
         import traceback
         say("  Couldn't read the saved race result:\n" + traceback.format_exc())
+    learn = learn_from_for(cfg["library_folder"], data)
+    if learn:
+        data["learn_from"] = learn
     page = report.write(out_dir, data)
     try:
         library.rebuild(cfg["library_folder"])
@@ -620,6 +624,21 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     if open_after:
         webbrowser.open(page.as_uri())
     return page
+
+
+def learn_from_for(library_folder, data) -> list:
+    """2.5 "who to learn from" for a new review: team.learn_from_saved reads <library>/team/team.json and
+    matches its track and car (no requests). [] when there's no team data for this combo, when the team
+    module is older, or when anything goes wrong (never worth losing the review over)."""
+    try:
+        from . import team
+        fn = getattr(team, "learn_from_saved", None)
+        out = fn(library_folder, data) if callable(fn) else None
+    except Exception:  # noqa: BLE001
+        import traceback
+        say("  Couldn't work out who to learn from:\n" + traceback.format_exc())
+        return []
+    return [x for x in out if isinstance(x, dict)] if isinstance(out, list) else []
 
 
 def optional_module(name: str):
@@ -726,6 +745,32 @@ def cmd_team(cfg, progress=None, open_after=False) -> Path:
     return Path(page)
 
 
+def cmd_weekly(cfg, progress=None, series_ids=None, force_old=False, open_after=False) -> dict:
+    """This week's team leaderboards for your series (2.5), then the team page rebuilt from team.json and the
+    weekly snapshots. Requests (leaderboards.py): 1 per series, 2 if a "best" lap needs a second look, at
+    most 8 series; 0 when a snapshot is under 10 minutes old or the week is final."""
+    lb = optional_module("leaderboards")
+    if lb is None:
+        raise SystemExit("Weekly leaderboards aren't available in this copy of Debrief (details are in debrief.log).")
+    from . import schedule, series, team
+    sched = schedule.load_current()
+    if not sched:
+        raise SystemExit("Load the season schedule first (Prepare > Season schedule), then pick your series.")
+    lib = cfg["library_folder"]
+    mine = series.load(lib)
+    step, log = _job_logger(progress)
+    step("Connecting to Garage 61...", 0.03)
+    api = make_api(cfg)
+    summary = lb.refresh(api, cfg, sched, mine, series_ids=series_ids, force_old=bool(force_old), log=log)
+    step("Saving the team page...", 0.96)
+    page = team.render_saved(lib)
+    step(f"Done. Team page saved to {page}", 1.0)
+    say(f"Garage 61 requests this run: {api.requests_made}")
+    if open_after:
+        webbrowser.open(Path(page).as_uri())
+    return {"page": Path(page), "requests": api.requests_made, "summary": summary if isinstance(summary, dict) else {}}
+
+
 def cmd_sync(cfg, progress=None, should_stop=None, open_after=False) -> dict:
     """Bring the local copy of your Garage 61 history up to date (see sync.py). The first run
     downloads everything; after that only new laps. Stops cleanly when should_stop() is True."""
@@ -782,6 +827,8 @@ def main(argv=None):
     sub.add_parser("sync", help="download your Garage 61 history (first time: everything; then new laps)")
     tp = sub.add_parser("team", help="update the team hub")
     tp.add_argument("--no-open", action="store_true")
+    wp = sub.add_parser("weekly", help="update this week's team leaderboards for your series")
+    wp.add_argument("--no-open", action="store_true")
     a = ap.parse_args(argv)
     cfg = load_settings()
     global LOG_FILE
@@ -796,6 +843,8 @@ def main(argv=None):
             cmd_prep(cfg, a.track, a.car, open_after=not a.no_open)
         elif a.cmd == "team":
             cmd_team(cfg, open_after=not a.no_open)
+        elif a.cmd == "weekly":
+            cmd_weekly(cfg, open_after=not a.no_open)
         elif a.cmd == "sync":
             cmd_sync(cfg)
         else:

@@ -257,3 +257,8 @@ fieldset.radios legend{font-family:var(--mono);font-size:11px;letter-spacing:.08
 .incrow{display:grid;grid-template-columns:90px minmax(0,1fr) 90px auto;gap:8px;align-items:center}
 .incrow .btn{padding:5px 10px}
 @media (max-width:760px){.grid3{grid-template-columns:repeat(2,minmax(0,1fr))}.incrow{grid-template-columns:70px minmax(0,1fr) 70px auto}}
+/* 2.5 Post to Discord preview */
+dialog .dlgbody{display:grid;gap:14px}
+.row.between{justify-content:space-between}
+.shareimg{display:block;width:100%;height:auto;max-height:46vh;object-fit:contain;border:1px solid var(--grid);border-radius:4px;background:var(--band)}
+#discordCount.over{color:var(--lose)}

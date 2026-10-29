@@ -1,0 +1,60 @@
+[
+ {
+  "corner": "C4",
+  "apex_m": 1485.0,
+  "team_corner": "C5",
+  "teammate": {
+   "key": "jordan-x",
+   "name": "Jordan X"
+  },
+  "gap_s": 0.18,
+  "your_t": 9.42,
+  "their_t": 9.24,
+  "basis": "best laps",
+  "similar_pace": true,
+  "lap_gap_pct": 0.47,
+  "how": {
+   "brake_before_apex_m": [
+    92.0,
+    81.0
+   ],
+   "min_mph": [
+    61.0,
+    64.0
+   ],
+   "full_thr_after_apex_m": [
+    140.0,
+    118.0
+   ]
+  },
+  "text": "Jordan's best lap was 0.18 s quicker than yours through C4. On that lap they braked about 10 m later, carried about 3 mph more through the slowest point and were back on full throttle about 20 m sooner after the apex. Both are best laps: this compares your best driving, not your typical lap.",
+  "alt": {
+   "key": "sam-y",
+   "name": "Sam Y",
+   "gap_s": 0.11
+  }
+ },
+ {
+  "corner": "C1",
+  "apex_m": 402.5,
+  "team_corner": "C2",
+  "teammate": {
+   "key": "sam-y",
+   "name": "Sam Y"
+  },
+  "gap_s": 0.09,
+  "your_t": 7.88,
+  "their_t": 7.79,
+  "basis": "best laps",
+  "similar_pace": true,
+  "lap_gap_pct": 0.42,
+  "how": {
+   "gear": [
+    4,
+    3
+   ]
+  },
+  "text": "Sam's best lap was 0.09 s quicker than yours through C1. On that lap they were in 3rd gear at the slowest point (you were in 4th). Both are best laps: this compares your best driving, not your typical lap.",
+  "alt": null
+ }
+]

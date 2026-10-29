@@ -25,7 +25,9 @@ FEATURE_MODULES = ("engine", "report", "library", "prep", "goals", "results", "t
                    # 2.3 "Know your driving"
                    "technique_plus", "skills", "session_review", "profile",
                    # 2.4 "Race smarter"
-                   "strategy", "racecraft", "xlsx", "intel")
+                   "strategy", "racecraft", "xlsx", "intel",
+                   # 2.5 "Team and sharing"
+                   "leaderboards", "discord", "ed25519")
 
 
 _REFRESH_DONE: set = set()

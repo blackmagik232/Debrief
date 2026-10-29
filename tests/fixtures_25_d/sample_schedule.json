@@ -1,0 +1,5 @@
+{"season": "2026 Season 4", "series": [
+  {"id": "gt4-falken", "name": "GT4 Falken Tyre Challenge", "cars": ["Ford Mustang GT4"], "classes": ["GT4"], "multiclass": false,
+   "weeks": [{"week": 7, "start": "2026-10-27", "track": "Charlotte Motor Speedway (Roval 2019)", "race_time": null, "length": "40 mins", "conditions": null}]},
+  {"id": "global-mazda-mx-5-fanatec-cup", "name": "Global Mazda MX-5 Fanatec Cup", "cars": ["Global Mazda MX-5 Cup"], "classes": ["MX-5"], "multiclass": false,
+   "weeks": [{"week": 7, "start": "2026-10-27", "track": "Okayama International Circuit - Full", "race_time": null, "length": "15 laps", "conditions": null}]}]}

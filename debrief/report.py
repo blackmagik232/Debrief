@@ -15,7 +15,7 @@ def _embed(obj) -> str:
             .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
 
 
-LAYOUT = "2.4.0"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
+LAYOUT = "2.5.0"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
 
 # Review-dict extras worked out on every write (so saved reviews get them when refresh_all re-renders them),
 # in this order, before insights.build (which reads them): (key, module, function). Each is guarded: a module

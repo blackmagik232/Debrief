@@ -240,6 +240,33 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 .team .rec b{font-family:var(--mono);font-size:var(--t-xl);font-weight:600;font-variant-numeric:tabular-nums}
 .team .rec b.better{color:var(--good)} .team .rec b.worse{color:var(--bad)}
 .team .empty{display:grid;gap:8px;justify-items:start}
+/* 2.5: this week's boards, season head-to-heads, who to learn from (design tokens only) */
+.team .wkhead{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s4);align-items:end;justify-content:space-between}
+.team .wkhead select{min-width:0;max-width:100%}
+.team #wkList .panel,.team #seasonList .panel,.team #learnList .panel{grid-template-columns:minmax(0,1fr)}
+.team #weekly,.team #season,.team #learn{overflow-wrap:anywhere}
+.team .wkhead>*{min-width:0}
+.team .clsrow{display:flex;flex-wrap:wrap;gap:var(--s2)}
+.team .clsrow button{white-space:normal;max-width:100%;text-align:left;font-family:var(--mono);font-size:var(--t-xs);letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:2px 10px}
+.team .cls{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--axis);color:var(--ink2);border-radius:3px;padding:0 5px;margin-left:6px;vertical-align:1px;white-space:nowrap}
+.team .state{font-family:var(--mono);font-size:var(--t-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.team .state.live{color:var(--good)}
+.team td .car{display:block;font-size:12px;color:var(--muted)}
+.team .sline{font-size:var(--t-md);color:var(--ink)}
+.team .sline b{font-family:var(--mono);font-weight:600}
+.team .sparkwrap{display:grid;gap:4px}
+.team .sparkwrap svg{display:block;max-width:100%;height:auto}
+.team .lrows{display:grid;gap:0}
+.team .lrow{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:2px var(--s3);padding:var(--s3) 0;border-top:1px solid var(--line);align-items:start}
+.team .lrow:first-child{border-top:none;padding-top:0}
+.team .lrow .cid{font-family:var(--display);font-size:26px;font-weight:700;line-height:1}
+.team .lrow .who{font-weight:600}
+.team .lrow .gapv{font-family:var(--mono);font-weight:600;white-space:nowrap;text-align:right}
+.team .lrow .facts,.team .lrow .ltext,.team .lrow .alt{grid-column:2 / -1}
+.team .lrow .ltext{font-size:var(--t-sm);color:var(--ink2)}
+.team .lrow .alt{font-size:var(--t-sm);color:var(--muted)}
+.team .fact{font-family:var(--mono);font-size:var(--t-xs);background:var(--band);border-radius:999px;padding:1px 8px;max-width:100%}
+.team table.wk{min-width:600px}
 </style>
 <div class="wrap team">
 <header>
@@ -251,8 +278,20 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 </header>
 
 <nav class="jump" id="jump" aria-label="Sections">
-  <a href="#boards">Leaderboards</a><a href="#kings">Corner kings</a><a href="#h2h">Head-to-heads</a>
+  <a href="#weekly" hidden>This week</a><a href="#season" hidden>Season</a><a href="#boards">Leaderboards</a><a href="#kings">Corner kings</a><a href="#learn" hidden>Who to learn from</a><a href="#h2h">Head-to-heads</a>
 </nav>
+
+<section id="weekly" hidden>
+  <div class="sechead"><span class="eyebrow" id="wkSeason">This week</span><h2>This week's team leaderboards</h2>
+    <p class="lede">Each driver's best clean lap in your series this week, from Garage 61. A week shows as final two days after it ends (uploads can be late).</p></div>
+  <div class="boards" id="wkList"></div>
+</section>
+
+<section id="season" hidden>
+  <div class="sechead"><span class="eyebrow" id="ssSeason">Season</span><h2>Season head-to-heads</h2>
+    <p class="lede">Your best against each teammate's in the weeks you both set a time. Gap % is your best divided by theirs, minus 1: a plus number means they were quicker that week.</p></div>
+  <div class="h2h" id="seasonList"></div>
+</section>
 
 <section id="boards">
   <div class="sechead"><span class="eyebrow">Leaderboards</span><h2>Best lap per track and car</h2>
@@ -267,6 +306,13 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
   </div>
   <p class="lede" id="kingLede"></p>
   <div id="kingBody" style="display:grid;gap:var(--s4)"></div>
+</section>
+
+<section id="learn" hidden>
+  <div class="sechead"><span class="eyebrow">Who to learn from</span><h2>Corners where a teammate was quicker</h2>
+    <p class="lede">For each corner, the teammate whose best lap was quickest there compared with yours, and what their lap did differently.</p></div>
+  <div style="display:grid;gap:var(--s4)" id="learnList"></div>
+  <p class="note" id="learnBasis">Both are best laps, so this compares your best driving, not your typical lap. One lap each, so treat small gaps as a hint.</p>
 </section>
 
 <section id="h2h">
@@ -315,8 +361,10 @@ function keyTips(host,label,items){if(!host||!items.length)return;host.setAttrib
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 if(!D||!Array.isArray(D.combos)){
-  ['boards','kings','h2h','jump'].forEach(id=>$(id).hidden=true);
-  $('lede').textContent='No team data yet. In Debrief, open Team and click Refresh.';return}
+  // 2.5: a team.json with only the weekly boards still shows them (the 2.5 script below draws those)
+  ['boards','kings','h2h'].forEach(id=>{$(id).hidden=true;const a=document.querySelector('#jump a[href="#'+id+'"]');if(a)a.hidden=true});
+  const wk=!!(D&&D.weekly&&typeof D.weekly==='object'&&!Array.isArray(D.weekly));if(!wk)$('jump').hidden=true;
+  $('lede').textContent=wk?'This week\'s team leaderboards for your series.':'No team data yet. In Debrief, open Team and click Refresh.';return}
 
 const combos=D.combos.filter(c=>c&&Array.isArray(c.board));
 const meKey=(D.me&&D.me.key)||'me';
@@ -449,6 +497,149 @@ notes.forEach(n=>$('notes').append(h('li',null,n)));
   map.forEach((a,id)=>{const s=$(id);if(s)io.observe(s)})})();
 addEventListener('scroll',hideTip,{passive:true});
 let rt=0,lastW=innerWidth;addEventListener('resize',()=>{if(innerWidth===lastW)return;lastW=innerWidth;clearTimeout(rt);rt=setTimeout(()=>{if(redraw)redraw()},120)});
+})();
+</script>
+
+<script>
+// ---------- 2.5: this week's boards, season head-to-heads and who to learn from (team.json keys `weekly`
+// and combos[].learn). Every section hides itself when its key is missing (team.json from 2.4 and earlier),
+// and every name or note from the data is set with textContent only: data text never goes through HTML parsing.
+(function(){
+'use strict';
+const D=window.TEAM;if(!D||typeof D!=='object')return;
+const $=id=>document.getElementById(id);const NS='http://www.w3.org/2000/svg';
+function el(t,a,x){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(x!=null)e.textContent=x;return e}
+function h(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+const isObj=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
+const num=v=>typeof v==='number'&&isFinite(v);
+const str=v=>v==null?'':String(v);
+const fmt=s=>{if(!num(s))return '–';const m=Math.floor(s/60);return m+':'+(s-m*60).toFixed(3).padStart(6,'0')};
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const ymd=s=>/^(\d{4})-(\d\d)-(\d\d)/.exec(str(s));
+const fmtDate=s=>{const m=ymd(s);return m?MON[+m[2]-1]+' '+(+m[3]):(s?str(s):'–')};
+const first=n=>str(n).trim().split(/\s+/)[0]||str(n);
+const meKey=(isObj(D.me)&&D.me.key)||'me';
+const isMe=r=>r.is_me===true||r.key===meKey;
+function safe(name,fn,secId){try{fn()}catch(e){
+  try{console.error('Debrief: the "'+name+'" part of the team page could not be drawn:',e)}catch(_){}
+  const s=secId&&$(secId);if(s){s.hidden=false;s.append(h('p','empty','This part couldn’t be drawn from this team data ('+name+').'))}}}
+function show(id,on){$(id).hidden=!on;const a=document.querySelector('#jump a[href="#'+id+'"]');if(a)a.hidden=!on;if(on)$('jump').hidden=false}
+function empty(host,b,t){const e=h('div','empty');e.append(h('b',null,b),h('span',null,t));host.append(e)}
+function shortTrack(t){t=str(t).replace(/\s+/g,' ').trim();if(!t)return 'Track';
+  const m=/^(.*?)\s*\(([^()]+)\)\s*$/.exec(t)||/^(.*?)\s[-–]\s(.*)$/.exec(t);const base=(m?m[1]:t).trim();const v=(m?m[2]:'').replace(/\b(19|20)\d\d\b/g,'').replace(/\s+/g,' ').trim();
+  if(/roval/i.test(v))return 'Roval';
+  const generic=/^(grand prix|gp|full|full course|road|road course|oval|international|national|club|classic|default|combined)$/i;
+  let s=base.replace(/^(circuit|autodromo|autódromo|circuito)\s+(de\s+|of\s+the\s+|di\s+|do\s+|da\s+|del\s+)?/i,'').replace(/\s+(international\s+)?(motor\s+speedway|speedway|raceway|race\s*course|circuit|motorsport\s+park|motorsports\s+park|international\s+raceway|international)$/i,'').trim();
+  if(s.length<3)s=base;return v&&!generic.test(v)?s+' '+v:s}
+const pct=(v,d=2)=>num(v)?(v<0?'−':'+')+Math.abs(v).toFixed(d)+' %':'–';
+const secs=(v,d=3)=>num(v)?'+'+Math.abs(v).toFixed(d)+' s':'–';
+
+const W=isObj(D.weekly)?D.weekly:null;
+const seriesName={};if(W&&Array.isArray(W.series))W.series.forEach(s=>{if(isObj(s)&&s.id!=null)seriesName[str(s.id)]=str(s.name||s.id)});
+
+// ---------- this week: one board per series, with a week picker
+function weekLabel(w){return 'Week '+w.week+' · '+shortTrack(w.track)+' · '+(w.final?'final':'in progress')}
+function drawBoard(box,sr,w){box.replaceChildren();
+  const rows=(Array.isArray(w.board)?w.board:[]).filter(r=>isObj(r)&&num(r.t));
+  const info=h('p','note');const bits=[];if(w.track)bits.push(str(w.track));
+  if(ymd(w.start))bits.push(fmtDate(w.start)+(ymd(w.end)?' – '+fmtDate(w.end):''));
+  info.append(document.createTextNode(bits.join(' · ')+(bits.length?' · ':'')));
+  info.append(h('span','state'+(w.final?'':' live'),w.final?'Final':'In progress'));box.append(info);
+  if(w.note)box.append(h('p','note',str(w.note)));
+  if(!rows.length){empty(box,'No team laps this week yet.','They appear here once you or a teammate set a clean lap in this series this week.');return}
+  const classes=[...new Set(rows.map(r=>str(r.class)).filter(Boolean))];
+  const multi=classes.length>1||((w.multiclass===true||sr.multiclass===true)&&classes.length>0);
+  // gaps come from the snapshot (within the class on multi-class boards); worked out here only if missing
+  const lead={};rows.forEach(r=>{const g=multi?str(r.class):'*';if(!(g in lead)||r.t<lead[g])lead[g]=r.t});
+  const gapOf=r=>num(r.gap)?r.gap:r.t-lead[multi?str(r.class):'*'];
+  const gpOf=r=>num(r.gap_pct)?r.gap_pct:(r.t/lead[multi?str(r.class):'*']-1)*100;
+  let cur=null;const tw=h('div','tablewrap');
+  if(classes.length>1){const cr=h('div','clsrow');cr.setAttribute('role','group');cr.setAttribute('aria-label','Show one class');
+    [null,...classes].forEach(c=>{const b=h('button',null,c==null?'All classes':c);b.type='button';b.setAttribute('aria-pressed',String(c===cur));
+      b.onclick=()=>{cur=c;cr.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));render()};cr.append(b)});box.append(cr)}
+  box.append(tw);
+  if(multi)box.append(h('p','note','Multi-class: gaps are to the quickest driver in the same class.'));
+  const render=()=>{const list=rows.filter(r=>cur==null||str(r.class)===cur).slice()
+      .sort((a,b)=>cur!=null&&num(a.class_pos)&&num(b.class_pos)?a.class_pos-b.class_pos:(num(a.pos)&&num(b.pos)?a.pos-b.pos:a.t-b.t));
+    const tb=h('table','wk');const hd=h('thead');const hr=h('tr');
+    [['Pos'],['Driver'],['Best lap','n'],[multi?'Gap in class':'Gap','n'],['Gap %','n'],[multi?'Car / class':'Car'],['Date']].forEach(([t,c])=>hr.append(h('th',c||null,t)));
+    hd.append(hr);tb.append(hd);const body=h('tbody');
+    list.forEach((r,i)=>{const tr=h('tr',isMe(r)?'me':null);
+      const pos=cur!=null&&num(r.class_pos)?r.class_pos:(num(r.pos)?r.pos:i+1);
+      const nm=h('td');nm.append(document.createTextNode(str(r.name||r.key||'Driver')));if(isMe(r))nm.append(h('span','you','You'));
+      const g=gapOf(r),gp=gpOf(r);const lead1=num(g)&&g<0.0005;
+      const car=h('td');car.append(document.createTextNode(str(r.car||'')));
+      if(multi&&r.class!=null&&r.class!==''){car.append(h('span','cls',str(r.class)+(num(r.class_pos)?' P'+r.class_pos:'')))}
+      tr.append(h('td','pos',String(pos)),nm,h('td','n',fmt(r.t)),h('td','n',lead1?(multi?'Class leader':'Leader'):secs(g)),h('td','n',lead1?'–':pct(gp)),car,h('td','mono',fmtDate(r.date)));
+      body.append(tr)});
+    tb.append(body);tw.replaceChildren(tb)};
+  render()}
+safe('this week',()=>{if(!W)return;show('weekly',true);
+  if(W.season)$('wkSeason').textContent='This week · '+str(W.season);
+  const host=$('wkList');const series=(Array.isArray(W.series)?W.series:[]).filter(s=>isObj(s));
+  if(!series.length){empty(host,'No weekly leaderboards yet.','In Debrief, open Team and click Refresh this week.');return}
+  series.forEach(sr=>{const p=h('div','panel');const hd=h('div','wkhead');hd.append(h('h3',null,str(sr.name||sr.id||'Series')));p.append(hd);
+    const weeks=(Array.isArray(sr.weeks)?sr.weeks:[]).filter(w=>isObj(w)&&num(w.week)).sort((a,b)=>b.week-a.week);
+    if(!weeks.length){p.append(h('p','note','No weeks saved for this series yet.'));host.append(p);return}
+    const box=h('div');box.style.display='grid';box.style.gap='var(--s3)';box.style.gridTemplateColumns='minmax(0,1fr)';
+    if(weeks.length>1){const sel=h('select');sel.setAttribute('aria-label','Week for '+str(sr.name||'this series'));
+      weeks.forEach((w,i)=>{const o=h('option',null,weekLabel(w));o.value=String(i);sel.append(o)});
+      sel.addEventListener('change',()=>drawBoard(box,sr,weeks[+sel.value]));hd.append(sel)}
+    else hd.append(h('span','note',weekLabel(weeks[0])));
+    p.append(box);drawBoard(box,sr,weeks[0]);host.append(p)})},'weekly');
+
+// ---------- season head-to-heads (gap_pct = your best / their best - 1, x100: plus = they were quicker)
+function spark(p,s){const wk=(Array.isArray(s.weeks)?s.weeks:[]).filter(w=>isObj(w)&&num(w.week)&&num(w.gap_pct)).sort((a,b)=>a.week-b.week);
+  if(!wk.length)return null;const Wd=320,Hd=84,ml=8,mr=8,mt=10,mb=20;
+  const lo=wk[0].week,hi=wk[wk.length-1].week;const mx=Math.max(0.5,...wk.map(w=>Math.abs(w.gap_pct)));
+  const X=v=>hi===lo?Wd/2:ml+(v-lo)/(hi-lo)*(Wd-ml-mr);const Y=v=>mt+(1-(v+mx)/(2*mx))*(Hd-mt-mb);
+  const nm=first(p.name);
+  const svg=el('svg',{viewBox:'0 0 '+Wd+' '+Hd,width:Wd,height:Hd,role:'img','aria-label':'Gap % to '+str(p.name)+' week by week'+((s.name||seriesName[str(s.id)])?' in '+str(s.name||seriesName[str(s.id)]):'')+(s.class?' ('+str(s.class)+')':'')+': '+wk.map(w=>'week '+w.week+' '+pct(w.gap_pct)).join(', ')});
+  svg.append(el('line',{x1:ml,x2:Wd-mr,y1:Y(0),y2:Y(0),stroke:'var(--axis)','stroke-dasharray':'3 3'}));
+  if(wk.length>1)svg.append(el('polyline',{points:wk.map(w=>X(w.week).toFixed(1)+','+Y(w.gap_pct).toFixed(1)).join(' '),fill:'none',stroke:'var(--ink2)','stroke-width':1.5,'stroke-linejoin':'round'}));
+  wk.forEach(w=>{const c=el('circle',{cx:X(w.week).toFixed(1),cy:Y(w.gap_pct).toFixed(1),r:4,fill:w.gap_pct>0?'var(--b)':'var(--a)',stroke:'var(--panel)','stroke-width':1.5});
+    c.append(el('title',{},'Week '+w.week+': you '+fmt(w.you)+', '+nm+' '+fmt(w.them)+' · '+(Math.abs(w.gap_pct)<0.005?'level':(w.gap_pct>0?nm+' was ':'you were ')+Math.abs(w.gap_pct).toFixed(2)+' % quicker')));svg.append(c);
+    svg.append(el('text',{x:X(w.week).toFixed(1),y:Hd-4,'text-anchor':'middle','font-size':10.5,fill:'var(--muted)'},'W'+w.week))});
+  const wrap=h('div','sparkwrap');if(Array.isArray(p.series)&&p.series.length>1)wrap.append(h('span','note',str(s.name||seriesName[str(s.id)]||s.id||'')+(s.class?' · '+str(s.class):'')));
+  const c=h('div','chart');c.append(svg);wrap.append(c);return wrap}
+safe('season head-to-heads',()=>{if(!W||!Array.isArray(W.h2h))return;show('season',true);
+  if(W.season)$('ssSeason').textContent='Season · '+str(W.season);
+  const host=$('seasonList');const list=W.h2h.filter(p=>isObj(p)&&p.key!==meKey);
+  if(!list.length){empty(host,'No season head-to-heads yet.','They appear once you and a teammate both have a time in the same week of a series.');return}
+  list.forEach(p=>{const pn=h('div','panel');const nm=first(p.name||p.key);pn.append(h('h3',null,'You vs '+str(p.name||p.key)));
+    const sh=num(p.shared_weeks)?p.shared_weeks:0,be=num(p.behind)?p.behind:0,md=p.median_gap_pct;
+    const ln=h('p','sline');ln.append(document.createTextNode(nm+': ahead of you in '),h('b',null,be+' of '+sh),document.createTextNode(' '+(sh===1?'week':'weeks')));
+    if(num(md))ln.append(document.createTextNode(' · median '),h('b',null,Math.abs(md).toFixed(2)+' %'),document.createTextNode(Math.abs(md)<0.005?' (level)':(md>0?' quicker':' slower')));
+    pn.append(ln);
+    if(typeof p.verdict==='string'&&p.verdict)pn.append(h('p','note',p.verdict==='about level'?'About level with you over the season so far.':nm+' is '+p.verdict+' over the season so far.'));
+    else if(sh<2)pn.append(h('p','note','Too few shared weeks to call it yet.'));
+    (Array.isArray(p.series)?p.series:[]).filter(isObj).forEach(s=>{const sp=spark(p,s);if(sp)pn.append(sp)});
+    if(pn.querySelector('svg'))pn.append(h('p','note','Above the dashed line: '+nm+' was quicker that week. Below: you were.'));
+    host.append(pn)})},'season');
+
+// ---------- who to learn from (combos[].learn = team.learn_from rows; `how` arrays are [you, them])
+function howFacts(how){const o=[];if(!isObj(how))return o;const pr=k=>Array.isArray(how[k])&&how[k].length===2&&num(how[k][0])&&num(how[k][1])?how[k]:null;let p;
+  if((p=pr('brake_before_apex_m'))){const d=p[0]-p[1];if(Math.abs(d)>=0.5)o.push('Braked '+Math.round(Math.abs(d))+' m '+(d>0?'later':'earlier'))}
+  if((p=pr('min_mph'))){const d=p[1]-p[0];if(Math.abs(d)>=0.05)o.push((d>0?'+':'−')+Math.abs(d).toFixed(1)+' mph at the slowest point')}
+  if((p=pr('exit_mph'))){const d=p[1]-p[0];if(Math.abs(d)>=0.05)o.push((d>0?'+':'−')+Math.abs(d).toFixed(1)+' mph on exit')}
+  if((p=pr('full_thr_after_apex_m'))){const d=p[0]-p[1];if(Math.abs(d)>=0.5)o.push('Full throttle '+Math.round(Math.abs(d))+' m '+(d>0?'sooner':'later')+' after the apex')}
+  if((p=pr('gear'))&&p[0]!==p[1])o.push('Gear '+p[1]+' (you: '+p[0]+')');
+  return o}
+safe('who to learn from',()=>{const LC=(Array.isArray(D.combos)?D.combos:[]).filter(c=>isObj(c)&&Array.isArray(c.learn));
+  if(!LC.length)return;show('learn',true);const host=$('learnList');
+  const withRows=LC.filter(c=>c.learn.some(isObj));
+  if(!withRows.length){empty(host,'No corner stands out yet.','A corner shows here when a teammate\'s best lap was at least 0.05 s quicker than yours through it, from the telemetry of the last team refresh.');return}
+  withRows.forEach(c=>{const pn=h('div','panel');const t=h('h3',null,str(c.track_short||shortTrack(c.track)));t.append(h('span','u',str(c.car||'')));pn.append(t);
+    const rows=h('div','lrows');
+    c.learn.filter(isObj).slice(0,5).forEach(r=>{const tm=isObj(r.teammate)?r.teammate:{};const row=h('div','lrow');
+      row.append(h('span','cid',str(r.corner||'–')),h('span','who',str(tm.name||tm.key||'Teammate')),h('span','gapv',num(r.gap_s)?r.gap_s.toFixed(2)+' s quicker':'–'));
+      const fs=howFacts(r.how);if(fs.length){const f=h('div','facts');f.style.display='flex';f.style.flexWrap='wrap';f.style.gap='4px';fs.forEach(x=>f.append(h('span','fact',x)));row.append(f)}
+      if(r.text)row.append(h('p','ltext',str(r.text)));
+      const extra=[];if(r.similar_pace===false&&num(r.lap_gap_pct))extra.push('Their best lap overall is '+Math.abs(r.lap_gap_pct).toFixed(1)+' % quicker than yours.');
+      if(isObj(r.alt)&&(r.alt.name||r.alt.key))extra.push('Also quicker here: '+str(r.alt.name||r.alt.key)+(num(r.alt.gap_s)?' ('+r.alt.gap_s.toFixed(2)+' s)':'')+'.');
+      if(extra.length)row.append(h('p','alt',extra.join(' ')));
+      rows.append(row)});
+    pn.append(rows);host.append(pn)})},'learn');
 })();
 </script>
 

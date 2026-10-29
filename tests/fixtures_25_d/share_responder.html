@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Review: Charlotte Roval</title></head><body>
+<h1>Fixture review page (share responder, as 25-C's review.html answers)</h1>
+<script>
+/* tests/fixtures_25_d: stands in for review.html's share responder (spec 3.4). It first sends a decoy reply
+   with another id (the window must ignore it), then the real card for the id it was asked for. */
+addEventListener('message', function (e) {
+  if (e.source !== window.parent) return;
+  var m = e.data;
+  if (!m || m.type !== 'debrief:share-request') return;
+  var c = document.createElement('canvas'); c.width = 1200; c.height = 630;
+  var x = c.getContext('2d');
+  for (var i = 0; i < 60; i++) { x.fillStyle = 'hsl(' + (i * 6) + ',70%,' + (30 + i % 40) + '%)'; x.fillRect(i * 20, (i * 37) % 600, 20, 30); }
+  x.fillStyle = '#fff'; x.font = 'bold 60px sans-serif'; x.fillText('Charlotte Roval', 60, 300);
+  var png = c.toDataURL('image/png');
+  parent.postMessage({type: 'debrief:share-card', id: 'not-' + m.id, png: png, text: 'DECOY'}, '*');
+  parent.postMessage({type: 'debrief:share-card', id: m.id, png: png,
+                      text: 'Swazi Williams · Roval · Mustang GT4: best 1:25.612, P7 from P9'}, '*');
+});
+</script>
+</body></html>

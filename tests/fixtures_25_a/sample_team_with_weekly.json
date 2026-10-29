@@ -1,0 +1,543 @@
+{
+ "version": 1,
+ "team": {
+  "slug": "midfield-menace",
+  "name": "Midfield Menace"
+ },
+ "me": {
+  "name": "Swazi Williams",
+  "key": "me"
+ },
+ "generated_at": "2026-10-30T19:00:00+00:00",
+ "requests": 0,
+ "notes": [],
+ "combos": [
+  {
+   "track": "Okayama International Circuit - Full",
+   "track_short": "Okayama",
+   "car": "Global Mazda MX-5 Cup",
+   "track_id": 51,
+   "car_id": 67,
+   "races": 3,
+   "last_date": "2026-10-29",
+   "note": null,
+   "board": [
+    {
+     "key": "jordan-x",
+     "name": "Jordan X",
+     "t": 98.412,
+     "is_me": false,
+     "date": "2026-10-29",
+     "irating": 2210,
+     "pos": 1,
+     "gap": 0.0
+    },
+    {
+     "key": "me",
+     "name": "Swazi Williams",
+     "t": 98.871,
+     "is_me": true,
+     "date": "2026-10-30",
+     "source": "Garage 61",
+     "irating": 1850,
+     "pos": 2,
+     "gap": 0.459
+    },
+    {
+     "key": "sam-y",
+     "name": "Sam Y",
+     "t": 98.46,
+     "is_me": false,
+     "date": "2026-10-28",
+     "irating": 1620,
+     "pos": 3,
+     "gap": 0.048
+    }
+   ],
+   "my_tel_lap": {
+    "t": 98.871,
+    "date": "2026-10-30"
+   },
+   "kings": {
+    "L": 3703.0,
+    "fastest": "jordan-x",
+    "drivers": [
+     "me",
+     "jordan-x",
+     "sam-y"
+    ],
+    "names": {
+     "me": "Swazi Williams",
+     "jordan-x": "Jordan X",
+     "sam-y": "Sam Y"
+    },
+    "wins": {
+     "jordan-x": 1,
+     "sam-y": 1
+    },
+    "corners": [
+     {
+      "id": "C2",
+      "apex_m": 400.0,
+      "from_m": 0.0,
+      "to_m": 800.0,
+      "king": "sam-y",
+      "king_t": 7.79,
+      "second": "jordan-x",
+      "margin": 0.05,
+      "times": {
+       "me": 7.88,
+       "jordan-x": 7.84,
+       "sam-y": 7.79
+      },
+      "your_gap": 0.09,
+      "metrics": {
+       "me": {
+        "brake_before_apex_m": 70.0,
+        "min_mph": 58.2,
+        "exit_mph": 80.1,
+        "full_thr_after_apex_m": 95.0,
+        "gear": 4
+       },
+       "jordan-x": {
+        "brake_before_apex_m": 71.0,
+        "min_mph": 58.6,
+        "exit_mph": 80.4,
+        "full_thr_after_apex_m": 94.0,
+        "gear": 4
+       },
+       "sam-y": {
+        "brake_before_apex_m": 68.0,
+        "min_mph": 58.9,
+        "exit_mph": 80.9,
+        "full_thr_after_apex_m": 92.0,
+        "gear": 3
+       }
+      }
+     },
+     {
+      "id": "C5",
+      "apex_m": 1480.0,
+      "from_m": 800.0,
+      "to_m": 3703.0,
+      "king": "jordan-x",
+      "king_t": 9.24,
+      "second": "sam-y",
+      "margin": 0.07,
+      "times": {
+       "me": 9.42,
+       "jordan-x": 9.24,
+       "sam-y": 9.31
+      },
+      "your_gap": 0.18,
+      "metrics": {
+       "me": {
+        "brake_before_apex_m": 92.0,
+        "min_mph": 61.0,
+        "exit_mph": 77.0,
+        "full_thr_after_apex_m": 140.0,
+        "gear": 3
+       },
+       "jordan-x": {
+        "brake_before_apex_m": 81.0,
+        "min_mph": 64.0,
+        "exit_mph": 79.5,
+        "full_thr_after_apex_m": 118.0,
+        "gear": 3
+       },
+       "sam-y": {
+        "brake_before_apex_m": 88.0,
+        "min_mph": 62.1,
+        "exit_mph": 78.0,
+        "full_thr_after_apex_m": 130.0,
+        "gear": 3
+       }
+      }
+     }
+    ]
+   },
+   "learn": [
+    {
+     "corner": "C5",
+     "apex_m": 1480.0,
+     "team_corner": "C5",
+     "teammate": {
+      "key": "jordan-x",
+      "name": "Jordan X"
+     },
+     "gap_s": 0.18,
+     "your_t": 9.42,
+     "their_t": 9.24,
+     "basis": "best laps",
+     "similar_pace": true,
+     "lap_gap_pct": 0.47,
+     "how": {
+      "brake_before_apex_m": [
+       92.0,
+       81.0
+      ],
+      "min_mph": [
+       61.0,
+       64.0
+      ],
+      "full_thr_after_apex_m": [
+       140.0,
+       118.0
+      ]
+     },
+     "text": "Jordan's best lap was 0.18 s quicker than yours through C5. On that lap they braked about 10 m later, carried about 3 mph more through the slowest point and were back on full throttle about 20 m sooner after the apex. Both are best laps: this compares your best driving, not your typical lap.",
+     "alt": {
+      "key": "sam-y",
+      "name": "Sam Y",
+      "gap_s": 0.11
+     }
+    },
+    {
+     "corner": "C2",
+     "apex_m": 400.0,
+     "team_corner": "C2",
+     "teammate": {
+      "key": "sam-y",
+      "name": "Sam Y"
+     },
+     "gap_s": 0.09,
+     "your_t": 7.88,
+     "their_t": 7.79,
+     "basis": "best laps",
+     "similar_pace": true,
+     "lap_gap_pct": 0.42,
+     "how": {
+      "gear": [
+       4,
+       3
+      ]
+     },
+     "text": "Sam's best lap was 0.09 s quicker than yours through C2. On that lap they were in 3rd gear at the slowest point (you were in 4th). Both are best laps: this compares your best driving, not your typical lap.",
+     "alt": null
+    }
+   ]
+  }
+ ],
+ "h2h": [],
+ "weekly": {
+  "season": "2026 Season 4",
+  "season_slug": "2026-season-4",
+  "series": [
+   {
+    "id": "global-mazda-mx-5-fanatec-cup",
+    "name": "Global Mazda MX-5 Fanatec Cup",
+    "multiclass": false,
+    "current_week": 7,
+    "weeks": [
+     {
+      "week": 7,
+      "start": "2026-10-28",
+      "end": "2026-11-04",
+      "track": "Okayama International Circuit - Full",
+      "track_id": 51,
+      "car_ids": [
+       67
+      ],
+      "multiclass": false,
+      "fetched_at": "2026-10-30T19:00:00Z",
+      "final": false,
+      "requests": 1,
+      "note": null,
+      "board": [
+       {
+        "key": "jordan-x",
+        "name": "Jordan X",
+        "t": 98.412,
+        "car": "Global Mazda MX-5 Cup",
+        "class": "MX-5",
+        "date": "2026-10-29",
+        "irating": 2210,
+        "pos": 1,
+        "class_pos": 1,
+        "gap": 0.0,
+        "gap_pct": 0.0,
+        "is_me": false
+       },
+       {
+        "key": "me",
+        "name": "Swazi Williams",
+        "t": 98.871,
+        "car": "Global Mazda MX-5 Cup",
+        "class": "MX-5",
+        "date": "2026-10-30",
+        "irating": 1850,
+        "pos": 2,
+        "class_pos": 2,
+        "gap": 0.459,
+        "gap_pct": 0.466,
+        "is_me": true
+       },
+       {
+        "key": "sam-y",
+        "name": "Sam Y",
+        "t": 99.502,
+        "car": "Global Mazda MX-5 Cup",
+        "class": "MX-5",
+        "date": "2026-10-28",
+        "irating": 1620,
+        "pos": 3,
+        "class_pos": 3,
+        "gap": 1.09,
+        "gap_pct": 1.108,
+        "is_me": false
+       }
+      ]
+     },
+     {
+      "week": 6,
+      "start": "2026-10-21",
+      "end": "2026-10-28",
+      "track": "Charlotte Motor Speedway - Roval 2025",
+      "track_id": 468,
+      "car_ids": [
+       67
+      ],
+      "multiclass": false,
+      "fetched_at": "2026-10-31T09:00:00Z",
+      "final": true,
+      "requests": 2,
+      "note": null,
+      "board": [
+       {
+        "key": "me",
+        "name": "Swazi Williams",
+        "t": 84.11,
+        "car": "Global Mazda MX-5 Cup",
+        "class": "MX-5",
+        "date": "2026-10-22",
+        "irating": 1840,
+        "pos": 1,
+        "class_pos": 1,
+        "gap": 0.0,
+        "gap_pct": 0.0,
+        "is_me": true
+       },
+       {
+        "key": "jordan-x",
+        "name": "Jordan X",
+        "t": 84.3,
+        "car": "Global Mazda MX-5 Cup",
+        "class": "MX-5",
+        "date": "2026-10-23",
+        "irating": 2200,
+        "pos": 2,
+        "class_pos": 2,
+        "gap": 0.19,
+        "gap_pct": 0.226,
+        "is_me": false
+       }
+      ]
+     },
+     {
+      "week": 5,
+      "start": "2026-10-14",
+      "end": "2026-10-21",
+      "track": "Lime Rock Park - Classic",
+      "track_id": 30,
+      "car_ids": [
+       67
+      ],
+      "multiclass": false,
+      "fetched_at": "2026-10-24T09:00:00Z",
+      "final": true,
+      "requests": 1,
+      "note": "No team laps in this week yet.",
+      "board": []
+     }
+    ]
+   },
+   {
+    "id": "imsa-sportscar-championship",
+    "name": "IMSA SportsCar Championship",
+    "multiclass": true,
+    "current_week": 7,
+    "weeks": [
+     {
+      "week": 7,
+      "start": "2026-10-28",
+      "end": "2026-11-04",
+      "track": "Road America - Full Course",
+      "track_id": 18,
+      "car_ids": [
+       160,
+       170,
+       172,
+       180,
+       190
+      ],
+      "multiclass": true,
+      "fetched_at": "2026-10-30T19:00:00Z",
+      "final": false,
+      "requests": 2,
+      "note": null,
+      "board": [
+       {
+        "key": "alex-p",
+        "name": "Alex P",
+        "t": 126.512,
+        "car": "Porsche 963 GTP",
+        "class": "GTP",
+        "date": "2026-10-29",
+        "irating": 3010,
+        "pos": 1,
+        "class_pos": 1,
+        "gap": 0.0,
+        "gap_pct": 0.0,
+        "is_me": false
+       },
+       {
+        "key": "jordan-x",
+        "name": "Jordan X",
+        "t": 127.204,
+        "car": "Cadillac V-Series.R GTP",
+        "class": "GTP",
+        "date": "2026-10-29",
+        "irating": 2210,
+        "pos": 2,
+        "class_pos": 2,
+        "gap": 0.692,
+        "gap_pct": 0.547,
+        "is_me": false
+       },
+       {
+        "key": "me",
+        "name": "Swazi Williams",
+        "t": 136.903,
+        "car": "BMW M4 GT3 EVO",
+        "class": "GT3",
+        "date": "2026-10-30",
+        "irating": 1850,
+        "pos": 3,
+        "class_pos": 1,
+        "gap": 0.0,
+        "gap_pct": 0.0,
+        "is_me": true
+       },
+       {
+        "key": "sam-y",
+        "name": "Sam Y",
+        "t": 137.48,
+        "car": "Ferrari 296 GT3",
+        "class": "GT3",
+        "date": "2026-10-28",
+        "irating": 1620,
+        "pos": 4,
+        "class_pos": 2,
+        "gap": 0.577,
+        "gap_pct": 0.421,
+        "is_me": false
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "h2h": [
+   {
+    "key": "jordan-x",
+    "name": "Jordan X",
+    "series": [
+     {
+      "id": "global-mazda-mx-5-fanatec-cup",
+      "name": "Global Mazda MX-5 Fanatec Cup",
+      "class": "MX-5",
+      "shared_weeks": 2,
+      "ahead": 1,
+      "behind": 1,
+      "median_gap_pct": 0.12,
+      "weeks": [
+       {
+        "week": 6,
+        "you": 84.11,
+        "them": 84.3,
+        "gap_pct": -0.225
+       },
+       {
+        "week": 7,
+        "you": 98.871,
+        "them": 98.412,
+        "gap_pct": 0.466
+       }
+      ]
+     }
+    ],
+    "shared_weeks": 2,
+    "ahead": 1,
+    "behind": 1,
+    "median_gap_pct": 0.12,
+    "verdict": "about level"
+   },
+   {
+    "key": "sam-y",
+    "name": "Sam Y",
+    "series": [
+     {
+      "id": "global-mazda-mx-5-fanatec-cup",
+      "name": "Global Mazda MX-5 Fanatec Cup",
+      "class": "MX-5",
+      "shared_weeks": 1,
+      "ahead": 1,
+      "behind": 0,
+      "median_gap_pct": -0.638,
+      "weeks": [
+       {
+        "week": 7,
+        "you": 98.871,
+        "them": 99.502,
+        "gap_pct": -0.634
+       }
+      ]
+     },
+     {
+      "id": "imsa-sportscar-championship",
+      "name": "IMSA SportsCar Championship",
+      "class": "GT3",
+      "shared_weeks": 1,
+      "ahead": 1,
+      "behind": 0,
+      "median_gap_pct": -0.42,
+      "weeks": [
+       {
+        "week": 7,
+        "you": 136.903,
+        "them": 137.48,
+        "gap_pct": -0.42
+       }
+      ]
+     }
+    ],
+    "shared_weeks": 2,
+    "ahead": 2,
+    "behind": 0,
+    "median_gap_pct": -0.529,
+    "verdict": "slightly slower than you"
+   },
+   {
+    "key": "alex-p",
+    "name": "Alex P",
+    "series": [],
+    "shared_weeks": 0,
+    "ahead": 0,
+    "behind": 0,
+    "median_gap_pct": null,
+    "verdict": null
+   }
+  ],
+  "notes": [
+   "2 of your series were left out (Debrief refreshes at most 8)."
+  ],
+  "skipped": [
+   {
+    "id": "ferrari-gt3-challenge",
+    "name": "Ferrari GT3 Challenge",
+    "note": "Load the track and car lists once (Prepare > Prep pages for any track and car)."
+   }
+  ],
+  "generated_at": "2026-10-30T19:00:05Z"
+ }
+}

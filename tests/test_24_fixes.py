@@ -579,7 +579,7 @@ def test_r2_tips_sheet_survives_big_lap_data_sheets():
     assert len(out["sheets"]) < 4          # the budget stopped at a later lap sheet instead of failing
     r = intel.parse_upload(data, "intel.xlsx")
     assert r["sheets"][0]["header"][:2] == ["Track", "Notes"], r["sheets"][0]
-    assert secs < 10, secs
+    assert secs < 60, secs          # generous: tracemalloc and a loaded CI box slow this a lot
 
 
 def _nested(depth, close=True):

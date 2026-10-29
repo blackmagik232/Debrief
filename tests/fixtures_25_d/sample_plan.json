@@ -1,0 +1,4 @@
+{"series": [{"id": "gt4-falken", "name": "GT4 Falken Tyre Challenge", "week": 7, "track": "Charlotte Motor Speedway (Roval 2019)", "ids_known": true, "est_requests": 1, "cached": false},
+            {"id": "global-mazda-mx-5-fanatec-cup", "name": "Global Mazda MX-5 Fanatec Cup", "week": 7, "track": "Okayama International Circuit - Full", "ids_known": true, "est_requests": 2, "cached": false}],
+ "est_total": 3,
+ "skipped": [{"id": "imsa-vintage", "name": "IMSA Vintage Series", "note": "Load the track and car lists once (Prepare > Prep pages for any track and car)."}]}

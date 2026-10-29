@@ -60,7 +60,7 @@ new MutationObserver(()=>$('btnMenu').setAttribute('aria-expanded',String(docume
 /* ---------- views */
 const VIEWS=['vFrame','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam','vSessions'];
 const FRAME_VIEWS=['review','library','season','skills','prepPage','teamPage'];
-const NAV_OF={sync:'sessions',sessions:'sessions',library:'library',season:'season',skills:'skills',goals:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings'};
+const NAV_OF={weekly:'team',sync:'sessions',sessions:'sessions',library:'library',season:'season',skills:'skills',goals:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings'};
 let current={view:null,dir:null};
 function show(view){VIEWS.forEach(v=>$(v).hidden=(v!==view))}
 function markNav(){
@@ -98,7 +98,7 @@ function openSeason(){
 function openSkills(){
   if(!libFolder){current={view:'welcome'};welcome();return}
   current={view:'skills',dir:null};openFrame('lib/index.html#skills');markNav();loadProfile()}
-function openPage(rel,view){current={view,dir:null,page:rel};openFrame('lib/'+rel.split('/').map(encodeURIComponent).join('/'));markNav()}
+function openPage(rel,view){current={view,dir:null,page:rel};openFrame('lib/'+rel.split('/').map(encodeURIComponent).join('/'));markNav();if(view==='teamPage')loadWeekly()}
 function openSettings(){current={view:'settings',dir:null};show('vSettings');markNav();loadSettings();loadTeams(false)}
 function openJob(){current={view:'job',dir:null};show('vJob');markNav()}
 /* ---------- welcome + first-run guide (shown until a token is saved, then for the rest of that session) */
@@ -125,7 +125,8 @@ function frameBar(){
   const v=current.view,bar=$('frameBar');
   const want=v==='review'||v==='prepPage'||v==='teamPage'||v==='skills';
   bar.hidden=!want;if(!want)return;
-  $('fbResult').hidden=v!=='review';$('fbPrep').hidden=v!=='prepPage';$('fbTeam').hidden=v!=='teamPage';
+  $('fbResult').hidden=v!=='review';$('fbPrep').hidden=v!=='prepPage';$('fbTeam').hidden=v!=='teamPage';$('fbWeekly').hidden=v!=='teamPage';
+  $('fbDiscord').hidden=v!=='review'||!discordSaved;
   const pill=$('fbPill');pill.hidden=true;$('fbBar').hidden=true;
   if(v==='skills'){const p=profileInfo,rf=p&&p.refreshing;
     $('fbText').textContent=!p?'Driver profile':
@@ -167,7 +168,7 @@ function framePlace(path,title){
   else if(rel==='lib/index.html'||rel==='lib/'){const was=current.view;current={view:hash==='season'?'season':hash==='skills'?'skills':'library',dir:null};
     if(current.view==='skills'&&was!=='skills')loadProfile()}
   else if(/^lib\/prep\/[^/]+\.html$/.test(rel))current={view:'prepPage',dir:null,page:decodeURIComponent(rel.slice(4))};
-  else if(rel==='lib/team/index.html')current={view:'teamPage',dir:null,page:'team/index.html'};
+  else if(rel==='lib/team/index.html'){if(current.view!=='teamPage')loadWeekly();current={view:'teamPage',dir:null,page:'team/index.html'}}
   if(title)document.title=title==='Debrief Library'?'Debrief':'Debrief · '+title;
   // (links that leave the app are opened in the normal browser by the bridge itself)
   markNav();
@@ -203,8 +204,8 @@ async function loadReviews(){
 }
 
 /* ---------- jobs: review / prep / team share the progress screen; check stays in Settings */
-const TITLES0={update:'Updating Debrief',sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
-const STOPPED={update:'The update stopped',review:'The review stopped',prep:'The prep page stopped',team:'The team refresh stopped'};
+const TITLES0={weekly:'Updating this week\'s team leaderboards',update:'Updating Debrief',sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
+const STOPPED={weekly:'The leaderboard refresh stopped',update:'The update stopped',review:'The review stopped',prep:'The prep page stopped',team:'The team refresh stopped'};
 const TITLES=Object.assign({},TITLES0);   // the review title can change per job; TITLES0 keeps the defaults
 let handled=new Set(),polling=false,lastJob=null,lastStart=null;
 async function startJob(kind,body){
@@ -259,7 +260,7 @@ function render(s){
   if(s.kind==='update'&&s.state==='done'&&!handled.has(s.id)){handled.add(s.id);
     setBar(1);$('jobEyebrow').textContent='Installing';$('jobNow').textContent='Debrief is closing to install the update. It reopens on its own in about a minute; you can close this window.';
     lost=true;return}
-  if(s.kind==='review'||s.kind==='prep'||s.kind==='team'||s.kind==='update'){
+  if(s.kind==='review'||s.kind==='prep'||s.kind==='team'||s.kind==='weekly'||s.kind==='update'){
     if(s.kind==='review'&&s.state==='running')TITLES.review=s.title||TITLES0.review;
     setBar(s.frac||0);$('jobNow').textContent=s.state==='error'?'Stopped.':(s.message||'');
     if($('jobTitle').textContent!==TITLES[s.kind]&&s.state==='running')resetJobView(s.kind);
@@ -274,8 +275,10 @@ function render(s){
       $('jobEyebrow').textContent='Done';$('jobBar').parentElement.className='progress done';
       const stay=current.view==='job';  // only jump to the result if the person is still watching
       if(s.kind==='review')loadReviews().then(()=>{if(s.result&&s.result.review){if(stay)openReview(s.result.review);banner('Review ready.')}});
-      else loadPages().then(()=>{if(s.result&&s.result.page){if(stay)openPage(s.result.page,s.kind==='team'?'teamPage':'prepPage');
-        banner(s.kind==='team'?'Team hub updated.':'Prep page ready.')}if(current.view==='prep')renderPrepPages()});
+      else loadPages().then(()=>{const team=s.kind==='team'||s.kind==='weekly';
+        if(s.result&&s.result.page){if(stay)openPage(s.result.page,team?'teamPage':'prepPage');
+        banner(s.kind==='weekly'?'This week\'s leaderboards updated'+(ok(s.result.requests)?' ('+s.result.requests+' Garage 61 request'+(s.result.requests===1?'':'s')+').':'.'):
+          s.kind==='team'?'Team hub updated.':'Prep page ready.')}if(current.view==='prep')renderPrepPages();if(s.kind==='weekly')loadWeekly()});
     }
   }
   if(s.kind==='schedule'){
@@ -800,11 +803,82 @@ $('fGoal').addEventListener('submit',async e=>{e.preventDefault();
 
 /* ---------- Team */
 async function openTeam(){current={view:'team',dir:null};markNav();
-  if(lastJob&&lastJob.state==='running'&&lastJob.kind==='team'){openJob();return}
+  if(lastJob&&lastJob.state==='running'&&(lastJob.kind==='team'||lastJob.kind==='weekly')){openJob();return}
+  loadWeekly();
   await loadPages();
   if(current.view!=='team')return;  // the person moved on while we looked
   if(pages.team)openPage(pages.team,'teamPage');else{show('vTeam');markNav()}}
 $('fbTeam').addEventListener('click',()=>startJob('team'));
+
+/* ---------- this week's team leaderboards (2.5): the estimate is worked out without any request */
+let weeklyInfo=null;
+async function loadWeekly(){let j;try{j=await api('weekly?estimate=1')}catch(e){return null}
+  weeklyInfo=j&&j.ok?j:{ok:false,error:j&&j.error};renderWeekly();return weeklyInfo}
+function weeklyRows(j){const p=j&&j.plan;return p&&Array.isArray(p.series)?p.series.filter(x=>x&&typeof x==='object'):[]}
+function weeklyText(j){
+  if(!j)return 'Checking...';
+  if(!j.ok)return j.error||'Couldn\'t work out this week\'s leaderboards right now.';
+  if(!j.available)return 'Weekly leaderboards aren\'t available right now. Details were saved to debrief.log.';
+  if(!j.schedule)return 'Load the season schedule on the Prepare page and pick your series to see this week\'s team leaderboards.';
+  if(j.token===false)return 'Add your Garage 61 token in Settings first.';
+  if(!weeklyRows(j).length)return 'Pick your series on the Prepare page to see this week\'s team leaderboards.';
+  const n=ok(j.plan.est_total)?j.plan.est_total:0;
+  return 'This week\'s leaderboards for your series. About '+n+' Garage 61 request'+(n===1?'':'s')+' (1 per series, 2 if a lap needs a second look).'}
+function renderWeekly(){const j=weeklyInfo;const t=weeklyText(j);$('weeklyNote').textContent=t;$('fbWeekly').title=t;
+  const rows=weeklyRows(j);const can=!!(j&&j.ok&&j.available&&j.schedule&&j.token!==false&&rows.length);
+  $('btnWeekly').disabled=!can;$('fbWeekly').disabled=!can;
+  const pill=$('weeklyPill');pill.hidden=!rows.length;pill.textContent=rows.length+' series';pill.className='pill'+(can?' ok':'');
+  const p=(j&&j.plan)||{};const sk=(Array.isArray(p.skipped)?p.skipped:[]).concat(Array.isArray(p.notes)?p.notes:[]);
+  showWarnings('weeklySkipped',[...new Set(sk.map(x=>typeof x==='string'?x:(x&&typeof x==='object'?[x.name,x.note||x.reason].filter(v=>typeof v==='string'&&v).join(': '):'')))],'Not included:')}
+function startWeekly(){if(lastJob&&lastJob.state==='running'&&lastJob.kind==='weekly'){openJob();return}startJob('weekly',{})}
+$('btnWeekly').addEventListener('click',startWeekly);$('fbWeekly').addEventListener('click',startWeekly);
+
+/* ---------- Post to Discord (2.5). The review page draws its share card when asked (postMessage); the
+   window stages it on the server (no network), shows it, and posts only when you press Post in the dialog. */
+let discordSaved=false,discordHint=null,share=null,staged=null;
+function shareId(){const a=new Uint8Array(12);crypto.getRandomValues(a);return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('')}
+function requestShare(){if(current.view!=='review'||!discordSaved||share)return;
+  const w=$('frame').contentWindow;if(!w)return;
+  const id=shareId();share={id,dir:current.dir};$('fbDiscord').disabled=true;
+  share.t=setTimeout(()=>{if(share&&share.id===id){share=null;$('fbDiscord').disabled=false;
+    banner('This review didn\'t send its share card. Reload it and try again.',true)}},10000);
+  // '*': the review page is sandboxed (origin "null"); the request carries nothing but a random id
+  try{w.postMessage({type:'debrief:share-request',id},'*')}catch(e){clearTimeout(share.t);share=null;$('fbDiscord').disabled=false}}
+$('fbDiscord').addEventListener('click',requestShare);
+// the reply counts only from our own frame (e.source, never the origin string) and for the id we sent
+addEventListener('message',e=>{const f=$('frame');if(!f||e.source!==f.contentWindow)return;const m=e.data;
+  if(!m||typeof m!=='object'||m.type!=='debrief:share-card'||!share||m.id!==share.id)return;
+  const s=share;share=null;clearTimeout(s.t);$('fbDiscord').disabled=false;
+  if(current.view!=='review'||current.dir!==s.dir)return;
+  if(m.error!=null&&m.png==null){banner('Couldn\'t make the share card.',true);return}   // the page couldn't draw it: stage nothing
+  if(typeof m.png!=='string'||!m.png.startsWith('data:image/png;base64,')||m.png.length>6e6){banner('The share card couldn\'t be made. Reload the review and try again.',true);return}
+  stageCard(m.png,typeof m.text==='string'?m.text:'')});
+function pngBlob(url){const b=atob(url.slice(url.indexOf(',')+1));const a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return new Blob([a],{type:'image/png'})}
+async function stageCard(url,text){let blob;try{blob=pngBlob(url)}catch(e){banner('The share card couldn\'t be read. Reload the review and try again.',true);return}
+  let r;try{r=await fetch(BASE+'api/discord-stage',{method:'POST',headers:{'X-Debrief':'1','Content-Type':'image/png'},body:blob}).then(x=>x.json())}
+  catch(e){banner('Couldn\'t prepare the preview. Try again.',true);return}
+  if(!r||!r.ok){banner((r&&r.error)||'Couldn\'t prepare the preview. Try again.',true);return}
+  openDiscord(r,url,text)}
+function discordCount(){const n=$('discordText').value.length;$('discordCount').textContent=n+' / 2000';$('discordCount').classList.toggle('over',n>2000)}
+function openDiscord(r,url,text){staged={nonce:r.nonce};
+  $('discordImg').src=url;$('discordText').value=String(text||'').slice(0,2000);discordCount();
+  const t=r.target||{};
+  $('discordTarget').textContent='Posts to '+(t.name?'the webhook \u201c'+t.name+'\u201d':'your team\'s webhook')+' ('+(t.hint||discordHint||'…')+')';
+  setMsg('discordDlgMsg','');$('discordPost').disabled=false;
+  const d=$('dlgDiscord');if(d.showModal)d.showModal();else d.setAttribute('open','');$('discordText').focus()}
+$('discordText').addEventListener('input',discordCount);
+// Cancel, Close or Escape: nothing is sent; the staged card is forgotten on the server within 10 minutes
+function closeDiscord(){staged=null;const d=$('dlgDiscord');if(d.open){if(d.close)d.close();else d.removeAttribute('open')}}
+$('discordCancel').addEventListener('click',closeDiscord);$('discordClose').addEventListener('click',closeDiscord);
+$('dlgDiscord').addEventListener('close',()=>{staged=null});
+// THE ONLY PLACE THAT SENDS api/discord-post: a real click on Post in the open dialog, once per preview
+$('discordPost').addEventListener('click',async e=>{if(!e.isTrusted||!staged||!$('dlgDiscord').open)return;
+  const content=$('discordText').value;
+  if(content.length>2000){setMsg('discordDlgMsg','The message can be up to 2000 characters.','bad');return}
+  const nonce=staged.nonce;staged=null;$('discordPost').disabled=true;setMsg('discordDlgMsg','Posting...');
+  let r;try{r=await post('discord-post',{nonce,content})}catch(err){connectionLost();return}
+  if(!r.ok){setMsg('discordDlgMsg',(r.error||'Couldn\'t post to Discord.')+(/preview again/i.test(r.error||'')?'':' Close this and press Post to Discord again to retry.'),'bad');return}
+  closeDiscord();banner('Posted to Discord.')});
 
 /* ---------- race result (on an open review) */
 const RES_FIELDS=['finish_pos','start_pos','field_size','incidents','laps_led','sof','irating_before','irating_after','sr_before','sr_after','notes',
@@ -877,6 +951,10 @@ function fillSettings(v){
   $('irClear').hidden=!(idS||seS);
   if(document.activeElement!==$('cardsFolder'))$('cardsFolder').value=typeof v.team_cards_folder==='string'?v.team_cards_folder:'';
   $('cardsShare').checked=!!v.share_my_cards;cardsStatus(v);
+  discordSaved=!!v.discord_saved;discordHint=typeof v.discord_hint==='string'?v.discord_hint:null;
+  const dp=$('discordPill');dp.textContent=discordSaved?'Webhook saved ('+(discordHint||'…')+')':'Off';dp.className='pill'+(discordSaved?' ok':'');
+  $('discordCheck').hidden=!discordSaved;$('discordClear').hidden=!discordSaved;if(!discordSaved)$('discordWhere').hidden=true;
+  frameBar();
 }
 function cardsStatus(v){const p=$('cardsPill'),st=$('cardsStatus');const f=v.team_cards_folder;
   if(!f){p.textContent='Off';p.className='pill';st.textContent='No shared folder picked.';return}
@@ -888,6 +966,22 @@ $('fCards').addEventListener('submit',async e=>{e.preventDefault();setMsg('cards
   try{r=await post('settings',{team_cards_folder:$('cardsFolder').value.trim(),share_my_cards:$('cardsShare').checked})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('cardsMsg',r.error,'bad');return}
   fillSettings(r.settings);setMsg('cardsMsg','Saved.','ok')});
+$('fDiscord').addEventListener('submit',async e=>{e.preventDefault();const inp=$('discordHook');const v=inp.value.trim();
+  if(!v){setMsg('discordMsg','Paste the webhook address first.','bad');inp.focus();return}
+  setMsg('discordMsg','Saving...');let r;try{r=await post('settings',{discord_webhook:v})}catch(err){connectionLost();return}
+  if(!r.ok){setMsg('discordMsg',r.error,'bad');return}
+  inp.value='';$('discordWhere').hidden=true;fillSettings(r.settings);setMsg('discordMsg','Saved. Press Check to see where posts go.','ok')});
+$('discordCheck').addEventListener('click',async()=>{setMsg('discordMsg','Checking with Discord...');$('discordCheck').disabled=true;let r;
+  try{r=await post('discord-check')}catch(e){connectionLost();return}finally{$('discordCheck').disabled=false}
+  if(!r.ok){setMsg('discordMsg',r.error,'bad');return}
+  const w=$('discordWhere');w.hidden=false;
+  w.textContent='Posts go to the webhook '+(r.name?'\u201c'+r.name+'\u201d':'(no name)')+(typeof r.channel_id==='string'&&r.channel_id?' in channel '+r.channel_id.slice(0,4)+'…':'')+'.';
+  setMsg('discordMsg','The webhook works.','ok')});
+$('discordClear').addEventListener('click',async()=>{const b=$('discordClear');
+  if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='Confirm remove';setTimeout(()=>{b.dataset.armed='';b.textContent='Remove'},4000);return}
+  let r;try{r=await post('settings',{clear_discord:true})}catch(e){connectionLost();return}
+  if(!r.ok){setMsg('discordMsg',r.error,'bad');return}
+  b.dataset.armed='';b.textContent='Remove';fillSettings(r.settings);setMsg('discordMsg','Removed.','ok')});
 let teamSlug='midfield-menace';
 async function loadSettings(){try{fillSettings(await api('settings'))}catch(e){connectionLost()}}
 async function loadTeams(fetchIt){let j;try{j=await api('teams'+(fetchIt?'?fetch=1':''))}catch(e){connectionLost();return}

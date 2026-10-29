@@ -1,0 +1,292 @@
+{
+ "version": 1,
+ "team": {
+  "slug": "midfield-menace",
+  "name": "Midfield Menace"
+ },
+ "me": {
+  "name": "Test Driver",
+  "key": "me"
+ },
+ "generated_at": "2026-10-28T19:00:00+00:00",
+ "combos": [
+  {
+   "track": "Charlotte Motor Speedway (Roval 2019)",
+   "track_short": "Roval",
+   "car": "Ford Mustang GT4",
+   "track_id": 468,
+   "car_id": 190,
+   "races": 3,
+   "last_date": "2026-10-27",
+   "note": null,
+   "kings": {
+    "L": 5793.6,
+    "fastest": "jordan-x",
+    "drivers": [
+     "me",
+     "jordan-x",
+     "sam-y"
+    ],
+    "names": {
+     "me": "Test Driver",
+     "jordan-x": "Jordan X",
+     "sam-y": "Sam Y"
+    },
+    "corners": [
+     {
+      "id": "C1",
+      "apex_m": 485.0,
+      "from_m": 0.0,
+      "to_m": 800.0,
+      "king": "jordan-x",
+      "king_t": 11.2,
+      "second": "sam-y",
+      "margin": 0.04,
+      "times": {
+       "me": 11.3,
+       "jordan-x": 11.2,
+       "sam-y": 11.24
+      },
+      "your_gap": 0.1
+     },
+     {
+      "id": "C2",
+      "apex_m": 1225.0,
+      "from_m": 800.0,
+      "to_m": 1560.0,
+      "king": "me",
+      "king_t": 12.9,
+      "second": "jordan-x",
+      "margin": 0.06,
+      "times": {
+       "me": 12.9,
+       "jordan-x": 12.96,
+       "sam-y": 12.99
+      },
+      "your_gap": 0.0
+     },
+     {
+      "id": "C3",
+      "apex_m": 2010.0,
+      "from_m": 1560.0,
+      "to_m": 2330.0,
+      "king": "jordan-x",
+      "king_t": 13.4,
+      "second": "sam-y",
+      "margin": 0.05,
+      "times": {
+       "me": 13.61,
+       "jordan-x": 13.4,
+       "sam-y": 13.45
+      },
+      "your_gap": 0.21
+     },
+     {
+      "id": "C4",
+      "apex_m": 2735.0,
+      "from_m": 2330.0,
+      "to_m": 3200.0,
+      "king": "sam-y",
+      "king_t": 11.9,
+      "second": "jordan-x",
+      "margin": 0.03,
+      "times": {
+       "me": 12.02,
+       "jordan-x": 11.93,
+       "sam-y": 11.9
+      },
+      "your_gap": 0.12
+     },
+     {
+      "id": "C5",
+      "apex_m": 3700.0,
+      "from_m": 3200.0,
+      "to_m": 3825.0,
+      "king": "me",
+      "king_t": 9.6,
+      "second": "jordan-x",
+      "margin": 0.07,
+      "times": {
+       "me": 9.6,
+       "jordan-x": 9.67,
+       "sam-y": 9.7
+      },
+      "your_gap": 0.0
+     },
+     {
+      "id": "C6",
+      "apex_m": 3950.0,
+      "from_m": 3825.0,
+      "to_m": 5050.0,
+      "king": "jordan-x",
+      "king_t": 21.7,
+      "second": "sam-y",
+      "margin": 0.11,
+      "times": {
+       "me": 22.0,
+       "jordan-x": 21.7,
+       "sam-y": 21.81
+      },
+      "your_gap": 0.3
+     },
+     {
+      "id": "C7",
+      "apex_m": 5470.0,
+      "from_m": 5050.0,
+      "to_m": 5793.6,
+      "king": "jordan-x",
+      "king_t": 16.3,
+      "second": "me",
+      "margin": 0.05,
+      "times": {
+       "me": 16.35,
+       "jordan-x": 16.3,
+       "sam-y": 16.38
+      },
+      "your_gap": 0.05
+     }
+    ],
+    "wins": {
+     "jordan-x": 4,
+     "me": 2,
+     "sam-y": 1
+    }
+   },
+   "my_tel_lap": {
+    "t": 97.018,
+    "date": "2026-10-27"
+   },
+   "board": [
+    {
+     "key": "jordan-x",
+     "name": "Jordan X",
+     "t": 96.512,
+     "is_me": false,
+     "date": "2026-10-20",
+     "irating": 2210,
+     "pos": 1,
+     "gap": 0.0
+    },
+    {
+     "key": "sam-y",
+     "name": "Sam Y",
+     "t": 96.845,
+     "is_me": false,
+     "date": "2026-10-22",
+     "irating": 1880,
+     "pos": 2,
+     "gap": 0.333
+    },
+    {
+     "key": "me",
+     "name": "Test Driver",
+     "t": 97.018,
+     "is_me": true,
+     "date": "2026-10-27",
+     "source": "your reviewed races",
+     "irating": 1910,
+     "pos": 3,
+     "gap": 0.506
+    }
+   ]
+  },
+  {
+   "track": "Okayama International Circuit (Full Course)",
+   "track_short": "Okayama",
+   "car": "Global Mazda MX-5 Cup",
+   "track_id": 51,
+   "car_id": 67,
+   "races": 1,
+   "last_date": "2026-10-12",
+   "note": null,
+   "kings": null,
+   "kings_note": "Not enough telemetry from these laps to compare corners.",
+   "board": [
+    {
+     "key": "me",
+     "name": "Test Driver",
+     "t": 98.903,
+     "is_me": true,
+     "date": "2026-10-12",
+     "source": "Garage 61",
+     "irating": 1910,
+     "pos": 1,
+     "gap": 0.0
+    },
+    {
+     "key": "jordan-x",
+     "name": "Jordan X",
+     "t": 99.001,
+     "is_me": false,
+     "date": "2026-10-11",
+     "irating": 2210,
+     "pos": 2,
+     "gap": 0.098
+    }
+   ]
+  }
+ ],
+ "h2h": [
+  {
+   "key": "jordan-x",
+   "name": "Jordan X",
+   "ahead": 1,
+   "behind": 1,
+   "corners_you": 2,
+   "corners_them": 5,
+   "shared": 2,
+   "avg_gap": 0.204,
+   "combos": [
+    {
+     "track": "Charlotte Motor Speedway (Roval 2019)",
+     "track_short": "Roval",
+     "car": "Ford Mustang GT4",
+     "you": 97.018,
+     "them": 96.512,
+     "gap": 0.506,
+     "corners": {
+      "you": 2,
+      "them": 5
+     }
+    },
+    {
+     "track": "Okayama International Circuit (Full Course)",
+     "track_short": "Okayama",
+     "car": "Global Mazda MX-5 Cup",
+     "you": 98.903,
+     "them": 99.001,
+     "gap": -0.098,
+     "corners": null
+    }
+   ]
+  },
+  {
+   "key": "sam-y",
+   "name": "Sam Y",
+   "ahead": 0,
+   "behind": 1,
+   "corners_you": 3,
+   "corners_them": 4,
+   "shared": 1,
+   "avg_gap": 0.173,
+   "combos": [
+    {
+     "track": "Charlotte Motor Speedway (Roval 2019)",
+     "track_short": "Roval",
+     "car": "Ford Mustang GT4",
+     "you": 97.018,
+     "them": 96.845,
+     "gap": 0.173,
+     "corners": {
+      "you": 3,
+      "them": 4
+     }
+    }
+   ]
+  }
+ ],
+ "requests": 9,
+ "notes": [
+  "Showing your 6 most recent track and car combinations (1 older one left out to keep Garage 61 traffic light)."
+ ]
+}

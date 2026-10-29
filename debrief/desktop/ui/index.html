@@ -55,7 +55,9 @@
       <span class="row">
         <span class="pill" id="fbPill" hidden></span>
         <button type="button" class="btn" id="fbResult" hidden>Add race result</button>
+        <button type="button" class="btn" id="fbDiscord" hidden>Post to Discord</button>
         <button type="button" class="btn" id="fbPrep" hidden>Pick another track</button>
+        <button type="button" class="btn" id="fbWeekly" hidden>Refresh this week</button>
         <button type="button" class="btn primary" id="fbTeam" hidden>Refresh team data</button>
         <span class="minibar fbbar" id="fbBar" hidden aria-hidden="true"><i></i></span>
       </span>
@@ -264,6 +266,12 @@
         <p class="note">Looks at your six most recent tracks and cars. A first refresh uses up to about 60 Garage 61 requests (less if you've raced fewer combinations); refreshing again within ten minutes uses none. Debrief shows the exact number afterwards.</p>
         <div class="row"><button type="button" class="btn primary" data-act="team">Refresh team data</button><span class="msg" id="teamMsg" role="status"></span></div>
       </div>
+      <div class="panel" id="weeklyPanel">
+        <div class="phead"><h3>This week's leaderboards</h3><span class="pill" id="weeklyPill" hidden></span></div>
+        <p class="note" id="weeklyNote">Checking...</p>
+        <ul class="warnlist" id="weeklySkipped" hidden></ul>
+        <div class="row"><button type="button" class="btn" id="btnWeekly">Refresh this week</button><span class="msg" id="weeklyMsg" role="status"></span></div>
+      </div>
     </div>
   </section>
 
@@ -326,6 +334,17 @@
         <label class="check" for="cardsShare"><input id="cardsShare" type="checkbox"><span>Share my track cards with the team</span></label>
         <p class="note" id="cardsStatus"></p>
         <div class="row"><button type="submit" class="btn">Save</button><span class="msg" id="cardsMsg" role="status"></span></div>
+      </form>
+
+      <form class="panel" id="fDiscord" autocomplete="off">
+        <div class="phead"><h3>Discord</h3><span class="pill" id="discordPill">Off</span></div>
+        <p class="note">Post a review's share card to your team's Discord channel. In Discord: channel settings &gt; Integrations &gt; Webhooks &gt; Copy Webhook URL, then paste it here. It's saved in settings.toml on this PC and Debrief never shows it again.</p>
+        <p class="note"><b>Debrief only posts when you press Post and confirm. It never posts on its own.</b></p>
+        <label class="field wide" for="discordHook"><span>Webhook address</span>
+          <input id="discordHook" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste here">
+        </label>
+        <div class="row"><button type="submit" class="btn">Save</button><button type="button" class="btn" id="discordCheck" hidden>Check</button><button type="button" class="btn" id="discordClear" hidden>Remove</button><span class="msg" id="discordMsg" role="status"></span></div>
+        <p class="note" id="discordWhere" hidden></p>
       </form>
 
       <details class="panel" id="pIracing">
@@ -435,6 +454,16 @@
     </div>
     <p class="note">Fuel numbers come from your own laps. Check the garage before the race. The pit stop loss includes refuelling time.</p>
   </form>
+</dialog>
+<dialog id="dlgDiscord" aria-labelledby="discordTitle">
+  <div class="dlgbody">
+    <div class="phead"><h3 id="discordTitle">Post to Discord</h3><button type="button" class="btn ghost" id="discordClose" aria-label="Close">Close</button></div>
+    <p class="note">Check the picture and the message. Nothing is posted until you press Post.</p>
+    <img id="discordImg" class="shareimg" alt="The share card that would be posted">
+    <label class="field wide" for="discordText"><span>Message</span><textarea id="discordText" maxlength="2000" rows="3" spellcheck="true"></textarea></label>
+    <div class="row between"><span class="note" id="discordTarget"></span><span class="note num" id="discordCount">0 / 2000</span></div>
+    <div class="row"><button type="button" class="btn primary" id="discordPost">Post</button><button type="button" class="btn" id="discordCancel">Cancel</button><span class="msg" id="discordDlgMsg" role="status"></span></div>
+  </div>
 </dialog>
 <script src="static/app.js"></script>
 </body></html>

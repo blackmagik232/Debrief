@@ -121,6 +121,29 @@ def choose_length(raws_and_times, track_length):
     return est
 
 
+def _r1(x):
+    return None if x is None else round(float(x), 1)
+
+
+def corner_facts(R, corner) -> dict:
+    """How one lap took one corner, relative to the corner's apex (so the numbers survive small
+    corner-position differences between laps). From the already-resampled lap: no requests.
+    brake_before_apex_m = apex - brake point (None on a lift-only corner),
+    full_thr_after_apex_m = full-throttle point - apex."""
+    try:
+        m = engine.corner_metrics(R, corner)
+    except Exception:  # noqa: BLE001  (odd telemetry: no facts for this corner)
+        m = None
+    if not m:
+        return {"brake_before_apex_m": None, "min_mph": None, "exit_mph": None,
+                "full_thr_after_apex_m": None, "gear": None}
+    apex = float(corner["apex_m"])
+    return {"brake_before_apex_m": _r1(apex - m["brake_on"]) if m.get("brake_on") is not None else None,
+            "min_mph": _r1(m.get("min_mph")), "exit_mph": _r1(m.get("exit_mph")),
+            "full_thr_after_apex_m": _r1(m["full_thr"] - apex) if m.get("full_thr") is not None else None,
+            "gear": int(m["gear"]) if m.get("gear") is not None else None}
+
+
 def corner_kings(entries, track_length=None):
     """entries: [{"key", "name", "t", "csv", "is_me"}]. Corners come from the fastest lap
     (engine.detect_corners after engine.resample); each lap is split with engine.build_segments,
@@ -162,6 +185,7 @@ def corner_kings(entries, track_length=None):
                "your_gap": None}
         if me is not None:
             row["your_gap"] = round(times[me["key"]] - times[king], 3)  # positive = you were slower
+        row["metrics"] = {x["key"]: corner_facts(x["R"], by_id[cid]) for x in parsed}
         out.append(row)
     names = {x["key"]: x["name"] for x in parsed}
     wins = {}
@@ -334,6 +358,10 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
         for r in board:
             r.pop("_lap", None)
         entry["board"] = board
+        try:
+            entry["learn"] = learn_for_combo(entry)
+        except Exception:  # noqa: BLE001  (a hint is never worth breaking the hub)
+            entry["learn"] = []
     data = {
         "version": 1,
         "team": {"slug": team_slug, "name": team_name},
@@ -344,6 +372,11 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
         "requests": api.requests_made - start_req,
         "notes": notes,
     }
+    try:
+        from . import leaderboards
+        data["weekly"] = leaderboards.view(folder)   # saved snapshots only: no requests
+    except Exception:  # noqa: BLE001
+        pass
     log(f"Team hub ready. Garage 61 requests used: {data['requests']}.")
     return data
 
@@ -357,10 +390,199 @@ def write(folder, data) -> Path:
     from . import report
     out = Path(folder) / "team"
     out.mkdir(parents=True, exist_ok=True)
-    (out / "team.json").write_text(json.dumps(data), encoding="utf-8")
+    tj = out / "team.json"
+    tmpj = tj.with_name("team.json.tmp")
+    tmpj.write_text(json.dumps(data), encoding="utf-8")
+    fsutil.replace(tmpj, tj)
     html = report.fill(TPL.read_text(encoding="utf-8"), {"/*TEAM*/null": _embed(data)})
     page = out / "index.html"
     tmp = page.with_name("index.html.tmp")
     tmp.write_text(html, encoding="utf-8")
     fsutil.replace(tmp, page)
     return page
+
+
+# ---------------------------------------------------------------- who to learn from (2.5, no requests)
+LEARN_GATE_S = 0.05        # a teammate must be at least this much quicker through the corner
+SIMILAR_PACE_PCT = 1.5     # "similar pace": their full best lap within 1.5 % of yours
+MAX_LEARN = 5
+HOW_MIN = {"brake_before_apex_m": 5.0, "min_mph": 1.5, "full_thr_after_apex_m": 10.0}
+BASIS_NOTE = "Both are best laps: this compares your best driving, not your typical lap."
+
+
+def _first(name) -> str:
+    s = str(name or "").strip()
+    return s.split()[0] if s else "Your teammate"
+
+
+def _ordinal(n) -> str:
+    n = int(n)
+    suf = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suf}"
+
+
+def _about(x, step=5) -> int:
+    return max(step, int(round(abs(x) / step) * step))
+
+
+def _how(mine: dict, theirs: dict) -> dict:
+    """Facts whose difference passes the thresholds. Each value is [you, them]."""
+    out = {}
+    for k, gate in HOW_MIN.items():
+        a, b = (mine or {}).get(k), (theirs or {}).get(k)
+        if a is not None and b is not None and abs(a - b) >= gate:
+            out[k] = [a, b]
+    a, b = (mine or {}).get("gear"), (theirs or {}).get("gear")
+    if a is not None and b is not None and a != b:
+        out["gear"] = [a, b]
+    return out
+
+
+def _how_text(how: dict) -> str | None:
+    bits = []
+    if "brake_before_apex_m" in how:
+        you, them = how["brake_before_apex_m"]
+        bits.append(f"braked about {_about(you - them)} m {'later' if them < you else 'earlier'}")
+    if "min_mph" in how:
+        you, them = how["min_mph"]
+        d = round(abs(them - you))
+        bits.append(f"carried about {max(1, d)} mph {'more' if them > you else 'less'} through the slowest point")
+    if "full_thr_after_apex_m" in how:
+        you, them = how["full_thr_after_apex_m"]
+        bits.append(f"were back on full throttle about {_about(you - them)} m "
+                    f"{'sooner' if them < you else 'later'} after the apex")
+    if "gear" in how:
+        you, them = how["gear"]
+        bits.append(f"were in {_ordinal(them)} gear at the slowest point (you were in {_ordinal(you)})")
+    if not bits:
+        return None
+    return bits[0] if len(bits) == 1 else ", ".join(bits[:-1]) + " and " + bits[-1]
+
+
+def _lap_t(combo, kings, key):
+    for r in combo.get("board") or []:
+        if r.get("key") == key and _num(r.get("t")):
+            return float(r["t"])
+    ts = [z.get("times", {}).get(key) for z in kings.get("corners") or []]
+    return float(sum(ts)) if ts and all(isinstance(t, (int, float)) for t in ts) else None
+
+
+def _learn_rows(combo: dict, pairs: list) -> list:
+    """pairs: [(name shown, apex_m, kings corner row)]."""
+    kings = combo.get("kings") or {}
+    if "me" not in (kings.get("drivers") or []):
+        return []
+    names = kings.get("names") or {}
+    my_lap = _lap_t(combo, kings, "me")
+    out = []
+    for label, apex, kc in pairs:
+        times = kc.get("times") or {}
+        me_t = times.get("me")
+        if not isinstance(me_t, (int, float)):
+            continue
+        cands = []
+        for k, t in times.items():
+            if k == "me" or not isinstance(t, (int, float)) or t > me_t - LEARN_GATE_S + 1e-9:
+                continue
+            their_lap = _lap_t(combo, kings, k)
+            lap_gap = round((my_lap / their_lap - 1) * 100, 2) if my_lap and their_lap else None
+            cands.append({"key": k, "gap": round(me_t - t, 3), "t": t, "lap_gap_pct": lap_gap,
+                          "similar": lap_gap is not None and abs(lap_gap) <= SIMILAR_PACE_PCT})
+        if not cands:
+            continue
+        cands.sort(key=lambda c: (-c["gap"], c["key"]))
+        similar = [c for c in cands if c["similar"]]
+        primary = similar[0] if similar else cands[0]
+        rest = [c for c in cands if c is not primary]
+        alt = rest[0] if rest else None
+        metrics = kc.get("metrics") or {}
+        how = _how(metrics.get("me"), metrics.get(primary["key"]))
+        name = names.get(primary["key"]) or primary["key"]
+        text = f"{_first(name)}'s best lap was {primary['gap']:.2f} s quicker than yours through {label}."
+        facts = _how_text(how)
+        if facts:
+            text += f" On that lap they {facts}."
+        text += " " + BASIS_NOTE
+        out.append({"corner": label, "apex_m": round(float(apex), 1) if apex is not None else None,
+                    "team_corner": kc.get("id"),
+                    "teammate": {"key": primary["key"], "name": name},
+                    "gap_s": primary["gap"], "your_t": round(float(me_t), 3), "their_t": round(float(primary["t"]), 3),
+                    "basis": "best laps", "similar_pace": primary["similar"], "lap_gap_pct": primary["lap_gap_pct"],
+                    "how": how, "text": text,
+                    "alt": ({"key": alt["key"], "name": names.get(alt["key"]) or alt["key"], "gap_s": alt["gap"]}
+                            if alt else None)})
+    out.sort(key=lambda r: -r["gap_s"])
+    return out[:MAX_LEARN]
+
+
+def learn_for_combo(combo: dict) -> list:
+    """Who to learn from on a team combo, by the team's own corner names (team.json per combo `learn`)."""
+    kings = (combo or {}).get("kings") or {}
+    return _learn_rows(combo, [(kc.get("id"), kc.get("apex_m"), kc) for kc in kings.get("corners") or []])
+
+
+def _combo_for(team_data: dict, review: dict):
+    m = (review or {}).get("meta") or {}
+    ids = review.get("combo_ids") if isinstance(review.get("combo_ids"), dict) else {}
+    want = {"track": m.get("track"), "car": m.get("car"), "track_id": ids.get("track_id"), "car_id": ids.get("car_id")}
+    if not want["track"] or not want["car"]:
+        return None
+    for c in (team_data or {}).get("combos") or []:
+        if isinstance(c, dict) and library.same_combo(want, c):
+            return c
+    return None
+
+
+def learn_from(team_data: dict, review: dict) -> list[dict]:
+    """Corners where a teammate's best lap was quicker than yours, matched to the review's corners by apex
+    (spec 0.4: prep.match_corners). Pure: no requests. [] when there's nothing to compare."""
+    from . import prep
+    if not isinstance(team_data, dict) or not isinstance(review, dict):
+        return []
+    combo = _combo_for(team_data, review)
+    if not combo:
+        return []
+    kings = combo.get("kings") or {}
+    if "me" not in (kings.get("drivers") or []):
+        return []
+    mine = [c for c in review.get("corners") or [] if isinstance(c, dict) and _num(c.get("apex_m")) is not None]
+    theirs = [c for c in kings.get("corners") or [] if isinstance(c, dict) and _num(c.get("apex_m")) is not None]
+    if not mine or not theirs:
+        return []
+    L = _num(review.get("L")) or _num(kings.get("L"))
+    canon = prep.match_corners([(0, mine), (1, theirs)], L)
+    pairs = [(k["per"][0].get("id"), k["per"][0].get("apex_m"), k["per"][1]) for k in canon if 0 in k["per"] and 1 in k["per"]]
+    return _learn_rows(combo, pairs)
+
+
+def learn_from_saved(library_folder, review: dict) -> list[dict]:
+    """learn_from against <library>/team/team.json. No requests; [] when there's no team page yet."""
+    try:
+        data = json.loads((Path(library_folder) / "team" / "team.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    try:
+        return learn_from(data, review)
+    except Exception:  # noqa: BLE001  (an odd team.json never stops a review)
+        return []
+
+
+def render_saved(library_folder) -> Path:
+    """Rebuild the team page from team.json plus the saved weekly snapshots. No requests."""
+    from . import leaderboards
+    folder = Path(library_folder)
+    try:
+        data = json.loads((folder / "team" / "team.json").read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError
+    except (OSError, ValueError):
+        data = {"version": 1, "team": {"slug": "", "name": "Your team"}, "me": {"name": "You", "key": "me"},
+                "generated_at": None, "combos": [], "h2h": [], "requests": 0, "notes": []}
+    for c in data.get("combos") or []:
+        if isinstance(c, dict) and "learn" not in c:
+            try:
+                c["learn"] = learn_for_combo(c)
+            except Exception:  # noqa: BLE001
+                c["learn"] = []
+    data["weekly"] = leaderboards.view(folder)
+    return write(folder, data)

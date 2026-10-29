@@ -321,7 +321,7 @@ def design_tokens() -> str:
 JOB_TITLES = {"review": "Reviewing your last race", "check": "Checking the connection",
               "prep": "Building your track prep page", "team": "Updating the team hub",
               "sync": "Syncing your Garage 61 history", "schedule": "Loading the iRacing season schedule",
-              "update": "Updating Debrief"}
+              "update": "Updating Debrief", "weekly": "Updating this week's team leaderboards"}
 BACKGROUND_TITLES = {"refresh": "Updating your saved reviews to the new page layout"}
 
 
@@ -483,6 +483,10 @@ class Jobs:
             elif kind == "team":
                 page = app.cmd_team(cfg, progress=cb)
                 result = {"page": _lib_rel(cfg, page)}
+            elif kind == "weekly":
+                res = app.cmd_weekly(cfg, progress=cb, series_ids=params.get("series_ids"),
+                                     force_old=bool(params.get("force_old")))
+                result = {"page": _lib_rel(cfg, res["page"]), "requests": int(res.get("requests") or 0)}
             else:
                 result = {"lines": app.cmd_check(cfg, progress=cb)}
         except Garage61Error as e:
@@ -741,6 +745,74 @@ def _short_text(v, what, n=200):
     return v.strip()
 
 
+# ---------------------------------------------------------------- Discord (2.5)
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+NONCE_OK = re.compile(r"^[A-Za-z0-9_-]{16,40}$")
+MAX_SHARE_SIDE = 2400
+
+
+def png_size(data: bytes):
+    """(width, height) of a PNG from its IHDR, or None if it isn't a PNG Discord would take from Debrief."""
+    if len(data) < 33 or not data.startswith(PNG_MAGIC) or data[12:16] != b"IHDR" or data[8:12] != b"\x00\x00\x00\r":
+        return None
+    w, h = int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+    if not (0 < w <= MAX_SHARE_SIDE and 0 < h <= MAX_SHARE_SIDE):
+        return None
+    return w, h
+
+
+class DiscordStage:
+    """Share cards waiting for the Post click: in memory only (never a file), under a single-use random nonce.
+    At most MAX at a time (the oldest goes first); each one is forgotten after TTL seconds. Staging never
+    touches the network: only api/discord-post sends anything, and only with a nonce it takes from here."""
+    MAX = 3
+    TTL = 10 * 60
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.items = {}               # nonce -> {"png", "created", "sha256", "width", "height"}
+        self.clock = time.monotonic   # replaced in tests
+
+    def _expire(self):
+        now = self.clock()
+        for k in [k for k, v in self.items.items() if now - v["created"] > self.TTL]:
+            del self.items[k]
+
+    def add(self, png: bytes, width: int, height: int) -> str:
+        nonce = secrets.token_urlsafe(16)
+        with self.lock:
+            self._expire()
+            while len(self.items) >= self.MAX:
+                del self.items[min(self.items, key=lambda k: self.items[k]["created"])]
+            self.items[nonce] = {"png": png, "created": self.clock(), "sha256": hashlib.sha256(png).hexdigest(),
+                                 "width": width, "height": height}
+        return nonce
+
+    def pop(self, nonce):
+        """The staged card for nonce, removed so it can never be used again; None if unknown or expired."""
+        if not isinstance(nonce, str) or not NONCE_OK.match(nonce):
+            return None
+        with self.lock:
+            self._expire()
+            return self.items.pop(nonce, None)
+
+    def __len__(self):
+        with self.lock:
+            self._expire()
+            return len(self.items)
+
+
+def redact_webhook(text: str, url: str | None) -> str:
+    """text with the webhook address and its token taken out (for a message or a log line)."""
+    text = str(text)
+    if url:
+        text = text.replace(url, "…")
+        tok = url.rstrip("/").rsplit("/", 1)[-1]
+        if len(tok) >= 20:
+            text = text.replace(tok, "…")
+    return re.sub(r"(discord(?:app)?\.com/api/webhooks/\d+/)[A-Za-z0-9_-]+", r"\1…", text)
+
+
 # ---------------------------------------------------------------- server
 class DebriefServer(ThreadingHTTPServer):
     daemon_threads = True
@@ -754,6 +826,8 @@ class DebriefServer(ThreadingHTTPServer):
         self.reviews = ReviewIndex()
         self.profile_cache = RowsCache()
         self.intel = IntelUploads()
+        self.discord_stage = DiscordStage()
+        self.discord_info = None      # {"hint", "name", "channel_id"} from the last Check (memory only)
         self.timeout_s = heartbeat_timeout
         self.last_ping = time.monotonic() + max(0.0, startup_grace - heartbeat_timeout)
         self.stopping = threading.Event()
@@ -943,7 +1017,7 @@ class Handler(BaseHTTPRequestHandler):
         if r.startswith("lib/"):
             return self._lib(r[len("lib/"):])
         if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/pages", "api/sessions", "api/prepare",
-                 "api/notes", "api/update", "api/profile", "api/strategy"):
+                 "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -1196,6 +1270,26 @@ class Handler(BaseHTTPRequestHandler):
         info.pop("notes", None) if q.get("auto") == "1" else None
         return self._json({"ok": True, "installed": app.FROZEN, **info, "last_update": last})
 
+    def _get_weekly(self, q):
+        """What "Refresh this week" would do and roughly how many Garage 61 requests it would use
+        (leaderboards.plan). Never a request: the schedule, your saved series, the cached lists and snapshots."""
+        cfg = self._cfg()
+        lb = app.optional_module("leaderboards")
+        out = {"ok": True, "available": lb is not None, "schedule": False, "plan": None,
+               "running": self.server.jobs.kind == "weekly"}
+        if lb is None:
+            return self._json(out)
+        from .. import schedule, series
+        sched = schedule.load_current()
+        out["schedule"] = bool(sched)
+        if not sched:
+            return self._json(out)
+        api = self._cache_api(cfg)
+        plan = lb.plan(cfg, api, sched, series.load(cfg["library_folder"]))
+        out["plan"] = plan if isinstance(plan, dict) else None
+        out["token"] = api is not None
+        return self._json(out)
+
     def _get_pages(self, q):
         """Pages built by the Prep and Team views, so the window can offer to reopen them."""
         cfg = self._cfg()
@@ -1262,6 +1356,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._post_schedule_upload()
         if r == "api/intel-upload":
             return self._post_intel_upload()
+        if r == "api/discord-stage":
+            return self._post_discord_stage()
         try:  # read the body first (even for ping/bye) so a kept-alive connection stays in step
             body = self._body()
         except (ValueError, UnicodeDecodeError, RecursionError):
@@ -1291,7 +1387,8 @@ class Handler(BaseHTTPRequestHandler):
         if r == "api/update":
             return self._json(self.server.jobs.start("update"))
         if r in ("api/prep", "api/team", "api/goals", "api/result", "api/series", "api/notes", "api/schedule",
-                 "api/strategy", "api/intel-preview", "api/intel-import"):
+                 "api/strategy", "api/intel-preview", "api/intel-import", "api/weekly", "api/discord-post",
+                 "api/discord-check"):
             try:
                 return getattr(self, "_post_" + r[4:].replace("-", "_"))(body)
             except ValueError as e:
@@ -1308,7 +1405,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": False, "error": friendly(e)}, 400)
             except OSError as e:
                 return self._json({"ok": False, "error": f"Couldn't write settings.toml ({e.strerror})."}, 500)
-            app.say("Settings saved from the desktop app" + (" (token updated)." if "token" in body and body["token"] else "."))
+            what = [w + " updated" for w, k in (("token", "token"), ("Discord webhook", "discord_webhook")) if body.get(k)]
+            if body.get("clear_discord") is True:
+                what.append("Discord webhook removed")
+            if body.get("clear_discord") is True or body.get("discord_webhook"):
+                self.server.discord_info = None   # a new webhook: its name is learnt again by Check
+            # never the values themselves: only which secrets changed
+            app.say("Settings saved from the desktop app" + (f" ({', '.join(what)})." if what else "."))
             return self._json({"ok": True, "settings": view})
         if r == "api/open-folder":
             lib = self._library_folder()
@@ -1564,6 +1667,120 @@ class Handler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             takes_cfg = False
         return notes.save(cfg["library_folder"], card, cfg=cfg) if takes_cfg else notes.save(cfg["library_folder"], card)
+
+    MAX_STAGE = 4 * 1024 * 1024
+    MIN_STAGE = 1024
+
+    def _post_discord_stage(self):
+        """The share card to preview, as a raw image/png body (1 KB to 4 MB, the schedule-upload Content-Length
+        rules). Checked (PNG signature, IHDR size) and kept in memory under a single-use nonce for 10 minutes.
+        No network: nothing is sent to Discord until api/discord-post."""
+        cl = (self.headers.get("Content-Length") or "").strip()
+        if not cl.isdigit() or self.headers.get("Transfer-Encoding"):
+            self.close_connection = True
+            return self._json({"ok": False, "error": "Bad request."}, 400)
+        n = int(cl)
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if n > self.MAX_STAGE or n < self.MIN_STAGE or ctype != "image/png":
+            self.close_connection = True
+            return self._json({"ok": False, "error": "That picture can't be posted. Make the preview again."}, 400)
+        buf = bytearray()
+        while len(buf) < n:
+            chunk = self.rfile.read(min(65536, n - len(buf)))
+            if not chunk:
+                break
+            buf += chunk
+        if len(buf) != n:
+            self.close_connection = True
+            return self._json({"ok": False, "error": "The picture didn't arrive in full. Try again."}, 400)
+        self._consumed = True
+        png = bytes(buf)
+        size = png_size(png)
+        if size is None:
+            return self._json({"ok": False, "error": "That picture can't be posted. Make the preview again."}, 400)
+        nonce = self.server.discord_stage.add(png, *size)
+        hook = settings_io.discord_webhook()
+        info = self.server.discord_info or {}
+        hint = settings_io.webhook_hint(hook) if hook else None
+        target = {"saved": bool(hook), "hint": hint,
+                  "name": info.get("name") if hint and info.get("hint") == hint else None}
+        return self._json({"ok": True, "nonce": nonce, "width": size[0], "height": size[1], "target": target})
+
+    def _post_discord_post(self, body):
+        """Post a staged share card to the saved Discord webhook: 1 Discord request. Runs only from the Post
+        button in the window's preview dialog, with the nonce api/discord-stage gave it (single use: it is
+        taken before anything else, so a repeat or a stale preview is refused). A running job doesn't matter:
+        posting never touches the library. THIS IS THE ONLY PLACE THAT CALLS discord.post."""
+        item = self.server.discord_stage.pop(body.get("nonce"))
+        if item is None:
+            raise ValueError("Make the preview again.")
+        content = body.get("content", "")
+        if content is None:
+            content = ""
+        if not isinstance(content, str) or len(content) > 2000:
+            raise ValueError("The message can be up to 2000 characters. Make the preview again.")
+        hook = settings_io.discord_webhook()
+        if not hook:
+            raise ValueError("Add your team's Discord webhook in Settings first.")
+        discord = self._module("discord")
+        hint = settings_io.webhook_hint(hook)
+        try:
+            res = discord.post(hook, item["png"], content)
+        except Exception as e:  # noqa: BLE001  (DiscordError has a plain message; anything else stays vague)
+            msg = redact_webhook(str(e), hook)
+            app.say(f"Discord post failed (webhook {hint}): {type(e).__name__}: {msg}"[:400])
+            if type(e).__name__ == "DiscordError" and msg.strip():   # plain and redacted already (25-B)
+                return self._json({"ok": False, "error": msg}, 400)
+            return self._json({"ok": False, "error": "Couldn't post to Discord. Details were saved to debrief.log in "
+                                                     + app.data_folder_label() + "."}, 502)
+        app.say(f"Posted to Discord (webhook {hint}).")
+        mid = res.get("id") if isinstance(res, dict) else None
+        return self._json({"ok": True, "id": str(mid) if isinstance(mid, (str, int)) else None})
+
+    def _post_discord_check(self, body):
+        """Settings > Discord > Check: which webhook and channel posts would go to. 1 Discord request."""
+        hook = settings_io.discord_webhook()
+        if not hook:
+            raise ValueError("Paste your team's Discord webhook and save it first.")
+        discord = self._module("discord")
+        hint = settings_io.webhook_hint(hook)
+        try:
+            res = discord.check(hook)
+        except Exception as e:  # noqa: BLE001
+            msg = redact_webhook(str(e), hook)
+            app.say(f"Discord check failed (webhook {hint}): {type(e).__name__}: {msg}"[:400])
+            if type(e).__name__ == "DiscordError" and msg.strip():
+                return self._json({"ok": False, "error": msg}, 400)
+            return self._json({"ok": False, "error": "Couldn't reach Discord."}, 502)
+        res = res if isinstance(res, dict) else {}
+        name = res.get("name")
+        name = redact_webhook(name, hook)[:80] if isinstance(name, str) and name.strip() else None
+        ch = res.get("channel_id")
+        ch = str(ch) if isinstance(ch, (str, int)) and re.match(r"^\d{1,25}$", str(ch)) else None
+        if not res.get("ok", True):
+            return self._json({"ok": False, "error": "That Discord webhook no longer works. Paste a new one in Settings."}, 502)
+        self.server.discord_info = {"hint": hint, "name": name, "channel_id": ch}
+        app.say(f"Checked the Discord webhook ({hint}).")
+        return self._json({"ok": True, "name": name, "channel_id": ch, "hint": hint})
+
+    SERIES_ID_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
+
+    def _post_weekly(self, body):
+        """Start the weekly leaderboards refresh: {series_ids?: [str], force_old?: bool}."""
+        ids = body.get("series_ids")
+        if ids is not None:
+            if not isinstance(ids, list) or len(ids) > 50 or not all(
+                    isinstance(x, str) and self.SERIES_ID_OK.match(x) for x in ids):
+                raise ValueError("Pick your series from the list.")
+            ids = list(dict.fromkeys(ids))
+        fo = body.get("force_old", False)
+        if not isinstance(fo, bool):
+            raise ValueError("Bad request.")
+        self._cfg()
+        if app.optional_module("leaderboards") is None:
+            raise ValueError("Weekly leaderboards aren't available right now. Details were saved to debrief.log in "
+                             + app.data_folder_label() + ".")
+        return self._json(self.server.jobs.start("weekly", {"series_ids": ids, "force_old": fo}))
 
     def _post_team(self, body):
         self._cfg()

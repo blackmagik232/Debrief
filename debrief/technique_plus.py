@@ -468,7 +468,14 @@ def spread_for_review(data: dict) -> dict | None:
             continue
         a = np.array(list(vals.values()), float)
         iqr = float(np.percentile(a, 75) - np.percentile(a, 25))
-        out.append({"id": c.get("id"), "n": len(a), "iqr_m": round(iqr, 1), "std_m": round(float(np.std(a, ddof=1)), 1),
+        with np.errstate(over="ignore", invalid="ignore"):
+            sd = float(np.std(a, ddof=1))
+        if not (np.isfinite(iqr) and np.isfinite(sd)):
+            continue   # junk brake points (e.g. 1e308 in a hand-edited review): leave the corner out
+        cid = c.get("id")
+        if isinstance(cid, float) and not np.isfinite(cid):
+            cid = None
+        out.append({"id": cid, "n": len(a), "iqr_m": round(iqr, 1), "std_m": round(sd, 1),
                     "median_m": round(float(np.median(a)), 1), "label": spread_label(iqr),
                     "laps": dict(sorted(vals.items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 0))})
     return {"version": VERSION, "corners": out, "params": dict(SPREAD_PARAMS)}

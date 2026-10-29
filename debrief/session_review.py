@@ -50,6 +50,13 @@ def _slope(xs, ys):
     return float(np.polyfit(np.asarray(xs, float), np.asarray(ys, float), 1)[0])
 
 
+def _lap_n(x):
+    if isinstance(x, bool):
+        return None
+    v = _num(x)
+    return int(v) if v is not None and v == int(v) and abs(v) < 1e9 else None
+
+
 def _kind(data):
     s = str(((data.get("meta") or {}) if isinstance(data.get("meta"), dict) else {}).get("session") or "").strip().lower()
     return {"practice": "practice", "qualifying": "qualifying", "qualify": "qualifying"}.get(s)
@@ -215,8 +222,11 @@ def for_review(data: dict) -> dict | None:
     k = _kind(data)
     if not k:
         return None
-    laps = sorted([l for l in (data.get("laps") or []) if isinstance(l, dict) and l.get("n") is not None
+    # a lap number must be a whole, finite number (a hand-edited or damaged review.json can hold "x" or NaN)
+    laps = sorted([l for l in (data.get("laps") or []) if isinstance(l, dict) and _lap_n(l.get("n")) is not None
                    and _num(l.get("t")) is not None], key=lambda l: int(l["n"]))
+    if any(not isinstance(l["n"], int) for l in laps):
+        laps = [{**l, "n": _lap_n(l["n"])} for l in laps]
     fuel = _fuel(data)
     runs_laps, why = split_runs(laps, fuel) if laps else ([], [])
     runs = [_run_block(i + 1, r, why[i], fuel) for i, r in enumerate(runs_laps)]

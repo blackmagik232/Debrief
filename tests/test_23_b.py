@@ -83,7 +83,8 @@ def test_lift_corner_has_no_braking_phase():
     c1 = _corner(s, "C1")
     assert c1["lift"] is True
     assert c1["markers"]["B"] == c1["markers"]["R"]
-    assert c1["loss"]["braking"] == 0 and c1["loss_raw"]["braking"] == 0
+    # 2.3.0 M3: a zero-length phase is not measured (None), not "no loss"
+    assert c1["loss"]["braking"] is None and c1["loss_raw"]["braking"] == 0
     assert c1["markers"]["B"] < c1["markers"]["A"]        # lift point found before the slowest point
     assert s["phases"]["braking"]["corners"] == 1          # only C2 has a braking stretch
 
@@ -93,7 +94,7 @@ def test_noise_gate():
     s = skills.for_review(d)
     assert s["reason"] is None
     for c in s["corners"]:
-        assert all(v == 0 for v in c["loss"].values()), c["loss"]
+        assert all(v in (0, None) for v in c["loss"].values()), c["loss"]   # None: phase not in this corner
     assert s["overall"]["loss_s"] == 0 and s["overall"]["score"] == 100
 
 
@@ -228,22 +229,28 @@ def _row(i, day, loss_exit, car="Ford Mustang GT4", n_clean=12, season="2026 Sea
 
 
 def test_profile_improving():
-    rows = [_row(i, d, x) for i, (d, x) in enumerate([("2026-10-01", 3.0), ("2026-10-08", 2.6),
-                                                       ("2026-10-15", 2.1), ("2026-10-22", 1.8)])]
+    # 2.3.0 H1: a direction also needs Mann-Kendall p < 0.05, which 4 races can never reach (smallest p
+    # is 0.089), so this uses 6 weekly races (was 4)
+    days = ["2026-10-01", "2026-10-08", "2026-10-15", "2026-10-22", "2026-10-29", "2026-11-05"]
+    vals = [3.0, 2.6, 2.1, 1.8, 1.5, 1.2]
+    rows = [_row(i, d, x) for i, (d, x) in enumerate(zip(days, vals))]
     p = profile.build(rows)
     g = p["groups"][0]
-    assert g["key"] == "all" and g["races"] == 4 and p["n_races"] == 4
+    assert g["key"] == "all" and g["races"] == 6 and p["n_races"] == 6
     tr = g["phases"]["exit"]["trend"]
-    assert tr["direction"] == "improving" and tr["n"] == 4 and tr["days"] == 21 and tr["change_pm"] <= -0.5
-    assert g["phases"]["mid"]["trend"]["direction"] == "steady"
+    assert tr["direction"] == "improving" and tr["n"] == 6 and tr["days"] == 35 and tr["change_pm"] <= -0.5
+    assert tr["test"] == "mann_kendall" and tr["p"] < 0.05, tr
+    assert g["phases"]["mid"]["trend"]["direction"] == "steady" and g["phases"]["mid"]["trend"]["p"] == 1.0
     ex = g["phases"]["exit"]
-    assert [r["loss_pm"] for r in ex["races"]] == [3.0, 2.6, 2.1, 1.8]   # oldest first
-    assert ex["latest"] == skills.score(1.8, "exit") and ex["best_score"] == ex["latest"]
-    assert len(ex["weekly"]) == 4 and ex["seasons"] == [{"name": "2026 Season 4", "loss_pm": 2.35, "n": 4}]
+    assert [r["loss_pm"] for r in ex["races"]] == vals   # oldest first
+    assert ex["latest"] == skills.score(1.2, "exit") and ex["best_score"] == ex["latest"]
+    assert len(ex["weekly"]) == 6 and ex["seasons"] == [{"name": "2026 Season 4", "loss_pm": 1.95, "n": 6}]
     assert p["weakest"]["phase"] == "exit"
-    slip = profile.build([_row(i, d, x) for i, (d, x) in enumerate([("2026-10-01", 1.0), ("2026-10-08", 1.6),
-                                                                     ("2026-10-15", 2.1), ("2026-10-22", 2.4)])])
+    slip = profile.build([_row(i, d, x) for i, (d, x) in enumerate(zip(days, [1.0, 1.6, 2.1, 2.4, 2.8, 3.1]))])
     assert slip["groups"][0]["phases"]["exit"]["trend"]["direction"] == "slipping"
+    # the same clear 4-race fall as 2.3.0 used: steady now (too few races for the test), p stored
+    four = profile.build(rows[:4])["groups"][0]["phases"]["exit"]["trend"]
+    assert four["direction"] == "steady" and four["span_ok"] is True and four["p"] >= 0.05
 
 
 def test_profile_trend_needs_enough():

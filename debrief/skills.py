@@ -24,6 +24,9 @@ VERSION = 1
 CAPS_PM = {"braking": 5.0, "entry": 5.0, "mid": 5.0, "exit": 5.0, "overall": 12.0}
 PHASES = ("braking", "entry", "mid", "exit")
 ALL_PHASES = ("approach",) + PHASES
+VERSION_NOTE = """version 1 + 2.3.0 fixes: overall.loss_s is the real median typical-minus-better time over the
+corner zones (brake point to corner end, per lap then median; basis "zone_gap"); phases carry "share" of
+the summed phase medians ("where it goes"); a phase with no length is None (not measured)."""
 
 MIN_CLEAN = 6          # clean laps needed to score a review
 MIN_REF = 3            # better laps needed
@@ -119,14 +122,18 @@ class _Trace:
         self.th = np.asarray(tr.get("th") or [], float)
 
     def time_at(self, dist):
+        # bounded wrap (no loop): for_review only builds traces with a finite L > 0 and corners within
+        # a lap or two of the line, so the quotient is small
         x = float(dist)
+        if not (math.isfinite(x) and self.L > 0):
+            raise ValueError("bad distance or lap length")
         k = 0.0
-        while x < 0:
-            x += self.L
-            k -= self.T
-        while x > self.L:
-            x -= self.L
-            k += self.T
+        if x < 0 or x > self.L:
+            q = math.floor(x / self.L)
+            if x - q * self.L == 0 and q > 0:   # exactly on a later line: the end of the previous lap
+                q -= 1
+            x -= q * self.L
+            k = q * self.T
         return float(np.interp(x, self._d, self._tt)) + k
 
     def cell(self, dist, arr):
@@ -138,7 +145,19 @@ class _Trace:
 
 
 def _usable_trace(tr):
-    return isinstance(tr, dict) and isinstance(tr.get("tt"), list) and len(tr["tt"]) >= 3
+    """A trace with at least 3 cells whose time stamps are all finite numbers (a saved review with junk in
+    a trace leaves that lap out rather than putting NaN in the scores)."""
+    if not (isinstance(tr, dict) and isinstance(tr.get("tt"), list) and len(tr["tt"]) >= 3):
+        return False
+    return all(_num(v) is not None and not isinstance(v, bool) for v in tr["tt"])
+
+
+def _pos(x):
+    """A finite number > 0 (bools are not numbers here), else None."""
+    if isinstance(x, bool):
+        return None
+    x = _num(x)
+    return x if x is not None and x > 0 else None
 
 
 def _median_channel(traces, key, cells, step):
@@ -233,9 +252,18 @@ def _fail(reason, **extra):
 
 def for_review(data: dict) -> dict | None:
     """The `skills` block. Always returns a dict; when it can't score, {"reason": ...} without
-    phases/overall/corners. Reasons: no_traces, no_corners, not_enough_clean_laps, not_enough_better_laps."""
+    phases/overall/corners. Reasons: no_traces, no_corners, not_enough_clean_laps, not_enough_better_laps,
+    bad_data (the saved review has an impossible grid: lap length or step <= 0, NaN/inf, or values that
+    can't be read; the library refresh carries on with the next review)."""
     if not isinstance(data, dict):
         return None
+    try:
+        return _for_review(data)
+    except (ValueError, TypeError, OverflowError, ZeroDivisionError, KeyError, IndexError) as e:
+        return _fail("bad_data", detail=f"values in the saved review can't be read ({type(e).__name__})")
+
+
+def _for_review(data: dict) -> dict:
     traces = data.get("traces") if isinstance(data.get("traces"), dict) else {}
     mine = {k: v for k, v in traces.items() if str(k).startswith("me") and _usable_trace(v)}
     if not mine:
@@ -248,8 +276,20 @@ def for_review(data: dict) -> dict | None:
     cl = clean_laps(data)
     if len(cl) < MIN_CLEAN:
         return _fail("not_enough_clean_laps", n_clean=len(cl))
-    step = _num(data.get("step")) or 10.0
-    L = _num(data.get("L"))
+    # M1 (2.3.0 verification): every loop and grid below needs a finite step > 0 and lap length > 0
+    raw_step = data.get("step")
+    step = 10.0 if raw_step is None else _pos(raw_step)
+    raw_L = data.get("L")
+    n_cells = max(len(v["tt"]) for v in mine.values())
+    L = (n_cells * step if step else None) if raw_L is None else _pos(raw_L)
+    if step is None or L is None or L < 3 * step or L / step > 1e6:
+        return _fail("bad_data", detail="lap length or grid step is not a usable number",
+                     n_clean=len(cl))
+    # a corner must sit within a lap of the line and be shorter than a lap, or the wrap is meaningless
+    corners = [c for c in corners if -L <= float(c["start_m"]) and float(c["end_m"]) <= 2 * L
+               and float(c["end_m"]) - float(c["start_m"]) <= L]
+    if not corners:
+        return _fail("bad_data", detail="corner positions are outside the lap", n_clean=len(cl))
     trs = {}
     for n, t in cl:
         tr = mine.get(f"me{n}")
@@ -276,39 +316,76 @@ def for_review(data: dict) -> dict | None:
         ref_t = {p: float(np.median([x[p] for x in ref_pt])) for p in ALL_PHASES}
         lap_loss = {n: {p: v - ref_t[p] for p, v in _phase_times(trs[n], bounds).items()} for n in typ}
         loss_raw = {p: float(np.median([lap_loss[n][p] for n in typ])) for p in ALL_PHASES}
-        loss = {p: (0.0 if v < NOISE_S else v) for p, v in loss_raw.items()}
+        lens = {p: b - a for p, (a, b) in bounds.items()}
+        # M3: a phase with no length in this corner was not measured here: None, not "no loss"
+        loss = {p: (None if lens[p] <= 0 else (0.0 if v < NOISE_S else v)) for p, v in loss_raw.items()}
+        # M2: the real corner-zone time (braking point to corner end, the four scored phases) per lap
+        zone = (mk["B"], mk["E"])
+        zone_t = {n: trs[n].time_at(zone[1]) - trs[n].time_at(zone[0]) for n in set(typ) | set(rl)}
+        if not all(math.isfinite(v) for v in zone_t.values()) or not all(
+                math.isfinite(v) for x in lap_loss.values() for v in x.values()):
+            raise ValueError(f"non-finite time in corner {c.get('id')}")
         out_corners.append({
             "id": str(c.get("id", "?")), "lift": bool(lift), "n": len(typ), "n_ref": len(rl),
             "markers": {k: round(v, 1) for k, v in mk.items()},
-            "loss": {p: round(v, 3) for p, v in loss.items()},
+            "loss": {p: (None if v is None else round(v, 3)) for p, v in loss.items()},
             "loss_raw": {p: round(v, 4) for p, v in loss_raw.items()},
             "ref_t": {p: round(v, 3) for p, v in ref_t.items()},
             "iqr_s": {p: _r(_iqr([lap_loss[n][p] for n in typ]), 4) for p in ALL_PHASES},
             # raw per-lap losses (seconds vs the better laps' median), so the noise gate can be retuned
             "per_lap": {str(n): {p: round(v, 3) for p, v in lap_loss[n].items()} for n in typ},
-            "_len": {p: b - a for p, (a, b) in bounds.items()},
+            "_len": lens, "_zone_t": zone_t, "_typ": typ, "_ref": rl,
         })
     if not out_corners:
         return _fail("no_corners", n_clean=len(cl))
 
     phases = {}
     for p in PHASES:
-        loss_s = sum(c["loss"][p] for c in out_corners)
+        have = [c for c in out_corners if c["_len"][p] > 0]
+        if not have:
+            # M3: no corner has this phase (e.g. trail braking to the slowest point leaves no
+            # "turn-in to apex" stretch): not measured, so no time, no score (the page shows n/a)
+            phases[p] = {"loss_s": None, "loss_pm": None, "score": None, "corners": 0, "spread_s": None,
+                         "share": None}
+            continue
+        loss_s = sum(c["loss"][p] for c in have)
         pm = loss_s / lap_t * 1000.0 if lap_t > 0 else None
-        spreads = [c["iqr_s"][p] for c in out_corners if c["iqr_s"][p] is not None and c["_len"][p] > 0]
+        spreads = [c["iqr_s"][p] for c in have if c["iqr_s"][p] is not None]
         phases[p] = {"loss_s": round(loss_s, 3), "loss_pm": _r(pm, 2), "score": score(pm, p),
-                     "corners": sum(1 for c in out_corners if c["_len"][p] > 0),
+                     "corners": len(have),
                      "spread_s": _r(float(np.median(spreads)), 3) if spreads else None}
-    st = sum(c["loss"]["approach"] for c in out_corners)
-    tot = sum(phases[p]["loss_s"] for p in PHASES)
+    st = sum(c["loss"]["approach"] or 0.0 for c in out_corners)
+    sum_s = sum(phases[p]["loss_s"] for p in PHASES if phases[p]["loss_s"] is not None)
+    # M2: "where it goes" shares of the summed phase medians (each clamped at 0, against the better laps'
+    # median of each phase, so the sum is not itself a lap gap) ...
+    for p in PHASES:
+        if phases[p]["loss_s"] is not None:
+            phases[p]["share"] = round(phases[p]["loss_s"] / sum_s, 3) if sum_s > 0 else 0.0
+    # ... and the real gap: per typical lap, its time over every corner zone (brake point to corner end)
+    # minus the better laps' median of the same total; the median of that over typical laps
+    typ_all = [n for n in typical if all(n in c["_zone_t"] for c in out_corners)]
+    ref_all = [n for n in ref if all(n in c["_zone_t"] for c in out_corners)]
+    if len(typ_all) >= MIN_CORNER_LAPS and len(ref_all) >= MIN_REF:
+        tot_lap = {n: sum(c["_zone_t"][n] for c in out_corners) for n in set(typ_all) | set(ref_all)}
+        ref_tot = float(np.median([tot_lap[n] for n in ref_all]))
+        gap = float(np.median([tot_lap[n] - ref_tot for n in typ_all]))
+        gap_laps = len(typ_all)
+    else:   # corners scored from different lap sets: median of the per-corner gaps, summed
+        gap = sum(float(np.median([c["_zone_t"][n] for n in c["_typ"]]) - np.median([c["_zone_t"][n] for n in c["_ref"]]))
+                  for c in out_corners)
+        gap_laps = None
+    tot = 0.0 if gap < NOISE_S else gap
     tot_pm = tot / lap_t * 1000.0 if lap_t > 0 else None
     for c in out_corners:
-        c.pop("_len", None)
+        for k in ("_len", "_zone_t", "_typ", "_ref"):
+            c.pop(k, None)
     return {"version": VERSION, "params": _params(), "reason": None,
             "lap_t": round(lap_t, 3), "n_clean": len(cl), "ref_laps": sorted(ref), "typical_laps": typical,
             "phases": phases,
             "straights": {"loss_s": round(st, 3), "loss_pm": _r(st / lap_t * 1000.0 if lap_t > 0 else None, 2)},
-            "overall": {"loss_s": round(tot, 3), "loss_pm": _r(tot_pm, 2), "score": score(tot_pm, "overall")},
+            "overall": {"loss_s": round(tot, 3), "loss_pm": _r(tot_pm, 2), "score": score(tot_pm, "overall"),
+                        "gap_raw_s": round(gap, 4), "gap_laps": gap_laps, "sum_s": round(sum_s, 3),
+                        "basis": "zone_gap"},
             "corners": out_corners}
 
 
@@ -319,7 +396,10 @@ def compact(block) -> dict | None:
         return None
     lp = {}
     for p in PHASES:
-        v = _num((block["phases"].get(p) or {}).get("loss_pm"))
+        ph = block["phases"].get(p) if isinstance(block["phases"].get(p), dict) else {}
+        if isinstance(ph.get("corners"), int) and ph["corners"] <= 0:
+            continue        # not measured in any corner (M3): left out, so the profile skips it
+        v = _num(ph.get("loss_pm"))
         if v is not None:
             lp[p] = round(v, 2)
     ov = _num((block.get("overall") or {}).get("loss_pm"))

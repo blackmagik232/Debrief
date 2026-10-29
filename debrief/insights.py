@@ -407,17 +407,28 @@ def build(data: dict) -> dict:
     # 2.3: which part of the corner the typical-vs-better gap sits in (skills, when it could score)
     sk = data.get("skills") if isinstance(data.get("skills"), dict) else None
     if sk and not sk.get("reason") and isinstance(sk.get("phases"), dict):
-        tot = _f((sk.get("overall") or {}).get("loss_s")) if isinstance(sk.get("overall"), dict) else None
+        ov = sk.get("overall") if isinstance(sk.get("overall"), dict) else {}
+        gap = _f(ov.get("loss_s")) if ov.get("basis") == "zone_gap" else None
+        # phases not measured anywhere (loss_s None, or no corner had them) never count
         cands = [(p, v) for p, v in sk["phases"].items() if p in PHASE_WORDS and isinstance(v, dict)
-                 and _f(v.get("loss_pm")) is not None and _f(v.get("loss_s")) is not None]
-        if cands and tot and tot > 0:
+                 and _f(v.get("loss_pm")) is not None and _f(v.get("loss_s")) is not None
+                 and not (isinstance(v.get("corners"), int) and v["corners"] <= 0)]
+        # M2 (2.3.0 verification): the share is of the phase losses added corner by corner ("where it
+        # goes"), not of a lap gap; the real typical-vs-better gap through the corners is quoted separately
+        tot = sum(max(0.0, v["loss_s"]) for _, v in cands)
+        if cands and tot > 0:
             p, v = max(cands, key=lambda pv: pv[1]["loss_pm"])
-            if v["loss_pm"] >= PHASE_MIN_PM and v["loss_s"] >= PHASE_MIN_SHARE * tot:
+            share = v["loss_s"] / tot
+            if v["loss_pm"] >= PHASE_MIN_PM and share >= PHASE_MIN_SHARE:
+                det = (f"About {share * 100:.0f}% of where the time goes in the corners ({v['loss_s']:.2f} s, each "
+                       "part's middle loss added up corner by corner) against your better laps (your quickest "
+                       "quarter of clean laps).")
+                if gap is not None:
+                    det += (f" Through the corners your typical lap (middle of your clean laps) was {gap:.2f} s "
+                            "slower than your better laps.")
                 bad("phase", "Where in the corner",
                     f"Most of the gap between your typical and better laps was {PHASE_WORDS[p]} "
-                    f"(about {v['loss_s']:.2f} s a lap).", round(v["loss_s"], 2),
-                    detail=(f"{v['loss_s']:.2f} s of the {tot:.2f} s a lap between your typical lap (median of clean laps) "
-                            "and your better laps (your quickest quarter of clean laps)."))
+                    f"(about {v['loss_s']:.2f} s a lap).", round(v["loss_s"], 2), detail=det)
 
     score = _f(con.get("score"))
     off_n = con.get("off_pace_n") if isinstance(con.get("off_pace_n"), int) else None

@@ -346,9 +346,10 @@ td.d b{color:var(--ink);font-weight:600}
 .losskey .scale{display:inline-flex;vertical-align:1px;margin-right:4px}
 .wic{display:grid;gap:var(--s3)}
 .wicrows{display:grid;gap:2px}
-.wicrow{display:grid;grid-template-columns:minmax(110px,150px) minmax(0,1fr) 72px 64px;gap:var(--s3);align-items:center;width:100%;text-align:left;border:1px solid transparent;background:none;padding:6px 8px;white-space:normal}
+.wicrow{display:grid;grid-template-columns:minmax(110px,150px) minmax(0,1fr) 104px 52px;gap:var(--s3);align-items:center;width:100%;text-align:left;border:1px solid transparent;background:none;padding:6px 8px;white-space:normal}
 .wicrow:hover{background:var(--band)}
 .wicrow[aria-pressed="true"]{border-color:var(--a);background:var(--hi)}
+.wicrow.na .nm,.wicrow.na .v,.wicrow.na .sc{color:var(--muted);font-weight:400}
 .wicrow .nm{font-weight:600;font-size:var(--t-sm)}
 .wicrow .bar{height:10px;border-radius:2px;background:var(--band);position:relative;overflow:hidden}
 .wicrow .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--bad);border-radius:2px}
@@ -356,7 +357,7 @@ td.d b{color:var(--ink);font-weight:600}
 .wicrow .sc small{color:var(--muted)}
 .wicfoot{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s4);font-size:var(--t-sm);color:var(--ink2);padding:0 8px}
 .wicfoot b{font-family:var(--mono);color:var(--ink);font-weight:600}
-@media (max-width:520px){.wicrow{grid-template-columns:minmax(0,1fr) 64px 56px}.wicrow .bar{grid-column:1 / -1;grid-row:2}}
+@media (max-width:520px){.wicrow{grid-template-columns:minmax(0,1fr) 96px 48px}.wicrow .bar{grid-column:1 / -1;grid-row:2}}
 .bchip{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;border-radius:999px;border:1px solid var(--axis);color:var(--ink2);white-space:nowrap;margin-left:6px}
 .bchip.locked{border-color:var(--good);color:var(--good)}
 .bchip.varies{border-color:var(--warn);color:var(--warn)}
@@ -1412,21 +1413,31 @@ safe('what to work on',()=>{const IN=isObj(D.insights)?D.insights:null;
 },'coach');
 // ---------- 2.3: where in the corner (D.skills): typical laps against your own better laps, phase by phase
 const SK_REASON={no_traces:'This review has no telemetry, so the time can’t be split by corner phase.',no_corners:'No corners were found, so the time can’t be split by corner phase.',
-  not_enough_clean_laps:'Needs at least 6 clean laps to split the time by corner phase.',not_enough_better_laps:'Needs at least 3 better laps (your quickest clean laps) to split the time by corner phase.'};
+  not_enough_clean_laps:'Needs at least 6 clean laps to split the time by corner phase.',bad_data:'Some of the saved telemetry in this review can’t be read, so the time can’t be split by corner phase. Review the race again from Sessions to rebuild it.',not_enough_better_laps:'Needs at least 3 better laps (your quickest clean laps) to split the time by corner phase.'};
 safe('where in the corner',()=>{if(!SK)return;const pn=$('wicPanel');const host=$('wicRows');
   if(SK.reason||!SK_OK){pn.hidden=false;$('coach').hidden=false;$('wicLede').textContent=SK_REASON[SK.reason]||'Not enough clean laps to split the time by corner phase.';$('wicSub').textContent='';return}
-  const ph=PHASES.map(k=>[k,isObj(SK.phases[k])?SK.phases[k]:{}]);const mx=Math.max(0.05,...ph.map(([,x])=>num(x.loss_s)?x.loss_s:0));
+  const ph=PHASES.map(k=>[k,isObj(SK.phases[k])?SK.phases[k]:{}]);
+  // 2.3.0 fixes: a phase no corner has (corners 0, or loss_s null) was not measured: n/a, not 0.00 s 100/100
+  const unmeasured=x=>!num(x.loss_s)||(num(x.corners)&&x.corners<=0);
+  const sumS=ph.reduce((s,[,x])=>s+(unmeasured(x)?0:x.loss_s),0);
+  const shareOf=x=>unmeasured(x)?null:(num(x.share)?x.share:(sumS>0?x.loss_s/sumS:0));
+  const mx=Math.max(0.05,...ph.map(([,x])=>unmeasured(x)?0:x.loss_s));
   pn.hidden=false;$('coach').hidden=false;
   const nr=Array.isArray(SK.ref_laps)?SK.ref_laps.length:0;$('wicSub').textContent=(num(SK.n_clean)?plural(SK.n_clean,'clean lap'):'')+(nr?' · better laps: '+andList(SK.ref_laps.map(String)):'');
-  ph.forEach(([k,x])=>{const b=h(LOSS?'button':'div','wicrow');if(LOSS){b.type='button';b.setAttribute('aria-pressed','false')}b.dataset.phase=k;
-    const ls=num(x.loss_s)?x.loss_s:null;const bar=h('span','bar');const i=h('i');i.style.width=(ls?Math.max(1,ls/mx*100):0)+'%';bar.append(i);
-    const sc=h('span','sc');if(num(x.score)){sc.append(document.createTextNode(String(x.score)),h('small',null,'/100'))}else sc.textContent='–';
-    b.append(h('span','nm',PH_NAMES[k]),bar,h('span','v',ls==null?'–':(ls<0.005?'0.00':ls.toFixed(2))+' s'),sc);
-    b.title=LOSS?'Show the '+PH_NAMES[k].toLowerCase()+' stretches on the track map, coloured by where time goes':'';
-    if(LOSS)b.setAttribute('aria-label',PH_NAMES[k]+': '+(ls==null?'no data':'about '+(ls||0).toFixed(2)+' s a lap')+(num(x.score)?', score '+x.score+' out of 100':'')+(LOSS?'. Shows it on the track map.':''));
-    b.onclick=()=>{if(!LOSS)return;const on=state.mapMode==='loss'&&state.phaseHi===k;openDeep();setMapMode('loss',on?null:k);if(!on){const mb=$('trackmap');mb&&mb.scrollIntoView({block:'center'})}};host.append(b)});
+  const none=[];
+  ph.forEach(([k,x])=>{const na=unmeasured(x);if(na)none.push(PH_NAMES[k]);const btn=LOSS&&!na;const b=h(btn?'button':'div','wicrow'+(na?' na':''));if(btn){b.type='button';b.setAttribute('aria-pressed','false')}b.dataset.phase=k;
+    const ls=na?null:x.loss_s;const shr=shareOf(x);const bar=h('span','bar');const i=h('i');i.style.width=(ls?Math.max(1,ls/mx*100):0)+'%';bar.append(i);
+    const sc=h('span','sc');if(!na&&num(x.score)){sc.append(document.createTextNode(String(x.score)),h('small',null,'/100'))}else sc.textContent=na?'n/a':'–';
+    b.append(h('span','nm',PH_NAMES[k]),bar,h('span','v',na?'n/a':(ls<0.005?'0.00':ls.toFixed(2))+' s'+(shr!=null&&sumS>0?' · '+Math.round(shr*100)+'%':'')),sc);
+    b.title=btn?'Show the '+PH_NAMES[k].toLowerCase()+' stretches on the track map, coloured by where time goes':(na?'Not measured: no corner had this stretch':'');
+    if(btn)b.setAttribute('aria-label',PH_NAMES[k]+': '+'about '+(ls||0).toFixed(2)+' s'+(shr!=null&&sumS>0?', '+Math.round(shr*100)+' percent of where the time goes':'')+(num(x.score)?', score '+x.score+' out of 100':'')+'. Shows it on the track map.');
+    else if(na)b.setAttribute('aria-label',PH_NAMES[k]+': not measured');
+    b.onclick=()=>{if(!btn)return;const on=state.mapMode==='loss'&&state.phaseHi===k;openDeep();setMapMode('loss',on?null:k);if(!on){const mb=$('trackmap');mb&&mb.scrollIntoView({block:'center'})}};host.append(b)});
   const f=$('wicFoot');const o=isObj(SK.overall)?SK.overall:null;
-  if(o&&num(o.loss_s)){const sp=h('span');sp.append(document.createTextNode('All four together '),h('b',null,o.loss_s.toFixed(2)+' s'),document.createTextNode(' a lap'+(num(o.score)?', score '+o.score+'/100':'')));f.append(sp)}
+  if(none.length)f.append(h('span',null,'n/a: '+andList(none)+(none.length===1?' was':' were')+' not measured. Your better laps had no stretch like that in any corner (for example, braking right up to the slowest point leaves no turn-in-to-apex stretch).'));
+  if(sumS>0)f.append(h('span',null,'Times and % show where it goes: each part’s middle loss, added up corner by corner.'));
+  if(o&&num(o.loss_s)){const sp=h('span');if(o.basis==='zone_gap'){sp.append(document.createTextNode('Through the corners your typical lap was '),h('b',null,o.loss_s.toFixed(2)+' s'),document.createTextNode(' slower than your better laps (middle of your clean laps, brake point to corner end)'+(num(o.score)?', score '+o.score+'/100':'')))}
+    else{sp.append(document.createTextNode('The four parts added up: '),h('b',null,o.loss_s.toFixed(2)+' s'),document.createTextNode(num(o.score)?', score '+o.score+'/100':''))}f.append(sp)}
   const st=isObj(SK.straights)?SK.straights:null;if(st&&num(st.loss_s))f.append(h('span',null,'On the run up to each corner: '+st.loss_s.toFixed(2)+' s (not scored)'));
   f.append(h('span',null,'This is not absolute pace and not a comparison with other drivers.'))},'coach');
 // the written race summary sits under the verdict
@@ -1469,9 +1480,9 @@ safe('practice and qualifying',()=>{if(!SR)return;const quali=SR.kind==='qualify
   // targets (practice)
   const TG=(Array.isArray(SR.targets)?SR.targets:[]).filter(t=>isObj(t)&&t.corner!=null&&num(t.target_t));
   if(!quali&&TG.length){$('sessTargets').hidden=false;const tb=$('sessTargetTable');const hd=h('thead');const hr=h('tr');
-    ['Corner','Target','Your typical','Gain','Brake point','Slowest','Full throttle','Gear'].forEach((x,i)=>hr.append(h('th',i?'n':null,x)));hd.append(hr);tb.append(hd);const body=h('tbody');
+    ['Corner','Target','Your typical','To find','Brake point','Slowest','Full throttle','Gear'].forEach((x,i)=>hr.append(h('th',i?'n':null,x)));hd.append(hr);tb.append(hd);const body=h('tbody');
     TG.forEach(t=>{const tr=h('tr',cornerById[t.corner]?'go':null);const td0=h('td');td0.append(h('span','cid',String(t.corner)));const fl=Array.isArray(t.from_laps)?t.from_laps.filter(n=>typeof n==='number'):[];if(fl.length)td0.append(h('span','meta','from laps '+andList(fl.map(String))));tr.append(td0);
-      tr.append(h('td','n',t.target_t.toFixed(2)+' s'),h('td','n',num(t.typical_t)?t.typical_t.toFixed(2)+' s':'–'),h('td','n tg',num(t.gain_s)?'−'+t.gain_s.toFixed(2)+' s':'–'),
+      tr.append(h('td','n',t.target_t.toFixed(2)+' s'),h('td','n',num(t.typical_t)?t.typical_t.toFixed(2)+' s':'–'),h('td','n tg',num(t.gain_s)?Math.abs(t.gain_s).toFixed(2)+' s to find':'–'),
         h('td','n',num(t.brake_on)?techFmt.brake_on(t.brake_on):'–'),h('td','n',num(t.min_mph)?techFmt.min_mph(t.min_mph):'–'),h('td','n',num(t.full_thr)?techFmt.full_thr(t.full_thr):'–'),h('td','n',t.gear!=null?String(t.gear):'–'));
       if(cornerById[t.corner]){tr.tabIndex=0;tr.title='Show '+t.corner+' in Compare laps';tr.onclick=()=>showCorner(cornerById[t.corner]);tr.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();showCorner(cornerById[t.corner])}}}
       body.append(tr)});tb.append(body)}

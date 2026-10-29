@@ -788,7 +788,7 @@ function renderSkills(){const tiles=$('sktiles'),pan=$('skpanel');tiles.replaceC
   const races=(Array.isArray(P.races)?P.races:[]).filter(r=>r&&ok(r.loss_pm)&&dparts(r.date));
   const hd=h('div','phead');const t=h('h3',null,lab+': time lost per race');t.append(h('span','u','‰ of the lap, lower is better'));hd.append(t);
   const tr=P.trend;const tw=trendWord(tr);
-  hd.append(h('p','note',plural(races.length,'race')+'. '+(tw==='Not enough races yet'?'A trend shows after 4 races over at least two weeks.':tw+(ok(tr.change_pm)?' ('+(tr.change_pm<0?'−':'+')+Math.abs(tr.change_pm).toFixed(1)+' ‰ over '+plural(tr.days,'day')+')':'')+'.')+' ‰ is thousandths of your lap time: 1 ‰ on a 90 s lap is 0.09 s.'));pan.append(hd);
+  hd.append(h('p','note',plural(races.length,'race')+'. '+(tw==='Not enough races yet'?'A trend needs races over at least two weeks.':tw+(ok(tr.change_pm)?' ('+(tr.change_pm<0?'−':'+')+Math.abs(tr.change_pm).toFixed(1)+' ‰ over '+plural(tr.days,'day')+')':'')+'.'+(tw==='Steady'?' Improving or Slipping only shows when the change is clearly bigger than your usual race-to-race spread (usually 5 or more races).':''))+' ‰ is thousandths of your lap time: 1 ‰ on a 90 s lap is 0.09 s.'));pan.append(hd);
   const tg=h('div','sktoggles');const mk=(key,txt)=>{const b=h('button',null,txt);b.type='button';b.setAttribute('aria-pressed',String(skSel[key]));b.onclick=()=>{skSel[key]=!skSel[key];renderSkills()};tg.append(b)};
   const W=(Array.isArray(P.weekly)?P.weekly:[]).filter(w=>w&&ok(w.loss_pm)&&isoWeekDay(w.week));const S=(Array.isArray(P.seasons)?P.seasons:[]).filter(x=>x&&ok(x.loss_pm));
   if(W.length)mk('weekly','Weekly median');if(S.length)mk('season','Season median');if(tg.children.length){tg.prepend(h('span',null,'Show'));pan.append(tg)}

@@ -6,7 +6,10 @@ Input is library rows (``library.list_reviews``) that carry the compact ``skills
 
 Each race compares your typical laps with your own better laps in that race; lower time lost means your
 typical laps were closer to your best driving. Trends are a robust (Theil-Sen) slope and are only given
-a direction with enough races over enough time.
+a direction with enough races over enough time AND when a Mann-Kendall test (two-sided, ties handled,
+normal approximation with continuity correction) gives p < 0.05. Race-to-race spread of loss_pm is about
+1.5 per-mille, so without the test most "Improving"/"Slipping" words on flat data were noise (2.3.0
+verification H1). With 4 races the test can't reach p < 0.05, so a direction needs 5 or more races.
 
 Garage 61 request budget (spec 1.6): technique_plus, skills, session_review, profile, heat map: **0**.
 Library refresh for layout 2.3.0: **0**. This module never makes a request.
@@ -26,6 +29,8 @@ MIN_CLEAN = 6
 TREND_MIN_RACES = 4
 TREND_MIN_DAYS = 14
 TREND_MIN_CHANGE_PM = 0.5
+TREND_MAX_P = 0.05
+TREND_TEST = "mann_kendall"
 WEAKEST_LAST = 5
 
 
@@ -56,6 +61,29 @@ def theil_sen(xs, ys):
     sl = [(ys[j] - ys[i]) / (xs[j] - xs[i]) for i in range(len(xs)) for j in range(i + 1, len(xs))
           if xs[j] != xs[i]]
     return float(np.median(sl)) if sl else None
+
+
+def mann_kendall(ys):
+    """Two-sided Mann-Kendall trend test on ys in time order. Returns (S, p). Ties (equal values) are
+    handled with the usual variance correction; p uses the normal approximation with continuity
+    correction. p is 1.0 when every value is equal or there are fewer than 3 values."""
+    ys = [float(y) for y in ys]
+    n = len(ys)
+    if n < 3:
+        return 0, 1.0
+    S = 0
+    for i in range(n - 1):
+        for j in range(i + 1, n):
+            d = ys[j] - ys[i]
+            S += (d > 0) - (d < 0)
+    counts = {}
+    for y in ys:
+        counts[y] = counts.get(y, 0) + 1
+    var = (n * (n - 1) * (2 * n + 5) - sum(t * (t - 1) * (2 * t + 5) for t in counts.values() if t > 1)) / 18.0
+    if var <= 0 or S == 0:
+        return S, 1.0
+    z = (S - (1 if S > 0 else -1)) / math.sqrt(var)
+    return S, float(math.erfc(abs(z) / math.sqrt(2.0)))
 
 
 def _usable(row):
@@ -90,14 +118,18 @@ def _trend(races):
         return None
     per_week = s * 7.0
     change = s * days
-    # spec 1.3: a direction only with >= 4 races over >= 14 days and a change of >= 0.5 per-mille;
-    # otherwise "steady" (span_ok tells the page whether the window was long enough to judge)
-    if days < TREND_MIN_DAYS or abs(change) < TREND_MIN_CHANGE_PM:
+    mk_s, p = mann_kendall(ys)
+    # spec 1.3 + 2.3.0 H1: a direction only with >= 4 races over >= 14 days, a change of >= 0.5 per-mille
+    # AND Mann-Kendall p < 0.05 with the same sign; otherwise "steady" (span_ok tells the page whether
+    # the window was long enough to judge: "Not enough races yet")
+    if (days < TREND_MIN_DAYS or abs(change) < TREND_MIN_CHANGE_PM or p >= TREND_MAX_P
+            or (mk_s < 0) != (change < 0)):
         direction = "steady"
     else:
         direction = "improving" if change < 0 else "slipping"
     return {"slope_pm_per_week": _r(per_week, 3), "change_pm": _r(change, 2), "direction": direction,
-            "n": n, "days": int(round(days)), "span_ok": days >= TREND_MIN_DAYS}
+            "n": n, "days": int(round(days)), "span_ok": days >= TREND_MIN_DAYS,
+            "test": TREND_TEST, "p": round(p, 4), "mk_s": int(mk_s)}
 
 
 def _phase_block(items, phase):
@@ -157,7 +189,8 @@ def build(rows: list) -> dict:
     out = {"version": VERSION, "caps_pm": {k: v for k, v in skills.CAPS_PM.items()},
            "params": {"min_clean": MIN_CLEAN, "trend_min_races": TREND_MIN_RACES,
                       "trend_min_days": TREND_MIN_DAYS, "trend_min_change_pm": TREND_MIN_CHANGE_PM,
-                      "trend_method": "theil_sen", "weakest_last": WEAKEST_LAST},
+                      "trend_method": "theil_sen", "trend_test": TREND_TEST, "trend_max_p": TREND_MAX_P,
+                      "weakest_last": WEAKEST_LAST},
            "groups": [], "weakest": None, "n_races": len(items)}
     if not items:
         return out

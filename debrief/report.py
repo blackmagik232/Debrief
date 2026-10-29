@@ -46,6 +46,25 @@ def _extras(data: dict, log=None) -> None:
             data[key] = val
 
 
+def sanitize(obj):
+    """obj with every NaN / Infinity float replaced by None (null in JSON), in place for dicts and lists,
+    and returned. Strict JSON readers reject NaN/Infinity, and the page treats null as "no value"."""
+    import math
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(v, (float, dict, list)):
+                obj[k] = sanitize(v)
+        return obj
+    if isinstance(obj, list):
+        for i, v in enumerate(obj):
+            if isinstance(v, (float, dict, list)):
+                obj[i] = sanitize(v)
+        return obj
+    return obj
+
+
 def write(out_dir: Path, data: dict, log=None) -> Path:
     out_dir = Path(out_dir)
     _extras(data, log)
@@ -54,10 +73,11 @@ def write(out_dir: Path, data: dict, log=None) -> Path:
         data["insights"] = insights.build(data)
     except Exception:  # noqa: BLE001
         data.pop("insights", None)
+    sanitize(data)   # never write NaN / Infinity into review.json or the page (2.3.0 verification L1)
     html = fill((TPL / "review.html").read_text(encoding="utf-8"), {"/*DATA*/null": _embed(data)})
     # each file is written to a temp file and swapped in, so a crash or a forced close mid-write leaves
     # the old file whole (review.json is the only copy of an analysed review)
-    atomic_write(out_dir / "review.json", json.dumps(data))
+    atomic_write(out_dir / "review.json", json.dumps(data, allow_nan=False))
     page = out_dir / "index.html"
     atomic_write(page, html)
     return page

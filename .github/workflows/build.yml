@@ -91,6 +91,8 @@ jobs:
         run: python tests/test_integration.py
       - name: Test name matching
         run: python tests/test_match_aliases.py
+      - name: Test 2.3.0 fixes
+        run: python tests/test_230_fixes.py
       - name: Test technique detail (2.3)
         run: python tests/test_23_a.py
       - name: Test skills, sessions and profile (2.3)

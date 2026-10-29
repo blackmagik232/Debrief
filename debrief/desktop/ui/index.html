@@ -58,7 +58,7 @@
         <button type="button" class="btn primary" id="fbTeam" hidden>Refresh team data</button>
       </span>
     </div>
-    <iframe id="frame" title="Review"></iframe>
+    <iframe id="frame" title="Review" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads"></iframe>
   </section>
 
   <section id="vWelcome" class="view pad" hidden>
@@ -276,6 +276,10 @@
         </label>
         <p class="note">Laps from your teammates and drivers you follow on Garage 61. Each one adds a request or two.</p>
         <label class="check" for="prac"><input id="prac" type="checkbox"><span>Also review practice and qualifying sessions</span></label>
+        <label class="field" for="salut"><span>How Debrief addresses you</span>
+          <input id="salut" type="text" maxlength="20" autocomplete="off" spellcheck="false" placeholder="For example: Sir" aria-describedby="salutNote">
+        </label>
+        <p class="note" id="salutNote">Used in the race summary ("Sir, you completed..."). Up to 20 characters. Leave it empty for a plain "You completed...". New reviews use it.</p>
         <div class="row"><button type="submit" class="btn">Save options</button><span class="msg" id="optMsg" role="status"></span></div>
       </form>
 

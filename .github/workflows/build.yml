@@ -87,6 +87,8 @@ jobs:
         run: python tests/test_fix_b.py
       - name: Test fixes (UI)
         run: python tests/test_fix_d.py
+      - name: Test integration (2.2.2)
+        run: python tests/test_integration.py
 
       - name: Build with PyInstaller
         run: pyinstaller packaging/debrief.spec --noconfirm --clean

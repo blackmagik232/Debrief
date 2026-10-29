@@ -359,7 +359,10 @@ def test_layout_fix_cards_new_fields():
     with Tmp() as f:
         d = _with_new_insights(base())
         assert len(d["insights"]["fix"]) == 5
-        d["insights"]["fix"][0]["numbers"]["typical"]["brake_on"] = d["insights"]["fix"][0]["numbers"]["best"]["brake_on"] - 20
+        # (2.2.2 integration: the card compares Typical with "Quicker laps" when insights carries numbers.quick,
+        # the target the tips aim at, and with the best lap otherwise)
+        nb = d["insights"]["fix"][0]["numbers"]
+        nb["typical"]["brake_on"] = (nb.get("quick") or nb["best"])["brake_on"] - 20
         pg, ctx, errs = _open(_page(d, f), wait=700)
         r = pg.evaluate("""()=>{const c=[...document.querySelectorAll('#fixList .fix')];return {n:c.length,
             tables:c.filter(x=>x.querySelector('table.fnums')).length, sparks:c.filter(x=>x.querySelector('.spark svg')).length,

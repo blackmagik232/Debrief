@@ -863,9 +863,9 @@ class Handler(BaseHTTPRequestHandler):
         respects the check_updates setting."""
         from .. import updater
         cfg = self._cfg()
-        if q.get("auto") == "1" and not cfg.get("check_updates", True):
-            return self._json({"ok": True, "skipped": True})
         last = self.server.update_outcome   # {"ok": False, "message": ...} when the last update didn't finish
+        if q.get("auto") == "1" and not cfg.get("check_updates", True):
+            return self._json({"ok": True, "skipped": True, "last_update": last})   # the outcome still shows
         try:
             info = updater.check(force=q.get("force") == "1")
         except updater.UpdateError as e:

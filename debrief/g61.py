@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import tempfile
+import threading
 import time
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -61,9 +62,16 @@ def _atomic_write(p: Path, text: str) -> None:
         raise
 
 
+# Request pacing is shared by every Garage61 client in this process (the sync, a review and a Prep page can
+# each make their own client at the same time); one lock and one "last request" time keep them together
+# under the ~1 request a second Garage 61 asks for, instead of each pacing only itself.
+_PACE_LOCK = threading.Lock()
+_PACE = {"last": 0.0}
+
+
 class Garage61:
     def __init__(self, token: str, cache_dir: Path, min_gap_s: float = 1.0,
-                 base_url: str = BASE, log=print):
+                 base_url: str = BASE, log=print, stop_event: "threading.Event | None" = None):
         token = (token or "").strip()
         if not token or token.startswith("PASTE"):
             raise Garage61Error(
@@ -87,29 +95,36 @@ class Garage61:
         self.requests_made = 0
         self.log = log
         self.should_stop = None   # optional callable: long waits end early (raising Interrupted) when it's True
+        self.stop_event = stop_event   # optional threading.Event: the same, for callers that hold an Event
 
     def _sleep(self, secs: float) -> None:
         """time.sleep that ends early, raising Interrupted, when should_stop() turns True (so a sync can
         pause in under a second even during a 2-minute backoff)."""
-        stop = self.should_stop
-        if stop is None:
+        stop, ev = self.should_stop, self.stop_event
+        if stop is None and ev is None:
             time.sleep(secs)
             return
         end = time.monotonic() + max(0.0, secs)
         while True:
-            if stop():
+            if (stop is not None and stop()) or (ev is not None and ev.is_set()):
                 raise Interrupted()
             left = end - time.monotonic()
             if left <= 0:
                 return
-            time.sleep(min(0.2, left))
+            if ev is not None and stop is None:
+                ev.wait(left)            # wakes the moment the event is set
+            else:
+                time.sleep(min(0.2, left))
 
     # ---------- low level ----------
     def _wait(self):
-        gap = time.monotonic() - self._last
-        if gap < self.min_gap:
-            self._sleep(self.min_gap - gap)
-        self._last = time.monotonic()
+        # held across the short pacing sleep, so two clients can't both decide the gap has passed
+        with _PACE_LOCK:
+            last = max(self._last, _PACE["last"])
+            gap = time.monotonic() - last
+            if gap < self.min_gap:
+                self._sleep(self.min_gap - gap)
+            self._last = _PACE["last"] = time.monotonic()
 
     MAX_GAP = 6.0
 

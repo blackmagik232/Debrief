@@ -38,8 +38,11 @@ addEventListener('pagehide',()=>{try{fetch(BASE+'api/bye',{method:'POST',headers
 const THEMES=['auto','light','dark'];
 function getTheme(){try{const t=localStorage.getItem('debrief-theme');return THEMES.includes(t)?t:'auto'}catch(e){return 'auto'}}
 function applyTheme(doc,t){if(!doc)return;const r=doc.documentElement;if(t==='auto')r.removeAttribute('data-theme');else r.setAttribute('data-theme',t)}
+// library pages run sandboxed (no same-origin): the window can't reach into them, so the theme goes over
+// postMessage to the small bridge script the server adds to each page ('*': a sandboxed page's origin is "null")
+function themeFrame(t){try{const w=$('frame').contentWindow;if(w)w.postMessage({type:'debrief-theme',theme:t},'*')}catch(e){}}
 function setTheme(t){try{localStorage.setItem('debrief-theme',t)}catch(e){}
-  applyTheme(document,t);try{applyTheme($('frame').contentDocument,t)}catch(e){}
+  applyTheme(document,t);themeFrame(t);
   document.querySelectorAll('[data-theme-set]').forEach(b=>{const on=b.dataset.themeSet===t;b.setAttribute('aria-checked',String(on));b.tabIndex=on?0:-1})}
 document.querySelectorAll('[data-theme-set]').forEach(b=>b.addEventListener('click',()=>setTheme(b.dataset.themeSet)));
 // radio groups: one tab stop (the checked radio); arrow keys move the choice, as the ARIA radio pattern promises
@@ -67,16 +70,20 @@ function markNav(){
   document.body.classList.remove('navopen');
   frameBar();
 }
+// where the frame really is: links inside it (library -> review) don't change f.src, and the sandboxed page
+// can't be looked into, so its bridge script tells us (see the 'message' listener below)
+let frameHref=null;
+const noQuery=u=>{const s=String(u||'');const i=s.indexOf('#');const a=i<0?s:s.slice(0,i),hs=i<0?'':s.slice(i);return a.split('?')[0]+hs};
+// a URL the frame isn't on yet, so setting src always loads the page again (the server ignores the query)
+function fresh(u){const i=u.indexOf('#');const a=i<0?u:u.slice(0,i),hs=i<0?'':u.slice(i);return a.split('?')[0]+'?r='+Date.now().toString(36)+hs}
 function openFrame(rel){const f=$('frame');const want=BASE+rel;const wantDoc=want.split('#')[0];
-  // compare with where the frame really is: links inside it (library -> review) don't change f.src
-  let at=f.src;try{at=f.contentWindow.location.href}catch(e){}
-  const atDoc=String(at).split('#')[0];
+  const at=noQuery(frameHref||f.src);const atDoc=at.split('#')[0];
   if(at===want){show('vFrame');return}
-  if(atDoc===wantDoc){ // same page, different #section: jump there and reload so the page opens on it
-    // (with a #section the jump is instant, so reload to let the page open on it; without one, replace() reloads)
-    try{f.contentWindow.location.replace(want);if(want.includes('#'))f.contentWindow.location.reload()}catch(e){f.src=want}
-  }else if(f.src===want){try{f.contentWindow.location.replace(want)}catch(e){f.src='about:blank';f.src=want}}
-  else f.src=want;
+  // same page, other #section: a hash-only change jumps there (the library page follows hashchange);
+  // the same address again (or a page the frame left) loads fresh
+  if(atDoc===wantDoc&&want.includes('#'))f.src=want;
+  else f.src=fresh(want);
+  frameHref=want;
   // keep the current screen until a big review page has loaded, so there's no blank flash
   if($('vFrame').hidden){clearTimeout(openFrame.t);openFrame.t=setTimeout(()=>show('vFrame'),4000);
     f.addEventListener('load',()=>{clearTimeout(openFrame.t);if(FRAME_VIEWS.includes(current.view))show('vFrame')},{once:true})}}
@@ -125,10 +132,13 @@ function frameBar(){
 }
 async function loadPages(){try{const j=await api('pages');if(j.ok)pages=j}catch(e){}return pages}
 
-$('frame').addEventListener('load',()=>{
-  const f=$('frame');let doc=null,path='';
-  try{doc=f.contentDocument;path=f.contentWindow.location.href}catch(e){}
-  applyTheme(doc,getTheme());
+// the page in the frame says where it is (and its title) through the bridge; trust only our own frame
+// (check e.source, not e.origin: a sandboxed page's origin is "null")
+addEventListener('message',e=>{const f=$('frame');if(!f||e.source!==f.contentWindow)return;const m=e.data;
+  if(!m||typeof m!=='object'||m.type!=='debrief-frame'||typeof m.href!=='string')return;
+  frameHref=m.href;themeFrame(getTheme());framePlace(noQuery(m.href),typeof m.title==='string'?m.title:'')});
+$('frame').addEventListener('load',()=>themeFrame(getTheme()));
+function framePlace(path,title){
   if(!path.startsWith(BASE))return;
   const rest=path.slice(BASE.length);const rel=rest.split('#')[0].split('?')[0];const hash=(rest.split('#')[1]||'');
   const m=rel.match(/^lib\/reviews\/([^/]+)\/index\.html$/);
@@ -136,12 +146,10 @@ $('frame').addEventListener('load',()=>{
   else if(rel==='lib/index.html'||rel==='lib/')current={view:hash==='season'?'season':'library',dir:null};
   else if(/^lib\/prep\/[^/]+\.html$/.test(rel))current={view:'prepPage',dir:null,page:decodeURIComponent(rel.slice(4))};
   else if(rel==='lib/team/index.html')current={view:'teamPage',dir:null,page:'team/index.html'};
-  if(doc&&doc.title)document.title=doc.title==='Debrief Library'?'Debrief':'Debrief · '+doc.title;
-  // links that leave the app open in the normal browser, not inside the window
-  if(doc)doc.addEventListener('click',e=>{const a=e.target.closest&&e.target.closest('a[href]');if(!a)return;
-    const u=new URL(a.getAttribute('href'),doc.baseURI);if(u.origin!==location.origin){a.target='_blank';a.rel='noreferrer'}},true);
+  if(title)document.title=title==='Debrief Library'?'Debrief':'Debrief · '+title;
+  // (links that leave the app are opened in the normal browser by the bridge itself)
   markNav();
-});
+}
 
 document.addEventListener('click',e=>{
   const n=e.target.closest('[data-nav]');
@@ -608,7 +616,7 @@ function openResult(){const dir=current.dir;if(!dir)return;const r=(resultFor.di
 function closeResult(){const d=$('dlgResult');if(d.close)d.close();else d.removeAttribute('open')}
 $('fbResult').addEventListener('click',openResult);
 $('resClose').addEventListener('click',closeResult);
-function reloadFrame(){try{$('frame').contentWindow.location.reload()}catch(e){}}
+function reloadFrame(){const f=$('frame');const at=frameHref||f.src;if(at&&at.startsWith(BASE))f.src=fresh(noQuery(at))}
 $('fResult').addEventListener('submit',async e=>{e.preventDefault();const dir=current.dir;if(!dir)return;
   const fields={};RES_FIELDS.forEach(k=>{const v=$('r_'+k).value.trim();if(v!=='')fields[k]=k==='notes'?v:Number(v)});
   if(!('finish_pos' in fields)){setMsg('resMsg','Add your finishing position.','bad');$('r_finish_pos').focus();return}
@@ -638,6 +646,7 @@ function fillSettings(v){
   const st=$('tokStatus');st.textContent=v.token_saved?'Token saved (ends in '+v.token_hint+')':'No token saved yet';
   st.className='pill '+(v.token_saved?'ok':'no');
   $('refs').value=String(v.max_reference_laps);$('prac').checked=!!v.include_practice;
+  if(document.activeElement!==$('salut'))$('salut').value=typeof v.salutation==='string'?v.salutation:'';
   $('syncOpen').checked=v.sync_on_open!==false;$('updAuto').checked=v.check_updates!==false;$('syncTel').checked=v.sync_telemetry!=='none';
   $('libPath').textContent=v.library_folder||'Not set yet. It will be Documents\\Debrief Reviews once settings are saved.';
   const fe=$('setFileErr');fe.hidden=!v.error;fe.textContent=v.error||'';fe.className='note msg bad';
@@ -701,7 +710,10 @@ $('fGuideToken').addEventListener('submit',async e=>{e.preventDefault();
   setMsg('gTokMsg','Token saved. Checking the connection...','ok');updateGuide();
   startCheck()});
 $('fOpts').addEventListener('submit',async e=>{e.preventDefault();setMsg('optMsg','Saving...');let r;
-  try{r=await post('settings',{max_reference_laps:+$('refs').value,include_practice:$('prac').checked})}catch(err){connectionLost();return}
+  const sal=$('salut').value.replace(/\s+/g,' ').trim();
+  if(sal.length>20){setMsg('optMsg','Keep how Debrief addresses you to 20 characters or fewer.','bad');$('salut').focus();return}
+  if(/[<>]/.test(sal)){setMsg('optMsg','How Debrief addresses you can\'t contain < or >.','bad');$('salut').focus();return}
+  try{r=await post('settings',{max_reference_laps:+$('refs').value,include_practice:$('prac').checked,salutation:sal})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('optMsg',r.error,'bad');return}
   fillSettings(r.settings);setMsg('optMsg','Saved.','ok')});
 $('fSync').addEventListener('submit',async e=>{e.preventDefault();setMsg('syncOptMsg','Saving...');let r;
@@ -719,8 +731,14 @@ function renderUpdate(){const j=updInfo;const strip=$('updStrip');
   strip.hidden=!can;if(can)$('updText').textContent='Debrief '+j.latest+' is out';
   $('btnUpdNow').hidden=!can;$('updPill').textContent=j.newer?'Update: '+j.latest:'Up to date';$('updPill').className='pill '+(j.newer?'no':'ok');
   if(j.newer&&!j.installed)setMsg('updMsg','Debrief '+j.latest+' is out. This copy runs from source: update it with git.')}
+// the last in-app update didn't finish: say so once (the server learns it at start, from updater.pending_result)
+let lastUpdShown=false;
+function lastUpdate(j){const u=j&&j.last_update;if(!u||typeof u!=='object'||u.ok!==false||lastUpdShown)return false;lastUpdShown=true;
+  const m=typeof u.message==='string'&&u.message?u.message:'The last update didn\'t finish. Your reviews and settings are fine.';
+  banner(m,true,15000);setMsg('updMsg',m,'bad');return true}
 async function checkUpdate(mode){let j;try{j=await api('update'+(mode==='force'?'?force=1':mode==='auto'?'?auto=1':''))}catch(e){return}
-  if(j.skipped)return;updInfo=j;renderUpdate();
+  const shown=lastUpdate(j);
+  if(j.skipped)return;updInfo=j;renderUpdate();if(shown&&mode!=='force')return;
   if(mode==='force')setMsg('updMsg',!j.ok?j.error:j.newer?'Debrief '+j.latest+' is available.':'You have the newest version ('+j.current+').',!j.ok?'bad':'ok')}
 async function startUpdate(){if(!confirm('Update Debrief to '+(updInfo&&updInfo.latest||'the newest version')+' now? Debrief will close, install the update and reopen.'))return;
   startJob('update')}
@@ -738,7 +756,8 @@ $('fUpdate').addEventListener('submit',async e=>{e.preventDefault();setMsg('updM
   let s=null;try{s=await api('status')}catch(e){}
   if(s&&s.state==='running'){lastJob=s;if(s.kind==='sync'){renderSync(s);if(groups.length)openLibrary();else welcome()}
     else if(s.kind!=='check'){resetJobView(s.kind);openJob()}poll();return}
-  if(groups.length)openLibrary();else welcome();
+  // (if the user already clicked something while the lists loaded, stay there)
+  if(current.view==null){if(groups.length)openLibrary();else welcome()}
   if(tokenSaved)startSync(true);   // catch up with Garage 61 every time Debrief opens
   checkUpdate('auto');
 })();

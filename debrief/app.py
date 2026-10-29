@@ -16,6 +16,7 @@ import json
 import os
 import statistics as st
 import sys
+import threading
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
@@ -177,6 +178,43 @@ def make_api(cfg):
 
 
 LOG_FILE = None
+LOG_MAX_BYTES = 1_000_000   # debrief.log is moved to debrief.log.1 at about 1 MB ...
+LOG_BACKUPS = 2             # ... and debrief.log.1 to .2, so at most ~3 MB of log in all
+_LOG_LOCK = threading.Lock()
+
+
+def _home_forms() -> list[str]:
+    """The user's home folder as it can appear in a log line (both slash styles), longest first."""
+    forms = set()
+    for h in (os.environ.get("USERPROFILE"), os.environ.get("HOME"), str(Path.home())):
+        h = (h or "").rstrip("\\/")
+        if len(h) > 3:   # never "C:" or "/"
+            forms.update({h, h.replace("\\", "/"), h.replace("/", "\\")})
+    return sorted(forms, key=len, reverse=True)
+
+
+def scrub_home(text: str) -> str:
+    """Write "~" instead of the home folder (it holds the Windows user name), so a log can be shared."""
+    import re as _re
+    for h in _home_forms():
+        flags = _re.IGNORECASE if os.name == "nt" or _re.match(r"^[A-Za-z]:", h) else 0
+        text = _re.sub(_re.escape(h) + r"(?=[\\/]|$|[\s'\")\],;:])", "~", text, flags=flags)
+    return text
+
+
+def _rotate_log(path: str) -> None:
+    try:
+        if os.path.getsize(path) < LOG_MAX_BYTES:
+            return
+    except OSError:
+        return
+    try:
+        for i in range(LOG_BACKUPS, 0, -1):
+            src = path if i == 1 else f"{path}.{i - 1}"
+            if os.path.exists(src):
+                os.replace(src, f"{path}.{i}")
+    except OSError:
+        pass   # another Debrief has the file open (Windows): keep writing, rotate next time
 
 
 def say(msg):
@@ -186,11 +224,14 @@ def say(msg):
         except (OSError, ValueError):
             pass
     if LOG_FILE:
-        try:
-            with open(LOG_FILE, "a", encoding="utf-8") as f:
-                f.write(str(msg) + "\n")
-        except OSError:
-            pass
+        line = scrub_home(str(msg)) + "\n"
+        with _LOG_LOCK:
+            _rotate_log(LOG_FILE)
+            try:
+                with open(LOG_FILE, "a", encoding="utf-8") as f:
+                    f.write(line)
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------- helpers

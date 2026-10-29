@@ -253,8 +253,8 @@ def selftest() -> int:
     try:
         faulthandler.cancel_dump_traceback_later()
         if _hang:
+            _hang.write("selftest finished\n")
             _hang.close()
-            (app.HERE / "selftest-hang.txt").unlink()
     except Exception:  # noqa: BLE001
         pass
     return 0 if ok else 1

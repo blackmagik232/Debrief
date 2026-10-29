@@ -104,7 +104,8 @@ jobs:
           if (-not $finished) { Stop-Process -Id $p.Id -Force }
           $hang = Join-Path $data "selftest-hang.txt"
           $log = Join-Path $data "debrief.log"
-          if ((-not $finished) -or (Test-Path $hang)) {
+          $timedOut = (Test-Path $hang) -and (Select-String -Path $hang -Pattern "Timeout" -Quiet)
+          if ((-not $finished) -or $timedOut) {
             $t = if (Test-Path $hang) { (Get-Content $hang -Raw) -replace "`r?`n", " | " } else { "no hang file" }
             Write-Host "::error title=selftest hang (stacks)::$t"
             if (Test-Path $log) { $l = ((Get-Content $log -Tail 25) -join " | "); Write-Host "::error title=selftest hang (log)::$l" }

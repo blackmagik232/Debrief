@@ -4,6 +4,7 @@ CI job logs aren't readable from every place the project is worked on, but annot
 test file writes its FAIL lines, tracebacks' last lines and the output tail as ::error annotations.
 Usage: python tests/ci_run.py tests/test_x.py
 """
+import os
 import subprocess
 import sys
 
@@ -13,8 +14,14 @@ def _esc(s: str) -> str:
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):            # a cp1252 console mustn't crash the reporter itself
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     path = sys.argv[1]
-    p = subprocess.run([sys.executable, path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
+    p = subprocess.run([sys.executable, path], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                        encoding="utf-8", errors="replace")
     out = p.stdout or ""
     sys.stdout.write(out)

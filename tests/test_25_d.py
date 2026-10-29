@@ -526,8 +526,17 @@ def test_stage_checks_the_picture():
     write_settings()
 
 
+def _clear_stage():
+    """Start from an empty preview store: earlier tests leave previews behind, and the store keeps only 3,
+    so this test's own nonce could be pushed out (seen on Windows CI)."""
+    st = srv().discord_stage
+    with st.lock:
+        st.items.clear()
+
+
 def test_post_needs_a_saved_webhook_and_reports_discord_errors():
     write_settings()
+    _clear_stage()
     with fakes() as rec:
         nonce = js(stage()[2])["nonce"]
         assert js(stage()[2])["target"]["saved"] is False

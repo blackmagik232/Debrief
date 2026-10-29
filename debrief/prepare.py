@@ -57,7 +57,28 @@ def _ids_from_lists(api, track: str, cars: list, matcher=None):
     return tid, cid
 
 
-def _week_view(ser, wk_no, sessions, library_folder, api, matcher=None):
+def _race_length(cfg, sched, track, cars, week):
+    """strategy.prefill(...)["race"] (24-A): the race length from the schedule week. No requests, no store."""
+    try:
+        from . import strategy
+    except ImportError:   # strategy.py not merged yet
+        return None
+    try:
+        return strategy.prefill(cfg, None, sched, track, cars, week).get("race")
+    except Exception:  # noqa: BLE001  (a fuel hint is never worth breaking the Prepare page)
+        return None
+
+
+def _shared_count(cfg, track, me_slug) -> int:
+    if not cfg:
+        return 0
+    try:
+        return len(notes.shared_for(cfg, track, me_slug))
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def _week_view(ser, wk_no, sessions, library_folder, api, matcher=None, cfg=None, sched=None, me_slug=None):
     w = next((w for w in ser["weeks"] if w["week"] == wk_no), None)
     if w is None:
         return None
@@ -70,7 +91,9 @@ def _week_view(ser, wk_no, sessions, library_folder, api, matcher=None):
     card = notes.load(library_folder, w["track"])
     return {"week": w["week"], "start": w["start"], "track": w["track"], "length": w.get("length"),
             "race_time": w.get("race_time"), "conditions": w.get("conditions"), "history": hist,
-            "track_id": tid, "car_id": cid, "card": card, "has_notes": notes.has_notes(card)}
+            "track_id": tid, "car_id": cid, "card": card, "has_notes": notes.has_notes(card),
+            "shared_notes": _shared_count(cfg, w["track"], me_slug),
+            "strategy": _race_length(cfg, sched, w["track"], ser.get("cars") or [], w) if cfg else None}
 
 
 def view(cfg: dict, api=None, sessions: list | None = None, today: date | None = None) -> dict:
@@ -88,14 +111,16 @@ def view(cfg: dict, api=None, sessions: list | None = None, today: date | None =
     a, _ = schedule.season_range(sched)
     if wk is None:
         wk = 1 if a and today < a else None
+    me = notes.author_from_cache(cfg) if cfg.get("team_cards_folder") else None
+    extra = {"cfg": cfg, "sched": sched, "me_slug": (me or {}).get("slug")}
     for s in series.resolve(mine, sched):
         row = {"id": s["id"], "name": s["name"], "missing": bool(s.get("missing"))}
         if not s.get("missing"):
             row.update({"category": s.get("category"), "cars": s.get("cars") or [], "license": s.get("license"),
                         "classes": s.get("classes") or [], "multiclass": s.get("multiclass", False),
                         "setup": s.get("setup"), "frequency": s.get("frequency"),
-                        "this_week": _week_view(s, wk, sessions, lib, api, m) if wk else None,
-                        "next_week": _week_view(s, wk + 1, sessions, lib, api, m) if wk else None,
+                        "this_week": _week_view(s, wk, sessions, lib, api, m, **extra) if wk else None,
+                        "next_week": _week_view(s, wk + 1, sessions, lib, api, m, **extra) if wk else None,
                         "season": [{"week": w["week"], "start": w["start"], "track": w["track"],
                                     "length": w.get("length"), "has_notes": notes.has_notes(notes.load(lib, w["track"]))}
                                    for w in s["weeks"]]})

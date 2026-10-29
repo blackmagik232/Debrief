@@ -122,10 +122,11 @@ def clean_result_fields(raw) -> dict:
         out[k] = num
     if "finish_pos" not in out:
         raise ValueError("Add at least your finishing position.")
+    _clean_result_extras(raw, out)
     if out.get("field_size") is not None:
-        for k in ("start_pos", "finish_pos"):
+        for k in ("start_pos", "finish_pos", "pos_after_lap1"):
             if k in out and out[k] > out["field_size"]:
-                raise ValueError(f"{labels[k]} can't be more than the number of cars.")
+                raise ValueError(f"{(labels.get(k) or RESULT_EXTRA_LABELS[k])} can't be more than the number of cars.")
     notes = raw.get("notes")
     if notes not in (None, ""):
         if not isinstance(notes, str):
@@ -134,6 +135,75 @@ def clean_result_fields(raw) -> dict:
             raise ValueError("Notes can be up to 500 characters.")
         out["notes"] = notes.strip()
     return out
+
+
+# 2.4 race-result fields (§2.1 table): the same rules as results.validate
+RESULT_EXTRA_INTS = {"pos_after_lap1": (1, 200), "pit_stops": (0, 50), "penalties": (0, 50)}
+RESULT_EXTRA_LABELS = {"pos_after_lap1": "Position after lap 1", "pit_stops": "Pit stops",
+                       "penalties": "Penalties", "finish_status": "How the race ended",
+                       "incident_laps": "Incidents by lap"}
+FINISH_STATUS = ("running", "dnf", "dq", "disconnected")
+INCIDENT_KINDS = ("off", "spin", "contact", "other")
+INCIDENT_POINTS = (0, 1, 2, 4)
+MAX_INCIDENT_LAPS = 30
+
+
+def _whole(v, lo, hi, label) -> int:
+    """A whole number in [lo, hi] from a number or a numeric string. Raises ValueError (plain words)."""
+    if isinstance(v, bool):
+        raise ValueError(f"{label} must be a number.")
+    try:
+        num = float(str(v).strip()) if isinstance(v, str) else float(v)
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError(f"{label} must be a number.")
+    if not math.isfinite(num):
+        raise ValueError(f"{label} must be a number.")
+    if num != int(num):
+        raise ValueError(f"{label} must be a whole number.")
+    if not lo <= num <= hi:
+        raise ValueError(f"{label} must be between {lo} and {hi}.")
+    return int(num)
+
+
+def _clean_result_extras(raw: dict, out: dict) -> None:
+    """Position after lap 1, pit stops, penalties, how it ended and incidents by lap (all optional)."""
+    for k, (lo, hi) in RESULT_EXTRA_INTS.items():
+        v = raw.get(k)
+        if v is None or (isinstance(v, str) and not v.strip()):
+            continue
+        out[k] = _whole(v, lo, hi, RESULT_EXTRA_LABELS[k])
+    fs = raw.get("finish_status")
+    if fs not in (None, ""):
+        if fs not in FINISH_STATUS:
+            raise ValueError("Pick how the race ended.")
+        out["finish_status"] = fs
+    il = raw.get("incident_laps")
+    if il in (None, []):
+        return
+    if not isinstance(il, list):
+        raise ValueError("Incidents by lap must be a list.")
+    if len(il) > MAX_INCIDENT_LAPS:
+        raise ValueError(f"Incidents by lap can list up to {MAX_INCIDENT_LAPS} incidents.")
+    rows = []
+    for i, e in enumerate(il, 1):
+        if not isinstance(e, dict):
+            raise ValueError(f"Incident {i}: add the lap, what happened and the points.")
+        lap = _whole(e.get("lap"), 1, 2000, f"Incident {i}: the lap")
+        kind = e.get("kind")
+        if kind not in INCIDENT_KINDS:
+            raise ValueError(f"Incident {i}: pick off track, spin, contact or other.")
+        pts = e.get("points", 0)
+        if isinstance(pts, bool) or not isinstance(pts, (int, float, str)):
+            raise ValueError(f"Incident {i}: points must be 0, 1, 2 or 4.")
+        try:
+            pts_n = float(pts)
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError(f"Incident {i}: points must be 0, 1, 2 or 4.")
+        if pts_n not in INCIDENT_POINTS:
+            raise ValueError(f"Incident {i}: points must be 0, 1, 2 or 4.")
+        rows.append({"lap": lap, "kind": kind, "points": int(pts_n)})
+    rows.sort(key=lambda r: r["lap"])
+    out["incident_laps"] = rows
 
 
 def clean_review_params(raw) -> dict:
@@ -550,6 +620,101 @@ class RowsCache:
         return rows
 
 
+# ---------------------------------------------------------------- Track Intel uploads (2.4)
+UPLOAD_ID_OK = re.compile(r"^[A-Za-z0-9_-]{8,40}$")
+INTEL_FIELDS = ("track", "car", "lap1", "hotspots", "passing", "limits", "focus", "car_note", "ignore")
+INTEL_MODES = ("fill_empty", "append", "replace")
+
+
+class IntelUploads:
+    """Parsed Track Intel sheets, kept in memory only (never on disk) under a random id: at most MAX at a
+    time (the oldest goes first), each one forgotten after TTL seconds or once it has been imported."""
+    MAX = 3
+    TTL = 30 * 60
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.items = {}   # id -> {"parsed", "name", "t"}
+        self.clock = time.monotonic   # replaced in tests
+
+    def _expire(self):
+        now = self.clock()
+        for k in [k for k, v in self.items.items() if now - v["t"] > self.TTL]:
+            del self.items[k]
+
+    def add(self, parsed, name) -> str:
+        uid = secrets.token_urlsafe(12)
+        with self.lock:
+            self._expire()
+            while len(self.items) >= self.MAX:
+                del self.items[min(self.items, key=lambda k: self.items[k]["t"])]
+            self.items[uid] = {"parsed": parsed, "name": name, "t": self.clock()}
+        return uid
+
+    def get(self, uid):
+        if not isinstance(uid, str) or not UPLOAD_ID_OK.match(uid):
+            raise ValueError("That upload has expired. Pick the file again.")
+        with self.lock:
+            self._expire()
+            it = self.items.get(uid)
+        if it is None:
+            raise ValueError("That upload has expired. Pick the file again.")
+        return it
+
+    def drop(self, uid):
+        with self.lock:
+            self.items.pop(uid, None)
+
+
+def clean_intel_request(body, uploads: IntelUploads):
+    """(upload, sheet index, {col: field}, mode) from an intel-preview / intel-import body."""
+    if not isinstance(body, dict):
+        raise ValueError("Bad request.")
+    it = uploads.get(body.get("upload_id"))
+    sheets = (it["parsed"] or {}).get("sheets") or []
+    sh = body.get("sheet", 0)
+    if isinstance(sh, bool) or not isinstance(sh, int) or not 0 <= sh < len(sheets):
+        raise ValueError("Pick a sheet from the list.")
+    ncols = len((sheets[sh] or {}).get("header") or [])
+    raw = body.get("mapping")
+    if not isinstance(raw, dict) or not raw or len(raw) > 200:
+        raise ValueError("Pick what each column holds.")
+    mapping = {}
+    for k, v in raw.items():
+        if not isinstance(k, str) or not k.isdigit() or len(k) > 3 or not 0 <= int(k) < max(ncols, 1):
+            raise ValueError("That column isn't in the sheet. Upload the file again.")
+        if v not in INTEL_FIELDS:
+            raise ValueError("Pick what each column holds.")
+        if v != "ignore":
+            mapping[int(k)] = v
+    if list(mapping.values()).count("track") != 1:
+        raise ValueError("Pick the one column that holds the track name.")
+    mode = body.get("mode", "fill_empty")
+    if mode not in INTEL_MODES:
+        raise ValueError("Pick how to combine the sheet with your track cards.")
+    return it, sh, mapping, mode
+
+
+def _num_in(v, lo, hi, msg):
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return None
+    if isinstance(v, bool):
+        raise ValueError(msg)
+    try:
+        x = float(v)
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError(msg)
+    if not math.isfinite(x) or not lo <= x <= hi:
+        raise ValueError(msg)
+    return x
+
+
+def _short_text(v, what, n=200):
+    if not isinstance(v, str) or not v.strip() or len(v) > n or re.search(r"[\x00-\x1f<>]", v):
+        raise ValueError(f"Pick a {what}.")
+    return v.strip()
+
+
 # ---------------------------------------------------------------- server
 class DebriefServer(ThreadingHTTPServer):
     daemon_threads = True
@@ -562,6 +727,7 @@ class DebriefServer(ThreadingHTTPServer):
         self.jobs = Jobs()
         self.reviews = ReviewIndex()
         self.profile_cache = RowsCache()
+        self.intel = IntelUploads()
         self.timeout_s = heartbeat_timeout
         self.last_ping = time.monotonic() + max(0.0, startup_grace - heartbeat_timeout)
         self.stopping = threading.Event()
@@ -751,7 +917,7 @@ class Handler(BaseHTTPRequestHandler):
         if r.startswith("lib/"):
             return self._lib(r[len("lib/"):])
         if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/pages", "api/sessions", "api/prepare",
-                 "api/notes", "api/update", "api/profile"):
+                 "api/notes", "api/update", "api/profile", "api/strategy"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -926,7 +1092,64 @@ class Handler(BaseHTTPRequestHandler):
         track = q.get("track")
         if not isinstance(track, str) or not track.strip() or len(track) > 200:
             raise ValueError("Pick a track.")
-        return self._json({"ok": True, "card": notes.load(cfg["library_folder"], track), "labels": notes.LABELS})
+        return self._json({"ok": True, "card": notes.load(cfg["library_folder"], track), "labels": notes.LABELS,
+                           "shared": self._shared_cards(cfg, notes, track), "sharing": self._sharing(cfg, notes)})
+
+    @staticmethod
+    def _sharing(cfg, notes) -> dict:
+        """Team track cards: is sharing on, does the folder exist, and who you share as (cached; no request)."""
+        out = {"on": bool(cfg.get("share_my_cards")), "folder_ok": False, "author": None,
+               "folder": cfg.get("team_cards_folder") or None,
+               "available": hasattr(notes, "shared_for") and hasattr(notes, "shared_root")}
+        if not out["available"]:
+            return out
+        try:
+            out["folder_ok"] = bool(cfg.get("team_cards_folder")) and Path(cfg["team_cards_folder"]).is_dir()
+            a = notes.author_from_cache(cfg) if hasattr(notes, "author_from_cache") else None
+            out["author"] = {"slug": str(a.get("slug")), "name": str(a.get("name") or a.get("slug"))[:80]} \
+                if isinstance(a, dict) and a.get("slug") else None
+        except Exception:  # noqa: BLE001  (a shared drive that's offline: no sharing, no error)
+            app.say("ERROR reading the team cards folder:\n" + traceback.format_exc())
+        return out
+
+    @staticmethod
+    def _shared_cards(cfg, notes, track) -> list:
+        if not hasattr(notes, "shared_for") or not cfg.get("team_cards_folder"):
+            return []
+        try:
+            a = notes.author_from_cache(cfg) if hasattr(notes, "author_from_cache") else None
+            out = notes.shared_for(cfg, track, a.get("slug") if isinstance(a, dict) else None)
+            return out if isinstance(out, list) else []
+        except Exception:  # noqa: BLE001
+            app.say("ERROR reading team track cards:\n" + traceback.format_exc())
+            return []
+
+    def _get_strategy(self, q):
+        """Fuel planner prefill for a track and car (or a series' week). Never a request: library, sync store,
+        schedule and strategy.json only."""
+        cfg = self._cfg()
+        strategy = self._module("strategy")
+        track = _short_text(q.get("track"), "track")
+        cars = [_short_text(q.get("car"), "car")] if q.get("car") else []
+        from .. import schedule
+        sched = schedule.load_current()
+        week = None
+        if q.get("series") and sched:
+            ser = schedule.find_series(sched, q.get("series"))
+            if ser is not None:
+                cars = cars or list(ser.get("cars") or [])
+                try:
+                    wn = int(q.get("week") or 0)
+                except ValueError:
+                    raise ValueError("Pick a week.")
+                week = next((w for w in ser.get("weeks") or [] if w.get("week") == wn), None)
+        if not cars:
+            raise ValueError("Pick a car.")
+        api = self._cache_api(cfg)
+        from .. import sync
+        store = sync.Store.for_api(api) if api is not None else None
+        pre = strategy.prefill(cfg, store, sched, track, cars, week)
+        return self._json({"ok": True, "track": track, "cars": cars, "prefill": pre})
 
     def _get_update(self, q):
         """Is a newer Debrief out? Uses the once-a-day saved answer unless force=1. auto=1 (window opening)
@@ -1011,6 +1234,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._nf()
         if r == "api/schedule-upload":
             return self._post_schedule_upload()
+        if r == "api/intel-upload":
+            return self._post_intel_upload()
         try:  # read the body first (even for ping/bye) so a kept-alive connection stays in step
             body = self._body()
         except (ValueError, UnicodeDecodeError, RecursionError):
@@ -1039,9 +1264,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self.server.jobs.start("check"))
         if r == "api/update":
             return self._json(self.server.jobs.start("update"))
-        if r in ("api/prep", "api/team", "api/goals", "api/result", "api/series", "api/notes", "api/schedule"):
+        if r in ("api/prep", "api/team", "api/goals", "api/result", "api/series", "api/notes", "api/schedule",
+                 "api/strategy", "api/intel-preview", "api/intel-import"):
             try:
-                return getattr(self, "_post_" + r[4:])(body)
+                return getattr(self, "_post_" + r[4:].replace("-", "_"))(body)
             except ValueError as e:
                 return self._json({"ok": False, "error": str(e)}, 400)
             except Exception as e:  # noqa: BLE001
@@ -1161,7 +1387,7 @@ class Handler(BaseHTTPRequestHandler):
         cfg = self._cfg()
         notes = self._module("notes")
         try:
-            card = notes.save(cfg["library_folder"], notes.clean(body.get("card")))
+            card = self._save_card(notes, cfg, notes.clean(body.get("card")))
         except ValueError as e:
             conflict_cls = getattr(notes, "Conflict", None)
             msg = str(e)
@@ -1170,6 +1396,146 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": False, "error": msg, "conflict": True}, 400)
             raise
         return self._json({"ok": True, "card": card})
+
+    def _post_strategy(self, body):
+        cfg = self._cfg()
+        strategy = self._module("strategy")
+        act = body.get("action")
+        if act == "plan":
+            inputs = body.get("inputs")
+            if not isinstance(inputs, dict) or len(inputs) > 20:
+                raise ValueError("Fill in the race length, lap time, fuel use and tank size.")
+            return self._json({"ok": True, "plan": strategy.plan(dict(inputs))})
+        if act == "save_car":
+            car = _short_text(body.get("car"), "car")
+            tank = _num_in(body.get("tank_l"), 1, 200, "The tank size must be between 1 and 200 litres.")
+            loss = _num_in(body.get("pit_loss_s"), 0, 300, "The pit stop loss must be between 0 and 300 seconds.")
+            track = _short_text(body.get("track"), "track") if body.get("track") not in (None, "") else None
+            if tank is None and loss is None:
+                raise ValueError("Nothing to save.")
+            if loss is not None and track is None:
+                raise ValueError("Pick a track for the pit stop loss.")
+            saved = strategy.save_car(cfg["library_folder"], car, tank_l=tank, pit_loss_s=loss, track=track)
+            return self._json({"ok": True, "car": saved})
+        raise ValueError("Bad request.")
+
+    MAX_INTEL = 5 * 1024 * 1024
+    MIN_XLSX = 1024
+    INTEL_NAME_OK = re.compile(r"^[^\x00-\x1f/\\<>:\"|?*]{1,160}\.(xlsx|csv)$", re.I)
+
+    def _post_intel_upload(self):
+        """A Track Intel sheet (.xlsx or .csv) as the raw request body (application/octet-stream), with the
+        file name in ?name=. Parsed in memory and kept for 30 minutes under a random id."""
+        cl = (self.headers.get("Content-Length") or "").strip()
+        if not cl.isdigit() or self.headers.get("Transfer-Encoding"):
+            self.close_connection = True
+            return self._json({"ok": False, "error": "Bad request."}, 400)
+        n = int(cl)
+        name = (parse_qs(urlsplit(self.path).query).get("name") or [""])[0]
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if n > self.MAX_INTEL:
+            self.close_connection = True
+            return self._json({"ok": False, "error": "That file is too big. A Track Intel sheet is well under 5 MB."}, 400)
+        if not self.INTEL_NAME_OK.match(name) or ctype != "application/octet-stream":
+            self.close_connection = True
+            return self._json({"ok": False, "error": "Pick an .xlsx or .csv file."}, 400)
+        is_xlsx = name.lower().endswith(".xlsx")
+        if n < (self.MIN_XLSX if is_xlsx else 16):
+            self.close_connection = True
+            return self._json({"ok": False, "error": "That file is too small to be a Track Intel sheet."}, 400)
+        buf = bytearray()
+        while len(buf) < n:
+            chunk = self.rfile.read(min(65536, n - len(buf)))
+            if not chunk:
+                break
+            buf += chunk
+        if len(buf) != n:
+            self.close_connection = True
+            return self._json({"ok": False, "error": "The file didn't arrive in full. Try again."}, 400)
+        self._consumed = True
+        data = bytes(buf)
+        head = data[:8]
+        if head.startswith(b"\xd0\xcf\x11\xe0"):
+            return self._json({"ok": False, "error": "That's an old .xls or a password-protected file. Save it as "
+                                                     ".xlsx or CSV and try again."}, 400)
+        if is_xlsx and not head.startswith(b"PK\x03\x04"):
+            return self._json({"ok": False, "error": "That file isn't a real .xlsx. Save it as .xlsx or CSV and try again."}, 400)
+        if not is_xlsx and (head.startswith(b"PK\x03\x04") or b"\x00" in data[:4096]):
+            return self._json({"ok": False, "error": "That file isn't a CSV text file. Save it as CSV and try again."}, 400)
+        try:
+            intel = self._module("intel")
+            try:
+                parsed = intel.parse_upload(data, name)
+            except ValueError:
+                raise
+            except Exception as e:  # noqa: BLE001  (XlsxError and friends carry plain messages)
+                if type(e).__name__ in ("XlsxError", "IntelError"):
+                    raise ValueError(str(e))
+                raise
+            sheets = (parsed or {}).get("sheets") or []
+            if not sheets:
+                raise ValueError("Debrief couldn't find a table in that file.")
+            uid = self.server.intel.add(parsed, name)
+            out = [{"name": str(sh.get("name") or f"Sheet {i + 1}")[:80], "header": list(sh.get("header") or [])[:40],
+                    "rows": [list(r)[:40] for r in (sh.get("rows") or [])[:10]],
+                    "n_rows": len(sh.get("rows") or []),
+                    "suggest": {str(k): v for k, v in (sh.get("suggest") or {}).items()}}
+                   for i, sh in enumerate(sheets[:20])]
+            app.say(f"Track Intel sheet loaded ({len(out)} sheet(s)).")
+            return self._json({"ok": True, "upload_id": uid, "sheets": out})
+        except ValueError as e:
+            return self._json({"ok": False, "error": str(e)}, 400)
+        except Exception as e:  # noqa: BLE001
+            app.say("ERROR reading a Track Intel sheet:\n" + traceback.format_exc())
+            return self._json({"ok": False, "error": friendly(e)}, 500)
+
+    def _known_tracks(self, cfg) -> list:
+        """Track names Debrief already knows: schedule, library, synced sessions and Garage 61's cached list."""
+        names = set()
+        try:
+            from .. import schedule
+            sched = schedule.load_current()
+            for ser in (sched or {}).get("series") or []:
+                names.update(w.get("track") for w in ser.get("weeks") or [])
+        except Exception:  # noqa: BLE001
+            pass
+        lib = Path(cfg["library_folder"])
+        names.update(r.get("track") for r in self.server.profile_cache.rows(lib))
+        api = self._cache_api(cfg)
+        names.update(s.get("track") for s in self._synced_sessions(api))
+        for t in (api.cached_items("tracks") if api else None) or []:
+            if isinstance(t, dict):
+                names.add(app.item_name(t))
+        return sorted(n for n in names if isinstance(n, str) and n.strip())
+
+    def _post_intel_preview(self, body):
+        cfg = self._cfg()
+        intel = self._module("intel")
+        it, sh, mapping, mode = clean_intel_request(body, self.server.intel)
+        res = intel.preview(it["parsed"], sh, mapping, mode, cfg, self._known_tracks(cfg))
+        return self._json({"ok": True, "preview": res})
+
+    def _post_intel_import(self, body):
+        if body.get("confirm") is not True:
+            raise ValueError("Check the preview, then press Import.")
+        cfg = self._cfg()
+        intel = self._module("intel")
+        it, sh, mapping, mode = clean_intel_request(body, self.server.intel)
+        res = intel.apply(it["parsed"], sh, mapping, mode, cfg, self._known_tracks(cfg))
+        self.server.intel.drop(body.get("upload_id"))
+        app.say(f"Track Intel import: {res}")
+        return self._json({"ok": True, **(res if isinstance(res, dict) else {})})
+
+    @staticmethod
+    def _save_card(notes, cfg, card):
+        """notes.save with the settings (2.4: it also writes your shared team file when sharing is on). A notes
+        module without the cfg parameter (before 24-B's merge) is called the 2.3 way."""
+        import inspect
+        try:
+            takes_cfg = "cfg" in inspect.signature(notes.save).parameters
+        except (TypeError, ValueError):
+            takes_cfg = False
+        return notes.save(cfg["library_folder"], card, cfg=cfg) if takes_cfg else notes.save(cfg["library_folder"], card)
 
     def _post_team(self, body):
         self._cfg()

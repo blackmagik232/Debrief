@@ -1,0 +1,9 @@
+{
+ "shared_notes": 2,
+ "strategy": {
+  "laps": 15,
+  "minutes": null,
+  "source": "schedule",
+  "text": "15 laps"
+ }
+}

@@ -1,0 +1,20 @@
+{
+ "version": 1,
+ "burn": {
+  "median_l": 2.41,
+  "p90_l": 2.52,
+  "n": 17,
+  "source": "fuel_used",
+  "laps": {
+   "2": 2.4,
+   "3": 2.43
+  }
+ },
+ "level": {
+  "start_l": 45.2,
+  "end_l": 4.1,
+  "max_seen_l": 47.0
+ },
+ "pit": null,
+ "note": null
+}

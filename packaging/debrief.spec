@@ -42,7 +42,8 @@ if _missing:
 hiddenimports = sorted(set(hiddenimports) | set(_on_disk))
 for _must in ("debrief.prep", "debrief.goals", "debrief.results", "debrief.team", "debrief.sync",
               "debrief.schedule", "debrief.series", "debrief.notes", "debrief.prepare", "debrief.updater", "debrief.insights",
-              "debrief.technique_plus", "debrief.skills", "debrief.session_review", "debrief.profile"):
+              "debrief.technique_plus", "debrief.skills", "debrief.session_review", "debrief.profile",
+              "debrief.strategy", "debrief.racecraft", "debrief.xlsx", "debrief.intel"):
     if _must not in hiddenimports:
         raise SystemExit(f"Build stopped: {_must} would be left out of Debrief.exe")
 

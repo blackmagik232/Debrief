@@ -1,0 +1,46 @@
+{
+ "laps": 40,
+ "fuel_needed_l": 102.5,
+ "stops": 2,
+ "start_fuel_l": 47.0,
+ "stints": [
+  {
+   "from_lap": 1,
+   "to_lap": 14,
+   "laps": 14,
+   "fuel_l": 47.0
+  },
+  {
+   "from_lap": 15,
+   "to_lap": 28,
+   "laps": 14,
+   "fuel_l": 47.0
+  },
+  {
+   "from_lap": 29,
+   "to_lap": 40,
+   "laps": 12,
+   "fuel_l": 32.5
+  }
+ ],
+ "windows": [
+  {
+   "stop": 1,
+   "open": 6,
+   "close": 17,
+   "at_lap": 14,
+   "fuel_add_l": 35.0
+  },
+  {
+   "stop": 2,
+   "open": 23,
+   "close": 34,
+   "at_lap": 28,
+   "fuel_add_l": 20.5
+  }
+ ],
+ "pit_time_s": 100.2,
+ "laps_per_tank": 17,
+ "burn_l": 2.5,
+ "warnings": []
+}

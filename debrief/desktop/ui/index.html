@@ -188,6 +188,25 @@
         <div class="row"><button type="button" class="btn primary" id="btnSeriesSave">Show my schedule</button><button type="button" class="btn ghost" id="btnPickSkip">Skip for now</button><span class="msg" id="pickMsg" role="status"></span></div>
       </div>
       <div id="mySeries" class="gridf"></div>
+      <div class="panel" id="intelPanel">
+        <div class="phead"><h3>Import a Track Intel sheet</h3><span class="pill" id="intelPill" hidden></span></div>
+        <p class="note">Bring your team's spreadsheet of track notes (.xlsx or .csv) into your track cards. Debrief reads it on this PC, shows you what would change, and changes nothing until you press Import.</p>
+        <div class="row"><button type="button" class="btn" id="btnIntel">Import Track Intel sheet...</button>
+          <input type="file" id="intelFile" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden>
+          <span class="msg" id="intelMsg" role="status"></span></div>
+        <div id="intelMap" class="gridf" hidden>
+          <label class="field" for="intelSheet" id="intelSheetWrap"><span>Sheet</span><select id="intelSheet"></select></label>
+          <p class="note">Pick what each column holds. Debrief has guessed from the column names; one column must be the track.</p>
+          <div class="tblwrap"><table class="maptbl" id="intelTable"><thead><tr><th>Column</th><th>First rows</th><th>Holds</th></tr></thead><tbody id="intelCols"></tbody></table></div>
+          <fieldset class="radios" id="intelMode"><legend>How to combine it with your cards</legend>
+            <label class="check"><input type="radio" name="intelMode" value="fill_empty" checked><span>Fill empty fields only</span></label>
+            <label class="check"><input type="radio" name="intelMode" value="append"><span>Add to what's there</span></label>
+            <label class="check"><input type="radio" name="intelMode" value="replace"><span>Replace (fields the sheet leaves empty are kept)</span></label>
+          </fieldset>
+          <div class="row"><button type="button" class="btn" id="btnIntelPreview">Preview</button><button type="button" class="btn primary" id="btnIntelImport" disabled>Import</button><button type="button" class="btn ghost" id="btnIntelCancel">Cancel</button><span class="msg" id="intelMapMsg" role="status"></span></div>
+          <div id="intelPreview" class="list"></div>
+        </div>
+      </div>
       <details class="panel" id="prepAnyWrap">
         <summary><h3>Prep pages for any track and car</h3></summary>
       <div class="panel inner">
@@ -300,6 +319,15 @@
         <div class="row"><button type="submit" class="btn" id="teamSave" hidden>Save team</button><button type="button" class="btn" id="btnTeams" hidden>Load my teams</button><span class="msg" id="teamSetMsg" role="status"></span></div>
       </form>
 
+      <form class="panel" id="fCards" autocomplete="off">
+        <div class="phead"><h3>Team track cards</h3><span class="pill" id="cardsPill">Off</span></div>
+        <p class="note">Pick a folder your team already shares (OneDrive, Google Drive, Dropbox...). Debrief shows your teammates' track cards from it, and if you switch sharing on it saves your own cards there too. It only ever writes your own file. Nothing goes through the internet except your sync app.</p>
+        <label class="field wide" for="cardsFolder"><span>Shared folder</span><input id="cardsFolder" type="text" maxlength="400" spellcheck="false" autocomplete="off" placeholder="e.g. D:\OneDrive\Menace"></label>
+        <label class="check" for="cardsShare"><input id="cardsShare" type="checkbox"><span>Share my track cards with the team</span></label>
+        <p class="note" id="cardsStatus"></p>
+        <div class="row"><button type="submit" class="btn">Save</button><span class="msg" id="cardsMsg" role="status"></span></div>
+      </form>
+
       <details class="panel" id="pIracing">
         <summary><h3>iRacing (optional)</h3></summary>
         <p class="note">iRacing's own data (official finishing positions, iRating and safety rating changes) needs API credentials that iRacing issues on request to individual developers. You don't need them: you can type a race result into any review. If iRacing gives you a client ID and secret, paste them here and Debrief will use them once that feature is switched on. They're saved in settings.toml on this PC and never shown again.</p>
@@ -349,6 +377,17 @@
       <span></span>
       <label class="field" for="r_sr_before"><span>Safety rating before</span><input id="r_sr_before" name="sr_before" type="number" min="0" max="10" step="0.01"></label>
       <label class="field" for="r_sr_after"><span>Safety rating after</span><input id="r_sr_after" name="sr_after" type="number" min="0" max="10" step="0.01"></label>
+      <span></span>
+      <label class="field" for="r_pos_after_lap1"><span>Position after lap 1</span><input id="r_pos_after_lap1" name="pos_after_lap1" type="number" min="1" max="200"></label>
+      <label class="field" for="r_pit_stops"><span>Pit stops</span><input id="r_pit_stops" name="pit_stops" type="number" min="0" max="50"></label>
+      <label class="field" for="r_penalties"><span>Penalties (drive-throughs etc.)</span><input id="r_penalties" name="penalties" type="number" min="0" max="50"></label>
+      <label class="field" for="r_finish_status"><span>How it ended</span><select id="r_finish_status" name="finish_status">
+        <option value="">–</option><option value="running">Finished</option><option value="dnf">Didn't finish</option><option value="dq">Disqualified</option><option value="disconnected">Disconnected</option></select></label>
+    </div>
+    <div class="gridf" id="incWrap">
+      <div class="phead"><span class="eyebrow">Incidents by lap</span><button type="button" class="btn ghost" id="incAdd">Add an incident</button></div>
+      <div id="incRows" class="incrows"></div>
+      <p class="note" id="incNote">Optional. The review's race craft timeline marks these laps.</p>
     </div>
     <label class="field wide" for="r_notes"><span>Notes</span><textarea id="r_notes" name="notes" maxlength="500" rows="3" placeholder="Anything worth remembering about this race"></textarea></label>
     <div class="row"><button type="submit" class="btn primary" id="resSave">Save result</button><button type="button" class="btn" id="resDelete" hidden>Delete result</button><span class="msg" id="resMsg" role="status"></span></div>
@@ -364,7 +403,37 @@
     <label class="field wide" for="c_limits"><span>Track limits / kerbs</span><textarea id="c_limits" maxlength="300" rows="2" placeholder="e.g. Exit of T5 is policed; avoid the sausage kerb at T7"></textarea></label>
     <label class="field wide" for="c_focus"><span>Focus this week (up to 3 lines)</span><textarea id="c_focus" maxlength="300" rows="3" placeholder="One thing per line"></textarea></label>
     <label class="field wide" for="c_car" id="cCarWrap"><span id="cCarLab">Car note</span><input id="c_car" type="text" maxlength="200" placeholder="Anything specific to this car here"></label>
+    <div class="teamnotes" id="cardTeam" hidden>
+      <div class="phead"><h3>Team notes</h3><span class="note" id="cardTeamNote"></span></div>
+      <div id="cardTeamList" class="list"></div>
+    </div>
+    <p class="note" id="cardShareNote" hidden></p>
     <div class="row"><button type="submit" class="btn primary" id="cardSave">Save card</button><span class="msg" id="cardMsg" role="status"></span><button type="button" class="btn" id="cardReload" hidden>Reload the card</button><span class="note" id="cardUpdated"></span></div>
+  </form>
+</dialog>
+<dialog id="dlgFuel" aria-labelledby="fuelTitle">
+  <form id="fFuel" method="dialog" autocomplete="off" novalidate>
+    <div class="phead"><h3 id="fuelTitle">Plan fuel</h3><button type="button" class="btn ghost" id="fuelClose" aria-label="Close">Close</button></div>
+    <p class="note" id="fuelSub"></p>
+    <p class="note warn" id="fuelNoBurn" hidden>Debrief couldn't find fuel use for this car and track yet. Type it in, or check the fuel use in the garage.</p>
+    <label class="field" for="f_car" id="fCarWrap" hidden><span>Car</span><select id="f_car"></select></label>
+    <div class="grid3">
+      <label class="field" for="f_laps"><span>Race laps</span><input id="f_laps" type="number" min="1" max="2000" step="1"><small class="src" id="s_laps"></small></label>
+      <label class="field" for="f_minutes"><span>Or race minutes</span><input id="f_minutes" type="number" min="1" max="1440" step="1"><small class="src" id="s_minutes"></small></label>
+      <label class="field" for="f_lap_t"><span>Your lap time</span><input id="f_lap_t" type="text" inputmode="decimal" placeholder="1:25.900" spellcheck="false"><small class="src" id="s_lap_t"></small></label>
+      <label class="field" for="f_burn"><span>Fuel a lap (litres)</span><input id="f_burn" type="number" min="0.05" max="20" step="0.01"><small class="src" id="s_burn"></small></label>
+      <label class="field" for="f_tank"><span>Tank (litres)</span><input id="f_tank" type="number" min="1" max="200" step="0.5"><small class="src" id="s_tank"></small></label>
+      <label class="field" for="f_pit"><span>Pit stop loss (s)</span><input id="f_pit" type="number" min="0" max="300" step="0.1"><small class="src" id="s_pit"></small></label>
+      <label class="field" for="f_reserve"><span>Spare laps of fuel</span><input id="f_reserve" type="number" min="0" max="5" step="0.5" value="1"></label>
+    </div>
+    <label class="check" for="f_p90" id="fP90Wrap" hidden><input id="f_p90" type="checkbox" checked><span id="fP90Lab">Plan with your thirstier laps</span></label>
+    <div class="row"><button type="submit" class="btn primary" id="fuelGo">Work it out</button><button type="button" class="btn" id="fuelSaveCar">Save tank size for this car</button><span class="msg" id="fuelMsg" role="status"></span></div>
+    <div class="fuelres" id="fuelRes" hidden aria-live="polite">
+      <div class="kpis" id="fuelKpis"></div>
+      <ul class="plain" id="fuelWindows"></ul>
+      <ul class="warnlist" id="fuelWarn" hidden></ul>
+    </div>
+    <p class="note">Fuel numbers come from your own laps. Check the garage before the race. The pit stop loss includes refuelling time.</p>
   </form>
 </dialog>
 <script src="static/app.js"></script>

@@ -1,0 +1,100 @@
+{
+ "mode": "fill_empty",
+ "rows": 2,
+ "skipped_rows": 0,
+ "warnings": [],
+ "tracks": [
+  {
+   "track": "Charlotte Motor Speedway (Roval 2019)",
+   "typed": "Charlotte Motor Speedway - Roval 2025",
+   "matched": "Charlotte Motor Speedway (Roval 2019)",
+   "new": false,
+   "existing": {
+    "fields": {
+     "lap1": "",
+     "hotspots": "",
+     "passing": "Bus stop",
+     "limits": "",
+     "focus": ""
+    },
+    "car_notes": {}
+   },
+   "incoming": {
+    "fields": {
+     "lap1": "",
+     "hotspots": "T1 on lap 1",
+     "passing": "Bus stop",
+     "limits": "Oval exit",
+     "focus": "T1 brake marker"
+    },
+    "car_notes": {
+     "Ford Mustang GT4": "Short-shift out of the hairpin"
+    }
+   },
+   "result": {
+    "fields": {
+     "lap1": "",
+     "hotspots": "T1 on lap 1",
+     "passing": "Bus stop",
+     "limits": "Oval exit",
+     "focus": "T1 brake marker"
+    },
+    "car_notes": {
+     "Ford Mustang GT4": "Short-shift out of the hairpin"
+    }
+   },
+   "changes": [
+    "hotspots",
+    "limits",
+    "focus",
+    "car_notes"
+   ],
+   "warnings": [],
+   "read_only": false
+  },
+  {
+   "track": "Okayama International Circuit (Full Course)",
+   "typed": "Okayama International Circuit (Full Course)",
+   "matched": null,
+   "new": true,
+   "existing": {
+    "fields": {
+     "lap1": "",
+     "hotspots": "",
+     "passing": "",
+     "limits": "",
+     "focus": ""
+    },
+    "car_notes": {}
+   },
+   "incoming": {
+    "fields": {
+     "lap1": "",
+     "hotspots": "Hairpin",
+     "passing": "",
+     "limits": "Last corner kerb",
+     "focus": ""
+    },
+    "car_notes": {}
+   },
+   "result": {
+    "fields": {
+     "lap1": "",
+     "hotspots": "Hairpin",
+     "passing": "",
+     "limits": "Last corner kerb",
+     "focus": ""
+    },
+    "car_notes": {}
+   },
+   "changes": [
+    "hotspots",
+    "limits"
+   ],
+   "warnings": [
+    "New track: kept as typed."
+   ],
+   "read_only": false
+  }
+ ]
+}

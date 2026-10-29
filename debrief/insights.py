@@ -220,6 +220,15 @@ def _brake_spread(data: dict):
         return None
 
 
+def _lap1_segments(data: dict) -> list:
+    """racecraft.lap1.segments ([{id, lost_s}]) when the review has them (2.4), else []."""
+    rc = data.get("racecraft") if isinstance(data.get("racecraft"), dict) else None
+    l1 = rc.get("lap1") if rc and isinstance(rc.get("lap1"), dict) else None
+    if not l1 or not l1.get("in_analysis"):
+        return []
+    return [s for s in l1.get("segments") or [] if isinstance(s, dict) and s.get("id") and _f(s.get("lost_s")) is not None][:2]
+
+
 def build(data: dict) -> dict:
     corners = [c for c in data.get("corners") or [] if isinstance(c, dict) and c.get("id")]
     tech = {t["id"]: t for t in data.get("technique") or [] if isinstance(t, dict) and t.get("id")}
@@ -319,9 +328,16 @@ def build(data: dict) -> dict:
     if lap1 and median and _f(lap1.get("t")) and 1 not in pit:
         d = lap1["t"] - median
         if d >= LAP1_BAD * k:
+            l1_detail = f"Lap 1 {fmt_t(lap1['t'])} against a typical {fmt_t(median)}."
+            l1_corners = None
+            segs = _lap1_segments(data)   # 2.4: where lap 1 lost its time (racecraft), when known
+            if segs:
+                l1_detail += " Most of it was in " + _and([f"{s['id']} ({s['lost_s']:.1f} s)" for s in segs]) + \
+                             " (that includes the start)."
+                l1_corners = [s["id"] for s in segs]
             bad("lap1", "Lap 1", f"Lap 1 was {d:.1f} s slower than your typical lap. Some of that is the standing or "
                 "rolling start and traffic; the rest is time lost to caution or a moment.", round(d, 1),
-                detail=f"Lap 1 {fmt_t(lap1['t'])} against a typical {fmt_t(median)}.", laps=[1])
+                detail=l1_detail, laps=[1], corners=l1_corners)
         elif d <= 0.5 * k and len(laps) >= 5:
             good("lap1", "Strong first lap", f"Lap 1 was within {max(d, 0):.1f} s of your typical pace.",
                  detail=f"Lap 1 {fmt_t(lap1['t'])} against a typical {fmt_t(median)}.", laps=[1])

@@ -244,6 +244,14 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 .prep td.me{color:var(--a);font-weight:600}
 .prep .techgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));gap:var(--s4)}
 .prep .techgrid td{white-space:nowrap}
+/* 2.4: fuel for this race */
+.prep .fuelgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:var(--s3) var(--s4)}
+.prep .fuelgrid div{display:grid;gap:1px;min-width:0}
+.prep .fuelgrid span{font-size:var(--t-sm);color:var(--ink2)}
+.prep .fuelgrid b{font-family:var(--mono);font-size:var(--t-lg);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.prep .fuelgrid i{font-style:normal;font-size:var(--t-sm);color:var(--muted)}
+.prep .fuelsum{font-size:var(--t-md);border-top:1px solid var(--line);padding-top:var(--s3)}
+.prep .fuelsum b{font-family:var(--mono);font-weight:600}
 </style>
 <div class="wrap prep">
 <header>
@@ -258,6 +266,11 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 <section id="plansec">
   <div class="sechead"><span class="eyebrow">Practice plan</span><h2>What to work on next session</h2><p class="lede" id="planlede">Each drill comes from what your reviews here show. These are patterns in your laps, not guarantees.</p></div>
   <div class="plan" id="plan"></div>
+</section>
+
+<section id="fuelsec" class="hidden">
+  <div class="sechead"><span class="eyebrow">Strategy</span><h2>Fuel for this race</h2><p class="lede" id="fuellede">From your own laps here. Use Plan fuel in the app to work out stops and windows.</p></div>
+  <div class="panel"><div class="fuelgrid" id="fuelgrid"></div><p class="fuelsum" id="fuelsum" hidden></p><p class="note">Fuel numbers come from your own laps. Check the garage before the race.</p></div>
 </section>
 
 <section id="goalsec" class="hidden">
@@ -357,6 +370,30 @@ if(!raced)$('planlede').textContent='A starting plan for a track you haven\u2019
     const lp=h('span','gainv');lp.append(h('b',null,ok(d.laps)?String(d.laps):'–'),document.createTextNode('laps'));st.append(lp);
     const body=h('div');body.append(h('p',null,d.focus||''));if(d.evidence){const e=h('p','ev');e.append(h('b',null,'Why: '),document.createTextNode(d.evidence));body.append(e)}
     st.append(body);host.append(st)})})();
+
+// fuel for this race (2.4; D.strategy is the fuel planner's prefill, only when the app passes it)
+(function(){const S=(D.strategy&&typeof D.strategy==='object'&&!Array.isArray(D.strategy))?D.strategy:null;if(!S)return;
+  const o=v=>v&&typeof v==='object'&&!Array.isArray(v)?v:null;const R=o(S.race),LT=o(S.lap_t),B=o(S.burn),TK=o(S.tank),PL=o(S.pit_loss);
+  const host=$('fuelgrid');const gal=l=>(l/3.785).toFixed(l/3.785<10?2:1);
+  const add=(lab,v,src)=>{const d=h('div');d.append(h('span',null,lab),h('b',null,v));if(src)d.append(h('i',null,String(src)));host.append(d)};
+  const laps=R&&ok(R.laps)&&R.laps>=1?Math.round(R.laps):null,mins=R&&ok(R.minutes)&&R.minutes>=1?R.minutes:null;
+  if(laps||mins)add('Race length',laps?plural(laps,'lap'):plural(mins,'minute'),R.text&&R.source==='schedule'?'from the schedule':(R.source||''));
+  if(LT&&ok(LT.value)&&LT.value>0)add('Lap time',fmt(LT.value),LT.source);
+  const burn=B&&ok(B.value)&&B.value>0?B.value:null;
+  if(burn)add('Fuel use a lap',burn.toFixed(2)+' L ('+gal(burn)+' gal)',[B.source,ok(B.p90)&&B.p90>burn+0.005?B.p90.toFixed(2)+' L on thirstier laps':''].filter(Boolean).join(' · '));
+  const tank=TK&&ok(TK.value)&&TK.value>0?TK.value:null;
+  if(tank)add('Tank',tank.toFixed(1)+' L ('+gal(tank)+' gal)',TK.estimated?(TK.source||'estimated')+': check it in the garage':TK.source);
+  if(PL&&ok(PL.value))add('Pit stop loss','~'+PL.value.toFixed(1)+' s',PL.source);
+  if(!host.children.length)return;
+  $('fuelsec').classList.remove('hidden');
+  if(!burn){$('fuellede').textContent='Debrief couldn’t find fuel use for this car and track yet. Type it in, or check the fuel use in the garage.';return}
+  // a quick estimate with the planner's rule: (laps + reserve) x fuel a lap, using the thirstier figure when known
+  const res=ok(S.reserve_laps)&&S.reserve_laps>=0&&S.reserve_laps<=5?S.reserve_laps:1;const use=ok(B.p90)&&B.p90>burn?B.p90:burn;
+  let n=laps;if(!n&&mins&&LT&&ok(LT.value)&&LT.value>=10)n=Math.floor(mins*60/LT.value)+1;if(!n)return;
+  const need=Math.ceil((n+res)*use*10-1e-9)/10;const sum=$('fuelsum');sum.hidden=false;
+  const parts=[document.createTextNode((laps?'':'About '+n+' laps. ')+'You need about '),h('b',null,need.toFixed(1)+' L ('+gal(need)+' gal)'),document.createTextNode(' including '+plural(res,'lap')+' spare.')];
+  if(tank){const lpt=Math.floor((tank-res*use)/use);if(need<=tank)parts.push(document.createTextNode(' That fits in one tank.'));else if(lpt>=1){const st=Math.ceil(n/lpt)-1;parts.push(document.createTextNode(' That is more than one tank: plan on at least '+plural(st,'stop')+'.'))}}
+  sum.append(...parts)})();
 
 // goal
 (function(){const g=D.goal;if(!g||!ok(g.target_s))return;$('goalsec').classList.remove('hidden');const host=$('goal');

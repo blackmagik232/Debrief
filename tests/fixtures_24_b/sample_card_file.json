@@ -1,0 +1,21 @@
+{
+ "schema": 1,
+ "kind": "debrief-track-card",
+ "track": "Charlotte Motor Speedway (Roval 2019)",
+ "author": {
+  "slug": "swazi-williams",
+  "name": "Swazi Williams"
+ },
+ "fields": {
+  "lap1": "Stay outside into T1, the inside stacks up",
+  "hotspots": "Bus stop on lap 1",
+  "passing": "Into the bus stop under braking",
+  "limits": "Four wheels off at the oval exit gets flagged",
+  "focus": "Brake marker for T1\nPatience on exit of T7"
+ },
+ "car_notes": {
+  "Ford Mustang GT4": "Short-shift out of the hairpin"
+ },
+ "updated": "2026-11-20T18:02:11Z",
+ "app": "Debrief 2.4.0"
+}

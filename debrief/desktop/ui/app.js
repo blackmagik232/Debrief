@@ -473,6 +473,10 @@ function weekBox(w,label,s,now){const box=h('div','wk'+(now?' now':''));
     box.append(cv)}
   const row=h('div','row');const bc=h('button','btn',w.has_notes?'Edit track card':'Add track card');bc.type='button';
   bc.addEventListener('click',()=>openCard(w.track,s));row.append(bc);
+  if(ok(w.shared_notes)&&w.shared_notes>0){const bt=h('button','btn','Team notes ('+w.shared_notes+')');bt.type='button';bt.dataset.teamNotes='1';
+    bt.addEventListener('click',()=>openCard(w.track,s,true));row.append(bt)}
+  const bf=h('button','btn','Plan fuel');bf.type='button';bf.dataset.fuel='1';
+  bf.addEventListener('click',()=>openFuel({track:w.track,series:s.id,week:w.week,cars:s.cars||[],length:w.length}));row.append(bf);
   const bp=h('button','btn','Build prep page');bp.type='button';
   if(w.track_id==null||w.car_id==null){bp.disabled=true;bp.title='Debrief needs Garage 61\'s ids for this track and car: drive it once, or load the track and car lists under "Prep pages for any track and car".'}
   bp.addEventListener('click',()=>startJob('prep',{track_id:w.track_id,car_id:w.car_id}));row.append(bp);
@@ -512,7 +516,8 @@ $('schFile').addEventListener('change',async()=>{const f=$('schFile').files[0];$
   if(!r.ok){schBusy(false);setMsg('schMsg',r.error,'bad');return}lastJob={state:'running',kind:'schedule',id:r.id};poll()});
 /* track card */
 let cardFor=null;
-function openCard(track,s){cardFor={track,cars:(s&&s.cars)||[],season:prepData&&prepData.schedule&&prepData.schedule.season,loaded:false};
+function openCard(track,s,toTeam){cardFor={track,cars:(s&&s.cars)||[],season:prepData&&prepData.schedule&&prepData.schedule.season,loaded:false,toTeam:!!toTeam};
+  $('cardTeam').hidden=true;$('cardTeamList').replaceChildren();$('cardShareNote').hidden=true;
   $('cardTitle').textContent='Track card: '+track;setMsg('cardMsg','');$('cardUpdated').textContent='';$('cardReload').hidden=true;
   ['lap1','hotspots','passing','limits','focus'].forEach(k=>$('c_'+k).value='');$('c_car').value='';
   const car=cardFor.cars.length===1?cardFor.cars[0]:null;cardFor.car=car;$('cCarWrap').hidden=!car;if(car)$('cCarLab').textContent='Note for the '+car;
@@ -525,8 +530,39 @@ function loadCard(track){$('cardSave').disabled=true;
     ['lap1','hotspots','passing','limits','focus'].forEach(k=>$('c_'+k).value=(c.fields||{})[k]||'');
     if(car)$('c_car').value=(c.car_notes||{})[car]||'';
     $('cardUpdated').textContent=c.updated?'Last saved '+fmtDate(c.updated)+(c.season?' ('+c.season+')':''):'';
-    if(c.read_only){$('cardSave').disabled=true;setMsg('cardMsg','Saved by a newer Debrief: update to edit.','bad')}else $('cardSave').disabled=false})
+    if(c.read_only){$('cardSave').disabled=true;setMsg('cardMsg','Saved by a newer Debrief: update to edit.','bad')}else $('cardSave').disabled=false;
+    renderTeamNotes(j.shared,j.sharing)})
   .catch(()=>connectionLost())}
+// teammates' cards from the shared folder: untrusted text, shown with textContent only; "Copy into mine" fills
+// your own field (you still press Save, which saves only your card)
+const CARD_LABELS={lap1:'Lap 1 / start',hotspots:'Crash hotspots',passing:'Passing spots',limits:'Track limits / kerbs',focus:'Focus this week'};
+function renderTeamNotes(shared,sharing){const list=Array.isArray(shared)?shared.filter(x=>x&&typeof x==='object'):[];
+  const host=$('cardTeamList');host.replaceChildren();$('cardTeam').hidden=!list.length;
+  $('cardTeamNote').textContent=list.length?list.length+' teammate'+(list.length===1?'':'s')+' · read-only':'';
+  list.slice(0,50).forEach(t=>{const a=t.author||{};const box=h('div','tauthor');
+    const who=h('span','who');who.append(h('b',null,String(a.name||a.slug||'A teammate').slice(0,80)));
+    if(typeof t.updated==='string'&&t.updated)who.append(document.createTextNode(' · '+fmtDate(t.updated)));box.append(who);
+    const f=t.fields||{};let any=false;
+    Object.keys(CARD_LABELS).forEach(k=>{const v=f[k];if(typeof v!=='string'||!v.trim())return;any=true;
+      const r=h('div','tfield');const p=h('p');p.append(h('b',null,CARD_LABELS[k]+': '),document.createTextNode(v));
+      const b=h('button','btn','Copy into mine');b.type='button';b.dataset.copy=k;
+      b.addEventListener('click',()=>{const el=$('c_'+k);const cur=el.value.trim();
+        if(cur.split('\n').some(x=>x.trim()===v.trim())){setMsg('cardMsg','That\'s already in your card.');return}
+        el.value=(cur?cur+'\n'+v:v).slice(0,300);setMsg('cardMsg','Copied into your '+CARD_LABELS[k].toLowerCase()+'. Press Save card to keep it.')});
+      r.append(p,b);box.append(r)});
+    const cn=t.car_notes&&typeof t.car_notes==='object'?t.car_notes:{};
+    Object.keys(cn).slice(0,20).forEach(car=>{if(typeof cn[car]!=='string'||!cn[car].trim())return;any=true;
+      const r=h('div','tfield');const p=h('p');p.append(h('b',null,car+': '),document.createTextNode(cn[car]));r.append(p);
+      if(cardFor&&cardFor.car===car){const b=h('button','btn','Copy into mine');b.type='button';
+        b.addEventListener('click',()=>{const el=$('c_car');el.value=(el.value.trim()?el.value.trim()+' · ':'')+cn[car];el.value=el.value.slice(0,200)});r.append(b)}
+      box.append(r)});
+    if(any)host.append(box)});
+  if(!host.children.length)$('cardTeam').hidden=true;
+  const sh=sharing||{};const n=$('cardShareNote');n.hidden=true;
+  if(sh.on&&sh.folder_ok&&!sh.author){n.hidden=false;n.textContent='Check your Garage 61 connection once so Debrief knows your name.'}
+  else if(sh.on&&sh.folder_ok&&sh.author){n.hidden=false;n.textContent='Saving also shares this card with your team as '+sh.author.name+'.'}
+  else if(sh.on&&!sh.folder_ok){n.hidden=false;n.textContent='The team cards folder isn\'t there right now, so this card is saved on this PC only.'}
+  if(cardFor&&cardFor.toTeam&&!$('cardTeam').hidden)$('cardTeam').scrollIntoView({block:'nearest'})}
 function closeCard(){const d=$('dlgCard');if(d.close)d.close();else d.removeAttribute('open')}
 $('cardClose').addEventListener('click',closeCard);
 $('fCard').addEventListener('submit',async e=>{e.preventDefault();if(!cardFor)return;
@@ -538,8 +574,147 @@ $('fCard').addEventListener('submit',async e=>{e.preventDefault();if(!cardFor)re
   if(!r.ok){setMsg('cardMsg',r.error||'The card wasn\'t saved.','bad');
     // saved somewhere else since this dialog opened: offer to load the newer card
     if(r.conflict||/changed somewhere else|open it again|newer notes/i.test(r.error||''))$('cardReload').hidden=false;return}
-  closeCard();banner('Track card saved.');loadPrepare(true)});
+  closeCard();banner(r.card&&typeof r.card.share_error==='string'&&r.card.share_error?(/^Saved on this PC/.test(r.card.share_error)?'':'Track card saved on this PC. ')+r.card.share_error:'Track card saved.',
+    !!(r.card&&r.card.share_error),8000);loadPrepare(true)});
 $('cardReload').addEventListener('click',()=>{if(!cardFor)return;$('cardReload').hidden=true;setMsg('cardMsg','Loaded the newer card. Your unsaved text was replaced; add your change again.');loadCard(cardFor.track)});
+/* ---------- fuel planner (2.4): prefill from your own laps (no Garage 61 requests), plan on the server */
+let fuelFor=null;
+const GAL=3.785;
+const fmtL=v=>ok(v)?v.toFixed(1)+' L ('+(v/GAL).toFixed(2)+' gal)':'–';
+const numOr=(id)=>{const v=$(id).value.trim();return v===''?null:Number(v)};
+function fuelSrc(id,o,unitless){const el=$('s_'+id);el.textContent='';el.className='src';
+  if(!o||typeof o!=='object')return;const bits=[];if(typeof o.source==='string'&&o.source)bits.push(o.source.startsWith('from')||o.source.startsWith('estimated')?o.source:'from '+o.source);
+  if(o.estimated){bits.push('check it in the garage');el.className='src est'}
+  el.textContent=bits.join(' · ')}
+function openFuel(ctx){fuelFor={ctx,car:(ctx.cars||[])[0]||null,pre:null};
+  $('fuelTitle').textContent='Plan fuel: '+ctx.track;$('fuelSub').textContent=ctx.length?'Race length from the schedule: '+ctx.length+'.':'Type in the race length.';
+  ['f_laps','f_minutes','f_lap_t','f_burn','f_tank','f_pit'].forEach(id=>$(id).value='');$('f_reserve').value='1';
+  ['laps','minutes','lap_t','burn','tank','pit'].forEach(k=>{$('s_'+k).textContent=''});
+  $('fuelRes').hidden=true;$('fuelNoBurn').hidden=true;$('fP90Wrap').hidden=true;setMsg('fuelMsg','Loading your numbers...');
+  const sel=$('f_car');sel.replaceChildren();(ctx.cars||[]).forEach(c=>{const o=h('option',null,c);o.value=c;sel.append(o)});
+  $('fCarWrap').hidden=(ctx.cars||[]).length<2;
+  const d=$('dlgFuel');if(d.showModal)d.showModal();else d.setAttribute('open','');
+  loadFuel()}
+async function loadFuel(){const f=fuelFor;if(!f)return;const c=f.ctx;
+  const q='strategy?track='+encodeURIComponent(c.track)+(f.car?'&car='+encodeURIComponent(f.car):'')+(c.series?'&series='+encodeURIComponent(c.series)+'&week='+encodeURIComponent(c.week||''):'');
+  let j;try{j=await api(q)}catch(e){connectionLost();return}
+  if(fuelFor!==f)return;
+  if(!j.ok){setMsg('fuelMsg',j.error,'bad');return}
+  const p=j.prefill||{};f.pre=p;setMsg('fuelMsg','');
+  const r=p.race||{};if(ok(r.laps))$('f_laps').value=r.laps;if(ok(r.minutes))$('f_minutes').value=r.minutes;
+  fuelSrc(ok(r.minutes)?'minutes':'laps',r.source?{source:r.source==='schedule'?'from the schedule'+(r.text?' ('+r.text+')':''):r.source}:null);
+  const lt=p.lap_t||{};if(ok(lt.value))$('f_lap_t').value=fmtT(lt.value);fuelSrc('lap_t',lt);
+  const b=p.burn||{};if(ok(b.value))$('f_burn').value=b.value.toFixed(2);fuelSrc('burn',b);$('fuelNoBurn').hidden=ok(b.value);
+  $('fP90Wrap').hidden=!ok(b.p90);if(ok(b.p90))$('fP90Lab').textContent='Plan with your thirstier laps ('+b.p90.toFixed(2)+' L a lap)';
+  const t=p.tank||{};if(ok(t.value))$('f_tank').value=t.value;fuelSrc('tank',t);
+  const pl=p.pit_loss||{};if(ok(pl.value))$('f_pit').value=pl.value.toFixed(1);fuelSrc('pit',pl);
+  if(ok(p.reserve_laps))$('f_reserve').value=p.reserve_laps}
+$('f_car').addEventListener('change',()=>{if(!fuelFor)return;fuelFor.car=$('f_car').value;$('fuelRes').hidden=true;loadFuel()});
+function closeFuel(){const d=$('dlgFuel');if(d.close)d.close();else d.removeAttribute('open');fuelFor=null}
+$('fuelClose').addEventListener('click',closeFuel);
+function fuelInputs(){const inp={};const laps=numOr('f_laps'),mins=numOr('f_minutes');
+  if(laps!=null)inp.laps=laps;else if(mins!=null)inp.minutes=mins;
+  const lt=$('f_lap_t').value.trim();if(lt){const v=parseLap(lt);if(v==null)throw new Error('Type your lap time like 1:25.900.');inp.lap_t=v}
+  const b=numOr('f_burn');if(b!=null)inp.burn_l=b;
+  const t=numOr('f_tank');if(t!=null)inp.tank_l=t;
+  const pl=numOr('f_pit');if(pl!=null)inp.pit_loss_s=pl;
+  const rv=numOr('f_reserve');if(rv!=null)inp.reserve_laps=rv;
+  const pre=(fuelFor&&fuelFor.pre)||{};const pb=pre.burn||{};
+  // the thirstier-laps figure only applies to the prefilled fuel use; a typed-in number is used as it is
+  if(ok(pb.p90)&&!$('fP90Wrap').hidden&&ok(pb.value)&&b!=null&&Math.abs(b-pb.value)<0.005){inp.use_p90=$('f_p90').checked;inp.p90_l=pb.p90}else inp.use_p90=false;
+  if(ok(pb.n)&&ok(pb.value)&&b!=null&&Math.abs(b-pb.value)<0.005)inp.burn_n=pb.n;
+  const pt=pre.tank||{};if(pt.estimated&&ok(pt.value)&&t!=null&&Math.abs(t-pt.value)<0.01)inp.tank_estimated=true;
+  return inp}
+function kpi(k,v,sub){const d=h('div','kpi');d.append(h('span','k',k),h('span','v',v));if(sub)d.append(h('span','s',sub));return d}
+function renderFuelPlan(p){$('fuelRes').hidden=false;const k=$('fuelKpis');k.replaceChildren();
+  k.append(kpi('Stops',ok(p.stops)?String(p.stops):'–',p.stops===0?'No stop needed':null),
+           kpi('Start with',ok(p.start_fuel_l)?p.start_fuel_l.toFixed(1)+' L':'–',ok(p.start_fuel_l)?(p.start_fuel_l/GAL).toFixed(2)+' gal':null),
+           kpi('Fuel for the race',ok(p.fuel_needed_l)?p.fuel_needed_l.toFixed(1)+' L':'–',ok(p.laps)?p.laps+' laps':null));
+  if(ok(p.laps_per_tank))k.append(kpi('Laps a tank',String(p.laps_per_tank)));
+  if(ok(p.pit_time_s)&&p.stops>0)k.append(kpi('Time in the pits',p.pit_time_s.toFixed(0)+' s'));
+  const ul=$('fuelWindows');ul.replaceChildren();
+  (Array.isArray(p.windows)?p.windows:[]).forEach((w,i)=>{const li=h('li');const n=ok(w.stop)?w.stop:i+1;
+    li.append(h('b',null,'Stop '+n+': '),document.createTextNode('between laps '+w.open+' and '+w.close));
+    const add=ok(w.fuel_add_l)?w.fuel_add_l:ok(w.add_l)?w.add_l:null;if(add!=null)li.append(document.createTextNode(', add '+fmtL(add)));ul.append(li)});
+  (Array.isArray(p.stints)?p.stints:[]).forEach((st,i)=>{if(!ok(st.from_lap))return;const li=h('li','sub2');
+    li.textContent='Stint '+(i+1)+': laps '+st.from_lap+'–'+st.to_lap+(ok(st.fuel_l)?' · '+fmtL(st.fuel_l):'');ul.append(li)});
+  showWarnings('fuelWarn',p.warnings,'Worth knowing:')}
+$('fFuel').addEventListener('submit',async e=>{e.preventDefault();if(!fuelFor)return;let inputs;
+  const badEl=['f_laps','f_minutes','f_burn','f_tank','f_pit','f_reserve'].map($).find(x=>!x.checkValidity());
+  if(badEl){setMsg('fuelMsg',badEl.closest('label').querySelector('span').textContent+': '+badEl.validationMessage,'bad');badEl.focus();return}
+  try{inputs=fuelInputs()}catch(err){setMsg('fuelMsg',err.message,'bad');return}
+  if(!('laps' in inputs)&&!('minutes' in inputs)){setMsg('fuelMsg','Type in the race length (laps or minutes).','bad');$('f_laps').focus();return}
+  if(!('burn_l' in inputs)){setMsg('fuelMsg','Type in your fuel use a lap.','bad');$('f_burn').focus();return}
+  if(!('tank_l' in inputs)){setMsg('fuelMsg','Type in the tank size.','bad');$('f_tank').focus();return}
+  setMsg('fuelMsg','Working it out...');$('fuelGo').disabled=true;let r;
+  try{r=await post('strategy',{action:'plan',inputs})}catch(err){connectionLost();return}finally{$('fuelGo').disabled=false}
+  if(!r.ok){setMsg('fuelMsg',r.error,'bad');$('fuelRes').hidden=true;return}
+  setMsg('fuelMsg','');renderFuelPlan(r.plan||{})});
+$('fuelSaveCar').addEventListener('click',async()=>{if(!fuelFor)return;const car=fuelFor.car;
+  if(!car){setMsg('fuelMsg','Pick a car first.','bad');return}
+  const tank=numOr('f_tank'),pit=numOr('f_pit');const body={action:'save_car',car};
+  if(tank!=null)body.tank_l=tank;if(pit!=null){body.pit_loss_s=pit;body.track=fuelFor.ctx.track}
+  if(tank==null&&pit==null){setMsg('fuelMsg','Type in the tank size first.','bad');return}
+  let r;try{r=await post('strategy',body)}catch(e){connectionLost();return}
+  if(!r.ok){setMsg('fuelMsg',r.error,'bad');return}
+  setMsg('fuelMsg','Saved for the '+car+'.','ok');$('s_tank').textContent='saved for this car';$('s_tank').className='src'});
+
+/* ---------- Track Intel import (2.4): upload -> map columns -> preview -> import */
+let intel=null;
+const INTEL_FIELDS=[['ignore','(ignore)'],['track','Track'],['car','Car'],['lap1','Lap 1 / start'],['hotspots','Crash hotspots'],
+  ['passing','Passing spots'],['limits','Track limits / kerbs'],['focus','Focus'],['car_note','Car note']];
+$('btnIntel').addEventListener('click',()=>$('intelFile').click());
+$('intelFile').addEventListener('change',async()=>{const f=$('intelFile').files[0];$('intelFile').value='';if(!f)return;
+  const ext=(/\.([a-z0-9]+)$/i.exec(f.name)||[])[1];
+  if(!ext||!['xlsx','csv'].includes(ext.toLowerCase())){setMsg('intelMsg','Pick an .xlsx or .csv file.','bad');return}
+  if(f.size>5*1024*1024){setMsg('intelMsg','That file is too big. A Track Intel sheet is well under 5 MB.','bad');return}
+  setMsg('intelMsg','Reading '+f.name+'...');$('intelMap').hidden=true;$('btnIntel').disabled=true;let r;
+  try{r=await fetch(BASE+'api/intel-upload?name='+encodeURIComponent(f.name),{method:'POST',headers:{'X-Debrief':'1','Content-Type':'application/octet-stream'},body:f}).then(x=>x.json())}
+  catch(e){setMsg('intelMsg','Couldn\'t send the file.','bad');return}finally{$('btnIntel').disabled=false}
+  if(!r||!r.ok){setMsg('intelMsg',(r&&r.error)||'Couldn\'t read that file.','bad');return}
+  intel={id:r.upload_id,sheets:Array.isArray(r.sheets)?r.sheets:[],sheet:0,name:f.name,previewed:false};
+  setMsg('intelMsg','Loaded '+f.name+'.');renderIntelSheets()});
+function renderIntelSheets(){const sel=$('intelSheet');sel.replaceChildren();
+  intel.sheets.forEach((sh,i)=>{const o=h('option',null,sh.name+(ok(sh.n_rows)?' ('+sh.n_rows+' rows)':''));o.value=String(i);sel.append(o)});
+  $('intelSheetWrap').hidden=intel.sheets.length<2;sel.value=String(intel.sheet);$('intelMap').hidden=false;renderIntelCols()}
+$('intelSheet').addEventListener('change',()=>{if(!intel)return;intel.sheet=+$('intelSheet').value;renderIntelCols()});
+function intelDirty(){if(!intel)return;intel.previewed=false;$('btnIntelImport').disabled=true;$('intelPreview').replaceChildren()}
+function renderIntelCols(){intelDirty();const sh=intel.sheets[intel.sheet]||{};const tb=$('intelCols');tb.replaceChildren();
+  const hdr=Array.isArray(sh.header)?sh.header:[];const sug=sh.suggest||{};
+  hdr.forEach((name,i)=>{const tr=h('tr');tr.append(h('td',null,String(name||'Column '+(i+1))));
+    const samp=(sh.rows||[]).slice(0,3).map(r=>String((r||[])[i]||'')).filter(Boolean).join(' · ');tr.append(h('td','samp',samp));
+    const td=h('td');const s=document.createElement('select');s.dataset.col=String(i);s.setAttribute('aria-label','What column '+(name||i+1)+' holds');
+    INTEL_FIELDS.forEach(([v,lab])=>{const o=h('option',null,lab);o.value=v;s.append(o)});
+    s.value=INTEL_FIELDS.some(f=>f[0]===sug[String(i)])?sug[String(i)]:'ignore';s.addEventListener('change',intelDirty);td.append(s);tr.append(td);tb.append(tr)});
+  setMsg('intelMapMsg','')}
+function intelBody(){const mapping={};document.querySelectorAll('#intelCols select').forEach(s=>{if(s.value!=='ignore')mapping[s.dataset.col]=s.value});
+  const m=document.querySelector('input[name=intelMode]:checked');return {upload_id:intel.id,sheet:intel.sheet,mapping,mode:m?m.value:'fill_empty'}}
+document.querySelectorAll('input[name=intelMode]').forEach(x=>x.addEventListener('change',intelDirty));
+function intelRows(res){return Array.isArray(res)?res:(res&&Array.isArray(res.tracks)?res.tracks:[])}
+$('btnIntelPreview').addEventListener('click',async()=>{if(!intel)return;const body=intelBody();
+  if(Object.values(body.mapping).filter(v=>v==='track').length!==1){setMsg('intelMapMsg','Pick the one column that holds the track name.','bad');return}
+  setMsg('intelMapMsg','Checking...');let r;try{r=await post('intel-preview',body)}catch(e){connectionLost();return}
+  if(!r.ok){setMsg('intelMapMsg',r.error,'bad');if(/expired/i.test(r.error||''))intel=null;return}
+  const rows=intelRows(r.preview);const host=$('intelPreview');host.replaceChildren();
+  const changed=rows.filter(t=>Array.isArray(t.changes)&&t.changes.length).length;
+  rows.forEach(t=>{const it=h('div','item');const tx=h('div','itx ptrack');
+    tx.append(h('b',null,String(t.track||'')));
+    tx.append(h('span','sub2',(t.matched?(typeof t.matched==='string'&&t.matched!==t.track?'Matches '+t.matched:'Matches a track you know'):'New: kept as typed')));
+    const ch=Array.isArray(t.changes)?t.changes:[];
+    tx.append(h('span','sub2',ch.length?'Changes: '+ch.map(k=>(CARD_LABELS[k]||k).toLowerCase()).join(', '):'No change'));
+    warnList(t.warnings).slice(0,4).forEach(w=>tx.append(h('span','sub2 badc',w)));
+    it.append(tx);host.append(it)});
+  if(!rows.length)host.append(h('p','note','No rows with a track name in that sheet.'));
+  intel.previewed=true;$('btnIntelImport').disabled=!changed;
+  setMsg('intelMapMsg',rows.length+' track'+(rows.length===1?'':'s')+' · '+changed+' would change.')});
+$('btnIntelImport').addEventListener('click',async()=>{if(!intel||!intel.previewed)return;const body=intelBody();body.confirm=true;
+  setMsg('intelMapMsg','Importing...');$('btnIntelImport').disabled=true;let r;try{r=await post('intel-import',body)}catch(e){connectionLost();return}
+  if(!r.ok){setMsg('intelMapMsg',r.error,'bad');return}
+  const n=ok(r.changed)?r.changed:0,tot=ok(r.tracks)?r.tracks:n;intel=null;$('intelMap').hidden=true;
+  const er=warnList(r.errors);
+  setMsg('intelMsg','Updated '+n+' track card'+(n===1?'':'s')+' ('+Math.max(0,tot-n)+' unchanged).'+(er.length?' Not saved: '+er.slice(0,3).join(' '):''),er.length?'bad':'ok');loadPrepare(true)});
+$('btnIntelCancel').addEventListener('click',()=>{intel=null;$('intelMap').hidden=true;setMsg('intelMsg','')});
+
 function renderPrep(j){
   const host=$('prepCombos');host.replaceChildren();
   if(!j){host.append(h('p','note','Couldn\'t load your tracks.'));return}
@@ -628,13 +803,28 @@ async function openTeam(){current={view:'team',dir:null};markNav();
 $('fbTeam').addEventListener('click',()=>startJob('team'));
 
 /* ---------- race result (on an open review) */
-const RES_FIELDS=['finish_pos','start_pos','field_size','incidents','laps_led','sof','irating_before','irating_after','sr_before','sr_after','notes'];
+const RES_FIELDS=['finish_pos','start_pos','field_size','incidents','laps_led','sof','irating_before','irating_after','sr_before','sr_after','notes',
+  'pos_after_lap1','pit_stops','penalties','finish_status'];
+const RES_TEXT=['notes','finish_status'];
+const INC_KINDS=[['off','Off track'],['spin','Spin'],['contact','Contact'],['other','Other']];
+function incRow(e){e=e||{};const r=h('div','incrow');
+  const lap=document.createElement('input');lap.type='number';lap.min='1';lap.max='2000';lap.step='1';lap.placeholder='Lap';lap.className='inc-lap';lap.setAttribute('aria-label','Lap');if(ok(e.lap))lap.value=e.lap;
+  const kind=document.createElement('select');kind.className='inc-kind';kind.setAttribute('aria-label','What happened');INC_KINDS.forEach(([v,l])=>{const o=h('option',null,l);o.value=v;kind.append(o)});if(e.kind)kind.value=e.kind;
+  const pts=document.createElement('select');pts.className='inc-pts';pts.setAttribute('aria-label','Incident points');[0,1,2,4].forEach(v=>{const o=h('option',null,v+'x');o.value=String(v);pts.append(o)});pts.value=String(ok(e.points)?e.points:0);
+  const del=h('button','btn ghost','Remove');del.type='button';del.addEventListener('click',()=>{r.remove();incState()});
+  r.append(lap,kind,pts,del);return r}
+function incState(){const n=$('incRows').children.length;$('incAdd').disabled=n>=30;$('incNote').textContent=n>=30?'Up to 30 incidents.':'Optional. The review\'s race craft timeline marks these laps.'}
+$('incAdd').addEventListener('click',()=>{if($('incRows').children.length>=30)return;const r=incRow();$('incRows').append(r);incState();r.querySelector('input').focus()});
+function incValues(){const out=[];for(const r of $('incRows').children){const lap=r.querySelector('.inc-lap').value.trim();if(lap==='')continue;
+    const n=Number(lap);if(!Number.isInteger(n)||n<1||n>2000)throw new Error('Incidents by lap: the lap must be a whole number from 1 to 2000.');
+    out.push({lap:n,kind:r.querySelector('.inc-kind').value,points:Number(r.querySelector('.inc-pts').value)})}return out}
 async function loadResult(dir){resultFor={dir,result:null};frameBar();
   let j;try{j=await api('result?review='+encodeURIComponent(dir))}catch(e){return}
   if(resultFor.dir!==dir)return;
   resultFor={dir,result:j.ok?j.result||null:null};frameBar()}
 function openResult(){const dir=current.dir;if(!dir)return;const r=(resultFor.dir===dir&&resultFor.result)||{};
   RES_FIELDS.forEach(k=>{$('r_'+k).value=r[k]!=null?String(r[k]):''});
+  $('incRows').replaceChildren(...(Array.isArray(r.incident_laps)?r.incident_laps.slice(0,30):[]).map(incRow));incState();
   $('resTitle').textContent=resultFor.result?'Edit race result':'Add race result';$('resDelete').hidden=!resultFor.result;
   $('resDelete').dataset.armed='';$('resDelete').textContent='Delete result';setMsg('resMsg','');
   const d=$('dlgResult');if(d.showModal)d.showModal();else d.setAttribute('open','');$('r_finish_pos').focus()}
@@ -643,11 +833,12 @@ $('fbResult').addEventListener('click',openResult);
 $('resClose').addEventListener('click',closeResult);
 function reloadFrame(){const f=$('frame');const at=frameHref||f.src;if(at&&at.startsWith(BASE))f.src=fresh(noQuery(at))}
 $('fResult').addEventListener('submit',async e=>{e.preventDefault();const dir=current.dir;if(!dir)return;
-  const fields={};RES_FIELDS.forEach(k=>{const v=$('r_'+k).value.trim();if(v!=='')fields[k]=k==='notes'?v:Number(v)});
+  const fields={};RES_FIELDS.forEach(k=>{const v=$('r_'+k).value.trim();if(v!=='')fields[k]=RES_TEXT.includes(k)?v:Number(v)});
+  try{const inc=incValues();if(inc.length)fields.incident_laps=inc}catch(err){setMsg('resMsg',err.message,'bad');return}
   if(!('finish_pos' in fields)){setMsg('resMsg','Add your finishing position.','bad');$('r_finish_pos').focus();return}
-  const bad=RES_FIELDS.find(k=>k!=='notes'&&!$('r_'+k).checkValidity());
+  const bad=RES_FIELDS.find(k=>!RES_TEXT.includes(k)&&!$('r_'+k).checkValidity());
   if(bad){setMsg('resMsg',$('r_'+bad).closest('label').querySelector('span').textContent+': '+$('r_'+bad).validationMessage,'bad');$('r_'+bad).focus();return}
-  if(ok(fields.field_size)&&(fields.finish_pos>fields.field_size||(ok(fields.start_pos)&&fields.start_pos>fields.field_size))){
+  if(ok(fields.field_size)&&(fields.finish_pos>fields.field_size||(ok(fields.start_pos)&&fields.start_pos>fields.field_size)||(ok(fields.pos_after_lap1)&&fields.pos_after_lap1>fields.field_size))){
     setMsg('resMsg','A position can\'t be more than the number of cars.','bad');return}
   setMsg('resMsg','Saving...');$('resSave').disabled=true;let r;
   try{r=await post('result',{review:dir,action:'save',fields})}catch(err){connectionLost();return}finally{$('resSave').disabled=false}
@@ -680,7 +871,19 @@ function fillSettings(v){
   $('irIdStatus').textContent='Client ID: '+(idS?'saved':'not saved');$('irIdStatus').className='pill'+(idS?' ok':'');
   $('irSecStatus').textContent='Client secret: '+(seS?'saved':'not saved');$('irSecStatus').className='pill'+(seS?' ok':'');
   $('irClear').hidden=!(idS||seS);
+  if(document.activeElement!==$('cardsFolder'))$('cardsFolder').value=typeof v.team_cards_folder==='string'?v.team_cards_folder:'';
+  $('cardsShare').checked=!!v.share_my_cards;cardsStatus(v);
 }
+function cardsStatus(v){const p=$('cardsPill'),st=$('cardsStatus');const f=v.team_cards_folder;
+  if(!f){p.textContent='Off';p.className='pill';st.textContent='No shared folder picked.';return}
+  if(!v.team_cards_folder_ok){p.textContent='Folder missing';p.className='pill no';st.textContent='Debrief can\'t find '+f+' right now. Is your sync app running?';return}
+  if(!v.share_my_cards){p.textContent='Reading';p.className='pill ok';st.textContent='Showing teammates\' cards from '+f+'. Your cards stay on this PC.';return}
+  p.textContent='Sharing';p.className='pill ok';
+  st.textContent=v.share_as?'Sharing as '+v.share_as+' to '+f:'Check your Garage 61 connection once so Debrief knows your name. Until then your cards stay on this PC.'}
+$('fCards').addEventListener('submit',async e=>{e.preventDefault();setMsg('cardsMsg','Saving...');let r;
+  try{r=await post('settings',{team_cards_folder:$('cardsFolder').value.trim(),share_my_cards:$('cardsShare').checked})}catch(err){connectionLost();return}
+  if(!r.ok){setMsg('cardsMsg',r.error,'bad');return}
+  fillSettings(r.settings);setMsg('cardsMsg','Saved.','ok')});
 let teamSlug='midfield-menace';
 async function loadSettings(){try{fillSettings(await api('settings'))}catch(e){connectionLost()}}
 async function loadTeams(fetchIt){let j;try{j=await api('teams'+(fetchIt?'?fetch=1':''))}catch(e){connectionLost();return}

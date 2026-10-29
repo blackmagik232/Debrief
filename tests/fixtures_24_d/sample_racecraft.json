@@ -1,0 +1,41 @@
+{
+ "version": 1,
+ "lap1": {
+  "n": 1,
+  "t": 92.4,
+  "vs_median_s": 5.9,
+  "in_analysis": true,
+  "segments": [
+   {
+    "id": "C1",
+    "lost_s": 2.1
+   },
+   {
+    "id": "C2",
+    "lost_s": 1.4
+   }
+  ],
+  "note": "includes the start"
+ },
+ "timeline": [
+  {
+   "n": 1,
+   "t": 92.4,
+   "lost_s": 5.9,
+   "tags": [
+    "lap1"
+   ]
+  },
+  {
+   "n": 6,
+   "t": 88.0,
+   "lost_s": 1.6,
+   "tags": [
+    "unclean"
+   ]
+  }
+ ],
+ "summary": [
+  "Lap 1 was 5.9 s slower than your typical lap, most of it in C1 and C2 (that includes the start)."
+ ]
+}

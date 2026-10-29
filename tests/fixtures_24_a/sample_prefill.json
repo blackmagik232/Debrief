@@ -1,0 +1,31 @@
+{
+ "race": {
+  "laps": 15,
+  "minutes": null,
+  "source": "schedule",
+  "text": "15 laps"
+ },
+ "lap_t": {
+  "value": 86.05,
+  "n": 2,
+  "source": "median clean lap, your last 2 races here"
+ },
+ "burn": {
+  "value": 2.41,
+  "p90": 2.51,
+  "n": 12,
+  "source": "your race on Oct 1"
+ },
+ "tank": {
+  "value": 47.0,
+  "source": "saved for this car",
+  "estimated": false
+ },
+ "pit_loss": {
+  "value": 48.0,
+  "n": 2,
+  "source": "2 pit stops at this track"
+ },
+ "reserve_laps": 1.0,
+ "note": null
+}

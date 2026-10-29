@@ -1,0 +1,74 @@
+{
+ "version": 1,
+ "lap1": {
+  "n": 1,
+  "t": 59.567,
+  "vs_median_s": 3.5,
+  "in_analysis": true,
+  "segments": [
+   {
+    "id": "C1",
+    "lost_s": 3.39
+   }
+  ],
+  "note": "includes the start"
+ },
+ "timeline": [
+  {
+   "n": 1,
+   "t": 59.567,
+   "lost_s": 3.5,
+   "tags": [
+    "lap1",
+    "unclean"
+   ]
+  },
+  {
+   "n": 5,
+   "t": 56.017,
+   "lost_s": -0.1,
+   "tags": [
+    "unclean"
+   ]
+  },
+  {
+   "n": 7,
+   "t": 59.383,
+   "lost_s": 3.3,
+   "tags": [
+    "traffic"
+   ],
+   "at_m": 1240.0,
+   "traffic_s": 3.43
+  },
+  {
+   "n": 10,
+   "t": 81.35,
+   "lost_s": null,
+   "tags": [
+    "pit"
+   ]
+  },
+  {
+   "n": 11,
+   "t": 76.133,
+   "lost_s": null,
+   "tags": [
+    "pit"
+   ]
+  },
+  {
+   "n": 12,
+   "t": 55.983,
+   "lost_s": -0.1,
+   "tags": [
+    "best"
+   ]
+  }
+ ],
+ "summary": [
+  "Lap 1 was 3.5 s slower than your typical lap, most of it in C1 (that includes the start).",
+  "Most likely traffic cost about 3.4 s on lap 7.",
+  "Garage 61 flagged 2 laps (1 and 5); on those laps you were 1.7 s off your typical lap on average."
+ ]
+}

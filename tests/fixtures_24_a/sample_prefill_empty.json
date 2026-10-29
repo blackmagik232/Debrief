@@ -1,0 +1,14 @@
+{
+ "race": {
+  "laps": null,
+  "minutes": null,
+  "source": null,
+  "text": null
+ },
+ "lap_t": null,
+ "burn": null,
+ "tank": null,
+ "pit_loss": null,
+ "reserve_laps": 1.0,
+ "note": "Debrief couldn't find fuel use for this car and track yet. Type it in, or check the fuel use in the garage."
+}

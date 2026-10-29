@@ -163,6 +163,11 @@ def load_settings() -> dict:
     # optional iRacing data API credentials: only stored here; nothing runs with them by default
     for k in ("iracing_client_id", "iracing_client_secret"):
         cfg[k] = str(cfg.get(k) or "").strip()
+    # 2.4 shared team track cards: a folder the team syncs (OneDrive, Google Drive, Dropbox...), and whether
+    # your own cards are written there. Reading teammates' cards needs only the folder.
+    tcf = str(cfg.get("team_cards_folder") or "").strip()
+    cfg["team_cards_folder"] = os.path.expandvars(os.path.expanduser(tcf)) if tcf else ""
+    cfg["share_my_cards"] = cfg.get("share_my_cards") is True
     # cache + log live in HERE: next to the code from source (Store-installed Python redirects AppData
     # writes), or in %LOCALAPPDATA%\Debrief for the installed app.
     # DEBRIEF_CACHE_DIR lets the tests use a throwaway cache.
@@ -656,6 +661,32 @@ def _job_logger(progress, start=0.08, end=0.92):
     return step, log
 
 
+def prep_strategy(cfg, api, data) -> dict:
+    """{"strategy": prefill} for the prep page's "Fuel for this race" box (2.4), or {} when there's nothing to
+    show. No requests: strategy.prefill reads the library, the sync store, the schedule and strategy.json."""
+    strategy = optional_module("strategy")
+    if strategy is None or not data.get("track") or not data.get("car"):
+        return {}
+    try:
+        from . import schedule, sync
+        sched = schedule.load_current()
+        week = None
+        if sched:
+            from datetime import datetime, timezone
+            wk = schedule.week_on(sched, datetime.now(timezone.utc).date())
+            for ser in schedule.series_at(sched, data["track"], data["car"], datetime.now(timezone.utc).date()) if wk else []:
+                week = next((w for w in ser.get("weeks") or [] if w.get("week") == wk), None)
+                if week:
+                    break
+        store = sync.Store.for_api(api) if api is not None else None
+        pre = strategy.prefill(cfg, store, sched, data["track"], [data["car"]], week)
+    except Exception:  # noqa: BLE001  (a prep page never fails over the fuel box)
+        import traceback
+        say("ERROR working out the fuel box for the prep page:\n" + traceback.format_exc())
+        return {}
+    return {"strategy": pre} if isinstance(pre, dict) else {}
+
+
 def cmd_prep(cfg, track_id, car_id, progress=None, open_after=False) -> Path:
     """Build the track prep page for one track/car. Requests: whatever prep.build reports (bounded there)."""
     prep = optional_module("prep")
@@ -669,6 +700,7 @@ def cmd_prep(cfg, track_id, car_id, progress=None, open_after=False) -> Path:
     step("Getting your history at this track and car...", 0.04)
     api = make_api(cfg)
     data = prep.build(api, cfg["library_folder"], track_id, car_id, cfg.get("team_slug") or None, log=log)
+    data.update(prep_strategy(cfg, api, data))
     step("Saving the prep page...", 0.95)
     page = prep.write(cfg["library_folder"], data)
     step(f"Done. Prep page saved to {page}", 1.0)

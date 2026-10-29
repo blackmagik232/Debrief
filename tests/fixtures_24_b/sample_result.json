@@ -1,0 +1,30 @@
+{
+ "finish_pos": 9,
+ "start_pos": 14,
+ "field_size": 22,
+ "incidents": 4,
+ "pos_after_lap1": 11,
+ "pit_stops": 1,
+ "penalties": 0,
+ "finish_status": "running",
+ "incident_laps": [
+  {
+   "lap": 1,
+   "kind": "contact",
+   "points": 0
+  },
+  {
+   "lap": 7,
+   "kind": "off",
+   "points": 1
+  },
+  {
+   "lap": 12,
+   "kind": "spin",
+   "points": 2
+  }
+ ],
+ "positions_gained": 5,
+ "positions_lap1": 3,
+ "saved_at": "2026-11-20T21:30:00+00:00"
+}

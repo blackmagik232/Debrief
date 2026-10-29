@@ -7,6 +7,10 @@ Sign conventions for the derived fields (all "after minus before" / "start minus
   irating_change   = irating_after - irating_before   (positive = iRating gained)
   sr_change        = sr_after - sr_before             (positive = safety rating gained)
   positions_gained = start_pos - finish_pos           (positive = finished ahead of where you started)
+  positions_lap1   = start_pos - pos_after_lap1       (positive = places made on lap 1)
+
+2.4 adds pos_after_lap1, pit_stops, penalties, finish_status and incident_laps (a list of
+{"lap", "kind", "points"}). Every one is optional, so older result.json files stay valid.
 """
 from __future__ import annotations
 
@@ -36,7 +40,69 @@ FIELDS = {
     "sr_after": ("float", 0.0, 4.99, "Safety rating after"),
     "sof": ("int", 0, 20000, "Strength of field"),
     "laps_led": ("int", 0, 2000, "Laps led"),
+    "pos_after_lap1": ("int", 1, 200, "Position after lap 1"),
+    "pit_stops": ("int", 0, 50, "Pit stops"),
+    "penalties": ("int", 0, 50, "Penalties (drive-throughs etc.)"),
 }
+# non-numeric fields (2.4)
+FINISH_STATUS = ("running", "dnf", "dq", "disconnected")
+FINISH_LABEL = "How the race ended"
+INCIDENT_KINDS = ("off", "spin", "contact", "other")
+INCIDENT_POINTS = (0, 1, 2, 4)
+MAX_INCIDENT_LAPS = 30
+INCIDENTS_LABEL = "Incidents by lap"
+
+
+def _status(raw):
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return None
+    v = raw.strip().lower() if isinstance(raw, str) else None
+    if v not in FINISH_STATUS:
+        raise ValueError(f"{FINISH_LABEL} should be one of: running, DNF, DQ or disconnected.")
+    return v
+
+
+def _whole(raw, lo, hi, label):
+    if isinstance(raw, bool) or raw is None:
+        raise ValueError(f"{label} should be a whole number.")
+    try:
+        v = float(str(raw).strip()) if isinstance(raw, str) else float(raw)
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError(f"{label} should be a whole number.")
+    if not math.isfinite(v) or not v.is_integer():
+        raise ValueError(f"{label} should be a whole number.")
+    v = int(v)
+    if not lo <= v <= hi:
+        raise ValueError(f"{label} should be between {lo} and {hi}.")
+    return v
+
+
+def _incident_laps(raw):
+    """[{"lap": 1-2000, "kind": off|spin|contact|other, "points": 0|1|2|4}], at most 30, sorted by lap.
+    None for empty. Raises ValueError (plain)."""
+    if raw is None or raw == "" or raw == []:
+        return None
+    if not isinstance(raw, list):
+        raise ValueError(f"{INCIDENTS_LABEL}: something went wrong with the list. Try again.")
+    if len(raw) > MAX_INCIDENT_LAPS:
+        raise ValueError(f"{INCIDENTS_LABEL}: add at most {MAX_INCIDENT_LAPS} incidents.")
+    out = []
+    for i, e in enumerate(raw, 1):
+        if not isinstance(e, dict):
+            raise ValueError(f"{INCIDENTS_LABEL}: row {i} is incomplete.")
+        lap = _whole(e.get("lap"), 1, 2000, f"{INCIDENTS_LABEL}: the lap in row {i}")
+        kind = e.get("kind")
+        kind = kind.strip().lower() if isinstance(kind, str) else kind
+        if kind not in INCIDENT_KINDS:
+            raise ValueError(f"{INCIDENTS_LABEL}: row {i} should be an off, a spin, contact or other.")
+        pts = e.get("points", 0)
+        pts = 0 if pts is None or (isinstance(pts, str) and not pts.strip()) else \
+            _whole(pts, 0, 4, f"{INCIDENTS_LABEL}: the points in row {i}")
+        if pts not in INCIDENT_POINTS:
+            raise ValueError(f"{INCIDENTS_LABEL}: the points in row {i} should be 0, 1, 2 or 4 (0x, 1x, 2x, 4x).")
+        out.append({"lap": lap, "kind": kind, "points": pts})
+    out.sort(key=lambda e: e["lap"])
+    return out
 _DIR_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,200}$")
 
 
@@ -101,9 +167,15 @@ def validate(fields: dict) -> dict:
         raise ValueError("Enter your finishing position (1 or more).")
     fs = out.get("field_size")
     if fs is not None:
-        for k in ("finish_pos", "start_pos"):
+        for k in ("finish_pos", "start_pos", "pos_after_lap1"):
             if k in out and out[k] > fs:
                 raise ValueError(f"{FIELDS[k][3]} can't be higher than the number of cars ({fs}).")
+    st = _status(fields.get("finish_status"))
+    if st is not None:
+        out["finish_status"] = st
+    il = _incident_laps(fields.get("incident_laps"))
+    if il is not None:
+        out["incident_laps"] = il
     notes = fields.get("notes")
     notes = "" if notes is None else str(notes).strip()
     if len(notes) > NOTES_MAX:
@@ -117,6 +189,8 @@ def validate(fields: dict) -> dict:
         out["sr_change"] = round(out["sr_after"] - out["sr_before"], 2)
     if "start_pos" in out:
         out["positions_gained"] = out["start_pos"] - out["finish_pos"]
+    if "start_pos" in out and "pos_after_lap1" in out:
+        out["positions_lap1"] = out["start_pos"] - out["pos_after_lap1"]
     return out
 
 

@@ -437,7 +437,7 @@ def _and(a):
 
 # ---------------------------------------------------------------- entry point
 KEYS = ("combo_ids", "irating", "season", "conditions", "stint", "technique", "consistency", "best_worst",
-        "technique_plus")
+        "technique_plus", "strategy", "racecraft")
 
 
 def extend(data, *, laps, clean, best, corners, per, refs, raw_laps, log=None, pace=None, slow_cut=1.0, L=None):
@@ -453,6 +453,7 @@ def extend(data, *, laps, clean, best, corners, per, refs, raw_laps, log=None, p
     refs     engine ref_out list (comparison laps with per-corner metrics)
     raw_laps Garage 61 lap objects for the race (for iRating, season, conditions)
     L        lap length in metres (for technique_plus, 2.3)
+    2.4 adds strategy (strategy.review_block) and racecraft (racecraft.build), each guarded.
     """
     data["version"] = VERSION
     for k in KEYS:
@@ -479,4 +480,9 @@ def extend(data, *, laps, clean, best, corners, per, refs, raw_laps, log=None, p
     from . import technique_plus   # imported here: technique_plus imports engine, which imports this module
     data["technique_plus"] = guard("technique detail",
                                    lambda: technique_plus.build(laps, clean, corners, per, best, L or data.get("L")))
+    # 2.4: fuel and pit stops (None without fuel fields), race craft (lap 1, timeline); both optional
+    from . import racecraft, strategy
+    data["strategy"] = guard("fuel and pit stops",
+                             lambda: strategy.review_block(laps, raw_laps, clean, L or data.get("L")))
+    data["racecraft"] = guard("race craft", lambda: racecraft.build(data, raw_laps))
     return data

@@ -23,7 +23,9 @@ from .. import app
 FEATURE_MODULES = ("engine", "report", "library", "prep", "goals", "results", "team", "sync",
                    "analysis_plus", "schedule", "series", "notes", "prepare", "updater", "insights",
                    # 2.3 "Know your driving"
-                   "technique_plus", "skills", "session_review", "profile")
+                   "technique_plus", "skills", "session_review", "profile",
+                   # 2.4 "Race smarter"
+                   "strategy", "racecraft", "xlsx", "intel")
 
 
 _REFRESH_DONE: set = set()

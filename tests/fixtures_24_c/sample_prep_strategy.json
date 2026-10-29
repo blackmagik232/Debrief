@@ -1,0 +1,47 @@
+{
+ "version": 1,
+ "generated_at": "2026-11-20T18:00:00+00:00",
+ "track": "Charlotte Motor Speedway (Roval 2019)",
+ "car": "Ford Mustang GT4",
+ "track_short": "Roval",
+ "raced": false,
+ "history": null,
+ "weak": [],
+ "technique": [],
+ "teammates": {
+  "laps": []
+ },
+ "goal": null,
+ "plan": [],
+ "requests": 0,
+ "strategy": {
+  "race": {
+   "laps": 40,
+   "minutes": null,
+   "source": "schedule",
+   "text": "40 laps"
+  },
+  "lap_t": {
+   "value": 85.9,
+   "source": "median clean lap, your last 3 races here",
+   "n": 3
+  },
+  "burn": {
+   "value": 2.41,
+   "p90": 2.52,
+   "source": "your race on Oct 1",
+   "n": 17
+  },
+  "tank": {
+   "value": 47.0,
+   "source": "estimated: the most fuel seen in this car",
+   "estimated": true
+  },
+  "pit_loss": {
+   "value": 50.1,
+   "source": "1 pit stop at this track",
+   "n": 1
+  },
+  "reserve_laps": 1.0
+ }
+}

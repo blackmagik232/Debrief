@@ -1,0 +1,45 @@
+{
+ "sheets": [
+  {
+   "name": "Track Intel",
+   "header": [
+    "Track",
+    "Crash spots",
+    "Overtaking",
+    "Kerbs",
+    "Focus",
+    "Car",
+    "Setup"
+   ],
+   "rows": [
+    [
+     "Charlotte Motor Speedway - Roval 2025",
+     "T1 on lap 1",
+     "Bus stop",
+     "Oval exit",
+     "T1 brake marker",
+     "Ford Mustang GT4",
+     "Short-shift out of the hairpin"
+    ],
+    [
+     "Okayama International Circuit (Full Course)",
+     "Hairpin",
+     "",
+     "Last corner kerb",
+     "",
+     "",
+     ""
+    ]
+   ],
+   "suggest": {
+    "0": "track",
+    "1": "hotspots",
+    "2": "passing",
+    "3": "limits",
+    "4": "focus",
+    "5": "car",
+    "6": "car_note"
+   }
+  }
+ ]
+}

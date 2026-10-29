@@ -15,7 +15,7 @@ def _embed(obj) -> str:
             .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
 
 
-LAYOUT = "2.3.0"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
+LAYOUT = "2.4.0"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
 
 # Review-dict extras worked out on every write (so saved reviews get them when refresh_all re-renders them),
 # in this order, before insights.build (which reads them): (key, module, function). Each is guarded: a module
@@ -24,11 +24,16 @@ LAYOUT = "2.3.0"   # bump when review.html changes so saved reviews are re-rende
 EXTRAS = (("brake_spread", "technique_plus", "spread_for_review"),
           ("skills", "skills", "for_review"),
           ("session_review", "session_review", "for_review"))
+# 2.4: worked out only when the key is absent (the engine writes both for new reviews, from raw laps that an
+# old review.json doesn't keep). Same guard as EXTRAS; they also run before insights.build.
+IF_ABSENT = (("strategy", "strategy", "block_from_review"),
+             ("racecraft", "racecraft", "build"))
 
 
 def _extras(data: dict, log=None) -> None:
     import importlib
-    for key, mod, fn in EXTRAS:
+    todo = list(EXTRAS) + [x for x in IF_ABSENT if data.get(x[0]) is None]
+    for key, mod, fn in todo:
         name = f"{__package__}.{mod}"
         try:
             val = getattr(importlib.import_module(name), fn)(data)

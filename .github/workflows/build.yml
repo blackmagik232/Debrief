@@ -101,6 +101,14 @@ jobs:
         run: python tests/test_23_c.py
       - name: Test shell (2.3)
         run: python tests/test_23_d.py
+      - name: Test strategy and race craft (2.4)
+        run: python tests/test_24_a.py
+      - name: Test team cards, Track Intel import and results (2.4)
+        run: python tests/test_24_b.py
+      - name: Test review and prep pages (2.4)
+        run: python tests/test_24_c.py
+      - name: Test shell (2.4)
+        run: python tests/test_24_d.py
 
       - name: Build with PyInstaller
         run: pyinstaller packaging/debrief.spec --noconfirm --clean

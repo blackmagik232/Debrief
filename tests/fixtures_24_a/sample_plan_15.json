@@ -1,0 +1,19 @@
+{
+ "laps": 15,
+ "fuel_needed_l": 40.0,
+ "stops": 0,
+ "start_fuel_l": 40.0,
+ "stints": [
+  {
+   "from_lap": 1,
+   "to_lap": 15,
+   "laps": 15,
+   "fuel_l": 40.0
+  }
+ ],
+ "windows": [],
+ "pit_time_s": 0.0,
+ "laps_per_tank": 17,
+ "burn_l": 2.5,
+ "warnings": []
+}

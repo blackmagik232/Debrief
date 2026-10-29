@@ -220,3 +220,40 @@ h1{font-size:clamp(30px,5vw,46px)}
   .framebar{padding-right:84px}
 }
 @media (prefers-reduced-motion:reduce){.side{transition:none}}
+
+/* ---------- 2.4 "Race smarter": fuel planner, team notes, Track Intel import, result extras */
+.field small.src{font-size:12px;color:var(--muted);min-height:1.2em;line-height:1.3}
+.field small.src.est{color:var(--warn)}
+.note.warn{border-left:3px solid var(--warn);padding-left:10px}
+.fuelres{display:grid;gap:10px;border-top:1px solid var(--grid);padding-top:12px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.kpi{border:1px solid var(--grid);border-radius:4px;padding:8px 10px;background:var(--bg);display:grid;gap:2px}
+.kpi .k{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.kpi .v{font-family:var(--display);font-weight:700;font-size:26px;line-height:1.05}
+.kpi .s{font-size:12px;color:var(--fg2)}
+ul.plain{margin:0;padding:0;list-style:none;display:grid;gap:3px;font-size:14px}
+ul.plain li b{font-weight:600}
+#dlgFuel{width:min(760px,calc(100vw - 32px))}
+.teamnotes{display:grid;gap:8px;border-top:1px solid var(--grid);padding-top:12px}
+.tauthor{display:grid;gap:4px;padding:8px 0;border-top:1px solid var(--grid)}
+.tauthor:first-child{border-top:none}
+.tauthor .who{font-size:13px;color:var(--fg2)}
+.tauthor .who b{color:var(--fg)}
+.tfield{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;font-size:13px}
+.tfield p{white-space:pre-wrap;color:var(--fg2);min-width:0;overflow-wrap:anywhere}
+.tfield p b{color:var(--fg);font-weight:600}
+.tfield .btn{padding:3px 9px;font-size:12.5px;flex:none}
+.btn.chipbtn{padding:4px 10px;font-size:12.5px;font-family:var(--mono)}
+.tblwrap{overflow-x:auto;border:1px solid var(--grid);border-radius:4px}
+.maptbl{border-collapse:collapse;width:100%;font-size:13px}
+.maptbl th,.maptbl td{text-align:left;padding:6px 10px;border-top:1px solid var(--grid);vertical-align:top}
+.maptbl thead th{border-top:0;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:400}
+.maptbl td.samp{color:var(--fg2);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.maptbl select{min-width:150px}
+fieldset.radios{border:0;margin:0;padding:0;display:grid;gap:6px}
+fieldset.radios legend{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;padding:0}
+.ptrack{display:grid;gap:3px}
+.incrows{display:grid;gap:6px}
+.incrow{display:grid;grid-template-columns:90px minmax(0,1fr) 90px auto;gap:8px;align-items:center}
+.incrow .btn{padding:5px 10px}
+@media (max-width:760px){.grid3{grid-template-columns:repeat(2,minmax(0,1fr))}.incrow{grid-template-columns:70px minmax(0,1fr) 70px auto}}

@@ -1,0 +1,37 @@
+{
+ "laps": 28,
+ "fuel_needed_l": 73.1,
+ "stops": 1,
+ "start_fuel_l": 47.0,
+ "stints": [
+  {
+   "from_lap": 1,
+   "to_lap": 14,
+   "laps": 14,
+   "fuel_l": 47.0
+  },
+  {
+   "from_lap": 15,
+   "to_lap": 28,
+   "laps": 14,
+   "fuel_l": 37.8
+  }
+ ],
+ "windows": [
+  {
+   "stop": 1,
+   "open": 11,
+   "close": 17,
+   "at_lap": 14,
+   "fuel_add_l": 26.1
+  }
+ ],
+ "pit_time_s": null,
+ "laps_per_tank": 17,
+ "burn_l": 2.52,
+ "warnings": [
+  "Timed race: if the leader is quicker than you, you may run one lap less.",
+  "The tank size is an estimate: check it in the garage.",
+  "Pit stop time unknown: type it in to see the time spent in the pits."
+ ]
+}

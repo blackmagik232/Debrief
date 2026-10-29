@@ -1,0 +1,10 @@
+{
+ "schema": 1,
+ "cars": {
+  "Ford Mustang GT4": {
+   "tank_l": 47.0,
+   "pit_loss_s": {},
+   "updated": "2026-10-29T13:14:28Z"
+  }
+ }
+}

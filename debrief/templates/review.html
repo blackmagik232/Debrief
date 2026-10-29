@@ -381,6 +381,25 @@ td.d b{color:var(--ink);font-weight:600}
 .qlap.cool,.qlap.warm-up{opacity:.85}
 .ctab tr.go td.tg{color:var(--good)}
 
+/* 2.4: race craft and fuel */
+.rcgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.2fr);gap:var(--s4);align-items:start}
+@media (max-width:860px){.rcgrid{grid-template-columns:minmax(0,1fr)}}
+.rcsum{margin:0;padding-left:18px;display:grid;gap:4px;max-width:80ch;font-size:var(--t-md)}
+.rcchips .chip{text-transform:none;letter-spacing:.02em;font-size:var(--t-sm)}
+.rcchips .chip.st-dnf,.rcchips .chip.st-dq,.rcchips .chip.st-disconnected{border-color:var(--bad);color:var(--bad)}
+.lap1 .big{font-family:var(--mono);font-size:var(--t-xl);font-weight:600;font-variant-numeric:tabular-nums}
+.lap1 .vs{font-size:var(--t-md);color:var(--ink)}
+.lap1 .vs b{font-family:var(--mono);font-weight:600}
+.lap1 .segs{font-size:var(--t-sm);color:var(--ink2)}
+.lap1 button{justify-self:start}
+.tlkey{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s4);font-size:var(--t-sm);color:var(--ink2);align-items:center}
+.tlkey svg{vertical-align:-2px;margin-right:5px}
+.tlkey .sw{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-2px;margin-right:5px}
+#rcTimeline svg g.kf rect.cell{stroke:var(--ink);stroke-width:2px}
+.fuelrows{display:grid;gap:6px;font-size:var(--t-md)}
+.fuelrows b{font-family:var(--mono);font-weight:600}
+.fuelrows .src{color:var(--muted);font-size:var(--t-sm)}
+
 /* v2: stint */
 .phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:var(--s4)}
 .phase{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:var(--s4);display:grid;gap:2px;align-content:start}
@@ -409,7 +428,7 @@ td.d b{color:var(--ink);font-weight:600}
 <div class="empty" id="failNote" role="status" hidden><b>Some parts of this review couldn't be drawn.</b><span>It was probably made by an older version of Debrief. Open Sessions in the app and click Review again on this race to rebuild it; the rest of the page below still works.</span></div>
 
 <nav class="jump" id="jump" aria-label="Sections">
-  <a href="#summary">Summary</a><a href="#coach">What to work on</a><a href="#session">Runs</a><a href="#race">Race story</a><a href="#deep">All the numbers</a><a href="#compare">Compare laps</a><a href="#possible">Best possible</a><a href="#corners">Corners</a><a href="#technique">Technique</a><a href="#bestworst">Best vs worst</a><a href="#pace">Pace</a><a href="#consistency">Consistency</a><a href="#stint">Stint</a><a href="#habits">Driving style</a><a href="#plan">Practice plan</a>
+  <a href="#summary">Summary</a><a href="#coach">What to work on</a><a href="#session">Runs</a><a href="#race">Race story</a><a href="#racecraft">Race craft</a><a href="#deep">All the numbers</a><a href="#compare">Compare laps</a><a href="#possible">Best possible</a><a href="#corners">Corners</a><a href="#technique">Technique</a><a href="#bestworst">Best vs worst</a><a href="#pace">Pace</a><a href="#consistency">Consistency</a><a href="#stint">Stint</a><a href="#habits">Driving style</a><a href="#plan">Practice plan</a>
 </nav>
 
 <section id="summary" aria-label="Summary">
@@ -443,6 +462,16 @@ td.d b{color:var(--ink);font-weight:600}
 <section id="race" hidden>
   <div class="sechead"><h2 id="raceTitle">Race story</h2><p class="lede" id="raceLede"></p></div>
   <div class="pacegrid" id="raceGrid"></div>
+</section>
+
+<section id="racecraft" hidden>
+  <div class="sechead"><h2>Race craft</h2><p class="lede" id="rcLede"></p></div>
+  <div class="chiprow rcchips" id="rcChips" hidden></div>
+  <ul class="rcsum" id="rcSummary" hidden></ul>
+  <div class="rcgrid">
+    <div class="panel lap1" id="rcLap1" hidden></div>
+    <div class="panel" id="rcTlPanel" hidden><h3>Lap by lap <span class="note" id="rcTlSub"></span></h3><div class="chart" id="rcTimeline"></div><div class="tlkey" id="rcKey"></div><p class="note" id="rcTlNote"></p></div>
+  </div>
 </section>
 
 <details class="deep" id="deep" open>
@@ -540,7 +569,8 @@ td.d b{color:var(--ink);font-weight:600}
 </section>
 
 <section id="stint" hidden>
-  <div class="sechead"><h2>Stint and tyre wear</h2><p class="lede" id="stintLede"></p></div>
+  <div class="sechead"><h2 id="stintTitle">Stint and tyre wear</h2><p class="lede" id="stintLede"></p></div>
+  <div class="panel" id="fuelPanel" hidden><h3>Fuel <span class="note">from the fuel data on your laps</span></h3><div class="fuelrows" id="fuelRows"></div><p class="note" id="fuelPlanNote">Plan your next race's fuel on the Prepare page.</p></div>
   <div class="phases" id="phases"></div>
   <div class="pacegrid">
     <div class="panel" id="stintChartPanel"><h3>Pace through the race <span class="legend" id="stintLegend"></span></h3><div class="chart" id="stintChart"></div><div class="facts" id="degFacts"></div>
@@ -1503,6 +1533,113 @@ safe('practice and qualifying',()=>{if(!SR)return;const quali=SR.kind==='qualify
   // practice and qualifying: the race-story section becomes a session story
   $('raceTitle').textContent='Session story';const rl=document.querySelector('#jump a[href="#race"]');if(rl)rl.textContent='Session story'},'session');
 
+// ---------- 2.4: race craft (D.racecraft from the engine, D.result entered by you). Old reviews without
+// racecraft still get the lap strip, built from D.laps and D.counts, when a result was entered.
+const RC=isObj(D.racecraft)?D.racecraft:null;
+const RX=isObj(D.result)?D.result:null;
+const int=(v,lo,hi)=>typeof v==='number'&&Number.isInteger(v)&&v>=lo&&v<=hi;
+const INC_KIND={off:'off track',spin:'spin',contact:'contact',other:'incident'};
+// incidents you logged by lap (result.incident_laps); anything that doesn't match the shape is ignored
+const INC=(()=>{const o={};(RX&&Array.isArray(RX.incident_laps)?RX.incident_laps:[]).slice(0,30).forEach(x=>{if(!isObj(x)||!int(x.lap,1,2000))return;
+  (o[x.lap]=o[x.lap]||[]).push({kind:INC_KIND[x.kind]?x.kind:'other',points:[0,1,2,4].includes(x.points)?x.points:null})});return o})();
+const RC_TAGS=['lap1','best','unclean','traffic','slow','pit','excluded','incident'];
+const lapNums=v=>Array.isArray(v)?v.map(x=>typeof x==='number'?x:isObj(x)&&typeof x.n==='number'?x.n:null).filter(x=>x!=null):[];
+// one entry per lap: {n, t, lost, tags:Set, at_m}
+const RC_LAPS=(()=>{const by={};const get=n=>by[n]||(by[n]={n,t:null,lost:null,tags:new Set(),at_m:null});
+  const med=num(D.median)?D.median:null;const c=D.counts;
+  D.laps.forEach(l=>{const e=get(l.n);e.t=l.t;e.lost=med!=null?l.t-med:null;if(l.n===D.best.n)e.tags.add('best');if(l.n===1)e.tags.add('lap1')});
+  if(RC&&Array.isArray(RC.timeline)){RC.timeline.forEach(x=>{if(!isObj(x)||!int(x.n,1,2000))return;const e=get(x.n);if(num(x.t))e.t=x.t;
+    if('lost_s' in x)e.lost=num(x.lost_s)?x.lost_s:null;(Array.isArray(x.tags)?x.tags:[]).forEach(t=>{if(RC_TAGS.includes(t)&&t!=='incident')e.tags.add(t)});if(num(x.at_m))e.at_m=x.at_m})}
+  else{const has=(k,n)=>lapNums(c[k]).includes(n);
+    D.laps.forEach(l=>{['unclean','traffic','slow','pit'].forEach(k=>{if(has(k,l.n))get(l.n).tags.add(k)})});
+    lapNums(c.pit).forEach(n=>{if(int(n,1,2000)){const e=get(n);e.tags.add('pit');if(!lapBy[n])e.lost=null}});
+    (Array.isArray(c.excluded_laps)?c.excluded_laps:[]).forEach(x=>{const n=typeof x==='number'?x:isObj(x)?x.n:null;if(!int(n,1,2000)||lapBy[n])return;const e=get(n);e.tags.add('excluded');e.lost=null;if(isObj(x)&&num(x.t))e.t=x.t})}
+  (Array.isArray(c.traffic_detail)?c.traffic_detail:[]).forEach(x=>{if(isObj(x)&&by[x.n]&&num(x.at_m)&&by[x.n].at_m==null)by[x.n].at_m=x.at_m});
+  const maxN=Math.max(0,...Object.keys(by).map(Number));
+  Object.keys(INC).forEach(k=>{const n=+k;if(n<=Math.max(maxN,1)+1)get(n).tags.add('incident')});
+  return Object.values(by).sort((a,b)=>a.n-b.n)})();
+const RC_LAB={lap1:'Lap 1: includes the start',best:'Your best lap',unclean:'Flagged by Garage 61 (incident or track limits)',traffic:'Most likely traffic',slow:'Off-pace (more than '+SLOW_TXT+' off your typical lap)',pit:'Pit lap',excluded:'Left out of the analysis (not a full racing lap)',incident:'Incident you logged'};
+// tag icons: flag = unclean, car = traffic, wrench = pit, ! = incident, star = best (each fits a 12 px box)
+function rcIcon(k,x,y){const g=el('g',{transform:`translate(${x},${y})`,'aria-hidden':'true'});
+  if(k==='unclean'){g.append(el('path',{d:'M2,11.5 V1 M2,1.5 H10 L8,4 L10,6.5 H2',fill:'none',stroke:'var(--bad)','stroke-width':1.5,'stroke-linejoin':'round'}))}
+  else if(k==='traffic'){g.append(el('path',{d:'M1,8 L2.5,4 H9.5 L11,8 Z',fill:'var(--bt)'}),el('rect',{x:0.5,y:7,width:11,height:3,rx:1,fill:'var(--bt)'}),el('circle',{cx:3.3,cy:10.5,r:1.4,fill:'var(--ink)'}),el('circle',{cx:8.7,cy:10.5,r:1.4,fill:'var(--ink)'}))}
+  else if(k==='pit'){g.append(el('path',{d:'M2,10.5 L7,5.5',stroke:'var(--ink2)','stroke-width':2.4,'stroke-linecap':'round'}),el('path',{d:'M6.3,3.2 A3,3 0 1 0 9.2,6.4 L8,5 L7.2,4.8 L7,4 Z',fill:'var(--ink2)'}))}
+  else if(k==='incident'){g.append(el('circle',{cx:6,cy:6,r:5.6,fill:'var(--warn)'}),el('path',{d:'M6,2.6 V6.8 M6,8.6 V9.4',stroke:'var(--panel)','stroke-width':1.8,'stroke-linecap':'round'}))}
+  else if(k==='best'){g.append(el('path',{d:'M6,0.6 L7.6,4.2 L11.5,4.5 L8.5,7 L9.5,10.9 L6,8.8 L2.5,10.9 L3.5,7 L0.5,4.5 L4.4,4.2 Z',fill:'var(--pb)'}))}
+  return g}
+const RC_ICONS=['best','unclean','traffic','pit','incident'];
+// cell colour: about your typical lap is --mid, slower mixes toward --bad (full at +2 s), quicker toward --good
+const rcFill=v=>{if(!num(v))return 'var(--band)';if(Math.abs(v)<0.1)return 'var(--mid)';const p=Math.round(Math.min(1,Math.abs(v)/2)*8)*10+15;return `color-mix(in oklab, var(${v>0?'--bad':'--good'}) ${Math.min(85,p)}%, var(--mid))`};
+function rcIncLine(n){const a=INC[n];if(!a)return '';return (a.length===1?'Incident you logged: ':'Incidents you logged: ')+a.map(x=>INC_KIND[x.kind]+(x.points!=null?' ('+x.points+'x)':'')).join(', ')}
+function rcTip(e){const lines=[];if(e.lost!=null&&Math.abs(e.lost)>=0.05)lines.push(sg(e.lost,1)+' s against your typical lap');
+  RC_TAGS.forEach(k=>{if(!e.tags.has(k))return;if(k==='incident')lines.push(rcIncLine(e.n));else if(k==='traffic')lines.push('Most likely traffic'+(num(e.at_m)?' around '+Math.round(wrapM(e.at_m)).toLocaleString('en-US')+' m':''));else lines.push(RC_LAB[k])});
+  if(TR['me'+e.n])lines.push('Click to open this lap in Compare');
+  const head=['Lap '+e.n];if(num(e.t))head.push(fmt1(e.t));if(e.lost!=null)head.push(sg(e.lost,1)+' s');
+  const tl=[...e.tags].includes('traffic')?' · most likely traffic'+(num(e.at_m)?' around '+Math.round(wrapM(e.at_m)).toLocaleString('en-US')+' m':''):'';
+  return {title:head.join(' · ')+tl,lines}}
+function renderTimeline(){const sec=$('racecraft');if(!sec||sec.hidden||!RC_LAPS.length)return;const host=$('rcTimeline');host.replaceChildren();
+  const cw=24,ch=22,gap=3,iconH=15,rowH=iconH+ch+gap+6;const W=Math.max(200,host.clientWidth||600);const per=Math.max(5,Math.floor((W+gap)/(cw+gap)));
+  const rows=Math.ceil(RC_LAPS.length/per);const H=rows*rowH;const s=el('svg',{viewBox:`0 0 ${W} ${H}`,width:W,height:H,role:'img','aria-label':'Every lap of the race, coloured by time against your typical lap'});
+  RC_LAPS.forEach((e,i)=>{const r=Math.floor(i/per),c=i%per;const x=c*(cw+gap),y=r*rowH;const g=el('g',{});
+    const icons=RC_ICONS.filter(k=>e.tags.has(k)).slice(0,2);icons.forEach((k,j)=>g.append(rcIcon(k,x+(icons.length===1?6:j*12),y)));
+    const cell=el('rect',{class:'cell',x,y:y+iconH,width:cw,height:ch,rx:3,fill:rcFill(e.lost)});if(e.lost==null){cell.setAttribute('stroke','var(--axis)');cell.setAttribute('stroke-dasharray','3 2')}
+    g.append(cell,el('text',{x:x+cw/2,y:y+iconH+ch/2+3.5,'text-anchor':'middle','font-size':10,'font-family':MONO,fill:'var(--ink)'},String(e.n)));
+    g.append(el('rect',{x,y,width:cw,height:iconH+ch,fill:'transparent'}));
+    const tp=rcTip(e);hover(g,tp.title,tp.lines);if(TR['me'+e.n]){g.style.cursor='pointer';g.addEventListener('click',()=>openLap(e.n))}s.append(g)});
+  host.append(s);host.dataset.act='1';kbChart(host,'Race craft, lap by lap')}
+safe('race craft',()=>{const sec=$('racecraft');if(!RC&&!RX)return;if(SR)return;
+  // chips: what you entered in the result dialog
+  const chips=$('rcChips');const chip=(t,title,cls)=>{const c=h('span','chip'+(cls?' '+cls:''),t);if(title)c.title=title;chips.append(c)};
+  if(RX){const pl=RX.pos_after_lap1,sp=RX.start_pos;
+    if(int(pl,1,200)){let t='P'+pl+' after lap 1';const d=num(RX.positions_lap1)?RX.positions_lap1:(int(sp,1,200)?sp-pl:null);if(d!=null)t+=d>0?' (up '+d+')':d<0?' (down '+(-d)+')':' (held position)';chip(t,'Position after lap 1, entered by you')}
+    if(int(RX.pit_stops,0,50))chip(plural(RX.pit_stops,'pit stop'),'Entered by you');
+    if(int(RX.penalties,0,50)&&RX.penalties>0)chip(plural(RX.penalties,'penalty','penalties'),'Drive-throughs and other penalties, entered by you');
+    const FS={running:'Running at the finish',dnf:'Did not finish',dq:'Disqualified',disconnected:'Disconnected'};if(FS[RX.finish_status])chip(FS[RX.finish_status],'How the race ended, entered by you','st-'+RX.finish_status);
+    const nI=Object.values(INC).reduce((s,a)=>s+a.length,0);if(nI){const pts=Object.values(INC).flat().reduce((s,x)=>s+(x.points||0),0);chip(plural(nI,'incident')+' logged'+(pts?' ('+pts+'x)':''),'Incidents by lap, entered by you')}}
+  chips.hidden=!chips.children.length;
+  // summary sentences (engine-written, factual)
+  const su=$('rcSummary');(RC&&Array.isArray(RC.summary)?RC.summary:[]).filter(x=>typeof x==='string'&&x).slice(0,3).forEach(x=>su.append(h('li',null,x)));su.hidden=!su.children.length;
+  // lap 1 card: racecraft.lap1, or (older reviews) lap 1 from the analysed laps
+  let l1=RC&&isObj(RC.lap1)?RC.lap1:null;
+  if(!RC&&lapBy[1]&&num(D.median)){const segs=[];if(SEG&&Array.isArray(SEG.laps['1'])){const cl=(cleanLaps.length?cleanLaps:D.laps).map(l=>SEG.laps[String(l.n)]).filter(a=>Array.isArray(a)&&a.length===SEG.names.length);
+      if(cl.length>=3)SEG.names.forEach((nm,j)=>{const m=median(cl.map(a=>a[j]));const v=SEG.laps['1'][j];if(num(m)&&num(v)&&v-m>=0.2)segs.push({id:nm,lost_s:v-m})})}
+    segs.sort((a,b)=>b.lost_s-a.lost_s);l1={n:1,t:lapBy[1].t,vs_median_s:lapBy[1].t-D.median,in_analysis:true,segments:segs.slice(0,2)}}
+  if(l1&&num(l1.t)){const p=$('rcLap1');p.hidden=false;p.append(h('h3',null,'Lap 1'),h('span','big',fmt(l1.t)));
+    if(num(l1.vs_median_s)){const v=h('p','vs');const a=Math.abs(l1.vs_median_s);rich(v,a<0.05?['About the same as your typical lap.']:[{b:a.toFixed(1)+' s'},' '+(l1.vs_median_s>0?'slower':'quicker')+' than your typical lap.']);p.append(v)}
+    const sg2=(Array.isArray(l1.segments)?l1.segments:[]).filter(x=>isObj(x)&&x.id!=null&&num(x.lost_s)).slice(0,2);
+    if(sg2.length&&num(l1.vs_median_s)&&l1.vs_median_s>0)p.append(h('p','segs','Most of it in '+andList(sg2.map(x=>String(x.id)+' ('+x.lost_s.toFixed(1)+' s)'))+'.'));
+    if(l1.in_analysis===false)p.append(h('p','note','Lap 1 was left out of the rest of this review: it was much slower than your typical lap.'));
+    p.append(h('p','note','This includes the start.'));
+    if(TR['me1']){const b=h('button',null,'Open lap 1 in Compare');b.type='button';b.onclick=()=>openLap(1);p.append(b)}}
+  // the lap strip
+  if(RC_LAPS.length){$('rcTlPanel').hidden=false;$('rcTlSub').textContent=plural(RC_LAPS.length,'lap')+(num(D.median)?' · typical lap '+fmt1(D.median):'');
+    const key=$('rcKey');const sw=(fill,txt)=>{const sp=h('span');const i=h('i','sw');i.style.background=fill;sp.append(i,document.createTextNode(txt));key.append(sp)};
+    sw(rcFill(-1),'Quicker');sw('var(--mid)','About typical');sw(rcFill(1),'Slower');sw(rcFill(2.5),'2 s+ slower');
+    const present=RC_ICONS.filter(k=>RC_LAPS.some(e=>e.tags.has(k)));const IC_LAB={best:'Best lap',unclean:'Flagged by Garage 61',traffic:'Most likely traffic',pit:'Pit lap',incident:'Incident you logged'};
+    present.forEach(k=>{const sp=h('span');const sv=el('svg',{width:12,height:12,viewBox:'0 0 12 12','aria-hidden':'true'});sv.append(rcIcon(k,0,0));sp.append(sv,document.createTextNode(IC_LAB[k]));key.append(sp)});
+    $('rcTlNote').textContent='Each square is one lap, coloured by its time against your typical lap. Dashed squares are pit or left-out laps, which have no comparable time. Hover or use the arrow keys for the details.'}
+  if(chips.hidden&&su.hidden&&$('rcLap1').hidden&&$('rcTlPanel').hidden)return;
+  $('rcLede').textContent='How the start, traffic, pit stops and incidents shaped your race.'+(RX&&(RX.pos_after_lap1!=null||RX.incident_laps)?' Positions and incidents are what you entered for this race.':'');
+  sec.hidden=false},'racecraft');
+
+// ---------- 2.4: fuel (D.strategy): fuel use per lap, start and end level, pit stop loss
+const STRAT=isObj(D.strategy)?D.strategy:null;
+const gal=l=>(l/3.785).toFixed(l/3.785<10?2:1);
+const litres=l=>l.toFixed(l<10?2:1)+' L ('+gal(l)+' gal)';
+safe('fuel',()=>{if(!STRAT)return;const host=$('fuelRows');const row=parts=>{const p=h('p');rich(p,parts);host.append(p);return p};
+  const B=isObj(STRAT.burn)&&num(STRAT.burn.median_l)?STRAT.burn:null;const LV=isObj(STRAT.level)?STRAT.level:null;const P=isObj(STRAT.pit)?STRAT.pit:null;
+  if(B){const extra=[];if(num(B.n))extra.push(plural(B.n,'lap'));if(num(B.p90_l)&&B.p90_l>B.median_l+0.005)extra.push(B.p90_l.toFixed(2)+' L on your thirstier laps');
+    const p=row(['Fuel use: ',{b:B.median_l.toFixed(2)+' L ('+(B.median_l/3.785).toFixed(2)+' gal)'},' a lap'+(extra.length?' ('+extra.join('; ')+')':'')]);
+    if(B.source==='fuel_level')p.append(h('span','src',' · worked out from the drop in fuel level each lap'))}
+  if(LV&&(num(LV.start_l)||num(LV.end_l))){const parts=['Fuel level: '];if(num(LV.start_l))parts.push({b:litres(LV.start_l)},' at the start');if(num(LV.start_l)&&num(LV.end_l))parts.push(', ');if(num(LV.end_l))parts.push({b:litres(LV.end_l)},' at the end');parts.push('.');row(parts)}
+  if(P){const pl=(Array.isArray(P.laps)?P.laps:[]).filter(x=>isObj(x)&&int(x.n,1,2000));
+    if(num(P.loss_s))row(['Pit stop loss: about ',{b:P.loss_s.toFixed(1)+' s'},(num(P.n)&&P.n>1?' a stop ('+P.n+' stops)':'')+', in and out lap against two typical laps. That includes refuelling time.']);
+    else if(pl.length)row(['Pit laps: '+andList(pl.map(x=>String(x.n)+(x.kind==='in'?' (in)':x.kind==='out'?' (out)':'')))+'. The time lost couldn’t be measured from these laps.'])}
+  if(typeof STRAT.note==='string'&&STRAT.note)host.append(h('p','note',STRAT.note));
+  if(!host.children.length)return;
+  const st=$('stint');if(st.hidden){st.hidden=false;$('stintTitle').textContent='Fuel';$('stintLede').textContent='';$('phases').hidden=true;const pg=st.querySelector('.pacegrid');if(pg)pg.hidden=true}
+  $('fuelPanel').hidden=false},'stint');
+
 // "All the numbers" starts open (it can still be folded away); links into it open it if it was folded
 const DEEP=$('deep');
 document.querySelectorAll('#jump a').forEach(a=>a.addEventListener('click',e=>{const id=a.getAttribute('href').slice(1);const t=$(id);if(t&&DEEP&&DEEP.contains(t)&&!DEEP.open){e.preventDefault();DEEP.open=true;setTimeout(()=>t.scrollIntoView(),50)}}));
@@ -1513,7 +1650,7 @@ if(DEEP)DEEP.addEventListener('toggle',()=>{document.body.classList.toggle('deep
 [...document.querySelectorAll('#jump a')].forEach(a=>{const s=$(a.getAttribute('href').slice(1));a.hidden=!s||s.hidden});
 
 // ---------- layout-driven rendering (each chart on its own: one that fails doesn't stop the others)
-function renderAll(){[['map',renderMap,'compare'],['telemetry',renderTele,'compare'],['sparklines',()=>sparkFns.forEach(f=>f()),null],['lap times',renderLapChart,'race'],['spread',renderDist,'pace'],['heat map',renderHeat,'pace'],['sector trend',renderFade,'pace'],['technique',renderTech,'technique'],['pace through the race',renderStintChart,'race']].forEach(([n,f,host])=>safe(n,f,host))}
+function renderAll(){[['map',renderMap,'compare'],['telemetry',renderTele,'compare'],['sparklines',()=>sparkFns.forEach(f=>f()),null],['lap times',renderLapChart,'race'],['spread',renderDist,'pace'],['heat map',renderHeat,'pace'],['sector trend',renderFade,'pace'],['technique',renderTech,'technique'],['pace through the race',renderStintChart,'race'],['race craft timeline',renderTimeline,'racecraft']].forEach(([n,f,host])=>safe(n,f,host))}
 renderAll();
 ['splits','driftRows','techChart'].forEach(id=>{const x=$(id);if(x)kbChart(x,{splits:'Splits by corner',driftRows:'Corners early against late',techChart:'Brake and throttle points'}[id])});
 document.body.classList.toggle('deepopen',!!(DEEP&&DEEP.open));

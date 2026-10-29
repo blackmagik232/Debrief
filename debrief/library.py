@@ -215,7 +215,9 @@ def _season(d: dict, day: str) -> dict | None:
 
 
 _RESULT_KEYS = ("start_pos", "finish_pos", "field_size", "incidents", "irating_before", "irating_after",
-                "sr_before", "sr_after", "sof", "laps_led", "irating_change", "sr_change", "positions_gained")
+                "sr_before", "sr_after", "sof", "laps_led", "irating_change", "sr_change", "positions_gained",
+                # 2.4 (numbers only here; finish_status and incident_laps stay in result.json / the review page)
+                "pos_after_lap1", "pit_stops", "penalties", "positions_lap1")
 
 
 def _result(d: dict, review_dir: Path) -> dict | None:

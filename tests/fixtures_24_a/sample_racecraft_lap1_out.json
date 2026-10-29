@@ -1,0 +1,42 @@
+{
+ "version": 1,
+ "lap1": {
+  "n": 1,
+  "t": 89.707,
+  "vs_median_s": 33.6,
+  "in_analysis": false,
+  "segments": [],
+  "note": "includes the start"
+ },
+ "timeline": [
+  {
+   "n": 1,
+   "t": 89.707,
+   "lost_s": null,
+   "tags": [
+    "lap1",
+    "excluded"
+   ]
+  },
+  {
+   "n": 5,
+   "t": 56.017,
+   "lost_s": -0.1,
+   "tags": [
+    "unclean"
+   ]
+  },
+  {
+   "n": 7,
+   "t": 55.967,
+   "lost_s": -0.1,
+   "tags": [
+    "best"
+   ]
+  }
+ ],
+ "summary": [
+  "Lap 1 was 33.6 s slower than your typical lap (that includes the start).",
+  "Garage 61 flagged 1 lap (5)."
+ ]
+}

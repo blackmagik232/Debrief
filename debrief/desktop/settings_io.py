@@ -20,6 +20,32 @@ _TOKEN_OK = re.compile(r"^[\x21-\x7e]{8,4096}$")  # printable ASCII, no spaces
 _SLUG_OK = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
 _CRED_OK = re.compile(r"^[\x21-\x7e]{1,512}$")
 MAX_SALUTATION = 20
+MAX_FOLDER = 400
+
+
+def expand_folder(v: str) -> str:
+    return os.path.expandvars(os.path.expanduser(v))
+
+
+def clean_team_folder(v) -> str:
+    """The team track cards folder: "" (none), or an existing folder (~ and %VARS% expanded). The typed form
+    is what's saved, so a OneDrive path written with %USERPROFILE% keeps working. Raises ValueError."""
+    if v is None:
+        return ""
+    if not isinstance(v, str):
+        raise ValueError("That folder doesn't exist. Pick the shared folder your team uses.")
+    v = v.strip().strip('"').strip()
+    if not v:
+        return ""
+    if len(v) > MAX_FOLDER or re.search(r"[\x00-\x1f<>|?*]", v):
+        raise ValueError("That folder doesn't exist. Pick the shared folder your team uses.")
+    try:
+        ok = Path(expand_folder(v)).is_dir()
+    except (OSError, ValueError):
+        ok = False
+    if not ok:
+        raise ValueError("That folder doesn't exist. Pick the shared folder your team uses.")
+    return v
 
 
 def _example_text() -> str:
@@ -66,6 +92,20 @@ def cached_first_name(raw: dict) -> str | None:
     return name if _NAME_OK.match(name) else None
 
 
+def cached_author_name() -> str | None:
+    """The name your shared track cards go out under (notes.author_from_cache: cached, never a request)."""
+    try:
+        from .. import notes
+        fn = getattr(notes, "author_from_cache", None)
+        a = fn(app.load_settings()) if fn else None
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(a, dict) or not a.get("slug"):
+        return None
+    name = str(a.get("name") or a.get("slug")).strip()
+    return name if _NAME_OK.match(name) else str(a.get("slug"))[:40]
+
+
 def public_view() -> dict:
     """Everything the Settings screen may show. Never includes the token itself."""
     from .. import __version__
@@ -91,7 +131,19 @@ def public_view() -> dict:
         # present/absent only: the values are never sent to the page
         "iracing_client_id_saved": bool(str(raw.get("iracing_client_id") or "").strip()),
         "iracing_client_secret_saved": bool(str(raw.get("iracing_client_secret") or "").strip()),
+        # 2.4 team track cards (a folder path is not a secret)
+        "team_cards_folder": str(raw.get("team_cards_folder") or "").strip()[:MAX_FOLDER] or None,
+        "team_cards_folder_ok": False,
+        "share_my_cards": raw.get("share_my_cards") is True,
     }
+    out["share_as"] = None
+    if out["team_cards_folder"]:
+        try:
+            out["team_cards_folder_ok"] = Path(expand_folder(out["team_cards_folder"])).is_dir()
+        except (OSError, ValueError):
+            pass
+        if out["share_my_cards"] and has:
+            out["share_as"] = cached_author_name()
     try:
         cfg = app.load_settings()
         out["max_reference_laps"] = cfg["max_reference_laps"]
@@ -266,6 +318,13 @@ def save(updates: dict) -> dict:
         if not _CRED_OK.match(v):
             raise ValueError(f"That iRacing {label} doesn't look right. Paste it again without spaces.")
         clean[k] = v
+    if "team_cards_folder" in updates:
+        clean["team_cards_folder"] = clean_team_folder(updates["team_cards_folder"])
+    if "share_my_cards" in updates:
+        v = updates["share_my_cards"]
+        if not isinstance(v, bool):
+            raise ValueError("Sharing your track cards must be on or off.")
+        clean["share_my_cards"] = v
     if updates.get("clear_iracing") is True:
         clean["iracing_client_id"] = ""
         clean["iracing_client_secret"] = ""

@@ -1,0 +1,34 @@
+[
+ {
+  "author": {
+   "slug": "josh-spence",
+   "name": "Josh Spence"
+  },
+  "updated": "2026-11-21T09:14:00Z",
+  "fields": {
+   "lap1": "",
+   "hotspots": "T1 on lap 1, everyone dives",
+   "passing": "",
+   "limits": "",
+   "focus": ""
+  },
+  "car_notes": {}
+ },
+ {
+  "author": {
+   "slug": "hayden",
+   "name": "Hayden"
+  },
+  "updated": "2026-11-19T22:40:03Z",
+  "fields": {
+   "lap1": "Hold your line through the oval section",
+   "hotspots": "",
+   "passing": "Back chicane",
+   "limits": "",
+   "focus": ""
+  },
+  "car_notes": {
+   "BMW M4 GT4": "Gear 3 in the hairpin"
+  }
+ }
+]

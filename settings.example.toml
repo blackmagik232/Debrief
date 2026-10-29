@@ -36,3 +36,9 @@ team_slug = "midfield-menace"
 # Settings > iRacing (optional) instead of here. Keep them private, like the token.
 # iracing_client_id = ""
 # iracing_client_secret = ""
+
+# Team track cards (2.4): a folder your team shares (OneDrive, Google Drive, Dropbox...). Debrief reads
+# teammates' track cards from "<folder>\Debrief track cards". It writes only your own file there, and only
+# when share_my_cards is true.
+# team_cards_folder = "D:\\OneDrive\\Menace"
+# share_my_cards = false

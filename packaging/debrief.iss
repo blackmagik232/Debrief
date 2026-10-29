@@ -67,6 +67,14 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+; the in-app updater runs this installer silently with /RELAUNCH=1: reopen Debrief when it's done
+Filename: "{app}\{#AppExe}"; Flags: nowait; Check: RelaunchAfterUpdate
+
+[Code]
+function RelaunchAfterUpdate: Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:RELAUNCH|0}') = '1');
+end;
 
 [UninstallDelete]
 ; only the program folder itself (if anything is left in it); user data lives elsewhere and is kept

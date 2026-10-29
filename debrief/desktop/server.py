@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import mimetypes
 import secrets
 import threading
@@ -176,7 +177,8 @@ def design_tokens() -> str:
 # ---------------------------------------------------------------- background jobs
 JOB_TITLES = {"review": "Reviewing your last race", "check": "Checking the connection",
               "prep": "Building your track prep page", "team": "Updating the team hub",
-              "sync": "Syncing your Garage 61 history", "schedule": "Loading the iRacing season schedule"}
+              "sync": "Syncing your Garage 61 history", "schedule": "Loading the iRacing season schedule",
+              "update": "Updating Debrief"}
 
 
 class Jobs:
@@ -189,6 +191,7 @@ class Jobs:
         self.st = {"state": "idle"}
         self.stop_sync = threading.Event()
         self.thread = None
+        self.on_update_started = None   # set by the server: close Debrief so the installer can replace it
 
     @property
     def kind(self):
@@ -272,6 +275,10 @@ class Jobs:
             elif kind == "prep":
                 page = app.cmd_prep(cfg, params["track_id"], params["car_id"], progress=cb)
                 result = {"page": _lib_rel(cfg, page)}
+            elif kind == "update":
+                result = {"update": _run_update(cb)}
+                if self.on_update_started:
+                    self.on_update_started()
             elif kind == "schedule":
                 result = {"schedule": _run_schedule(params, cb)}
             elif kind == "team":
@@ -296,6 +303,24 @@ class Jobs:
             self.st["result"] = result
             self.st["frac"] = self.st["frac"] if error else 1.0
             self.st["finished"] = time.time()
+
+
+def _run_update(cb) -> dict:
+    """Download the newest release, check its SHA-256 and start its installer silently."""
+    from .. import updater
+    if not app.FROZEN:
+        raise SystemExit("This copy of Debrief runs from source, so it updates with git, not the installer.")
+    try:
+        cb(0.03, "Checking for the newest version...")
+        info = updater.check(force=True)
+        if not info["newer"]:
+            raise SystemExit(f"You already have the newest version ({info['current']}).")
+        path = updater.download(info, progress=cb)
+        cb(0.97, "Verified. Installing... Debrief will close and reopen in a moment.")
+        updater.launch(path)
+    except updater.UpdateError as e:
+        raise SystemExit(str(e))
+    return {"version": info["latest"]}
 
 
 def _run_schedule(params, cb) -> dict:
@@ -397,6 +422,17 @@ class DebriefServer(ThreadingHTTPServer):
         self.timeout_s = heartbeat_timeout
         self.last_ping = time.monotonic() + max(0.0, startup_grace - heartbeat_timeout)
         self.stopping = threading.Event()
+        self.jobs.on_update_started = self._close_for_update
+
+    def _close_for_update(self):
+        """The installer is running: stop in a few seconds (after the window has seen the result) so it
+        can replace Debrief's files. It reopens Debrief when it's done."""
+        def stop():
+            app.say("Closing for the update.")
+            self.stopping.set()
+            self.shutdown()
+            os._exit(0)
+        threading.Timer(4.0, stop).start()
 
     @property
     def url(self):
@@ -529,7 +565,7 @@ class Handler(BaseHTTPRequestHandler):
         if r.startswith("lib/"):
             return self._lib(r[len("lib/"):])
         if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/pages", "api/sessions", "api/prepare",
-                 "api/notes"):
+                 "api/notes", "api/update"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -682,6 +718,20 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("Pick a track.")
         return self._json({"ok": True, "card": notes.load(cfg["library_folder"], track), "labels": notes.LABELS})
 
+    def _get_update(self, q):
+        """Is a newer Debrief out? Uses the once-a-day saved answer unless force=1. auto=1 (window opening)
+        respects the check_updates setting."""
+        from .. import updater
+        cfg = self._cfg()
+        if q.get("auto") == "1" and not cfg.get("check_updates", True):
+            return self._json({"ok": True, "skipped": True})
+        try:
+            info = updater.check(force=q.get("force") == "1")
+        except updater.UpdateError as e:
+            return self._json({"ok": False, "error": str(e)})
+        info.pop("notes", None) if q.get("auto") == "1" else None
+        return self._json({"ok": True, "installed": app.FROZEN, **info})
+
     def _get_pages(self, q):
         """Pages built by the Prep and Team views, so the window can offer to reopen them."""
         cfg = self._cfg()
@@ -770,6 +820,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
         if r == "api/check":
             return self._json(self.server.jobs.start("check"))
+        if r == "api/update":
+            return self._json(self.server.jobs.start("update"))
         if r in ("api/prep", "api/team", "api/goals", "api/result", "api/series", "api/notes", "api/schedule"):
             try:
                 return getattr(self, "_post_" + r[4:])(body)

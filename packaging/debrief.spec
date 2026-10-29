@@ -41,7 +41,7 @@ if _missing:
     print(f"collect_submodules missed {_missing}; adding them by name")
 hiddenimports = sorted(set(hiddenimports) | set(_on_disk))
 for _must in ("debrief.prep", "debrief.goals", "debrief.results", "debrief.team", "debrief.sync",
-              "debrief.schedule", "debrief.series", "debrief.notes", "debrief.prepare"):
+              "debrief.schedule", "debrief.series", "debrief.notes", "debrief.prepare", "debrief.updater", "debrief.insights"):
     if _must not in hiddenimports:
         raise SystemExit(f"Build stopped: {_must} would be left out of Debrief.exe")
 

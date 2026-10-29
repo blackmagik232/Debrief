@@ -15,13 +15,49 @@ def _embed(obj) -> str:
             .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
 
 
+LAYOUT = "2.2.1"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
+
+
 def write(out_dir: Path, data: dict) -> Path:
     out_dir = Path(out_dir)
+    try:   # the coaching summary at the top of the page; never worth losing the review over
+        from . import insights
+        data["insights"] = insights.build(data)
+    except Exception:  # noqa: BLE001
+        data.pop("insights", None)
     (out_dir / "review.json").write_text(json.dumps(data), encoding="utf-8")
     html = fill((TPL / "review.html").read_text(encoding="utf-8"), {"/*DATA*/null": _embed(data)})
     page = out_dir / "index.html"
     page.write_text(html, encoding="utf-8")
     return page
+
+
+def refresh_all(library_folder, log=None) -> int:
+    """Re-render every saved review with the current page layout, from its review.json (no requests).
+    Runs once per layout version (marker file .layout in the library). Returns how many were redone."""
+    lib = Path(library_folder)
+    marker = lib / ".layout"
+    try:
+        if marker.read_text(encoding="utf-8").strip() == LAYOUT:
+            return 0
+    except OSError:
+        pass
+    n = 0
+    for p in sorted((lib / "reviews").glob("*/review.json")):
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and data.get("laps"):
+                write(p.parent, data)
+                n += 1
+        except Exception as e:  # noqa: BLE001  (one odd review mustn't stop the rest)
+            if log:
+                log(f"  Couldn't refresh {p.parent.name}: {e}")
+    try:
+        lib.mkdir(parents=True, exist_ok=True)
+        marker.write_text(LAYOUT, encoding="utf-8")
+    except OSError:
+        pass
+    return n
 
 
 def render_library(rows: list, extra=None) -> str:

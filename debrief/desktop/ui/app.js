@@ -160,8 +160,8 @@ async function loadReviews(){
 }
 
 /* ---------- jobs: review / prep / team share the progress screen; check stays in Settings */
-const TITLES={sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
-const STOPPED={review:'The review stopped',prep:'The prep page stopped',team:'The team refresh stopped'};
+const TITLES={update:'Updating Debrief',sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
+const STOPPED={update:'The update stopped',review:'The review stopped',prep:'The prep page stopped',team:'The team refresh stopped'};
 let handled=new Set(),polling=false,lastJob=null,lastStart=null;
 async function startJob(kind,body){
   if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){
@@ -211,7 +211,10 @@ function render(s){
   btn.querySelector('.minibar i').style.width=Math.round((s.frac||0)*100)+'%';
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('busy',s.state==='running'&&NAV_OF[s.kind]===b.dataset.nav));
   if(s.kind==='sync')renderSync(s);else if(sessData)renderStrip(sessData.summary,s);
-  if(s.kind==='review'||s.kind==='prep'||s.kind==='team'){
+  if(s.kind==='update'&&s.state==='done'&&!handled.has(s.id)){handled.add(s.id);
+    setBar(1);$('jobEyebrow').textContent='Installing';$('jobNow').textContent='Debrief is closing to install the update. It reopens on its own in about a minute; you can close this window.';
+    lost=true;return}
+  if(s.kind==='review'||s.kind==='prep'||s.kind==='team'||s.kind==='update'){
     if(s.kind==='review'&&s.title&&s.state==='running')TITLES.review=s.title;
     setBar(s.frac||0);$('jobNow').textContent=s.state==='error'?'Stopped.':(s.message||'');
     if($('jobTitle').textContent!==TITLES[s.kind]&&s.state==='running')resetJobView(s.kind);
@@ -600,7 +603,7 @@ function fillSettings(v){
   const st=$('tokStatus');st.textContent=v.token_saved?'Token saved (ends in '+v.token_hint+')':'No token saved yet';
   st.className='pill '+(v.token_saved?'ok':'no');
   $('refs').value=String(v.max_reference_laps);$('prac').checked=!!v.include_practice;
-  $('syncOpen').checked=v.sync_on_open!==false;$('syncTel').checked=v.sync_telemetry!=='none';
+  $('syncOpen').checked=v.sync_on_open!==false;$('updAuto').checked=v.check_updates!==false;$('syncTel').checked=v.sync_telemetry!=='none';
   $('libPath').textContent=v.library_folder||'Not set yet. It will be Documents\\Debrief Reviews once settings are saved.';
   const fe=$('setFileErr');fe.hidden=!v.error;fe.textContent=v.error||'';fe.className='note msg bad';
   teamSlug=v.team_slug||teamSlug;
@@ -673,6 +676,25 @@ $('fSync').addEventListener('submit',async e=>{e.preventDefault();setMsg('syncOp
 $('btnFolder').addEventListener('click',async()=>{let r;try{r=await post('open-folder')}catch(e){connectionLost();return}
   setMsg('folderMsg',r.ok?'Opened in File Explorer.':r.error,r.ok?'ok':'')});
 
+/* ---------- updates */
+let updInfo=null;
+function renderUpdate(){const j=updInfo;const strip=$('updStrip');
+  if(!j||!j.ok){strip.hidden=true;$('btnUpdNow').hidden=true;$('updPill').textContent='Debrief '+(j&&j.current||'');$('updPill').className='pill';return}
+  const can=j.newer&&j.installed;
+  strip.hidden=!can;if(can)$('updText').textContent='Debrief '+j.latest+' is out';
+  $('btnUpdNow').hidden=!can;$('updPill').textContent=j.newer?'Update: '+j.latest:'Up to date';$('updPill').className='pill '+(j.newer?'no':'ok');
+  if(j.newer&&!j.installed)setMsg('updMsg','Debrief '+j.latest+' is out. This copy runs from source: update it with git.')}
+async function checkUpdate(mode){let j;try{j=await api('update'+(mode==='force'?'?force=1':mode==='auto'?'?auto=1':''))}catch(e){return}
+  if(j.skipped)return;updInfo=j;renderUpdate();
+  if(mode==='force')setMsg('updMsg',!j.ok?j.error:j.newer?'Debrief '+j.latest+' is available.':'You have the newest version ('+j.current+').',!j.ok?'bad':'ok')}
+async function startUpdate(){if(!confirm('Update Debrief to '+(updInfo&&updInfo.latest||'the newest version')+' now? Debrief will close, install the update and reopen.'))return;
+  startJob('update')}
+$('updStrip').addEventListener('click',startUpdate);$('btnUpdNow').addEventListener('click',startUpdate);
+$('btnUpdCheck').addEventListener('click',()=>{setMsg('updMsg','Checking...');checkUpdate('force')});
+$('fUpdate').addEventListener('submit',async e=>{e.preventDefault();setMsg('updMsg','Saving...');let r;
+  try{r=await post('settings',{check_updates:$('updAuto').checked})}catch(err){connectionLost();return}
+  if(!r.ok){setMsg('updMsg',r.error,'bad');return}fillSettings(r.settings);setMsg('updMsg','Saved.','ok')});
+
 /* ---------- start */
 (async function init(){
   await loadSettings();
@@ -683,5 +705,6 @@ $('btnFolder').addEventListener('click',async()=>{let r;try{r=await post('open-f
     else if(s.kind!=='check'){resetJobView(s.kind);openJob()}poll();return}
   if(groups.length)openLibrary();else welcome();
   if(tokenSaved)startSync(true);   // catch up with Garage 61 every time Debrief opens
+  checkUpdate('auto');
 })();
 })();

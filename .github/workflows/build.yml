@@ -61,6 +61,10 @@ jobs:
         run: python tests/test_sync.py
       - name: Test Prepare page
         run: python tests/test_prepare.py
+      - name: Test updater
+        run: python tests/test_updater.py
+      - name: Test coaching summary
+        run: python tests/test_insights.py
 
       - name: Build with PyInstaller
         run: pyinstaller packaging/debrief.spec --noconfirm --clean
@@ -138,6 +142,10 @@ jobs:
           # one release per version: bump __version__ in debrief/__init__.py to publish a new one
           gh release view $tag --repo "$env:GITHUB_REPOSITORY" *> $null
           if ($LASTEXITCODE -eq 0) { Write-Host "Release $tag already exists; nothing to publish."; exit 0 }
-          gh release create $tag "dist-installer\Debrief-Setup-$v.exe" `
+          # checksum file for the in-app updater (it refuses to install without a matching SHA-256)
+          $exe = "dist-installer\Debrief-Setup-$v.exe"
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  Debrief-Setup-$v.exe" | Out-File -Encoding ascii -NoNewline "$exe.sha256"
+          gh release create $tag "dist-installer\Debrief-Setup-$v.exe" "dist-installer\Debrief-Setup-$v.exe.sha256" `
             --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --title "Debrief $v" --generate-notes
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }

@@ -154,6 +154,38 @@ tfoot td{border-top:1px solid var(--axis);border-bottom:none;font-weight:600}
 .better{color:var(--good)} .worse{color:var(--bad)}
 
 /* corner cards */
+/* 2.2.1: coaching summary, corner table, details */
+.coach{display:grid;gap:var(--s4)}
+.verdict{font-size:var(--t-lg,19px);line-height:1.45;max-width:72ch;display:grid;gap:4px}
+.fixes{display:grid;gap:var(--s3)}
+.fix{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--b);border-radius:6px;padding:var(--s4);display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:var(--s1) var(--s4);align-items:start}
+.fix .rk{font-family:var(--display);font-size:34px;font-weight:700;line-height:1;color:var(--b)}
+.fix h3{font-size:var(--t-md)}.fix .why{color:var(--ink2);font-size:var(--t-sm)}
+.fix ul{margin:4px 0 0;padding-left:18px;display:grid;gap:2px}
+.fix .gain{font-family:var(--mono);font-weight:600;white-space:nowrap;text-align:right}
+.fix .gain small{display:block;font-weight:400;color:var(--muted);font-size:11px}
+.fix button{grid-column:2;justify-self:start;margin-top:4px}
+.hab{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:var(--s4)}
+.hab .panel{border-top:3px solid var(--line)}.hab .bad{border-top-color:var(--bad)}.hab .good{border-top-color:var(--good)}
+.hab ul{margin:0;padding:0;list-style:none;display:grid;gap:var(--s3)}
+.hab li b{display:block}.hab li span{color:var(--ink2);font-size:var(--t-sm)}
+.hab .none{color:var(--muted);font-size:var(--t-sm)}
+.ctab{width:100%;border-collapse:collapse;font-size:var(--t-sm)}
+.ctab th{text-align:left;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
+.ctab td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.ctab td.n,.ctab th.n{text-align:right;font-family:var(--mono);white-space:nowrap}
+.ctab tr.go{cursor:pointer}.ctab tr.go:hover td{background:var(--band)}
+.ctab tr.top td:first-child{box-shadow:inset 3px 0 0 var(--b)}
+.ctab .cid{font-family:var(--display);font-weight:700;font-size:18px}
+.ctab .meta{display:block;color:var(--muted);font-size:11.5px}
+details.deep{display:block}
+#jump a.in{display:none}body.deepopen #jump a.in{display:inline-block}
+details.deep>summary{cursor:pointer;list-style:none;font-family:var(--display);font-size:clamp(24px,3vw,30px);font-weight:700;display:flex;align-items:center;gap:10px;padding:var(--s3) 0;border-top:3px solid var(--ink)}
+details.deep>summary::-webkit-details-marker{display:none}
+details.deep>summary::before{content:"▸";font-size:18px;color:var(--muted);transition:transform .15s}
+details.deep[open]>summary::before{transform:rotate(90deg)}
+details.deep>summary small{font-family:var(--body);font-size:var(--t-sm);font-weight:400;color:var(--muted)}
+details.deep>section{margin-top:var(--s6,40px)}
 .cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:var(--s4)}
 .ccard{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:var(--s4);display:grid;gap:var(--s3);align-content:start;min-width:0}
 .ccard .top{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--s2)}
@@ -299,7 +331,7 @@ td.d b{color:var(--ink);font-weight:600}
 </header>
 
 <nav class="jump" id="jump" aria-label="Sections">
-  <a href="#summary">Summary</a><a href="#compare">Compare laps</a><a href="#possible">Best possible lap</a><a href="#corners">Corners</a><a href="#technique">Technique</a><a href="#bestworst">Best vs worst</a><a href="#pace">Pace</a><a href="#consistency">Consistency</a><a href="#stint">Stint</a><a href="#habits">Habits</a><a href="#plan">Practice plan</a>
+  <a href="#summary">Summary</a><a href="#coach">What to work on</a><a href="#race">Race story</a><a href="#deep">All the numbers</a><a href="#compare" class="in">Compare laps</a><a href="#corners" class="in">Corners</a><a href="#technique" class="in">Technique</a><a href="#bestworst" class="in">Best vs worst</a><a href="#consistency" class="in">Consistency</a><a href="#stint" class="in">Stint</a><a href="#habits" class="in">Driving style</a>
 </nav>
 
 <section id="summary" aria-label="Summary">
@@ -309,6 +341,25 @@ td.d b{color:var(--ink);font-weight:600}
   <div class="panel" id="otPanel" hidden><h3>On track with you <span class="note" id="otSub"></span></h3><div id="otRows"></div><p class="note" id="otNote"></p></div>
   <p class="story" id="story"></p>
 </section>
+
+<section id="coach" hidden>
+  <div class="sechead"><h2>What to work on</h2><div class="verdict" id="verdict"></div></div>
+  <div class="coach">
+    <div><div class="subhead"><b>Fix first</b><span id="fixSub">ranked by time per lap</span></div><div class="fixes" id="fixList"></div></div>
+    <div class="hab">
+      <div class="panel bad"><h3>Bad habits</h3><ul id="badList"></ul></div>
+      <div class="panel good"><h3>Good habits</h3><ul id="goodList"></ul></div>
+    </div>
+  </div>
+</section>
+
+<section id="race" hidden>
+  <div class="sechead"><h2>Race story</h2><p class="lede" id="raceLede"></p></div>
+  <div class="pacegrid" id="raceGrid"></div>
+</section>
+
+<details class="deep" id="deep" open>
+<summary>All the numbers <small>every chart and table, for when you want to dig in</small></summary>
 
 <section id="compare">
   <div class="sechead"><h2>Compare two laps</h2>
@@ -346,8 +397,8 @@ td.d b{color:var(--ink);font-weight:600}
 
 <section id="corners">
   <div class="sechead"><h2>Corners</h2>
-  <p class="lede"><b>On the table</b> is the gap between your typical lap and your better laps (25th percentile) in that corner, so it is time you have already shown you can find. The line shows your time through the corner on each lap; the purple dot is your best there.</p></div>
-  <div class="cgrid" id="cornerCards"></div>
+  <p class="lede"><b>Time to find</b> is how much slower your typical lap is than your better laps in that corner: time you've already shown you can find. Click a corner to see it in Compare laps.</p></div>
+  <div class="panel"><div class="tablewrap"><table class="ctab" id="cornerTable"></table></div><div id="cornerMore"></div></div>
 </section>
 
 <section id="technique" hidden>
@@ -411,7 +462,7 @@ td.d b{color:var(--ink);font-weight:600}
 </section>
 
 <section id="habits">
-  <div class="sechead"><h2>Habits</h2><p class="lede" id="styleLede"></p></div>
+  <div class="sechead"><h2>Driving style</h2><p class="lede" id="styleLede"></p></div>
   <div class="two">
     <div class="panel"><h3>Grip used</h3><div class="ggwrap" id="ggChart"></div><p class="note">Each dot is a moment on the lap. Sideways is cornering, up is accelerating, down is braking. Bigger dots mean more time spent there.</p></div>
     <div class="panel"><h3>Side by side</h3><div class="tablewrap"><table id="styleTable"></table></div></div>
@@ -423,6 +474,8 @@ td.d b{color:var(--ink);font-weight:600}
   <div class="sechead"><h2>Practice plan</h2><p class="lede">Ranked by payoff. Gains are per lap and don't add up cleanly, because corners affect each other.</p></div>
   <div class="plan" id="planList"></div>
 </section>
+
+</details>
 
 <footer>
   <span class="eyebrow">How this was made</span>
@@ -508,12 +561,18 @@ const cornerById={};D.corners.forEach(c=>cornerById[c.id]=c);
   const host=$('stats');const add=(lab,v,ctx,small)=>{const d=h('div','stat');d.append(h('span','lab',lab));const vv=h('span','v'+(small?' small':''));vv.innerHTML=v;d.append(vv);const c=h('span','ctx');c.innerHTML=ctx;d.append(c);host.append(d)};
   add('Best lap',fmt(D.best.t),'Lap '+D.best.n+' · <b>'+ab(D.median-D.best.t)+' s</b> quicker than your median '+fmt(D.median));
   const ct=cleanLaps.map(l=>l.t);const within=ct.filter(t=>Math.abs(t-D.median)<=0.5).length;
+  const IN0=D.insights;
+  if(IN0){const C0=D.consistency||{};add('Consistency',typeof C0.score==='number'?C0.score+'<span class="u">/100</span>':(D.std_clean!=null?'±'+D.std_clean.toFixed(2)+'<span class="u">s</span>':'–'),(C0.label?'<b>'+esc(C0.label)+'</b> · ':'')+(D.std_clean!=null?'clean laps within about ±'+D.std_clean.toFixed(2)+' s':''));
+    const top=(IN0.fix||[]).slice(0,2).map(f=>f.corner);add('Time to find',IN0.time_to_find>0?IN0.time_to_find.toFixed(2)+'<span class="u">s/lap</span>':'–',top.length?'Mostly in <b>'+top.join(' and ')+'</b>. See <a href="#coach">What to work on</a>':'No corner stands out');
+    if(mainRef){const g=D.best.t-mainRef.t;add('Gap to comparison',sg(g,2)+'<span class="u">s</span>',esc(mainRef.name)+' · '+fmt(mainRef.t))}
+  }else{
   add('Consistency',D.std_clean!=null?'±'+D.std_clean.toFixed(2)+'<span class="u">s</span>':'–',ct.length?'Spread of clean laps. <b>'+within+' of '+ct.length+'</b> within 0.5 s of your median':'Not enough clean laps');
   const poss=SEG&&SEG.possible!=null?SEG.possible:D.optimal;
   add('Time on the table',poss!=null&&poss<D.best.t?ab(D.best.t-poss,2)+'<span class="u">s</span>':'–',poss!=null?'Your best '+(SEG&&SEG.possible!=null?'corners':'sectors')+' from every lap add up to <b>'+fmt(poss)+'</b>':'Not enough clean laps to build a best possible lap');
   if(mainRef){const g=D.best.t-mainRef.t;add('Gap to comparison',sg(g,2)+'<span class="u">s</span>',esc(mainRef.name)+' · '+fmt(mainRef.t)+(g>0?' · quicker than you':' · slower than you'))}
   else add('Gap to comparison','No comparison laps','Follow drivers on Garage 61 to compare against them',true);
-  if(cleanLaps.length>=5&&Math.abs(D.trend_total)>=0.05)add('Pace drift',sg(D.trend_total,2)+'<span class="u">s</span>','Trend over clean laps, first to last. '+(D.trend_total>0?'Positive means slower':'Negative means quicker'));
+  }
+  if(!IN0&&cleanLaps.length>=5&&Math.abs(D.trend_total)>=0.05)add('Pace drift',sg(D.trend_total,2)+'<span class="u">s</span>','Trend over clean laps, first to last. '+(D.trend_total>0?'Positive means slower':'Negative means quicker'));
   // story
   const c=D.counts||{};const parts=[];
   const _sal=(D.meta&&D.meta.salutation)||'';parts.push((_sal?_sal+', you':'You')+' completed '+plural(D.laps.length,'full lap')+' here and '+cleanLaps.length+' were clean'+(c.excluded?' ('+plural(c.excluded,'pit or spin lap')+' left out)':'')+'.');
@@ -622,7 +681,7 @@ function renderTele(){const host=$('overlay');host.replaceChildren();const W=Mat
     else if(p.key==='g'){const gg=[...A.g.slice(i0,i1+1),...B.g.slice(i0,i1+1)].filter(x=>x>0);lo=Math.max(0,Math.min(...gg)-0.5);hi=Math.max(...gg)+0.5;tk=[];for(let g=Math.ceil(lo);g<=hi;g++)tk.push(g);if(tk.length>4)tk=tk.filter((g,i)=>i%2===0)}
     else{lo=0;hi=100;tk=[0,100]}
     const Y=v=>y0+hh-(Math.max(lo,Math.min(hi,v))-lo)/(hi-lo)*hh;p.Y=Y;
-    s.append(el('text',{x:ml,y:y0-7,'font-size':12,fill:'var(--ink2)','font-family':BODY,'font-weight':500},p.key==='delta'?'Gap, A minus B (s) · above zero means A is losing time'+(zoomed?', counted from the left edge of this view':''):p.label));
+    s.append(el('text',{x:ml,y:y0-7,'font-size':12,fill:'var(--ink2)','font-family':BODY,'font-weight':500},p.key==='delta'?'Gap between the laps (s) · line going up means lap A is losing time, down means gaining'+(zoomed?', counted from the left edge of this view':''):p.label));
     tk.forEach(t=>{s.append(el('line',{x1:ml,x2:W-mr,y1:Y(t),y2:Y(t),stroke:(p.key==='delta'&&Math.abs(t)<1e-9)?'var(--axis)':'var(--line)'}));s.append(T(ml-6,Y(t)+4,p.key==='delta'?(Math.abs(t)<1e-9?'0':(t>0?'+':'−')+Math.abs(t).toFixed(niceStep(hi-lo,4)<0.1?2:1)):String(t),{'text-anchor':'end'}))});
     const g=el('g',{'clip-path':'url(#teleclip)'});
     if(p.key==='delta'){const xy=delta.map((v,k)=>[X((i0+k)*STEP),Y(v)]);const z=Y(0);
@@ -672,6 +731,7 @@ selA.value=state.a;selB.value=state.b;renderCompare();
 (function(){const host=$('pbPanel');
   if(!SEG||SEG.possible==null){$('pbLede').textContent='This needs at least three clean laps with telemetry.';host.append(h('p','note','Not enough clean laps to build a best possible lap.'));return}
   $('pbLede').textContent='Your fastest time through each corner, taken from any lap Garage 61 marked clean, added together. Each segment runs from the fastest point before a corner to the fastest point after it, so the segments add up to a full lap.';
+  if(D.best.t-SEG.possible<0.1){$('pbLede').textContent='Your best corners from every lap add up to '+fmt(SEG.possible)+', within '+ab(D.best.t-SEG.possible,2)+' s of your best lap: that lap already put your best corners together.';host.hidden=true;return}
   const bl=SEG.laps[String(D.best.n)];const head=h('div','pbhead');
   const n=(lab,v,cls)=>{const d=h('div','n');d.append(h('span',null,lab),h('b',cls||null,v));head.append(d)};
   n('Best possible lap',fmt(SEG.possible),'pb');n('Your best lap (lap '+D.best.n+')',fmt(D.best.t));n('Difference',ab(D.best.t-SEG.possible,3)+' s');if(mainRef)n(firstName(mainRef.name)+'’s lap',fmt(mainRef.t));host.append(head);
@@ -691,18 +751,21 @@ selA.value=state.a;selB.value=state.b;renderCompare();
 // ---------- corner cards
 const stripR=t=>String(t||'').replace(/\s*\(r [+\-−]?\d?\.\d+\)/g,'').replace(/in the explorer/g,'in Compare laps');
 const sparkFns=[];
-(function(){const host=$('cornerCards');const cs=[...D.corners].sort((a,b)=>a.apex_m-b.apex_m);
-  cs.forEach(c=>{const card=h('div','ccard');card.id='corner-'+c.id;const S=c.summary||{};
-    const top=h('div','top');const tt=h('div');tt.append(h('div','cid',c.id),h('div','where','Apex '+Math.round(c.apex_m).toLocaleString()+' m · gear '+S.gear+(S.min_mph!=null?' · '+Math.round(S.min_mph)+' mph minimum':'')));
-    top.append(tt,h('span','rank'+(c.rank<=2&&c.avail>=0.05?' hot':''),'#'+c.rank+' on the table'));card.append(top);
-    const st=h('div','cstats');const add=(k,v)=>{const d=h('div');d.append(h('span',null,k),h('b',null,v));st.append(d)};
-    add('Best',c.best_t.toFixed(2)+' s');add('Median',c.median_t.toFixed(2)+' s');add('On the table',c.avail.toFixed(2)+' s');add(mainRef?'Good laps vs '+firstName(mainRef.name):'Good laps vs comparison',c.ref_gap!=null?sg(c.ref_gap,2)+' s':'–');card.append(st);
-    const sp=h('div','spark');card.append(sp);sparkFns.push(()=>renderSpark(sp,c));
-    const txt=stripR(c.coaching);const k=txt.indexOf('For comparison,');const own=k>=0?txt.slice(0,k).trim():txt,rf=k>=0?txt.slice(k).trim():'';
-    card.append(h('p','coach',own));if(rf)card.append(h('p','coach ref',rf));
-    const act=h('div','actions');const bt=h('button',null,'Open in compare');bt.type='button';
-    bt.onclick=()=>{const a='me'+c.best_lap;let b=mainRef?mainRef.key:bestKey;if(b===a)b=pickMedianLap()||myKeys.find(x=>x!==a);setPair(a,b);const j=SEG?SEG.names.indexOf(c.id):-1;state.seg=j>=0?j:null;zoom(Math.max(0,c.start_m-40),Math.min(L,c.end_m+40));renderSplits();$('compare').scrollIntoView()};
-    act.append(bt);card.append(act);host.append(card)})})();
+function showCorner(c){if(!c)return;const a='me'+c.best_lap;let b=mainRef?mainRef.key:bestKey;if(b===a)b=pickMedianLap()||myKeys.find(x=>x!==a);setPair(a,b);const j=SEG?SEG.names.indexOf(c.id):-1;state.seg=j>=0?j:null;
+  const deep=$('deep');if(deep&&!deep.open){deep.open=true;renderAll()}zoom(Math.max(0,c.start_m-40),Math.min(L,c.end_m+40));renderSplits();$('compare').scrollIntoView()}
+(function(){const tb=$('cornerTable');const IN=D.insights||{};const tips=Object.assign({},IN.tips||{});(IN.fix||[]).forEach(f=>tips[f.corner]=f.tips||[]);
+  const order={};(IN.fix||[]).forEach((f,i)=>order[f.corner]=i);
+  const cs=[...D.corners].sort((a,b)=>((a.id in order)?order[a.id]:99)-((b.id in order)?order[b.id]:99)||(b.avail||0)-(a.avail||0));const hasRef=!!mainRef;
+  const hd=h('thead');const hr=h('tr');['Corner','Time to find','Your best','Typical',hasRef?'vs '+firstName(mainRef.name):null,'What to try'].filter(x=>x!=null).forEach((x,i)=>hr.append(h('th',i&&i<(hasRef?5:4)?'n':null,x)));hd.append(hr);tb.append(hd);
+  const body=h('tbody');const rest=h('tbody');rest.hidden=true;
+  cs.forEach((c,k)=>{const S=c.summary||{};const tr=h('tr','go'+(c.id in order?' top':''));const td0=h('td');td0.append(h('span','cid',c.id),h('span','meta',(S.gear!=null?'gear '+S.gear:'')+(S.min_mph!=null?' · '+Math.round(S.min_mph)+' mph':'')));tr.append(td0);
+    tr.append(h('td','n',(c.avail||0)>=0.01?c.avail.toFixed(2)+' s':'–'),h('td','n',c.best_t.toFixed(2)+' s'),h('td','n',c.median_t.toFixed(2)+' s'));
+    if(hasRef)tr.append(h('td','n',c.ref_gap!=null?(c.ref_gap>0?c.ref_gap.toFixed(2)+' s slower':ab(c.ref_gap,2)+' s quicker'):'–'));
+    const tp=(tips[c.id]||[]).join('; ');tr.append(h('td',null,tp?tp.charAt(0).toUpperCase()+tp.slice(1)+'.':''));
+    tr.tabIndex=0;tr.title='Show '+c.id+' in Compare laps';tr.onclick=()=>showCorner(c);tr.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();showCorner(c)}};
+    ((k<3||(c.avail||0)>=0.05)?body:rest).append(tr)});
+  tb.append(body,rest);
+  if(rest.children.length){const b=h('button',null,'Show all '+cs.length+' corners');b.type='button';b.onclick=()=>{rest.hidden=!rest.hidden;b.textContent=rest.hidden?'Show all '+cs.length+' corners':'Show fewer'};$('cornerMore').append(b)}})();
 function renderSpark(host,c){host.replaceChildren();const W=Math.max(200,host.clientWidth||300),H=78,ml=38,mr=8,mt=8,mb=16;const pts=D.laps.filter(l=>c.per_lap[String(l.n)]).map(l=>({n:l.n,t:c.per_lap[String(l.n)].t,clean:l.clean}));if(pts.length<2)return;
   const ts=pts.map(p=>p.t);const lo=Math.min(...ts),q=quant(ts,0.9);const hi=Math.max(lo+0.1,Math.min(Math.max(...ts),q+(q-lo)*0.4));
   const n0=pts[0].n,n1=pts[pts.length-1].n;const X=n=>ml+(n-n0)/Math.max(1,n1-n0)*(W-ml-mr),Y=v=>mt+(1-(Math.min(v,hi)-lo)/(hi-lo))*(H-mt-mb);
@@ -774,7 +837,8 @@ function renderFade(){const f=D.sector_fade||{};const ks=Object.keys(f);const ho
   $('styleLede').textContent=mainRef?'Your best lap against your median lap and '+mainRef.name+'’s lap. If they drive a different car, read these as habits rather than targets.':'Your best lap against your median lap.';
   const rows=[['Full throttle','full_thr_pct','%',1],['Time above 1.0 g','g_over_1','%',1],['Peak grip (95th percentile)','g95',' g',2],['Braking','brake_pct','%',1],['Both pedals at once','overlap_s',' s',2],['Coasting','coast_s',' s',2],['Steering activity','steer_rms',' °/s',0],['Top speed','top_mph',' mph',1]];
   const t=$('styleTable');const th=h('thead');const tr0=h('tr');['Measure','Best lap','Median',mainRef?firstName(mainRef.name):null].filter(x=>x!=null).forEach((x,i)=>tr0.append(h('th',i?'n':null,x)));th.append(tr0);t.append(th);const tb=h('tbody');
-  rows.forEach(([n,k,u,dp])=>{if(!me||me[k]==null)return;const tr=h('tr');tr.append(h('td',null,n),h('td','n',me[k].toFixed(dp)+u),h('td','n',med(k).toFixed(dp)+u));if(mainRef&&mainRef.style)tr.append(h('td','n',mainRef.style[k]!=null?mainRef.style[k].toFixed(dp)+u:'–'));tb.append(tr)});t.append(tb);
+  const noG=!(me&&me.g95>0);if(noG){const gp=$('ggChart').closest('.panel');if(gp)gp.hidden=true}
+  rows.forEach(([n,k,u,dp])=>{if(!me||me[k]==null)return;if((k==='g95'||k==='g_over_1'||k==='steer_rms')&&!(me[k]>0))return;const tr=h('tr');tr.append(h('td',null,n),h('td','n',me[k].toFixed(dp)+u),h('td','n',med(k).toFixed(dp)+u));if(mainRef&&mainRef.style)tr.append(h('td','n',mainRef.style[k]!=null?mainRef.style[k].toFixed(dp)+u:'–'));tb.append(tr)});t.append(tb);
   const wrap=$('ggChart');[['You · lap '+D.best.n,D.gg_best,'var(--a)'],...(D.gg_ref&&mainRef?[[mainRef.name,D.gg_ref,'var(--b)']]:[])].forEach(([nm,arr,col])=>{if(!arr||!arr.length)return;const W=240,c=W/2,sc=(W/2-16)/2;const X2=v=>c+Math.max(-2,Math.min(2,v))*sc,Y2=v=>c-Math.max(-2,Math.min(2,v))*sc;
     const s=el('svg',{viewBox:`0 0 ${W} ${W}`,role:'img','aria-label':'Grip diagram, '+nm});s.style.width='100%';s.style.maxWidth='260px';s.style.height='auto';[0.5,1,1.5,2].forEach(gv=>s.append(el('circle',{cx:c,cy:c,r:gv*sc,fill:'none',stroke:'var(--line)'})));
     s.append(el('line',{x1:X2(-2),x2:X2(2),y1:c,y2:c,stroke:'var(--axis)'}));s.append(el('line',{x1:c,x2:c,y1:Y2(2),y2:Y2(-2),stroke:'var(--axis)'}));
@@ -783,7 +847,7 @@ function renderFade(){const f=D.sector_fade||{};const ks=Object.keys(f);const ho
     const b=h('div');b.style.display='grid';b.style.gap='4px';b.append(h('div','note',nm),s);wrap.append(b)});
   const T3=D.style_trend;const tt=$('trendTable');if(!T3){$('trendPanel').replaceChildren(h('h3',null,'Early race against late race'),h('p','note','Not enough clean laps to compare the start and end of the race.'));return}
   const hd=h('thead');const hr=h('tr');['Measure','First third','Last third','Change'].forEach((x,i)=>hr.append(h('th',i?'n':null,x)));hd.append(hr);tt.append(hd);const b2=h('tbody');
-  [['Full throttle','full_thr_pct','%',1],['Coasting','coast_s',' s',2],['Peak grip (95th percentile)','g95',' g',2],['Both pedals at once','overlap_s',' s',2],['Steering activity','steer_rms',' °/s',0]].forEach(([n,k,u,dp])=>{if(!T3[k])return;const [a,b]=T3[k];const tr=h('tr');tr.append(h('td',null,n),h('td','n',a.toFixed(dp)+u),h('td','n',b.toFixed(dp)+u),h('td','n',sg(b-a,dp)+u));b2.append(tr)});tt.append(b2)})();
+  [['Full throttle','full_thr_pct','%',1],['Coasting','coast_s',' s',2],['Peak grip (95th percentile)','g95',' g',2],['Both pedals at once','overlap_s',' s',2],['Steering activity','steer_rms',' °/s',0]].forEach(([n,k,u,dp])=>{if(!T3[k])return;const [a,b]=T3[k];if(!(Math.abs(a)>0||Math.abs(b)>0))return;const tr=h('tr');tr.append(h('td',null,n),h('td','n',a.toFixed(dp)+u),h('td','n',b.toFixed(dp)+u),h('td','n',sg(b-a,dp)+u));b2.append(tr)});tt.append(b2)})();
 
 // ---------- plan and notes
 (function(){const host=$('planList');const firstSentence=s=>{const m=/^(.*?\.)(\s|$)/.exec(s||'');return m?m[1]:s||''};
@@ -795,7 +859,7 @@ function renderFade(){const f=D.sector_fade||{};const ks=Object.keys(f);const ho
    refs.length?'Comparison laps come only from your teammates and drivers you follow, because the Garage 61 API only shares those. Different cars have different gearing and brakes.':'No comparison laps: follow some drivers on Garage 61 or add teammates to get comparisons.',
    'Corners are found automatically from the speed trace of your fastest lap, so the numbering is Debrief’s, not the official turn numbers.',
    'Coaching notes describe what tended to happen on your quicker laps. They are patterns in your data, not proof of cause.',
-   'Generated '+new Date(M.generated_at).toLocaleString()+' using '+M.requests+' Garage 61 requests.'].forEach(n=>$('notes').append(h('li',null,n)))})();
+   'Generated '+new Date(M.generated_at).toLocaleString()+(typeof M.requests==='number'?' using '+M.requests+' Garage 61 requests.':'.')].forEach(n=>$('notes').append(h('li',null,n)))})();
 
 // ---------- v2: shared helpers (every v2 block guards for missing keys so old reviews still render)
 const num=v=>typeof v==='number'&&isFinite(v);
@@ -873,12 +937,12 @@ function techDelta(k,d){if(!num(d))return '–';const a=Math.abs(d);
 let techSel=null;
 (function(){if(!TECH)return;$('technique').hidden=false;
   const ranked=[...TECH].sort((a,b)=>((cornerById[a.id]||{}).rank||99)-((cornerById[b.id]||{}).rank||99));techSel=ranked[0].id;
-  const anyRef=TECH.some(t=>t.ref);$('techLede').textContent='How you drove each corner: your best lap, your typical clean lap'+(anyRef?' and the main comparison lap, with the difference between your typical lap and theirs.':'. Add comparison laps (follow drivers on Garage 61) to see a third line.')+' Starts on the corner with the most time on the table.';
+  const anyRef=TECH.some(t=>t.ref);$('techLede').textContent='How you drove each corner: your best lap, your typical clean lap'+(anyRef?' and the main comparison lap, with the difference between your typical lap and theirs.':'. Add comparison laps (follow drivers on Garage 61) to see a third line.')+' Starts on the corner with the most time to find.';
   const pick=$('techPick');[...TECH].sort((a,b)=>a.apex_m-b.apex_m).forEach(t=>{const b=h('button',null,t.id);b.type='button';b.dataset.id=t.id;b.onclick=()=>{techSel=t.id;renderTech()};pick.append(b)})})();
 function techLanes(t){const L2=[];const bn=D.best&&D.best.n;if(t.best)L2.push(['Best lap ('+bn+')',t.best,'var(--pb)']);if(t.typical)L2.push(['Your typical',t.typical,'var(--a)']);
   if(t.ref)L2.push([t.ref_name||(mainRef?mainRef.name:'Comparison'),t.ref,'var(--b)']);(t.others||[]).forEach(o=>L2.push([o.name||'Comparison',o,'var(--muted)']));return L2}
 function renderTech(){if(!TECH)return;const t=TECH.find(x=>x.id===techSel)||TECH[0];[...$('techPick').children].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.id===t.id)));
-  const c=cornerById[t.id]||{};$('techTitle').textContent=t.id;$('techWhere').textContent='Apex ~'+Math.round(t.apex_m).toLocaleString()+' m'+(c.rank?' · #'+c.rank+' on the table'+(num(c.avail)?' ('+c.avail.toFixed(2)+' s)':''):'');
+  const c=cornerById[t.id]||{};$('techTitle').textContent=t.id;$('techWhere').textContent='Apex ~'+Math.round(t.apex_m).toLocaleString()+' m'+(num(c.avail)&&c.avail>=0.01?' · '+c.avail.toFixed(2)+' s to find':'');
   const lanes=techLanes(t);
   // lane chart: braking start (triangle) to full throttle (dot), slowest-point speed at the apex
   const host=$('techChart');host.replaceChildren();const W=Math.max(320,host.clientWidth||700),ml=Math.min(150,W*0.28),mr=16,lh=34,top=10;const H=top+lanes.length*lh+26;
@@ -923,7 +987,9 @@ function renderTech(){if(!TECH)return;const t=TECH.find(x=>x.id===techSel)||TECH
   const f=$('conFacts');const add=(k,v)=>{const sp=h('span');sp.append(document.createTextNode(k+' '),h('b',null,v));f.append(sp)};
   if(num(CONS.std))add('Spread','±'+CONS.std.toFixed(2)+' s');if(num(CONS.within_05))add('Within 0.5 s of best',Math.round(CONS.within_05)+'%');if(num(CONS.within_10))add('Within 1.0 s',Math.round(CONS.within_10)+'%');if(num(CONS.n))add('Clean laps',String(CONS.n));
   const host=$('conCorners');const bc=(CONS.by_corner||[]).filter(b=>num(b.iqr));if(!bc.length){host.append(h('p','note','Not enough clean laps per corner.'));return}
-  const mx=Math.max(0.3,...bc.map(b=>b.iqr));bc.forEach(b=>{const r=h('div','irow');const bar=h('div','bar');bar.style.width=Math.max(1,b.iqr/mx*100)+'%';if(b.iqr>=0.25)bar.style.background='var(--bad)';else if(b.iqr>=0.12)bar.style.background='var(--warn)';
+  const locked=bc.filter(b=>b.iqr<0.06);const show=bc.filter(b=>b.iqr>=0.06);
+  if(locked.length)host.append(h('p','note','Locked in (same time every lap): '+(locked.length===bc.length?'every corner':locked.map(b=>b.id).join(', '))+'.'));
+  const mx=Math.max(0.3,...bc.map(b=>b.iqr));show.forEach(b=>{const r=h('div','irow');const bar=h('div','bar');bar.style.width=Math.max(1,b.iqr/mx*100)+'%';if(b.iqr>=0.25)bar.style.background='var(--bad)';else if(b.iqr>=0.12)bar.style.background='var(--warn)';
     const wrap=h('div');wrap.append(bar);r.append(h('span','id',b.id),wrap,h('span','val',b.iqr.toFixed(2)+' s'),h('span','tag',b.label||''));hover(r,b.id+' · '+(b.label||''),['Middle half of your clean laps span '+b.iqr.toFixed(3)+' s here']);host.append(r)})})();
 
 // ---------- v2: stint and tyre wear
@@ -994,7 +1060,7 @@ async function drawShareCard(){const W=1200,H=630;const cv=document.createElemen
   const blocks=[];blocks.push(['BEST LAP',fmt(D.best.t),PB&&PB.is_pb&&num(PB.delta)?ab(PB.delta,3)+' s quicker than before':PB&&!PB.is_pb&&!PB.first_time&&num(PB.delta)?ab(PB.delta,3)+' s off your PB':'Lap '+D.best.n]);
   if(CONS&&num(CONS.score))blocks.push(['CONSISTENCY',CONS.score+'/100',CONS.label||'']);else if(num(D.std_clean))blocks.push(['CONSISTENCY','±'+D.std_clean.toFixed(2)+'s','clean-lap spread']);
   if(RES){const fs=+RES.field_size,spn=+RES.start_pos,fp=+RES.finish_pos;blocks.push(['FINISH','P'+fp,(isFinite(fs)&&fs?'of '+fs:'')+(isFinite(spn)&&spn&&spn!==fp?(isFinite(fs)&&fs?' · ':'')+(spn>fp?'up '+(spn-fp):'down '+(fp-spn))+' from P'+spn:'')])}
-  const work=[...D.corners].filter(c=>num(c.avail)&&c.avail>=0.03).sort((a,b)=>a.rank-b.rank)[0];if(work)blocks.push(['WORK ON',work.id,'≈'+work.avail.toFixed(2)+' s a lap on the table']);
+  const work=[...D.corners].filter(c=>num(c.avail)&&c.avail>=0.03).sort((a,b)=>a.rank-b.rank)[0];if(work)blocks.push(['WORK ON',work.id,'≈'+work.avail.toFixed(2)+' s a lap to find']);
   const bw2=(W-128)/Math.max(3,blocks.length),y0=420;x.strokeStyle=C.line;x.lineWidth=2;x.beginPath();x.moveTo(64,y0-22);x.lineTo(W-64,y0-22);x.stroke();
   blocks.forEach(([lab,v,sub],i)=>{const bx=64+i*bw2;x.fillStyle=C.muted;x.font='400 15px '+MON;sp('2.5px');x.fillText(lab,bx,y0+10);sp('0px');x.fillStyle=lab==='BEST LAP'&&badge&&badge[0]==='NEW PB'?C.pb:C.ink;fit(v,'600 $px '+MON,lab==='WORK ON'?56:50,bw2-24);x.fillText(v,bx,y0+68);x.fillStyle=C.ink2;fit(sub,'400 $px '+BOD,19,bw2-20);x.fillText(sub,bx,y0+102);
     if(lab==='BEST LAP'&&badge){x.font='400 15px '+MON;sp('2.5px');const lw=x.measureText(lab).width;x.font='700 14px '+MON;sp('1.5px');const tw=x.measureText(badge[0]).width+20;x.fillStyle=badge[1];rr(bx+lw+10,y0-9,tw,26,13);x.fill();x.fillStyle=C.bg;x.fillText(badge[0],bx+lw+20,y0+9);sp('0px')}});
@@ -1005,12 +1071,46 @@ async function drawShareCard(){const W=1200,H=630;const cv=document.createElemen
 $('btnShare').onclick=async()=>{const b=$('btnShare');b.disabled=true;try{const cv=await drawShareCard();const name=(fileBase+'_'+trackShort+'_'+carShort).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'_share.png';
   await new Promise((res,rej)=>cv.toBlob(bl=>{if(!bl)return rej(new Error('no image'));saveBlob(name,bl);res()},'image/png'));toast('Saved '+name+' to your downloads')}catch(e){toast('Couldn’t make the share card in this window. Try opening the review in your browser.')}finally{b.disabled=false}};
 
+// ---------- 2.2.1: what to work on (fix first / bad habits / good habits) and the race story
+(function(){const IN=D.insights;if(!IN)return;
+  $('story').hidden=true;$('coach').hidden=false;
+  const v=$('verdict');(IN.verdict||[]).forEach(t=>v.append(h('p',null,t)));
+  const fl=$('fixList');const fx=IN.fix||[];
+  if(!fx.length)fl.append(h('p','note','Nothing big to fix: your typical laps are already close to your best in every corner.'));
+  fx.forEach((f,i)=>{const d=h('div','fix');d.append(h('span','rk',String(i+1)));const mid=h('div');mid.append(h('h3',null,f.corner+(f.gear!=null?' · gear '+f.gear:'')),h('p','why',f.why||''));
+    if(f.tips&&f.tips.length){const ul=h('ul');f.tips.forEach(t=>ul.append(h('li',null,t.charAt(0).toUpperCase()+t.slice(1)+'.')));mid.append(ul)}
+    else mid.append(h('p','why','No single measure stands out between your good and typical laps here: watch it in Compare laps.'));
+    const g=h('span','gain');g.append(document.createTextNode('~'+f.gain.toFixed(2)+' s'),h('small',null,'per lap'));
+    const b=h('button',null,'Show me');b.type='button';b.onclick=()=>showCorner(cornerById[f.corner]);
+    d.append(mid,g,b);fl.append(d)});
+  if(IN.more_corners>0)$('fixSub').textContent='ranked by time per lap · '+IN.more_corners+' more under Corners';
+  const list=(id,items,none)=>{const ul=$(id);if(!items||!items.length){ul.append(h('li','none',none));return}
+    items.forEach(it=>{const li=h('li');li.append(h('b',null,it.title),h('span',null,it.text));ul.append(li)})};
+  list('badList',IN.bad,'Nothing repeated that cost you time. Keep it up.');
+  list('goodList',IN.good,'Not enough clean laps to say yet.');
+  // race story: the lap-time chart and the pace-through-the-race chart, plus one plain sentence
+  const rg=$('raceGrid');const lp=$('lapChart')&&$('lapChart').closest('.panel');if(lp)rg.append(lp);
+  rg.style.gridTemplateColumns='minmax(0,1fr)';
+  const c=D.counts||{};const bits=[];const ST=D.stint||{};
+  bits.push(plural(D.laps.length,'full lap')+', '+cleanLaps.length+' clean.');
+  if(ST.summary)bits.push(ST.summary);else if(cleanLaps.length>=5)bits.push(Math.abs(D.trend_total)<0.15?'Your clean laps held steady.':'Your clean laps got '+ab(D.trend_total)+' s '+(D.trend_total>0?'slower':'quicker')+' from start to finish.');
+  if((c.traffic||[]).length)bits.push('Traffic cost time on '+((c.traffic.length===1?'lap ':'laps ')+andList(c.traffic.map(String)))+'; those laps are left out of the numbers.');
+  $('raceLede').textContent=bits.join(' ');$('race').hidden=false;
+  const pl=$('plan');if(pl)pl.hidden=true;   // "Fix first" replaces the old practice plan
+})();
+// the detail sections start closed once their charts have been drawn; links into them open it
+const DEEP=$('deep');
+document.querySelectorAll('#jump a').forEach(a=>a.addEventListener('click',e=>{const id=a.getAttribute('href').slice(1);const t=$(id);if(t&&DEEP&&DEEP.contains(t)&&!DEEP.open){e.preventDefault();DEEP.open=true;renderAll();setTimeout(()=>t.scrollIntoView(),50)}}));
+if(DEEP)DEEP.addEventListener('toggle',()=>{document.body.classList.toggle('deepopen',DEEP.open);if(DEEP.open)setTimeout(renderAll,30)});
+
 // ---------- v2: hide jump links for sections that aren't on this page
 [...document.querySelectorAll('#jump a')].forEach(a=>{const s=$(a.getAttribute('href').slice(1));if(!s||s.hidden)a.hidden=true});
 
 // ---------- layout-driven rendering
 function renderAll(){renderMap();renderTele();sparkFns.forEach(f=>f());renderLapChart();renderDist();renderHeat();renderFade();renderTech();renderStintChart()}
 renderAll();
+if(D.insights&&DEEP&&!/^#(compare|possible|corners|technique|bestworst|pace|consistency|stint|habits)/.test(location.hash))DEEP.open=false;
+document.body.classList.toggle('deepopen',!!(DEEP&&DEEP.open));
 let lastW=document.body.clientWidth,rt=null;
 new ResizeObserver(()=>{const w=document.body.clientWidth;if(Math.abs(w-lastW)<4)return;lastW=w;clearTimeout(rt);rt=setTimeout(renderAll,120)}).observe(document.body);
 

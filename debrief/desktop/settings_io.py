@@ -80,6 +80,7 @@ def public_view() -> dict:
         "include_practice": False,
         "sync_on_open": bool(raw.get("sync_on_open", True)),
         "sync_telemetry": "none" if str(raw.get("sync_telemetry", "best")).lower() == "none" else "best",
+        "check_updates": bool(raw.get("check_updates", True)),
         "library_folder": None,
         "team_slug": str(raw.get("team_slug") or app.DEFAULT_TEAM).strip().lower() or app.DEFAULT_TEAM,
         # present/absent only: the values are never sent to the page
@@ -149,6 +150,11 @@ def save(updates: dict) -> dict:
         if not isinstance(v, bool):
             raise ValueError("Sync when Debrief opens must be on or off.")
         clean["sync_on_open"] = v
+    if "check_updates" in updates:
+        v = updates["check_updates"]
+        if not isinstance(v, bool):
+            raise ValueError("Check for updates must be on or off.")
+        clean["check_updates"] = v
     if "sync_telemetry" in updates:
         v = updates["sync_telemetry"]
         if v not in ("best", "none"):

@@ -149,6 +149,7 @@ def load_settings() -> dict:
     cfg["team_slug"] = str(cfg.get("team_slug") or DEFAULT_TEAM).strip().lower() or DEFAULT_TEAM
     # history sync: catch up with Garage 61 each time the window opens; telemetry "best" or "none"
     cfg["sync_on_open"] = bool(cfg.get("sync_on_open", True))
+    cfg["check_updates"] = bool(cfg.get("check_updates", True))
     cfg["sync_telemetry"] = "none" if str(cfg.get("sync_telemetry", "best")).strip().lower() == "none" else "best"
     # optional iRacing data API credentials: only stored here; nothing runs with them by default
     for k in ("iracing_client_id", "iracing_client_secret"):

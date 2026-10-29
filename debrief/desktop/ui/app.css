@@ -192,3 +192,9 @@ details.sub>summary{cursor:pointer;font-size:13.5px;color:var(--fg2)}
 .pick:first-child{border-top:none}
 .pick input{width:17px;height:17px;margin-top:3px;accent-color:var(--me);flex:none}
 .pick .itx{gap:1px}
+
+/* ---------- updater (2.2.1) */
+.updstrip{font:inherit;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--me);border-left:4px solid var(--me);border-radius:5px;background:var(--panel);color:var(--fg);padding:7px 10px;cursor:pointer;text-align:left}
+.updstrip b{font-weight:600}
+.updstrip span{color:var(--me);font-weight:600;white-space:nowrap}
+.updstrip:hover{background:var(--band)}

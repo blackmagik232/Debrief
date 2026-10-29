@@ -23,6 +23,7 @@
     <span class="dot" aria-hidden="true"></span><span id="syncText">Synced</span>
     <span class="minibar" aria-hidden="true"><i id="syncBar"></i></span>
   </button>
+  <button type="button" id="updStrip" class="updstrip" hidden><b id="updText">Update available</b><span>Update now</span></button>
   <nav class="nav">
     <button type="button" class="navbtn" data-nav="sessions">Sessions</button>
     <button type="button" class="navbtn" data-nav="library">Library</button>
@@ -306,6 +307,13 @@
         <p class="mono path" id="libPath">...</p>
         <div class="row"><button type="button" class="btn" id="btnFolder">Open folder</button><span class="msg" id="folderMsg" role="status"></span></div>
       </div>
+
+      <form class="panel" id="fUpdate">
+        <div class="phead"><h3>Updates</h3><span class="pill" id="updPill">–</span></div>
+        <p class="note" id="updNote">Debrief checks GitHub for a newer version once a day. Updating downloads the installer, checks it arrived intact, installs it and reopens Debrief. Your settings, reviews and history are kept.</p>
+        <label class="check" for="updAuto"><input id="updAuto" type="checkbox"><span>Check for updates when Debrief opens</span></label>
+        <div class="row"><button type="button" class="btn" id="btnUpdCheck">Check now</button><button type="button" class="btn primary" id="btnUpdNow" hidden>Update now</button><button type="submit" class="btn ghost">Save</button><span class="msg" id="updMsg" role="status"></span></div>
+      </form>
 
       <div class="panel" id="pAbout">
         <div class="phead"><h3>About</h3><span class="pill" id="aboutVersion">Debrief</span></div>

@@ -20,7 +20,20 @@ from .. import app
 # Feature modules the window loads by name (app.optional_module / lazy imports). The selftest imports
 # each one, so a build that leaves one out fails in CI instead of on someone's PC.
 FEATURE_MODULES = ("engine", "report", "library", "prep", "goals", "results", "team", "sync",
-                   "analysis_plus", "schedule", "series", "notes", "prepare")
+                   "analysis_plus", "schedule", "series", "notes", "prepare", "updater", "insights")
+
+
+def _refresh_reviews():
+    """Once per page-layout version: re-render saved reviews in the new layout (no Garage 61 requests)."""
+    try:
+        from .. import report
+        n = report.refresh_all(app.load_settings()["library_folder"], log=app.say)
+        if n:
+            app.say(f"Refreshed {n} saved review(s) to the new page layout.")
+    except SystemExit:
+        pass
+    except Exception:  # noqa: BLE001
+        app.say("ERROR refreshing saved reviews:\n" + traceback.format_exc())
 
 
 def find_edge() -> str | None:
@@ -198,6 +211,7 @@ def main(argv=None):
         _alert(f"Debrief couldn't start. Details were saved to debrief.log in {app.data_folder_label()}.")
         return 1
     threading.Thread(target=srv.watchdog, daemon=True, name="watchdog").start()
+    threading.Thread(target=_refresh_reviews, daemon=True, name="refresh-reviews").start()
     if not a.no_browser:
         try:
             lock.write_text(srv.url, encoding="utf-8")

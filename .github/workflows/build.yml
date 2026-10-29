@@ -100,9 +100,17 @@ jobs:
           $data = Join-Path $env:LOCALAPPDATA "Debrief"
           Remove-Item (Join-Path $data "selftest.json") -ErrorAction SilentlyContinue
           $p = Start-Process -FilePath "dist\Debrief\Debrief.exe" -ArgumentList "--selftest" -PassThru
-          if (-not $p.WaitForExit(150000)) { Stop-Process -Id $p.Id -Force; Write-Host "::error::selftest still running after 150 s" }
+          $finished = $p.WaitForExit(180000)
+          if (-not $finished) { Stop-Process -Id $p.Id -Force }
           $hang = Join-Path $data "selftest-hang.txt"
-          if (Test-Path $hang) { $t = (Get-Content $hang -Raw) -replace "`r?`n", " | "; Write-Host "::error title=selftest hang::$t"; throw "selftest hung" }
+          $log = Join-Path $data "debrief.log"
+          if ((-not $finished) -or (Test-Path $hang)) {
+            $t = if (Test-Path $hang) { (Get-Content $hang -Raw) -replace "`r?`n", " | " } else { "no hang file" }
+            Write-Host "::error title=selftest hang (stacks)::$t"
+            if (Test-Path $log) { $l = ((Get-Content $log -Tail 25) -join " | "); Write-Host "::error title=selftest hang (log)::$l" }
+            Get-Process | Where-Object { $_.ProcessName -match "Debrief|msedge" } | ForEach-Object { Write-Host "::error title=process::$($_.ProcessName) $($_.Id)" }
+            throw "selftest hung"
+          }
           $json = Join-Path $data "selftest.json"
           if (Test-Path $json) { Get-Content $json } else { Write-Host "selftest.json is missing" }
           if (Test-Path (Join-Path $data "debrief.log")) { Get-Content (Join-Path $data "debrief.log") -Tail 40 }

@@ -159,7 +159,9 @@ def selftest() -> int:
     # a selftest must never hang a build: after 90 s, write every thread's stack to selftest-hang.txt and exit
     import faulthandler
     try:
-        _hang = open(app.HERE / "selftest-hang.txt", "w", encoding="utf-8")
+        _hang = open(app.HERE / "selftest-hang.txt", "a", encoding="utf-8")
+        _hang.write("selftest() reached\n")
+        _hang.flush()
         faulthandler.dump_traceback_later(90, exit=True, file=_hang)
     except Exception:  # noqa: BLE001
         _hang = None

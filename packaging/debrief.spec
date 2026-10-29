@@ -51,6 +51,26 @@ excludes = ["tkinter", "_tkinter", "turtle", "turtledemo", "idlelib", "lib2to3",
             # optional extras requests/urllib3 can use when present; Debrief doesn't need them
             "cryptography", "OpenSSL", "psutil", "yaml", "chardet"]
 
+# Version resource on Debrief.exe (File > Properties > Details). Unsigned exes without one are flagged by
+# antivirus more often.
+_nums = [int(n) for n in re.findall(r"\d+", VERSION)[:3]] + [0, 0, 0, 0]
+_vt = tuple(_nums[:4])
+VERSION_FILE = ROOT / "build" / "debrief-version.txt"
+VERSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+VERSION_FILE.write_text(f"""VSVersionInfo(
+  ffi=FixedFileInfo(filevers={_vt}, prodvers={_vt}, mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1,
+                    subtype=0x0, date=(0, 0)),
+  kids=[StringFileInfo([StringTable('040904B0', [
+          StringStruct('CompanyName', 'Overdriver'),
+          StringStruct('FileDescription', 'Debrief'),
+          StringStruct('FileVersion', '{VERSION}'),
+          StringStruct('InternalName', 'Debrief'),
+          StringStruct('OriginalFilename', 'Debrief.exe'),
+          StringStruct('ProductName', 'Debrief'),
+          StringStruct('ProductVersion', '{VERSION}')])]),
+        VarFileInfo([VarStruct('Translation', [1033, 1200])])])
+""", encoding="utf-8")
+
 a = Analysis(
     [str(ROOT / "packaging" / "launcher.py")],
     pathex=[str(ROOT)],
@@ -71,6 +91,7 @@ exe = EXE(
     exclude_binaries=True,       # one-folder build: the DLLs and data sit next to the exe
     name="Debrief",
     icon=str(PKG / "desktop" / "debrief.ico"),
+    version=str(VERSION_FILE),
     console=False,               # windowed: no black console box
     debug=False,
     strip=False,

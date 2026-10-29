@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -34,6 +35,55 @@ def _refresh_reviews():
         pass
     except Exception:  # noqa: BLE001
         app.say("ERROR refreshing saved reviews:\n" + traceback.format_exc())
+
+
+_LOCK_PATH = re.compile(r"^/[A-Za-z0-9_-]{32}/$")
+
+
+def valid_lock_url(url: str) -> bool:
+    """Only an address this app itself would write: http://127.0.0.1:<port>/<32-character secret>/."""
+    from urllib.parse import urlsplit
+    if not isinstance(url, str) or len(url) > 200 or any(c.isspace() for c in url):
+        return False
+    try:
+        u = urlsplit(url)
+        port = u.port
+    except ValueError:
+        return False
+    return (u.scheme == "http" and u.hostname == "127.0.0.1" and port is not None and 0 < port < 65536
+            and u.netloc == f"127.0.0.1:{port}" and not u.query and not u.fragment
+            and bool(_LOCK_PATH.match(u.path)))
+
+
+_MUTEX = None
+
+
+def _instance_mutex() -> None:
+    """Windows: a named mutex that says "Debrief is running". The installer waits for it to go before
+    replacing files (packaging/debrief.iss), so an update never cuts Debrief off mid-write."""
+    global _MUTEX
+    if os.name != "nt" or _MUTEX is not None:
+        return
+    try:
+        import ctypes
+        _MUTEX = ctypes.windll.kernel32.CreateMutexW(None, False, "DebriefRunning")
+    except Exception:  # noqa: BLE001
+        _MUTEX = None
+
+
+def _after_update(srv) -> None:
+    """Did the last in-app update work? Also clears old installers out of %TEMP%. Never touches your data."""
+    try:
+        from .. import updater
+        res = updater.pending_result()
+        if res is not None:
+            srv.update_outcome = res
+            app.say("Update " + ("finished: now on " + res["version"] if res["ok"] else "didn't finish: " + res["message"]))
+        n = updater.cleanup_old_downloads()
+        if n:
+            app.say(f"Removed {n} old update download(s) from the temp folder.")
+    except Exception:  # noqa: BLE001
+        app.say("ERROR checking the last update:\n" + traceback.format_exc())
 
 
 def find_edge() -> str | None:
@@ -74,6 +124,8 @@ def open_window(url: str) -> str:
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          close_fds=True, creationflags=flags)
         return "edge"
+    app.say("Microsoft Edge wasn't found, so Debrief opened in your default browser. Its address works "
+            "only while this Debrief is open.")
     webbrowser.open(url)
     return "browser"
 
@@ -146,6 +198,20 @@ def selftest() -> int:
         for asset, want in (("static/app.js", b"use strict"), ("static/app.css", b"box-sizing"),
                             ("static/tokens.css", b":root"), ("static/icon.png", b"PNG")):
             checks[asset] = get(asset, want)
+
+        def head(rel, name):
+            try:
+                with opener.open(urllib.request.Request(srv.url + rel), timeout=15) as r:
+                    return r.headers.get(name) or ""
+            except Exception:  # noqa: BLE001
+                return ""
+        # app.js must be served as JavaScript whatever the PC's registry says (or the window opens blank)
+        checks["type:app.js"] = head("static/app.js", "Content-Type").startswith("text/javascript")
+        checks["type:app.css"] = head("static/app.css", "Content-Type").startswith("text/css")
+        checks["csp:page"] = "default-src 'self'" in head("", "Content-Security-Policy")
+        # library pages run sandboxed (they can't reach the API)
+        from .server import LIB_CSP
+        checks["csp:lib"] = "sandbox" in LIB_CSP and "allow-same-origin" not in LIB_CSP
     except Exception as e:  # noqa: BLE001
         error = f"{type(e).__name__}: {e}"
         app.say("ERROR in selftest:\n" + traceback.format_exc())
@@ -193,6 +259,8 @@ def main(argv=None):
         try:  # already open? bring up the same window instead of starting a second server
             import urllib.request
             url = lock.read_text(encoding="utf-8").strip()
+            if not valid_lock_url(url):
+                raise ValueError("not a Debrief address")   # treated like a stale lock: start normally
             # the server only answers POST + X-Debrief on api/ping; never go through a proxy for localhost
             req = urllib.request.Request(url + "api/ping", data=b"", method="POST", headers={"X-Debrief": "1"})
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -210,8 +278,11 @@ def main(argv=None):
         app.say("ERROR starting desktop server:\n" + traceback.format_exc())
         _alert(f"Debrief couldn't start. Details were saved to debrief.log in {app.data_folder_label()}.")
         return 1
+    _instance_mutex()
+    _after_update(srv)
     threading.Thread(target=srv.watchdog, daemon=True, name="watchdog").start()
-    threading.Thread(target=_refresh_reviews, daemon=True, name="refresh-reviews").start()
+    # tracked, so the watchdog, an update and new jobs wait for it (it rewrites saved reviews)
+    srv.jobs.run_background("refresh", _refresh_reviews)
     if not a.no_browser:
         try:
             lock.write_text(srv.url, encoding="utf-8")

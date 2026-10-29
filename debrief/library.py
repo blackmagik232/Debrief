@@ -129,7 +129,7 @@ _TRACK_BASES = {
 
 # Configs that mean "the usual layout": dropped from the short name.
 _DEFAULT_CONFIGS = {"", "grand prix", "gp", "full course", "full", "road course", "international",
-                    "full circuit", "grand prix circuit", "combined", "oval", "national"}
+                    "full circuit", "grand prix circuit", "combined", "national"}
 _CONFIG_WORDS = {"grand prix": "GP", "international": "Intl", "national": "National"}
 _FILLER = re.compile(r"\b(international|raceway|speedway|motor|motorsports?|circuit|park|racing|course|"
                      r"autodromo|autódromo|circuito|street|at|de|the)\b", re.I)
@@ -316,7 +316,7 @@ def _row(p: Path) -> dict | None:
         "top_corner": (f"{top['id']} ~{top['avail']:.2f}s" if top else ""),
         "top_corner_id": top["id"] if top else None, "top_corner_avail": top["avail"] if top else None,
         "corners": corners,
-        "ref_gap": round(best - _num(main["t"]), 3) if main else None,
+        "ref_gap": round(best - _num(main["t"]), 3) if (main and clean_best(d) is not None) else None,
         "test_data": bool(m.get("test_data")),
         "event_id": str(m.get("event_id") or ""),
         # v2 fields (all optional: None/absent on reviews made before Debrief v2)
@@ -477,7 +477,8 @@ def season_summary(rows: list) -> dict:
         c = e["combos"].setdefault(r["combo"], {"combo": r["combo"], "track_short": r["track_short"],
                                                 "car": r["car"], "races": 0, "best": None})
         c["races"] += 1
-        c["best"] = r["best"] if c["best"] is None else min(c["best"], r["best"])
+        if r.get("best_clean", True) and _num(r.get("best")) is not None:   # a flagged/partial best never counts
+            c["best"] = r["best"] if c["best"] is None else min(c["best"], r["best"])
         if r.get("irating") is not None:
             e["irating"].append(r["irating"])
         if r.get("result"):

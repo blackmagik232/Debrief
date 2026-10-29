@@ -1,6 +1,15 @@
 # Builds the Debrief Windows installer.
 #  * every push / pull request / manual run: tests, PyInstaller build, smoke tests, installer artifact
-#  * a tag like v2.0.0: also publishes a GitHub Release with Debrief-Setup-<version>.exe attached
+#  * a new version on main, or a tag like v2.0.0: the separate "release" job signs the installer (when the
+#    DEBRIEF_SIGNING_KEY secret is set) and publishes a GitHub Release with
+#    Debrief-Setup-<version>.exe, .exe.sha256 and .exe.sig attached.
+#
+# Security: the build job can only read the repository (it runs third-party build tools). Only the release
+# job can write, and it only downloads the built installer, signs it and publishes it. Give the "release"
+# environment required reviewers in Settings > Environments so every release needs a manual OK, and keep
+# DEBRIEF_SIGNING_KEY as a secret of that environment only.
+# Actions are pinned to version tags. TODO(owner): pin each to its full commit SHA (look them up on the
+# actions' release pages; this was prepared offline, so the SHAs couldn't be checked).
 name: Build Windows installer
 
 on:
@@ -11,11 +20,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # needed only to create the release on tags
+  contents: read
 
 jobs:
   windows:
     runs-on: windows-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     timeout-minutes: 40
     defaults:
       run:
@@ -26,6 +39,8 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false   # no token left in .git/config for build tools to find
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -36,8 +51,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt pyinstaller
+          python -m pip install -r requirements.txt pyinstaller==6.11.1
 
       - name: Read version
         id: ver
@@ -65,6 +79,14 @@ jobs:
         run: python tests/test_updater.py
       - name: Test coaching summary
         run: python tests/test_insights.py
+      - name: Test fixes (server, security, updater)
+        run: python tests/test_fix_c.py
+      - name: Test fixes (analysis)
+        run: python tests/test_fix_a.py
+      - name: Test fixes (data)
+        run: python tests/test_fix_b.py
+      - name: Test fixes (UI)
+        run: python tests/test_fix_d.py
 
       - name: Build with PyInstaller
         run: pyinstaller packaging/debrief.spec --noconfirm --clean
@@ -132,20 +154,59 @@ jobs:
           path: dist-installer/Debrief-Setup-${{ steps.ver.outputs.version }}.exe
           if-no-files-found: error
 
-      - name: Publish release (new version on main, or a v* tag)
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+  release:
+    needs: windows
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write   # this job only: create the release
+    steps:
+      - name: Check out (signing script only)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download the built installer
+        uses: actions/download-artifact@v4
+        with:
+          name: Debrief-Setup-${{ needs.windows.outputs.version }}
+          path: dist-installer
+
+      - name: Checksum and signature
+        env:
+          DEBRIEF_SIGNING_KEY: ${{ secrets.DEBRIEF_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          v="${{ needs.windows.outputs.version }}"
+          exe="dist-installer/Debrief-Setup-$v.exe"
+          test -f "$exe"
+          # checksum file for the in-app updater (it refuses to install without a matching SHA-256)
+          (cd dist-installer && sha256sum "Debrief-Setup-$v.exe" | tr -d '\n' > "Debrief-Setup-$v.exe.sha256")
+          key_set=$(python3 -c "import sys; sys.path.insert(0, '.'); from debrief import updater; print('yes' if updater.RELEASE_PUBLIC_KEY else 'no')")
+          if [ -n "${DEBRIEF_SIGNING_KEY:-}" ]; then
+            python3 packaging/sign_release.py "$exe"
+          elif [ "$key_set" = "yes" ]; then
+            echo "::error::debrief/updater.py has RELEASE_PUBLIC_KEY set but the DEBRIEF_SIGNING_KEY secret is missing: installed copies would refuse this release."
+            exit 1
+          else
+            echo "DEBRIEF_SIGNING_KEY isn't set: publishing without a signature (the app accepts that only while RELEASE_PUBLIC_KEY is None)."
+          fi
+          ls -l dist-installer
+
+      - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $v = "${{ steps.ver.outputs.version }}"
-          $tag = "v$v"
+          set -euo pipefail
+          v="${{ needs.windows.outputs.version }}"
+          tag="v$v"
           # one release per version: bump __version__ in debrief/__init__.py to publish a new one
-          gh release view $tag --repo "$env:GITHUB_REPOSITORY" *> $null
-          if ($LASTEXITCODE -eq 0) { Write-Host "Release $tag already exists; nothing to publish."; exit 0 }
-          # checksum file for the in-app updater (it refuses to install without a matching SHA-256)
-          $exe = "dist-installer\Debrief-Setup-$v.exe"
-          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
-          "$hash  Debrief-Setup-$v.exe" | Out-File -Encoding ascii -NoNewline "$exe.sha256"
-          gh release create $tag "dist-installer\Debrief-Setup-$v.exe" "dist-installer\Debrief-Setup-$v.exe.sha256" `
-            --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --title "Debrief $v" --generate-notes
-          if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $tag already exists; nothing to publish."; exit 0
+          fi
+          files=("dist-installer/Debrief-Setup-$v.exe" "dist-installer/Debrief-Setup-$v.exe.sha256")
+          if [ -f "dist-installer/Debrief-Setup-$v.exe.sig" ]; then files+=("dist-installer/Debrief-Setup-$v.exe.sig"); fi
+          gh release create "$tag" "${files[@]}" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Debrief $v" --generate-notes

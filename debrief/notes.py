@@ -13,10 +13,12 @@ Five optional fields, one or two lines each, plus an optional line per car:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import tempfile
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -32,14 +34,29 @@ MAX_CAR_NOTE = 200
 MAX_CARS = 20
 
 
-def track_key(name: str) -> str:
-    """A file-safe key for a track layout. Years are dropped ('Roval 2019' and 'Roval 2025' share a card),
-    and 'Track - Config' and 'Track (Config)' give the same key."""
+def _legacy_key(name: str) -> str:
+    """The key Debrief 2.2.0-2.2.1 used (accented letters dropped). Read so older cards still open."""
     s = str(name or "").lower()
     s = re.sub(r"\b(19|20)\d\d\b", " ", s)
     s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
     s = re.sub(r"-+", "-", s)
     return s[:120] or "unknown-track"
+
+
+def track_key(name: str) -> str:
+    """A file-safe key for a track layout. Years are dropped ('Roval 2019' and 'Roval 2025' share a card),
+    'Track - Config' and 'Track (Config)' give the same key, and accents are folded ('Autódromo' and
+    'Autodromo' share a card). A name with no Latin letters at all gets a short hash, never a shared key."""
+    from .schedule import fold
+    raw = " ".join(str(name or "").split())
+    s = re.sub(r"\b(19|20)\d\d\b", " ", fold(raw).lower())
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    s = re.sub(r"-+", "-", s)[:120].strip("-")
+    if s:
+        return s
+    if not raw:
+        return "unknown-track"
+    return "track-" + hashlib.sha1(raw.casefold().encode("utf-8")).hexdigest()[:12]
 
 
 def folder(library_folder) -> Path:
@@ -61,9 +78,16 @@ def load(library_folder, track: str) -> dict:
     """The card for a track (an empty one if none is saved). Never raises for a bad file."""
     key = track_key(track)
     out = empty(track)
-    try:
-        d = json.loads(_path(library_folder, key).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    d = None
+    for k in dict.fromkeys((key, _legacy_key(track))):
+        if k == "unknown-track" and key != k:
+            continue   # 2.2.1 put every non-Latin name on this one card: don't show it for them
+        try:
+            d = json.loads(_path(library_folder, k).read_text(encoding="utf-8"))
+            break
+        except (OSError, ValueError):
+            d = None
+    if d is None:
         return out
     if not isinstance(d, dict):
         return out
@@ -124,7 +148,21 @@ def clean(raw) -> dict:
                 cars[car.strip()] = note
     season = raw.get("season")
     season = season.strip()[:40] if isinstance(season, str) and season.strip() else None
-    return {"track": track.strip(), "fields": out, "car_notes": cars, "season": season}
+    out_card = {"track": track.strip(), "fields": out, "car_notes": cars, "season": season}
+    # the card's "updated" time when the window opened it: a save is refused if it changed since
+    base = raw.get("base_updated", _NO_BASE)
+    if base is not _NO_BASE:
+        if base is not None and (not isinstance(base, str) or len(base) > 40):
+            raise ValueError("Bad request.")
+        out_card["base_updated"] = base
+    return out_card
+
+
+_NO_BASE = object()
+
+
+class Conflict(ValueError):
+    """The card changed since the window opened it (another window, or a newer save)."""
 
 
 def save(library_folder, card: dict) -> dict:
@@ -134,20 +172,29 @@ def save(library_folder, card: dict) -> dict:
     existing = load(library_folder, card["track"])
     if existing.get("read_only"):
         raise ValueError("This card was saved by a newer Debrief. Update Debrief to edit it.")
+    if "base_updated" in card and card["base_updated"] != existing.get("updated"):
+        raise Conflict("This track card was changed somewhere else after you opened it. "
+                       "Close it and open it again to see the newer notes, then make your change.")
+    legacy = _legacy_key(card["track"])
+    old = _path(library_folder, legacy) if legacy not in (key, "unknown-track") else None
     d = {"schema": SCHEMA, "key": key, "track": card["track"], "fields": {k: card["fields"].get(k, "") for k in FIELDS},
          "car_notes": dict(card.get("car_notes") or {}), "season": card.get("season") or existing.get("season"),
          "updated": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")}
     if not has_notes(d):
-        try:
-            p.unlink()
-        except FileNotFoundError:
-            pass
+        for f in (p, old):
+            try:
+                if f is not None:
+                    f.unlink()
+            except FileNotFoundError:
+                pass
         return empty(card["track"])
     p.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=p.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(d, f, indent=1, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
         fsutil.replace(tmp, p)
     except BaseException:
         try:
@@ -155,6 +202,11 @@ def save(library_folder, card: dict) -> dict:
         except OSError:
             pass
         raise
+    if old is not None:   # moved to the new (accent-folded) key
+        try:
+            old.unlink()
+        except OSError:
+            pass
     return load(library_folder, card["track"])
 
 

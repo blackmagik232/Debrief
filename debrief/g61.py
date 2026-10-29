@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 import time
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -25,7 +27,38 @@ BASE = "https://garage61.net/api/v1/"
 
 
 class Garage61Error(RuntimeError):
-    pass
+    """A request to Garage 61 failed. status: the HTTP status (None when Garage 61 couldn't be reached)."""
+
+    def __init__(self, msg="", status=None):
+        super().__init__(msg)
+        self.status = status
+
+    @property
+    def fatal(self) -> bool:
+        """True when retrying other requests won't help (the token was rejected)."""
+        return self.status == 401
+
+
+class Interrupted(Exception):
+    """should_stop() turned True while the client was waiting (a backoff or quota wait). Nothing was lost."""
+
+
+def _atomic_write(p: Path, text: str) -> None:
+    """Write a file so it's either the old or the new content, never half of either (temp file, flushed
+    to disk, then swapped in)."""
+    fd, tmp = tempfile.mkstemp(prefix=".tmp-", suffix=p.suffix, dir=p.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        fsutil.replace(tmp, p)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 class Garage61:
@@ -53,12 +86,29 @@ class Garage61:
         self._last = 0.0
         self.requests_made = 0
         self.log = log
+        self.should_stop = None   # optional callable: long waits end early (raising Interrupted) when it's True
+
+    def _sleep(self, secs: float) -> None:
+        """time.sleep that ends early, raising Interrupted, when should_stop() turns True (so a sync can
+        pause in under a second even during a 2-minute backoff)."""
+        stop = self.should_stop
+        if stop is None:
+            time.sleep(secs)
+            return
+        end = time.monotonic() + max(0.0, secs)
+        while True:
+            if stop():
+                raise Interrupted()
+            left = end - time.monotonic()
+            if left <= 0:
+                return
+            time.sleep(min(0.2, left))
 
     # ---------- low level ----------
     def _wait(self):
         gap = time.monotonic() - self._last
         if gap < self.min_gap:
-            time.sleep(self.min_gap - gap)
+            self._sleep(self.min_gap - gap)
         self._last = time.monotonic()
 
     MAX_GAP = 6.0
@@ -89,7 +139,7 @@ class Garage61:
             secs = max(0.0, min(120.0, secs))
             if secs > 0:
                 self.log(f"  Garage 61 request quota nearly used; waiting {secs:.0f}s for it to reset")
-                time.sleep(secs)
+                self._sleep(secs)
 
     @staticmethod
     def _retry_after(r, default):
@@ -125,15 +175,15 @@ class Garage61:
             except requests.RequestException as e:
                 if last:
                     raise Garage61Error(f"Could not reach Garage 61 ({type(e).__name__}).")
-                time.sleep(delay); delay *= 2; continue
+                self._sleep(delay); delay *= 2; continue
             if r.status_code == 401:
                 raise Garage61Error("Garage 61 rejected the token (401). Check settings.toml, "
-                                    "or create a new token at garage61.net/developer.")
+                                    "or create a new token at garage61.net/developer.", status=401)
             if r.status_code == 403:
                 if forbidden_ok:
                     return None
                 raise Garage61Error(f"Garage 61 says this isn't available to your account (403): /{path}. "
-                                    "Some data needs a Pro plan or a different privacy setting.")
+                                    "Some data needs a Pro plan or a different privacy setting.", status=403)
             if r.status_code == 404:
                 return None
             if r.status_code == 429 or r.status_code >= 500:
@@ -143,18 +193,20 @@ class Garage61:
                     break
                 wait = self._retry_after(r, delay)
                 self.log(f"  Garage 61 asked us to slow down ({r.status_code}); waiting {wait}s")
-                time.sleep(wait); delay *= 2; continue
+                self._sleep(wait); delay *= 2; continue
             if not (200 <= r.status_code < 300):
                 detail = (r.text or "").strip().replace("\n", " ")[:300]
-                raise Garage61Error(f"Garage 61 returned {r.status_code} for /{path}?{urlencode(params)}: {detail}")
+                raise Garage61Error(f"Garage 61 returned {r.status_code} for /{path}?{urlencode(params)}: {detail}",
+                                    status=r.status_code)
             self._went_ok(r)
             if raw:
                 return r.content.decode("utf-8-sig", errors="replace")
             try:
                 return r.json()
             except ValueError:
-                raise Garage61Error(f"Garage 61 sent something that isn't data for /{path}. Try again later.")
-        raise Garage61Error("Garage 61 kept refusing requests; try again later.")
+                raise Garage61Error(f"Garage 61 sent something that isn't data for /{path}. Try again later.",
+                                    status=r.status_code)
+        raise Garage61Error("Garage 61 kept refusing requests; try again later.", status=r.status_code)
 
     def _cached(self, key: str, fn, max_age_s: float | None = None, suffix=".json"):
         p = self.cache / (hashlib.sha1(key.encode()).hexdigest()[:20] + suffix)
@@ -164,7 +216,13 @@ class Garage61:
         if p.exists() and (max_age_s is None or time.time() - p.stat().st_mtime < max_age_s):
             try:
                 txt = p.read_text(encoding="utf-8")
-                return txt if suffix != ".json" else json.loads(txt)
+                val = txt if suffix != ".json" else json.loads(txt)
+                if max_age_s is None:
+                    try:   # kept forever: note the use, so the size cap drops the least recently used first
+                        os.utime(p, None)
+                    except OSError:
+                        pass
+                return val
             except (ValueError, OSError):
                 pass  # corrupt cache entry: treat as a miss
         val = fn()
@@ -172,10 +230,37 @@ class Garage61:
             if suffix != ".json":
                 miss.write_text("", encoding="utf-8")  # don't re-ask for missing telemetry for a day
             return None
-        tmp = p.with_suffix(p.suffix + ".tmp")
-        tmp.write_text(val if isinstance(val, str) else json.dumps(val), encoding="utf-8")
-        fsutil.replace(tmp, p)
+        _atomic_write(p, val if isinstance(val, str) else json.dumps(val))
         return val
+
+    CSV_CACHE_BYTES = 2 * 1024 ** 3   # saved telemetry kept on disk; the least recently used goes first
+
+    def prune_csv(self, max_bytes: int | None = None, keep=()) -> int:
+        """Keep the saved telemetry under max_bytes by deleting the least recently used CSVs (never those for
+        the lap ids in keep). Returns how many were deleted. No requests."""
+        limit = self.CSV_CACHE_BYTES if max_bytes is None else max_bytes
+        keep_files = {hashlib.sha1(("csv/" + str(k)).encode()).hexdigest()[:20] + ".csv" for k in keep}
+        files = []
+        for f in self.cache.glob("*.csv"):
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            files.append((st.st_mtime, st.st_size, f))
+        total = sum(sz for _, sz, _ in files)
+        gone = 0
+        for _, sz, f in sorted(files, key=lambda x: x[0]):
+            if total <= limit:
+                break
+            if f.name in keep_files:
+                continue
+            try:
+                f.unlink()
+                total -= sz
+                gone += 1
+            except OSError:
+                pass
+        return gone
 
     def peek(self, key: str):
         """A cached JSON answer of any age, or None. Never contacts Garage 61 (used to fill pickers)."""
@@ -237,19 +322,37 @@ class Garage61:
     def search_laps_page(self, **params) -> list:
         """GET /laps, never cached: used by the history sync, which keeps its own store of laps
         (so a full history isn't saved twice). One request."""
+        return self.laps_page(**params)[0]
+
+    def laps_page(self, **params) -> tuple[list, int | None]:
+        """GET /laps, never cached: (items, total). total is Garage 61's count of all matching laps when
+        the answer includes one, else None. One request."""
         d = self._get("laps", params)
-        return list((d or {}).get("items") or []) if isinstance(d, dict) else []
+        if not isinstance(d, dict):
+            return [], None
+        total = d.get("total")
+        try:
+            total = int(total) if total is not None and not isinstance(total, bool) else None
+        except (TypeError, ValueError):
+            total = None
+        return list(d.get("items") or []), total
 
     def my_statistics(self, start_iso: str):
         """Driving statistics (one row per car/track/day). Used to find which tracks to search,
-        because the laps search requires a track."""
-        d = self._cached("stats?" + start_iso[:13], lambda: self._get("me/statistics", {"start": start_iso}), max_age_s=0)
+        because the laps search requires a track. Not saved to disk: it's asked for once per sync with a
+        different start each time, so a saved copy would never be read again."""
+        d = self._get("me/statistics", {"start": start_iso})
         if isinstance(d, dict):
             return d.get("drivingStatistics") or d.get("items") or []
         return d or []
 
+    def csv_missing(self, lap_id: str) -> bool:
+        """True if Garage 61 recently said this lap has no telemetry for you (403/404; re-asked after a day)."""
+        p = self.cache / (hashlib.sha1(("csv/" + str(lap_id)).encode()).hexdigest()[:20] + ".missing")
+        return p.exists() and time.time() - p.stat().st_mtime < 86400
+
     def lap_csv(self, lap_id: str) -> str | None:
         """Telemetry CSV for one lap. Cached forever (a lap never changes). 403/404 -> None."""
-        return self._cached("csv/" + lap_id,
+        return self._cached("csv/" + str(lap_id),
                             lambda: self._get(f"laps/{lap_id}/csv", raw=True, forbidden_ok=True),
                             suffix=".csv")

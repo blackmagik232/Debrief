@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import json
 import math
+import base64
+import hashlib
 import os
-import mimetypes
 import secrets
+import shutil
 import threading
 import time
 import traceback
@@ -33,6 +35,54 @@ FALLBACK_TOKENS = """:root{--bg:#f3f4f2;--panel:#fcfcfb;--fg:#0f1214;--fg2:#4b52
 :root[data-theme="dark"]{--bg:#0d0f10;--panel:#17191a;--fg:#eef0ee;--fg2:#c0c5c3;--muted:#8a9094;--grid:#272b2c;--axis:#3d4244;--band:#1c1f20;--me:#3987e5;--ref:#d95926;--lose:#e66767;--good:#2fbf4a;--warn:#efb43f;color-scheme:dark}
 """
 LIB_TYPES = {".html", ".json", ".png", ".svg", ".css", ".js"}
+# Fixed types: never Windows' registry (mimetypes reads HKCR, where .js is often text/plain, and with
+# nosniff Edge then refuses to run app.js and the window opens blank).
+MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+        ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",
+        ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon"}
+# Library pages (review, library, prep, team pages, or any .html someone drops in the folder) run in an
+# opaque origin: their scripts work, but they can't call the API, read the window or change settings.
+# connect-src 'none' matches the policy in the templates' own <meta> tag: library pages never use the network
+# (their data is inline), so a planted page can't send anything anywhere either.
+LIB_CSP = ("sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads; "
+           "connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'")
+# The iframe that shows library pages (ui/index.html) must carry the same flags:
+FRAME_SANDBOX = "allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads"
+# Added to every library page as it is served: tells the window which page is showing (the window can't
+# look inside a sandboxed page), applies the theme it sends, and opens outside links in the browser.
+FRAME_BRIDGE = ("<script>/* debrief-frame-bridge */(function(){if(parent===window)return;"
+                "var P=new URL(location.href).origin;"  # the page's own origin is opaque ("null") in the sandbox
+                "function say(){try{parent.postMessage({type:'debrief-frame',href:location.href,"
+                "title:String(document.title||'').slice(0,200)},P)}catch(e){}}"
+                "addEventListener('message',function(e){if(e.source!==parent)return;var m=e.data;"
+                "if(!m||m.type!=='debrief-theme')return;var r=document.documentElement;"
+                "if(m.theme==='light'||m.theme==='dark')r.setAttribute('data-theme',m.theme);"
+                "else r.removeAttribute('data-theme')});"
+                "document.addEventListener('click',function(e){var a=e.target&&e.target.closest&&"
+                "e.target.closest('a[href]');if(!a)return;var u;try{u=new URL(a.getAttribute('href'),"
+                "document.baseURI)}catch(x){return}if(u.origin!==P){a.target='_blank';a.rel='noreferrer'}},true);"
+                "addEventListener('hashchange',say);if(document.readyState==='loading')"
+                "addEventListener('DOMContentLoaded',say);else say()})();</script>")
+_INLINE_SCRIPT = re.compile(r"<script>(.*?)</script>", re.S)
+
+
+def ui_csp(html: str) -> str:
+    """A strict policy for the window itself. Inline <script> blocks in index.html are allowed by hash,
+    so editing them never needs a change here; inline event handlers (onclick=...) are not allowed."""
+    hashes = " ".join("'sha256-" + base64.b64encode(hashlib.sha256(m.encode("utf-8")).digest()).decode() + "'"
+                      for m in _INLINE_SCRIPT.findall(html))
+    return ("default-src 'self'; script-src 'self'" + (" " + hashes if hashes else "") + "; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data:; connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; "
+            "worker-src 'self' blob:; "   # the heartbeat worker (app.js) is a blob: script
+            "object-src 'none'; base-uri 'none'; form-action 'self'")
+
+
+def with_bridge(html: bytes) -> bytes:
+    tag = FRAME_BRIDGE.encode("utf-8")
+    low = html.lower()
+    i = low.rfind(b"</body>")
+    return html[:i] + tag + html[i:] if i >= 0 else html + tag
 REVIEW_DIR_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
 GOAL_ID_OK = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 # race result fields: (kind, min, max). results.save validates again; this is the server's own gate.
@@ -179,6 +229,7 @@ JOB_TITLES = {"review": "Reviewing your last race", "check": "Checking the conne
               "prep": "Building your track prep page", "team": "Updating the team hub",
               "sync": "Syncing your Garage 61 history", "schedule": "Loading the iRacing season schedule",
               "update": "Updating Debrief"}
+BACKGROUND_TITLES = {"refresh": "Updating your saved reviews to the new page layout"}
 
 
 class Jobs:
@@ -192,6 +243,37 @@ class Jobs:
         self.stop_sync = threading.Event()
         self.thread = None
         self.on_update_started = None   # set by the server: close Debrief so the installer can replace it
+        self.closing = False            # set while Debrief closes for an update: no new jobs
+        self.background = {}            # name -> thread: quiet housekeeping that writes the library
+
+    def run_background(self, name: str, fn) -> bool:
+        """Run housekeeping (the saved-review refresh) on a tracked thread: the watchdog, the update and
+        any new job wait for it, so it's never cut off mid-write or racing a review in the same folder."""
+        if name not in BACKGROUND_TITLES:
+            raise ValueError(name)
+        with self.lock:
+            if self.closing or (name in self.background and self.background[name].is_alive()):
+                return False
+            t = threading.Thread(target=fn, daemon=True, name="bg-" + name)
+            self.background[name] = t
+            t.start()
+        return True
+
+    def _background_alive(self):
+        with self.lock:
+            return [t for t in self.background.values() if t.is_alive()]
+
+    def wait_background(self, timeout: float) -> bool:
+        """Wait for housekeeping to finish. True if none is running now."""
+        end = time.monotonic() + timeout
+        for t in self._background_alive():
+            t.join(max(0.0, end - time.monotonic()))
+        return not self._background_alive()
+
+    @property
+    def busy(self) -> bool:
+        """A job or housekeeping is running: Debrief must not stop now."""
+        return self.running or bool(self._background_alive())
 
     @property
     def kind(self):
@@ -214,7 +296,11 @@ class Jobs:
 
     def snapshot(self):
         with self.lock:
-            return json.loads(json.dumps(self.st))
+            out = json.loads(json.dumps(self.st))
+            bg = [k for k, t in self.background.items() if t.is_alive()]
+        if bg:
+            out["background"] = bg
+        return out
 
     @property
     def running(self):
@@ -224,9 +310,16 @@ class Jobs:
     def start(self, kind: str, params: dict | None = None) -> dict:
         if kind not in JOB_TITLES:
             raise ValueError(kind)
+        if self.closing:
+            return {"ok": False, "error": "Debrief is closing to install an update."}
         if kind != "sync" and self.kind == "sync":
             self.pause_sync()
+        if not self.wait_background(30.0):
+            return {"ok": False, "error": "Debrief is still updating your saved reviews to the new page layout. "
+                                          "Try again in a minute."}
         with self.lock:
+            if self.closing:
+                return {"ok": False, "error": "Debrief is closing to install an update."}
             if self.st.get("state") == "running":
                 return {"ok": False, "error": "Debrief is already busy with: " + self.st.get("title", "a job") + "."}
             self.seq += 1
@@ -317,7 +410,7 @@ def _run_update(cb) -> dict:
             raise SystemExit(f"You already have the newest version ({info['current']}).")
         path = updater.download(info, progress=cb)
         cb(0.97, "Verified. Installing... Debrief will close and reopen in a moment.")
-        updater.launch(path)
+        updater.launch(path, info.get("latest"))
     except updater.UpdateError as e:
         raise SystemExit(str(e))
     return {"version": info["latest"]}
@@ -326,12 +419,14 @@ def _run_update(cb) -> dict:
 def _run_schedule(params, cb) -> dict:
     """Import a season PDF: one you picked (params["path"], a temp copy) or iRacing's current one."""
     from .. import schedule
+    import tempfile
     path = params.get("path")
-    tmp = None
+    tmp_dir = None
     try:
         if not path:
             cb(0.1, "Downloading the season schedule from iRacing...")
-            path = tmp = schedule.download_official()
+            tmp_dir = tempfile.mkdtemp(prefix="debrief-sched-")   # ours, so it's removed even if the download fails
+            path = schedule.download_official(dest_dir=tmp_dir)
         cb(0.4, "Reading the schedule (this takes a few seconds)...")
         try:
             info = schedule.import_pdf(path, kind="pdf" if params.get("path") else "official")
@@ -342,10 +437,12 @@ def _run_schedule(params, cb) -> dict:
     except schedule.ScheduleError as e:
         raise SystemExit(str(e))
     finally:
-        for p in filter(None, [tmp, params.get("path")]):
+        if tmp_dir:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        if params.get("path"):
             try:
-                Path(p).unlink()
-                Path(p).parent.rmdir()
+                Path(params["path"]).unlink()
+                Path(params["path"]).parent.rmdir()
             except OSError:
                 pass
 
@@ -423,15 +520,27 @@ class DebriefServer(ThreadingHTTPServer):
         self.last_ping = time.monotonic() + max(0.0, startup_grace - heartbeat_timeout)
         self.stopping = threading.Event()
         self.jobs.on_update_started = self._close_for_update
+        self.update_outcome = None   # how the last in-app update went (set at start; see updater.pending_result)
+        self.exit = os._exit         # replaced in tests
 
     def _close_for_update(self):
         """The installer is running: stop in a few seconds (after the window has seen the result) so it
-        can replace Debrief's files. It reopens Debrief when it's done."""
+        can replace Debrief's files. It waits for Debrief to close, installs and reopens Debrief.
+        No new job starts meanwhile, and anything still writing (a job or the review refresh) finishes first."""
+        self.jobs.closing = True
+
         def stop():
+            end = time.monotonic() + 60
+            while time.monotonic() < end:
+                with self.jobs.lock:   # the update job itself is finishing: only another writer counts
+                    other = self.jobs.st.get("state") == "running" and self.jobs.st.get("kind") != "update"
+                if not other and not self.jobs._background_alive():
+                    break
+                time.sleep(0.2)
             app.say("Closing for the update.")
             self.stopping.set()
             self.shutdown()
-            os._exit(0)
+            self.exit(0)
         threading.Timer(4.0, stop).start()
 
     @property
@@ -455,7 +564,7 @@ class DebriefServer(ThreadingHTTPServer):
             idle = now - self.last_ping
             if idle > self.timeout_s and self.jobs.kind == "sync":
                 self.jobs.pause_sync(10.0)   # a sync never keeps Debrief open: it resumes next time
-            if idle > self.timeout_s and not self.jobs.running:
+            if idle > self.timeout_s and not self.jobs.busy:
                 app.say(f"Window closed (no heartbeat for {idle:.0f}s). Stopping.")
                 self.stopping.set()
                 threading.Thread(target=self.shutdown, daemon=True).start()
@@ -468,11 +577,28 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "Debrief"
     sys_version = ""
 
+    timeout = 30   # a stalled client can't hold a thread forever (socket timeout on every read)
+
     def log_message(self, fmt, *args):  # keep the secret URL and request noise out of the log
         pass
 
+    def parse_request(self):
+        self._consumed = False   # has this request's body been read? (see _send)
+        return super().parse_request()
+
+    def _has_body(self) -> bool:
+        if self.headers.get("Transfer-Encoding"):
+            return True
+        cl = (self.headers.get("Content-Length") or "").strip()
+        return cl != "0" and cl != ""
+
     # ---------- helpers
     def _send(self, code, body: bytes, ctype="application/json; charset=utf-8", extra=None):
+        extra = dict(extra or {})
+        if not getattr(self, "_consumed", False) and self._has_body():
+            # a refused request whose body we never read: close, so those bytes are never taken
+            # as the next request on this connection
+            extra["Connection"] = "close"
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
@@ -480,8 +606,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "SAMEORIGIN")
-        for k, v in (extra or {}).items():
+        if "Content-Security-Policy" not in extra:   # library pages carry their own (sandbox) policy
+            self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        for k, v in extra.items():
             self.send_header(k, v)
+        if extra.get("Connection", "").lower() == "close":
+            self.close_connection = True
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -521,6 +651,10 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             raise ValueError("Request too large.")
         raw = self.rfile.read(n) if n else b""
+        if len(raw) != n:   # the client stopped sending
+            self.close_connection = True
+            raise ValueError("Bad request.")
+        self._consumed = True
         if not raw:
             return {}
         obj = json.loads(raw.decode("utf-8"))
@@ -543,7 +677,13 @@ class Handler(BaseHTTPRequestHandler):
         if r == "" and not urlsplit(self.path).path.endswith("/"):
             return self._send(302, b"", "text/plain", {"Location": "/" + self.server.secret + "/"})
         if r in ("", "index.html"):
-            return self._file(UI / "index.html")
+            try:
+                html = (UI / "index.html").read_bytes()
+            except OSError:
+                return self._nf()
+            return self._send(200, html, MIME[".html"], {
+                "Content-Security-Policy": ui_csp(html.decode("utf-8", "replace")),
+                "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Resource-Policy": "same-origin"})
         if r.startswith("static/"):
             name = r[len("static/"):]
             if name == "tokens.css":
@@ -725,12 +865,17 @@ class Handler(BaseHTTPRequestHandler):
         cfg = self._cfg()
         if q.get("auto") == "1" and not cfg.get("check_updates", True):
             return self._json({"ok": True, "skipped": True})
+        last = self.server.update_outcome   # {"ok": False, "message": ...} when the last update didn't finish
         try:
             info = updater.check(force=q.get("force") == "1")
         except updater.UpdateError as e:
-            return self._json({"ok": False, "error": str(e)})
+            return self._json({"ok": False, "error": str(e), "last_update": last})
+        except Exception:  # noqa: BLE001  (a broken update.json etc.: never show Python's own words)
+            app.say("ERROR checking for updates:\n" + traceback.format_exc())
+            return self._json({"ok": False, "error": "Couldn't check for updates right now. Try again later.",
+                               "last_update": last})
         info.pop("notes", None) if q.get("auto") == "1" else None
-        return self._json({"ok": True, "installed": app.FROZEN, **info})
+        return self._json({"ok": True, "installed": app.FROZEN, **info, "last_update": last})
 
     def _get_pages(self, q):
         """Pages built by the Prep and Team views, so the window can offer to reopen them."""
@@ -751,14 +896,16 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"ok": True, "team": "team/index.html" if team.is_file() else None,
                            "team_updated": team.stat().st_mtime if team.is_file() else None, "prep": preps})
 
-    def _file(self, p: Path):
+    def _file(self, p: Path, lib: bool = False):
         try:
             body = p.read_bytes()
         except OSError:
             return self._nf()
-        ctype = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
-        if ctype.startswith("text/") or ctype in ("application/javascript", "application/json"):
-            ctype += "; charset=utf-8"
+        ctype = MIME.get(p.suffix.lower(), "application/octet-stream")
+        if lib:
+            if p.suffix.lower() == ".html":
+                body = with_bridge(body)
+            return self._send(200, body, ctype, {"Content-Security-Policy": LIB_CSP})
         self._send(200, body, ctype)
 
     def _lib(self, rel: str):
@@ -785,7 +932,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._nf()
         if p.suffix.lower() not in LIB_TYPES or not p.is_file():
             return self._nf()
-        self._file(p)
+        self._file(p, lib=True)
 
     # ---------- POST
     def do_POST(self):
@@ -891,6 +1038,9 @@ class Handler(BaseHTTPRequestHandler):
         if n > self.MAX_PDF or n < 1000:
             self.close_connection = True
             return self._json({"ok": False, "error": "That file isn't the season schedule PDF."}, 400)
+        if self.server.jobs.running or self.server.jobs.closing:   # don't take 40 MB we can't use
+            return self._json({"ok": False, "error": "Wait for " + self.server.jobs.snapshot().get(
+                "title", "the current job").lower() + " to finish first."})
         import tempfile
         d = Path(tempfile.mkdtemp(prefix="debrief-sched-"))
         p = d / "upload.pdf"
@@ -902,6 +1052,7 @@ class Handler(BaseHTTPRequestHandler):
                     break
                 f.write(chunk)
                 left -= len(chunk)
+        self._consumed = not left
         def drop():
             try:
                 p.unlink()
@@ -939,7 +1090,15 @@ class Handler(BaseHTTPRequestHandler):
     def _post_notes(self, body):
         cfg = self._cfg()
         notes = self._module("notes")
-        card = notes.save(cfg["library_folder"], notes.clean(body.get("card")))
+        try:
+            card = notes.save(cfg["library_folder"], notes.clean(body.get("card")))
+        except ValueError as e:
+            conflict_cls = getattr(notes, "Conflict", None)
+            msg = str(e)
+            if (isinstance(conflict_cls, type) and isinstance(e, conflict_cls)) or "changed since" in msg:
+                # the card was saved elsewhere after the window opened it: the window reloads it
+                return self._json({"ok": False, "error": msg, "conflict": True}, 400)
+            raise
         return self._json({"ok": True, "card": card})
 
     def _post_team(self, body):

@@ -137,7 +137,9 @@ def _history(rows: list) -> dict | None:
     if not rows:
         return None
     rows = sorted(rows, key=library._ts)
-    bests = [r["best"] for r in rows]
+    # only races whose best counts (not every lap flagged, not a partial lap) feed the typical best and
+    # the trend; the others stay in races_list, marked best_clean False
+    bests = [r["best"] for r in rows if r.get("best_clean", True)] or [r["best"] for r in rows]
     meds = [r["median"] for r in rows if _num(r.get("median")) is not None]
     pb = min([r for r in rows if r.get("best_clean", True)] or rows, key=lambda r: r["best"])  # clean bests first
     last = rows[-1]
@@ -158,7 +160,8 @@ def _history(rows: list) -> dict | None:
             "median_of_bests": round(st.median(bests), 3), "latest_median": _num(last.get("median")),
             "median_lap": round(st.median(meds), 3) if meds else None,
             "trend_s_per_race": tr, "trend_text": trend_text, "last_date": last["date"], "days_since": days,
-            "races_list": [{"date": r["date"], "best": r["best"], "median": r.get("median"), "std": r.get("std"),
+            "races_list": [{"date": r["date"], "best": r["best"], "best_clean": r.get("best_clean", True),
+                            "median": r.get("median"), "std": r.get("std"),
                             "path": r["path"], "test_data": r.get("test_data"), "irating": r.get("irating"),
                             "result": r.get("result")} for r in rows]}
 
@@ -234,6 +237,16 @@ _METRIC = {  # metric -> (noun, unit)
 }
 
 
+def _strong(drv: dict) -> bool:
+    """Reviews made before 2.2.2 kept any |r| >= 0.5 from 10 laps, which noise alone produces on most
+    corners. Only patterns that clear today's bar (engine.pattern_r_needed) become practice targets."""
+    from .engine import pattern_r_needed
+    r, n = _num((drv or {}).get("r")), (drv or {}).get("n")
+    if r is None or not isinstance(n, int):
+        return False
+    return abs(r) >= pattern_r_needed(n)
+
+
 def _target(drv: dict, apex: float | None) -> tuple[str, str] | None:
     """Turn one correlation from the engine into a concrete target.
     The engine's r is corr(metric, corner time): r < 0 means a HIGHER metric went with QUICKER laps,
@@ -301,6 +314,8 @@ def _corner_drill(w: dict, corner: dict | None, tech: dict | None, laps: int, cl
     where = f"apex ~{apex:,.0f} m" if apex is not None else ""
     targets, why = [], []
     for drv in (corner or {}).get("drivers") or []:
+        if not _strong(drv):
+            continue
         t = _target(drv, apex)
         if t and len(targets) < 2:
             targets.append(t[0])

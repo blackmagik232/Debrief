@@ -24,6 +24,9 @@ sync_telemetry = "best"
 # Check GitHub for a newer Debrief once a day (one request; nothing about you is sent).
 check_updates = true
 
+# How reviews address you, e.g. "sir" (up to 20 characters). Leave empty for none.
+salutation = ""
+
 # Your Garage 61 team, for the Team hub and Prep pages. Pick it in Settings > Team, or type its
 # short name from the team's Garage 61 web address.
 team_slug = "midfield-menace"

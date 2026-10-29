@@ -13,11 +13,13 @@ def _when(s):
     return str(s.get("start") or "")
 
 
-def history_at(sessions: list, track: str, cars: list) -> dict:
+def history_at(sessions: list, track: str, cars: list, matcher=None) -> dict:
     """Your synced sessions at a track (any of the series' cars): counts, best clean lap, last visit,
-    and the Garage 61 ids to build a prep page with."""
-    rows = [s for s in sessions if schedule.same_track(s.get("track"), track)]
-    in_car = [s for s in rows if not cars or any(schedule.same_car(s.get("car"), c) for c in cars)]
+    and the Garage 61 ids to build a prep page with. Matching is strict (by Garage 61 id where the cached
+    lists name one, else by name): another layout's or another car's laps never count."""
+    m = matcher or schedule.Matcher()
+    rows = [s for s in sessions if isinstance(s, dict) and m.track(s, track)]
+    in_car = [s for s in rows if not cars or any(m.car(s, c) for c in cars)]
     use = in_car or []
     races = [s for s in use if s.get("type") == 3]
     bests = [s["best_clean"] for s in use if isinstance(s.get("best_clean"), (int, float))]
@@ -29,30 +31,41 @@ def history_at(sessions: list, track: str, cars: list) -> dict:
             "other_car_sessions": len(rows) - len(use)}
 
 
-def _ids_from_lists(api, track: str, cars: list):
-    """Garage 61 ids for a schedule track/car from the cached lists (no requests). (None, None) if unknown."""
+def matcher_for(api):
+    """A schedule.Matcher over Garage 61's cached track and car lists (no requests; names only if none)."""
     if api is None:
+        return schedule.Matcher()
+    try:
+        from .app import item_name
+        return schedule.Matcher(api.cached_items("tracks") or [], api.cached_items("cars") or [], item_name)
+    except Exception:  # noqa: BLE001  (no lists saved yet: match by name)
+        return schedule.Matcher()
+
+
+def _ids_from_lists(api, track: str, cars: list, matcher=None):
+    """Garage 61 ids for a schedule track/car from the cached lists (no requests). None for either one
+    that's unknown or ambiguous (two layouts or cars fit the name): a wrong prep page is worse than none."""
+    if api is None and matcher is None:
         return None, None
-    from .app import item_name
-    tracks = api.cached_items("tracks") or []
-    car_items = api.cached_items("cars") or []
-    tid = next((t.get("id") for t in tracks if isinstance(t, dict) and schedule.same_track(item_name(t), track)), None)
+    m = matcher or matcher_for(api)
+    tid = m.track_id(track)
     cid = None
     for c in cars or []:
-        cid = next((x.get("id") for x in car_items if isinstance(x, dict) and schedule.same_car(item_name(x), c)), None)
-        if cid:
+        cid = m.car_id(c)
+        if cid is not None:
             break
     return tid, cid
 
 
-def _week_view(ser, wk_no, sessions, library_folder, api):
+def _week_view(ser, wk_no, sessions, library_folder, api, matcher=None):
     w = next((w for w in ser["weeks"] if w["week"] == wk_no), None)
     if w is None:
         return None
-    hist = history_at(sessions, w["track"], ser.get("cars") or [])
+    m = matcher or matcher_for(api)
+    hist = history_at(sessions, w["track"], ser.get("cars") or [], m)
     tid, cid = hist["track_id"], hist["car_id"]
     if tid is None or cid is None:
-        lt, lc = _ids_from_lists(api, w["track"], ser.get("cars") or [])
+        lt, lc = _ids_from_lists(api, w["track"], ser.get("cars") or [], m)
         tid, cid = tid or lt, cid or lc
     card = notes.load(library_folder, w["track"])
     return {"week": w["week"], "start": w["start"], "track": w["track"], "length": w.get("length"),
@@ -69,7 +82,8 @@ def view(cfg: dict, api=None, sessions: list | None = None, today: date | None =
            "suggestions": [], "all": [], "token": api is not None}
     if not sched:
         return out
-    sessions = sessions or []
+    sessions = [s for s in sessions or [] if isinstance(s, dict)]
+    m = matcher_for(api)
     wk = schedule.week_on(sched, today)
     a, _ = schedule.season_range(sched)
     if wk is None:
@@ -80,13 +94,13 @@ def view(cfg: dict, api=None, sessions: list | None = None, today: date | None =
             row.update({"category": s.get("category"), "cars": s.get("cars") or [], "license": s.get("license"),
                         "classes": s.get("classes") or [], "multiclass": s.get("multiclass", False),
                         "setup": s.get("setup"), "frequency": s.get("frequency"),
-                        "this_week": _week_view(s, wk, sessions, lib, api) if wk else None,
-                        "next_week": _week_view(s, wk + 1, sessions, lib, api) if wk else None,
+                        "this_week": _week_view(s, wk, sessions, lib, api, m) if wk else None,
+                        "next_week": _week_view(s, wk + 1, sessions, lib, api, m) if wk else None,
                         "season": [{"week": w["week"], "start": w["start"], "track": w["track"],
                                     "length": w.get("length"), "has_notes": notes.has_notes(notes.load(lib, w["track"]))}
                                    for w in s["weeks"]]})
         out["mine"].append(row)
-    out["suggestions"] = series.suggest(sched, sessions, today)
+    out["suggestions"] = series.suggest(sched, sessions, today, m)
     for s in sched.get("series") or []:
         w = next((w for w in s["weeks"] if w["week"] == wk), None) if wk else None
         out["all"].append({"id": s["id"], "name": s["name"], "category": s.get("category"),

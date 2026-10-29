@@ -1,9 +1,19 @@
 """Turn a review's numbers into a short coaching summary, sorted the way a driver reads it:
 
     verdict      2 lines: best lap, how consistent, how much time is realistically there
-    fix          up to 3 corners worth working on now: what to change and roughly what it's worth
+    fix          up to 5 corners worth working on now: what to change, roughly what it's worth, and the
+                 numbers behind it ("numbers": best / typical / comparison technique, "times": corner times)
     bad          habits that repeat across laps (only listed when they clear a threshold)
     good         what you already do well
+
+Every bad/good item is {key, title, text, cost} plus, when known, "detail" (one plain sentence with the
+measurement behind it), "laps" [int] and "corners" [str]. Every fix item adds "numbers"
+{"best", "typical", "ref"} (each {brake_on, min_mph, exit_mph, full_thr, coast_s, gear} or None) and
+"times" {"best_t", "typical_t", "p25_t", "ref_t"}. Readers must treat all of these as optional.
+
+Thresholds in seconds are for a ~90 s lap and scale with your median lap time (a 30 s short oval and an
+8-minute Nordschleife lap are judged alike). Wording stays correlational: "on your quicker laps you
+tended to...", never "do X and you'll gain Y".
 
 Uses only numbers the analysis already worked out (engine + analysis_plus), so old reviews can be
 summarised too. Every item has plain words; numbers are rounded to what a driver can act on.
@@ -12,6 +22,7 @@ from __future__ import annotations
 
 import statistics as st
 
+MAX_FIX = 5              # corners in "fix immediately"
 MIN_GAIN = 0.05          # s/lap: below this a corner isn't worth a "fix" item
 VARY_BAD = 0.15          # s: corner time spread (IQR) that counts as "varies a lot"
 VARY_GOOD = 0.06         # s: spread that counts as "locked in"
@@ -19,10 +30,32 @@ FADE_BAD = 0.3           # s: clean laps slower by this much from first to last
 COAST_BAD = 0.5          # s/lap: extra coasting on typical laps vs your best lap
 OVERLAP_BAD = 0.3        # s/lap: both pedals at once
 LAP1_BAD = 1.0           # s: lap 1 slower than the median
+REF_LAP = 90.0           # the lap time the seconds above are written for
+TECH_KEYS = ("brake_on", "min_mph", "exit_mph", "full_thr", "coast_s", "gear")
+
+
+def _scale(median) -> float:
+    """Threshold multiplier for this track: median lap / 90 s (clamped to 0.33..4)."""
+    m = _f(median)
+    return min(4.0, max(0.33, m / REF_LAP)) if m else 1.0
 
 
 def _f(v):
-    return float(v) if isinstance(v, (int, float)) else None
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    v = float(v)
+    return v if v == v and v not in (float("inf"), float("-inf")) else None
+
+
+def _nums(m) -> dict | None:
+    """The technique numbers a fix item shows, copied from technique (None when absent)."""
+    if not isinstance(m, dict):
+        return None
+    out = {}
+    for k in TECH_KEYS:
+        v = m.get(k)
+        out[k] = (int(v) if k == "gear" and _f(v) is not None else (round(_f(v), 3) if _f(v) is not None else None))
+    return out if any(v is not None for v in out.values()) else None
 
 
 def fmt_t(s) -> str:
@@ -42,14 +75,25 @@ def _laps(ns) -> str:
 
 
 def corner_tips(tech: dict | None, against: str = "best") -> list[str]:
-    """Concrete differences between your typical lap and your best lap (or a comparison lap) in a corner."""
+    """Concrete differences between your typical lap and a target in a corner.
+
+    against="ref": the comparison lap. Otherwise your own quicker laps through this corner (the quickest
+    quarter, technique.quick), or your best lap when an older review has no "quick" and the best lap was
+    actually quicker than usual there. No tips when neither fits (copying a lap that was slow in this
+    corner would be the wrong advice)."""
     if not tech:
         return []
     typ = tech.get("typical") or {}
-    tgt = tech.get("ref") if against == "ref" else tech.get("best")
+    if against == "ref":
+        tgt, who = tech.get("ref"), "the comparison lap"
+    elif tech.get("quick"):
+        tgt, who = tech.get("quick"), "your quicker laps here"
+    elif tech.get("best_quick", True) is not False:
+        tgt, who = tech.get("best"), "your best lap"
+    else:
+        tgt, who = None, ""
     if not tgt:
         return []
-    who = "the comparison lap" if against == "ref" else "your best lap"
     tips = []
     bt, bb = _f(typ.get("brake_on")), _f(tgt.get("brake_on"))
     if bt is not None and bb is not None and abs(bb - bt) >= 5:
@@ -72,17 +116,80 @@ def corner_tips(tech: dict | None, against: str = "best") -> list[str]:
     return tips
 
 
+def _with_quick(t: dict | None, corner: dict | None, clean_set: set) -> dict | None:
+    """Reviews made before 2.2.2 have no technique.quick: work it out from the corner's per-lap numbers
+    (median of your clean laps in the quickest quarter through this corner)."""
+    if not t or t.get("quick") or not corner:
+        return t
+    per = corner.get("per_lap") if isinstance(corner.get("per_lap"), dict) else {}
+    rows = [m for n, m in per.items() if isinstance(m, dict) and _f(m.get("t")) is not None
+            and (not clean_set or str(n) in clean_set)]
+    if len(rows) < 4:
+        return {**t, "best_quick": _best_was_quick(t, rows)}
+    ts = sorted(m["t"] for m in rows)
+    p25 = _pctl(ts, 25)
+    q = [m for m in rows if m["t"] <= p25 + 1e-9]
+    if len(q) < 2:
+        return t
+    quick = {}
+    for key in TECH_KEYS:
+        vals = [m.get(key) for m in q if _f(m.get(key)) is not None]
+        if not vals:
+            quick[key] = None
+        elif key == "gear":
+            quick[key] = int(st.mode(vals))
+        else:
+            quick[key] = float(st.median(vals))
+    return {**t, "quick": quick}
+
+
+def _pctl(sorted_vals, q):
+    """numpy-style linear percentile of an already sorted list."""
+    if not sorted_vals:
+        return None
+    pos = (len(sorted_vals) - 1) * q / 100.0
+    lo = int(pos)
+    hi = min(lo + 1, len(sorted_vals) - 1)
+    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (pos - lo)
+
+
+def _best_was_quick(t, rows):
+    b = _f(((t or {}).get("best") or {}).get("t"))
+    ts = sorted(m["t"] for m in rows)
+    return True if b is None or not ts else b < st.median(ts)
+
+
+def _ref_corner_t(c: dict, main_ref: dict | None):
+    if not main_ref:
+        return None
+    rc = (c.get("refs") or {}).get(main_ref.get("name"))
+    return _f(rc.get("t")) if isinstance(rc, dict) else None
+
+
+def _lap_list(v) -> list:
+    out = []
+    for n in v or []:
+        try:
+            out.append(int(n))
+        except (TypeError, ValueError):
+            continue
+    return sorted(set(out))
+
+
 def build(data: dict) -> dict:
     corners = [c for c in data.get("corners") or [] if isinstance(c, dict) and c.get("id")]
     tech = {t["id"]: t for t in data.get("technique") or [] if isinstance(t, dict) and t.get("id")}
-    laps = data.get("laps") or []
-    counts = data.get("counts") or {}
-    best = data.get("best") or {}
+    laps = [l for l in data.get("laps") or [] if isinstance(l, dict)]
+    counts = data.get("counts") if isinstance(data.get("counts"), dict) else {}
+    best = data.get("best") if isinstance(data.get("best"), dict) else {}
     median = _f(data.get("median"))
-    con = data.get("consistency") or {}
-    refs = data.get("refs") or []
+    con = data.get("consistency") if isinstance(data.get("consistency"), dict) else {}
+    refs = [r for r in data.get("refs") or [] if isinstance(r, dict)]
     main_ref = next((r for r in refs if r.get("main")), refs[0] if refs else None)
-    out = {"version": 1, "verdict": [], "fix": [], "bad": [], "good": []}
+    k = _scale(median)
+    min_gain = MIN_GAIN * k
+    clean_set = {str(l.get("n")) for l in laps if l.get("clean")}
+    out = {"version": 2, "verdict": [], "fix": [], "bad": [], "good": []}
 
     # ---------- fix immediately: the corners with the most time to find
     ranked = []
@@ -91,71 +198,121 @@ def build(data: dict) -> dict:
         ref = _f(c.get("ref_gap"))
         ref = ref if (ref is not None and ref > 0 and main_ref) else 0.0
         gain = max(own, ref)
-        if gain < MIN_GAIN:
+        if gain < min_gain:
             continue
         basis = "ref" if ref > own else "own"
-        t = tech.get(c["id"])
+        t = _with_quick(tech.get(c["id"]), c, clean_set)
         tips = corner_tips(t, "ref" if basis == "ref" and t and t.get("ref") else "best")
+        typ_t = _f(c.get("typical_t")) or _f(c.get("median_t"))
+        p25 = _f(c.get("p25_t"))
+        ref_t = _ref_corner_t(c, main_ref)
+        who = (main_ref or {}).get("name") or "The comparison driver"
+        who = who.split(" ")[0]
         if basis == "own":
             why = f"Your typical lap loses {own:.2f} s here compared with your better laps."
+            detail = (f"Typical {typ_t:.2f} s through here; your quicker quarter of laps {p25:.2f} s."
+                      if typ_t is not None and p25 is not None else None)
         else:
-            why = f"{(main_ref or {}).get('name', 'The comparison driver').split(' ')[0]} is {ref:.2f} s quicker here on a good lap."
+            why = f"{who} is {ref:.2f} s quicker here on a good lap."
+            detail = (f"Your quicker laps {p25:.2f} s through here; {who} {ref_t:.2f} s."
+                      if p25 is not None and ref_t is not None else None)
+        summ = c.get("summary") if isinstance(c.get("summary"), dict) else {}
         ranked.append({"corner": c["id"], "gain": round(gain, 2), "basis": basis, "apex_m": c.get("apex_m"),
                        "start_m": c.get("start_m"), "end_m": c.get("end_m"), "best_lap": c.get("best_lap"),
-                       "tips": tips[:3], "why": why,
-                       "gear": (c.get("summary") or {}).get("gear"), "min_mph": (c.get("summary") or {}).get("min_mph")})
+                       "tips": tips[:3], "why": why, "detail": detail,
+                       "gear": summ.get("gear"), "min_mph": summ.get("min_mph"),
+                       "numbers": {"best": _nums((t or {}).get("best")), "typical": _nums((t or {}).get("typical")),
+                                   "ref": _nums((t or {}).get("ref")), "quick": _nums((t or {}).get("quick"))},
+                       "times": {"best_t": _f(c.get("best_t")), "typical_t": typ_t, "p25_t": p25, "ref_t": ref_t},
+                       "corners": [c["id"]], "laps": _lap_list([c.get("best_lap")] if c.get("best_lap") is not None else [])})
     ranked.sort(key=lambda x: -x["gain"])
-    out["tips"] = {cid: corner_tips(t, "best")[:3] for cid, t in tech.items()}
-    out["fix"] = ranked[:3]
+    by_id = {c["id"]: c for c in corners}
+    out["tips"] = {cid: corner_tips(_with_quick(t, by_id.get(cid), clean_set), "best")[:3] for cid, t in tech.items()}
+    out["fix"] = ranked[:MAX_FIX]
     out["more_corners"] = len(ranked) - len(out["fix"])
 
     # ---------- bad habits (only when they clear a threshold)
-    def bad(key, title, text, cost=None):
-        out["bad"].append({"key": key, "title": title, "text": text, "cost": cost})
+    def bad(key, title, text, cost=None, detail=None, laps=None, corners=None):
+        it = {"key": key, "title": title, "text": text, "cost": cost}
+        if detail:
+            it["detail"] = detail
+        if laps:
+            it["laps"] = _lap_list(laps)
+        if corners:
+            it["corners"] = [str(x) for x in corners]
+        out["bad"].append(it)
 
-    def good(key, title, text):
-        out["good"].append({"key": key, "title": title, "text": text})
+    def good(key, title, text, detail=None, laps=None, corners=None):
+        it = {"key": key, "title": title, "text": text, "cost": None}
+        if detail:
+            it["detail"] = detail
+        if laps:
+            it["laps"] = _lap_list(laps)
+        if corners:
+            it["corners"] = [str(x) for x in corners]
+        out["good"].append(it)
 
-    unclean = list(counts.get("unclean") or [])
+    n_laps = counts.get("analysed") if isinstance(counts.get("analysed"), int) else len(laps)
+    n_laps += counts.get("excluded") if isinstance(counts.get("excluded"), int) else 0
+    unclean = _lap_list(counts.get("unclean"))
+    pit = _lap_list(counts.get("pit"))
+    # old reviews (no excluded_laps) dropped spin laps before counting incidents, so "clean race" can't be trusted
+    hidden_spins = bool(counts.get("excluded")) and "excluded_laps" not in counts
     if len(unclean) >= 2:
         bad("unclean", "Incidents or track limits",
-            f"Garage 61 flagged {_laps(unclean)}. Each one is a lap you can't use, and a safety-rating risk.")
-    elif not unclean and len(laps) >= 5:
-        good("clean", "Clean race", "No laps flagged for incidents or track limits.")
+            f"Garage 61 flagged {_laps(unclean)}. Each one is a lap you can't use, and a safety-rating risk.",
+            detail=f"{len(unclean)} of {n_laps + len(pit)} full laps flagged.", laps=unclean)
+    elif not unclean and len(laps) >= 5 and not hidden_spins:
+        good("clean", "Clean race", "No laps flagged for incidents or track limits.",
+             detail=f"0 of {n_laps + len(pit)} full laps flagged by Garage 61.")
 
     lap1 = next((l for l in laps if l.get("n") == 1), None)
-    if lap1 and median and _f(lap1.get("t")):
+    if lap1 and median and _f(lap1.get("t")) and 1 not in pit:
         d = lap1["t"] - median
-        if d >= LAP1_BAD:
+        if d >= LAP1_BAD * k:
             bad("lap1", "Lap 1", f"Lap 1 was {d:.1f} s slower than your typical lap. Some of that is the standing or "
-                "rolling start and traffic; the rest is time lost to caution or a moment.", round(d, 1))
-        elif d <= 0.5 and len(laps) >= 5:
-            good("lap1", "Strong first lap", f"Lap 1 was within {max(d, 0):.1f} s of your typical pace.")
+                "rolling start and traffic; the rest is time lost to caution or a moment.", round(d, 1),
+                detail=f"Lap 1 {fmt_t(lap1['t'])} against a typical {fmt_t(median)}.", laps=[1])
+        elif d <= 0.5 * k and len(laps) >= 5:
+            good("lap1", "Strong first lap", f"Lap 1 was within {max(d, 0):.1f} s of your typical pace.",
+                 detail=f"Lap 1 {fmt_t(lap1['t'])} against a typical {fmt_t(median)}.", laps=[1])
 
-    slow = list(counts.get("slow") or [])
-    slow = [n for n in slow if n != 1]
+    slow = [n for n in _lap_list(counts.get("slow")) if n != 1 and n not in pit]
+    cut = _f(data.get("slow_cut")) or 1.0
     if len(slow) >= 2:
-        bad("offpace", "Off-pace laps", f"{_laps(slow).capitalize()} were more than a second off your typical lap without "
-            "an incident flag: likely mistakes or traffic. Open them in Compare to see where.")
+        lap_t = {l.get("n"): _f(l.get("t")) for l in laps}
+        lost = [lap_t.get(n) - median for n in slow if lap_t.get(n) is not None and median]
+        bad("offpace", "Off-pace laps", f"{_laps(slow).capitalize()} were more than {cut:.1f} s off your typical lap without "
+            "an incident flag: likely a mistake or traffic. Open them in Compare to see where.",
+            round(sum(lost), 1) if lost else None,
+            detail=(f"Together they were {sum(lost):.1f} s slower than {len(lost)} typical laps." if lost else None),
+            laps=slow)
 
-    traffic = list(counts.get("traffic") or [])
+    traffic = _lap_list(counts.get("traffic"))
     if traffic:
+        td = [t for t in counts.get("traffic_detail") or [] if isinstance(t, dict)]
         bad("traffic", "Traffic (multi-class)", f"{_laps(traffic).capitalize()} lost time in one short stretch, most likely "
-            "to traffic. They're left out of your pace numbers; plan where to let faster cars by.")
+            "to traffic. They're left out of your pace numbers; plan where to let faster cars by.",
+            detail=("; ".join(f"lap {t.get('n')}: ~{_f(t.get('lost')) or 0:.2f} s around {_f(t.get('at_m')) or 0:.0f} m"
+                              for t in td[:4]) + ".") if td else None, laps=traffic)
 
     trend = _f(data.get("trend_total"))
     n_clean = (counts.get("clean") or 0) if isinstance(counts.get("clean"), int) else 0
     if trend is not None and n_clean >= 8:
-        if trend >= FADE_BAD:
+        if trend >= FADE_BAD * k:
             bad("fade", "Fading late in the race",
                 f"Your clean laps got about {trend:.1f} s slower from start to finish. Tyres and fuel play a part; "
-                "check the corners that slowed most under Stint.", round(trend, 1))
-        elif abs(trend) < 0.15:
-            good("steady", "Held pace all race", "Your clean laps held steady from start to finish.")
+                "check the corners that slowed most under Stint.", round(trend, 1),
+                detail=f"Trend line over {n_clean} clean laps: +{trend:.2f} s from first to last.")
+        elif abs(trend) < 0.15 * k:
+            good("steady", "Held pace all race", "Your clean laps held steady from start to finish.",
+                 detail=f"Trend line over {n_clean} clean laps: {trend:+.2f} s from first to last.")
 
     vary = []
     locked = []
     for b in con.get("by_corner") or []:
+        if not isinstance(b, dict):
+            continue
         iqr = _f(b.get("iqr"))
         if iqr is None:
             continue
@@ -167,45 +324,59 @@ def build(data: dict) -> dict:
         vary.sort(key=lambda x: -x[1])
         bad("vary", "Corners you drive differently every lap",
             " and ".join(f"{cid} (±{iqr / 2:.2f} s)" for cid, iqr in vary[:3]) +
-            ". Pick one braking marker and one turn-in point there and repeat them.")
-    if locked and len(locked) >= max(2, len(corners) // 2):
+            ". Pick one braking marker and one turn-in point there and repeat them.",
+            detail="Middle half of your clean laps through " + ", ".join(f"{cid} spread over {iqr:.2f} s" for cid, iqr in vary[:3]) + ".",
+            corners=[cid for cid, _ in vary[:3]])
+    off_many = bool(isinstance(con.get("off_pace_n"), int) and isinstance(con.get("n"), int)
+                    and con["off_pace_n"] * 5 > con["n"])   # over 20% of laps off-pace: not "repeatable"
+    if locked and len(locked) >= max(2, len(corners) // 2) and not off_many:
         good("locked", "Repeatable corners", "You hit the same time lap after lap in " +
-             (", ".join(locked) if len(locked) < len(corners) else "every corner") + ".")
+             (", ".join(locked) if len(locked) < len(corners) else "every corner") + ".",
+             detail=f"Middle half of your clean laps within {VARY_GOOD:.2f} s in {len(locked)} corner(s).", corners=locked)
 
     score = _f(con.get("score"))
+    off_n = con.get("off_pace_n") if isinstance(con.get("off_pace_n"), int) else None
+    cn = con.get("n") if isinstance(con.get("n"), int) else None
+    off_txt = f" {off_n} of {cn} laps were more than {cut:.1f} s off your typical lap." if off_n and cn else ""
     if score is not None:
-        if score >= 70:
+        if score >= 70 and not (off_n and cn and off_n * 5 > cn):
             good("consistent", "Consistent laps", f"Consistency {score:.0f}/100: your clean laps stayed within "
-                 f"about ±{(_f(con.get('std')) or 0):.2f} s.")
+                 f"about ±{(_f(con.get('std')) or 0):.2f} s.",
+                 detail=(f"{_f(con.get('within_05')) or 0:.0f}% of {cn or 'your'} clean laps within 0.5 s of your best." + off_txt))
         elif score < 45:
             bad("scattered", "Lap times all over the place", f"Consistency {score:.0f}/100. Before chasing pace, aim to "
-                "put five laps in a row within half a second of each other.")
+                "put five laps in a row within half a second of each other.",
+                detail=(f"Spread ±{(_f(con.get('std')) or 0):.2f} s; {_f(con.get('within_05')) or 0:.0f}% of laps "
+                        "within 0.5 s of your best." + off_txt), laps=con.get("off_pace") or None)
 
-    style = data.get("style") or {}
+    style = data.get("style") if isinstance(data.get("style"), dict) else {}
     bn = best.get("n")
-    if style and bn is not None and str(bn) in style:
-        clean_ns = [str(l["n"]) for l in laps if l.get("clean") and str(l.get("n")) in style]
+    if style and bn is not None and isinstance(style.get(str(bn)), dict):
+        clean_ns = [str(l["n"]) for l in laps if l.get("clean") and isinstance(style.get(str(l.get("n"))), dict)]
 
-        def med(k):
-            vals = [_f(style[n].get(k)) for n in clean_ns]
+        def med(key):
+            vals = [_f(style[n].get(key)) for n in clean_ns]
             vals = [v for v in vals if v is not None]
             return st.median(vals) if vals else None
         b_st = style[str(bn)]
         mc, bc = med("coast_s"), _f(b_st.get("coast_s"))
-        if mc is not None and bc is not None and mc - bc >= COAST_BAD:
+        if mc is not None and bc is not None and mc - bc >= COAST_BAD * k:
             bad("coast", "Coasting", f"On a typical lap you spend {mc - bc:.1f} s more off both pedals than on your best "
-                "lap. Brake later or get back on the throttle sooner.")
+                "lap. On your quicker laps you tended to go from brake to throttle with less of a gap.",
+                round(mc - bc, 1), detail=f"Off both pedals: {mc:.1f} s on a typical clean lap, {bc:.1f} s on lap {bn}.",
+                laps=[bn])
         mo = med("overlap_s")
-        if mo is not None and mo >= OVERLAP_BAD:
+        if mo is not None and mo >= OVERLAP_BAD * k:
             bad("overlap", "Brake and throttle together", f"About {mo:.1f} s a lap with both pedals pressed. Unless it's "
-                "deliberate (trail-braking with throttle), it's scrubbing speed.")
+                "deliberate (trail-braking with throttle), it's time the car spends slowing and accelerating at once.",
+                detail=f"Both pedals above 10%: {mo:.1f} s on a typical clean lap.")
 
     # ---------- verdict
     bt = _f(best.get("t"))
     if bt is not None:
         line = f"Best lap {fmt_t(bt)}"
         if main_ref and _f(main_ref.get("t")):
-            line += f", {bt - main_ref['t']:+.2f} s against {main_ref.get('name', 'the comparison lap').split(' ')[0]}"
+            line += f", {bt - main_ref['t']:+.2f} s against {(main_ref.get('name') or 'the comparison lap').split(' ')[0]}"
         label = con.get("label")
         if label:
             line += f". {label}" + (f" ({score:.0f}/100)" if score is not None else "")
@@ -217,5 +388,7 @@ def build(data: dict) -> dict:
     else:
         out["verdict"].append("No corner stands out: your typical laps are already close to your best. "
                               "More pace will come from new references (follow quicker drivers on Garage 61).")
+    if pit:
+        out["verdict"].append(f"Pit stop on {_laps(pit)}: left out of your pace numbers.")
     out["time_to_find"] = round(sum(x["gain"] for x in out["fix"]), 2)
     return out

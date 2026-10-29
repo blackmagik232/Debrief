@@ -216,6 +216,24 @@ def diff(a, b):
     return {k: (None if a.get(k) is None or b.get(k) is None else _r(a[k] - b[k], 3)) for k in METRICS}
 
 
+def quick_metrics(rows_by_n, clean_ns):
+    """Median metrics over your clean laps that were in the quickest quarter through this corner
+    (corner time at or under the 25th percentile). This is the target for corner tips: your fastest
+    whole lap isn't always quick in every corner. None with fewer than 2 such laps."""
+    cl = [m for n, m in rows_by_n.items() if n in clean_ns] or list(rows_by_n.values())
+    ts = [m["t"] for m in cl if m.get("t") is not None]
+    if len(ts) < 4:
+        return None
+    p25 = float(np.percentile(ts, 25))
+    q = [m for m in cl if m.get("t") is not None and m["t"] <= p25 + 1e-9]
+    if len(q) < 2:
+        return None
+    out = typical_metrics(q)
+    out["n"] = len(q)
+    out["t"] = float(np.median([m["t"] for m in q]))
+    return out
+
+
 def technique_notes(cid, best, typ, ref, ref_name):
     notes = []
     who = (ref_name or "the comparison lap").split(" ")[0]
@@ -245,7 +263,7 @@ def technique_notes(cid, best, typ, ref, ref_name):
         if bits:
             notes.append("On your best lap you " + _and(bits) + " than usual.")
     if not notes:
-        notes.append("Your typical approach here is close to " + (f"{who}'s." if ref else "your best lap."))
+        notes.append("Your typical approach here is close to " + (f"{who}'s." if ref else "your quicker laps."))
     return notes
 
 
@@ -261,11 +279,22 @@ def technique(corners, per, clean_ns, best_n, refs):
         ref = (main or {}).get("corners", {}).get(c["id"]) if main else None
         others = [{"name": r["name"], **pick(r["corners"][c["id"]])} for r in refs
                   if r is not main and r.get("corners", {}).get(c["id"])]
+        quick = quick_metrics(rows, clean_ns)
+        # "your best lap" notes only where that lap was actually quicker than usual in this corner
+        best_quick = bool(best and typ_t(cl) is not None and best.get("t") is not None and best["t"] < typ_t(cl))
         out.append({"id": c["id"], "apex_m": _r(c["apex_m"], 1), "best": pick(best), "typical": pick(typ),
+                    "quick": ({**pick(quick), "n": quick["n"], "t": _r(quick["t"])} if quick else None),
+                    "best_quick": best_quick,
                     "ref": pick(ref), "ref_name": main["name"] if (main and ref) else None,
                     "vs_ref": diff(typ, ref), "others": others,
-                    "notes": technique_notes(c["id"], best, typ, ref, main["name"] if main else None)})
+                    "notes": technique_notes(c["id"], best if best_quick else None, typ, ref,
+                                             main["name"] if main else None)})
     return out
+
+
+def typ_t(rows):
+    ts = [m["t"] for m in rows if m.get("t") is not None]
+    return float(np.median(ts)) if ts else None
 
 
 # ---------------------------------------------------------------- consistency
@@ -302,14 +331,23 @@ def score_label(score):
     return "Scattered"
 
 
-def consistency(clean, corners, per):
-    ts = [x["t"] for x in clean]
+def consistency(clean, corners, per, pace=None, slow_cut=1.0):
+    """Lap-time consistency.
+
+    The score is worked out on `pace` laps when given: every full lap Garage 61 marked clean, minus
+    traffic laps, INCLUDING the ones more than slow_cut off the median (a mistake lap is part of how
+    consistent you were). Corner spreads use the engine's clean laps.
+    off_pace = how many of those laps were more than slow_cut off the median."""
+    pool = pace if pace is not None and len(pace) >= 3 else clean
+    ts = [x["t"] for x in pool]
     if len(ts) < 3:
         return None
     best = min(ts)
+    med = float(np.median(ts))
     std = float(np.std(ts, ddof=1))
     w05 = 100.0 * sum(t - best <= 0.5 for t in ts) / len(ts)
     w10 = 100.0 * sum(t - best <= 1.0 for t in ts) / len(ts)
+    off = sorted(x["n"] for x in pool if x["t"] > med + slow_cut)
     score = consistency_score(std, w05)
     clean_ns = {x["n"] for x in clean}
     by_corner = []
@@ -321,10 +359,12 @@ def consistency(clean, corners, per):
     label = score_label(score)
     loose = sorted(by_corner, key=lambda b: -b["iqr"])[:2]
     summ = (f"{label}: {len(ts)} clean laps spread by ±{std:.2f} s, and {w05:.0f}% of them were within half a second of your best.")
+    if off:
+        summ += f" {len(off)} of {len(ts)} were more than {slow_cut:.1f} s off your typical lap."
     if loose and loose[0]["iqr"] >= 0.12:
         summ += " You varied most in " + _and([b["id"] for b in loose if b["iqr"] >= 0.12]) + "."
     return {"score": score, "std": _r(std), "within_05": _r(w05, 1), "within_10": _r(w10, 1), "label": label,
-            "by_corner": by_corner, "summary": summ, "n": len(ts)}
+            "by_corner": by_corner, "summary": summ, "n": len(ts), "off_pace": off, "off_pace_n": len(off)}
 
 
 # ---------------------------------------------------------------- best vs worst
@@ -399,11 +439,13 @@ def _and(a):
 KEYS = ("combo_ids", "irating", "season", "conditions", "stint", "technique", "consistency", "best_worst")
 
 
-def extend(data, *, laps, clean, best, corners, per, refs, raw_laps, log=None):
+def extend(data, *, laps, clean, best, corners, per, refs, raw_laps, log=None, pace=None, slow_cut=1.0):
     """Add the v2 keys to `data` in place and return it.
 
     laps     engine lap dicts in lap order (n, t, clean, lap, R ...), after out-laps were dropped
-    clean    the engine's clean subset (Garage 61 clean and within 1 s of the median)
+    clean    the engine's clean subset (Garage 61 clean, within slow_cut of the median, not traffic)
+    pace     Garage 61 clean laps minus traffic (off-pace laps kept): what the consistency score uses
+    slow_cut seconds off the median that count as an off-pace lap
     best     the engine's best lap dict
     corners  engine corner_out list (only corners with enough laps)
     per      corner id -> lap number -> corner_metrics()
@@ -428,6 +470,8 @@ def extend(data, *, laps, clean, best, corners, per, refs, raw_laps, log=None):
     clean_ns = {x["n"] for x in clean}
     data["stint"] = guard("stint", lambda: stint(laps, clean, per, [c["id"] for c in corners]))
     data["technique"] = guard("technique", lambda: technique(corners, per, clean_ns, best["n"], refs))
-    data["consistency"] = guard("consistency", lambda: consistency(clean, corners, per))
+    data["consistency"] = guard("consistency", lambda: consistency(clean, corners, per, pace, slow_cut))
+    if pace is not None and len(pace) > 2:   # spread of every Garage 61-clean lap (mistake laps included)
+        data["std_clean"] = float(np.std([x["t"] for x in pace], ddof=1))
     data["best_worst"] = guard("best vs worst", lambda: best_worst(clean, corners, per, data.get("segments")))
     return data

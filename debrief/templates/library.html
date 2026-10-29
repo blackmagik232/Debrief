@@ -1,8 +1,11 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Debrief Library</title>
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="connect-src 'none'; object-src 'none'; base-uri 'none'">
+<script>try{const t=localStorage.getItem('debrief-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" referrerpolicy="no-referrer" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
 /* Layout: a timing-screen debrief inside the app window. Summary strip first, then the lap compare
    workbench (splits, map, telemetry), best possible lap, corner cards, pace, habits, plan.
@@ -10,8 +13,9 @@
 :root{
   --bg:#f3f4f6; --panel:#ffffff; --ink:#161a1f; --ink2:#47505a; --muted:#68717b;
   --line:#e3e6ea; --axis:#c4c9d0; --band:#f2f4f6; --track:#dfe3e8; --hi:#eef3fb;
-  --a:#2a78d6; --b:#eb6834; --mid:#d6dade; --pb:#6250d6; --pbbg:#ece9fb;
-  --warn:#a66c00; --good:#0a7a2f; --bad:#c43c3c;
+  --a:#1f6cc4; --b:#eb6834; --mid:#d6dade; --pb:#6250d6; --pbbg:#ece9fb;
+  --warn:#946000; --good:#0a7a2f; --bad:#c43c3c;
+  --bt:#b8461a; --on-a:#ffffff;
   --h1:#e6effb; --h7:#0d366b;
   --shadow:0 8px 28px rgba(20,26,34,.14);
   /* legacy aliases used by the library page */
@@ -26,13 +30,13 @@
   --bg:#0e1114; --panel:#161a1e; --ink:#eceff2; --ink2:#b8bfc7; --muted:#8b949d;
   --line:#262b31; --axis:#3b424a; --band:#1b2025; --track:#2b3138; --hi:#1b2430;
   --a:#3987e5; --b:#d95926; --mid:#3b4047; --pb:#9085e9; --pbbg:#262240;
-  --warn:#e2a83a; --good:#3dbb63; --bad:#e66767;
+  --warn:#e2a83a; --good:#3dbb63; --bad:#e66767; --bt:#e07a4f; --on-a:#0e1114;
   --h1:#1a2430; --h7:#9ec5f4; --shadow:0 8px 28px rgba(0,0,0,.5); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0e1114; --panel:#161a1e; --ink:#eceff2; --ink2:#b8bfc7; --muted:#8b949d;
   --line:#262b31; --axis:#3b424a; --band:#1b2025; --track:#2b3138; --hi:#1b2430;
   --a:#3987e5; --b:#d95926; --mid:#3b4047; --pb:#9085e9; --pbbg:#262240;
-  --warn:#e2a83a; --good:#3dbb63; --bad:#e66767;
+  --warn:#e2a83a; --good:#3dbb63; --bad:#e66767; --bt:#e07a4f; --on-a:#0e1114;
   --h1:#1a2430; --h7:#9ec5f4; --shadow:0 8px 28px rgba(0,0,0,.5); color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -102,7 +106,7 @@ button:hover{background:var(--band)}
 button.ghost{border-color:transparent;color:var(--ink2)}
 button.ghost:hover{color:var(--ink)}
 button[aria-pressed="true"]{border-color:var(--a);background:var(--hi)}
-select:focus-visible,button:focus-visible,[tabindex]:focus-visible,a:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+select:focus-visible,button:focus-visible,[tabindex]:focus-visible,a:focus-visible,svg[tabindex]:focus-visible{outline:2px solid var(--a);outline-offset:2px}
 .presets{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center}
 .presets .lab{font-size:var(--t-sm);color:var(--muted);margin-right:2px}
 .result{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s4);align-items:baseline;padding-top:var(--s3);border-top:1px solid var(--line)}
@@ -201,7 +205,7 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 .ro-row{display:grid;grid-template-columns:62px 1fr 1fr;gap:8px;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .ro-row .ro-k{color:var(--muted);font-family:var(--body)}
 .ro-row b{font-weight:600}
-.ro-row .ca{color:var(--a)} .ro-row .cb{color:var(--b)}
+.ro-row .ca{color:var(--a)} .ro-row .cb{color:var(--bt)}
 .ro-row b.ca,.ro-row span.cb{font-weight:600}
 .ro-ref{color:var(--ink2)}
 /* library page helpers */
@@ -370,6 +374,7 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
   </section>
 </div>
 </div>
+<div id="srLive" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)" aria-live="polite"></div>
 <div id="tip" hidden></div>
 
 <script>window.ROWS=/*ROWS*/[];window.EXTRA=/*EXTRA*/null;</script>
@@ -451,6 +456,17 @@ const tip=$('tip');
 function showTip(html,x,y){tip.innerHTML=html;tip.hidden=false;const w=tip.offsetWidth,hh=tip.offsetHeight;
   let L=x+14,T=y+14;if(L+w>innerWidth-8)L=x-w-14;if(T+hh>innerHeight-8)T=y-hh-14;tip.style.left=Math.max(8,L)+'px';tip.style.top=Math.max(8,T)+'px'}
 const hideTip=()=>{tip.hidden=true};
+// keyboard and screen-reader access to the hover tooltips: each chart is ONE tab stop; the arrow keys step
+// through its marks and the tooltip text is read out through a polite live region (2.2.2)
+function keyTips(host,label,items){if(!host||!items.length)return;host.setAttribute('tabindex','0');host.setAttribute('role','group');
+  host.setAttribute('aria-label',label+'. Use the arrow keys to step through it.');let i=-1;
+  const go=j=>{if(i>=0&&items[i].off)items[i].off();i=Math.max(0,Math.min(items.length-1,j));const it=items[i];if(it.on)it.on();
+    let x,y;if(it.pos){[x,y]=it.pos()}else{const r=(it.node||host).getBoundingClientRect();x=r.left+r.width/2;y=r.top+r.height/2}
+    showTip(it.html(),x,y);const lv=document.getElementById('srLive');if(lv)lv.textContent=tip.textContent};
+  host.addEventListener('keydown',e=>{const k=e.key;if(k==='ArrowRight'||k==='ArrowDown'){e.preventDefault();go(i+1)}else if(k==='ArrowLeft'||k==='ArrowUp'){e.preventDefault();go(i<0?0:i-1)}
+    else if(k==='Home'){e.preventDefault();go(0)}else if(k==='End'){e.preventDefault();go(items.length-1)}else if(k==='Escape'){hideTip()}});
+  host.addEventListener('blur',()=>{hideTip();if(i>=0&&items[i].off)items[i].off();i=-1})}
+
 
 // ---------- line chart (shared time axis, one y axis)
 function niceStep(span,target){const raw=span/target;const steps=[0.01,0.02,0.05,0.1,0.2,0.25,0.5,1,2,5,10,20,25,30,50,60,100,200,250,500,1000];return steps.find(s=>s>=raw)||1000}
@@ -481,8 +497,12 @@ function lineChart(arr,series,o){
   const move=e=>{const b=s.getBoundingClientRect();const px=(e.clientX-b.left)/b.width*W;let bi=0,bd=1e9;ts.forEach((t,i)=>{const d=Math.abs(X(t)-px);if(d<bd){bd=d;bi=i}});
     const x=X(ts[bi]);rule.setAttribute('x1',x);rule.setAttribute('x2',x);rule.setAttribute('visibility','visible');
     marks.forEach(cs=>cs.forEach((c,i)=>c.setAttribute('r',i===bi?6:4)));
-    const r=arr[bi];showTip('<b>'+esc(fmtDate(r.date))+'</b>'+series.map(se=>'<div>'+esc(se.name)+': <span class="mono">'+esc(se.fmt(r[se.key]))+'</span></div>').join('')+(r.test_data?'<div class="note">Test data</div>':''),e.clientX,e.clientY)};
-  hit.addEventListener('mousemove',move);hit.addEventListener('mouseleave',()=>{rule.setAttribute('visibility','hidden');marks.forEach(cs=>cs.forEach(c=>c.setAttribute('r',4)));hideTip()});
+    showTip(tipAt(bi),e.clientX,e.clientY)};
+  const tipAt=bi=>{const r=arr[bi];return '<b>'+esc(fmtDate(r.date))+'</b>'+series.map(se=>'<div>'+esc(se.name)+': <span class="mono">'+esc(se.fmt(r[se.key]))+'</span></div>').join('')+(r.test_data?'<div class="note">Test data</div>':'')};
+  const clear=()=>{rule.setAttribute('visibility','hidden');marks.forEach(cs=>cs.forEach(c=>c.setAttribute('r',4)))};
+  hit.addEventListener('mousemove',move);hit.addEventListener('mouseleave',()=>{clear();hideTip()});
+  keyTips(s,o.label||'Chart',arr.map((r,bi)=>({html:()=>tipAt(bi),on:()=>{const x=X(ts[bi]);rule.setAttribute('x1',x);rule.setAttribute('x2',x);rule.setAttribute('visibility','visible')},off:clear,
+    pos:()=>{const b=s.getBoundingClientRect();return [b.left+X(ts[bi])*b.width/W,b.top+b.height/3]}})));
   return s;
 }
 
@@ -532,9 +552,9 @@ function weak(c){
     return {k,hits,n:hits.filter(Boolean).length,avg:av.length?av.reduce((s,v)=>s+v,0)/av.length:0,seen:av.length}}).filter(r=>r.n>0)
     .sort((x,y)=>y.n-x.n||y.avg-x.avg).slice(0,6);
   $('weaklede').textContent=N<2?'With one review at '+(c.last.track_short||c.last.track)+', these are the two corners from that race. A pattern needs more races.':
-    'Corners that ranked first or second for time on the table, across your '+N+' reviews at '+(c.last.track_short||c.last.track)+' in the '+c.last.car+'. Corners are matched between races by apex position; names follow your latest review.';
+    'Corners that ranked first or second for time to find, across your '+N+' reviews at '+(c.last.track_short||c.last.track)+' in the '+c.last.car+'. Corners are matched between races by apex position; names follow your latest review.';
   if(!rows.length){host.append(h('p','note','No corner data in these reviews.'));return}
-  const hd=h('div','wrow head');['Corner','Top two','Each race, oldest first','Avg time on the table'].forEach(x=>hd.append(h('span',null,x)));host.append(hd);
+  const hd=h('div','wrow head');['Corner','Top two','Each race, oldest first','Avg time to find'].forEach(x=>hd.append(h('span',null,x)));host.append(hd);
   rows.forEach(r=>{const w=h('div','wrow');
     const id=h('span','wid',r.k.id||'Corner');id.append(h('span','apx',ok(r.k.apex)?'Apex ~'+Math.round(r.k.apex).toLocaleString('en-US')+' m':''));
     const nn=h('span','wn');nn.innerHTML='<b>'+esc(r.n)+'</b> of '+esc(N)+' race'+(N===1?'':'s');
@@ -542,7 +562,7 @@ function weak(c){
     r.hits.forEach((x,i)=>{const q=h('i',x?'hit':'');const cc=r.k.per[i];q.title=fmtDate(a[i].date)+': '+(cc?'ranked #'+cc.rank+', ~'+cc.avail.toFixed(2)+' s':'not detected');st.append(q)});
     const v=h('span','wv');v.innerHTML='<b>~'+esc(r.avg.toFixed(2))+' s</b> a lap';
     w.append(id,nn,st,v);host.append(w)});
-  host.append(h('p','note','Time on the table is your median through the corner minus your quicker laps there (25th percentile). It shows where your laps varied most, not a guaranteed gain.'));
+  host.append(h('p','note','Time to find is your median through the corner minus your quicker laps there (25th percentile). It shows where your laps varied most, not a guaranteed gain.'));
 }
 
 function select(k){current=k;const c=combos.find(x=>x.k===k);if(!c)return;$('combo').value=k;pbTable();progress(c);weak(c)}
@@ -609,6 +629,7 @@ function barChart(items,o){ // items: [{label,value,sub}]
     if(it.sub)s.append(el('text',{x:cx,y:H-mb+30,'text-anchor':'middle','font-size':10,fill:'var(--muted)'},it.sub));
     b.addEventListener('mousemove',e=>showTip('<b>'+esc(it.full)+'</b>'+it.tip,e.clientX,e.clientY));b.addEventListener('mouseleave',hideTip)});
   s.append(el('line',{x1:ml,x2:W-mr,y1:H-mb,y2:H-mb,stroke:'var(--axis)'}));
+  const bars=[...s.querySelectorAll('rect')];keyTips(s,o.label||'Bar chart',items.map((it,i)=>({node:bars[i],html:()=>'<b>'+esc(it.full)+'</b>'+it.tip})));
   return s;
 }
 function statStrip(host,items){host.replaceChildren();items.forEach(([l,v,c,cls])=>{const k=h('div','stat');const vv=h('span','v'+(cls?' '+cls:''),v);k.append(h('span','lab',l),vv,h('span','ctx',c));k.lastChild.title=c;host.append(k)})}
@@ -694,6 +715,7 @@ function goalSpark(gp){const hs=(gp.history||[]).filter(x=>ok(x.best));const W=3
     s.append(el('polyline',{points:pr.map(p=>p.join(',')).join(' '),fill:'none',stroke:'var(--a)','stroke-width':2}))}
   hs.forEach((x,i)=>{const c=el('circle',{cx:X(i),cy:Y(x.best),r:3.5,fill:x.best===gp.best?'var(--pb)':'var(--a)',stroke:'var(--panel)','stroke-width':1.5});s.append(c);
     c.addEventListener('mousemove',e=>showTip('<b>'+esc(fmtDate(x.date))+'</b>Best '+esc(fmt(x.best)),e.clientX,e.clientY));c.addEventListener('mouseleave',hideTip)});
+  const dots=[...s.querySelectorAll('circle')];keyTips(s,'Best lap per race against the target',hs.map((x,i)=>({node:dots[i],html:()=>'<b>'+esc(fmtDate(x.date))+'</b>Best '+esc(fmt(x.best))})));
   return s}
 function renderGoals(){const host=$('goals');host.replaceChildren();
   if(!GOALS.length){const e=h('div','empty');e.append(h('b',null,'No goals yet'),h('span',null,'Set a target lap time for a track and car in the Goals view of the Debrief app. Progress shows up here.'));host.append(e);return}

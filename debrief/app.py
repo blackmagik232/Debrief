@@ -130,6 +130,13 @@ def settings_path() -> Path:
     return Path(os.environ.get("DEBRIEF_SETTINGS", HERE / "settings.toml"))
 
 
+def normalise_salutation(v) -> str:
+    """settings salutation: a string, stripped, at most 20 characters; anything else is ""."""
+    if v is None or isinstance(v, (bool, dict, list)):
+        return ""
+    return str(v).strip()[:20]
+
+
 def load_settings() -> dict:
     p = settings_path()
     if not p.exists() and ensure_settings():
@@ -146,6 +153,7 @@ def load_settings() -> dict:
     cfg["library_folder"] = os.path.expandvars(os.path.expanduser(lib))
     cfg["max_reference_laps"] = max(0, min(3, int(cfg.get("max_reference_laps", 3))))
     cfg["include_practice"] = bool(cfg.get("include_practice", False))
+    cfg["salutation"] = normalise_salutation(cfg.get("salutation", ""))
     cfg["team_slug"] = str(cfg.get("team_slug") or DEFAULT_TEAM).strip().lower() or DEFAULT_TEAM
     # history sync: catch up with Garage 61 each time the window opens; telemetry "best" or "none"
     cfg["sync_on_open"] = bool(cfg.get("sync_on_open", True))
@@ -216,6 +224,31 @@ def is_clean(l):
     return True if v is None else bool(v)
 
 
+_PARTIAL_FLAGS = ("incomplete", "missing")
+_PIT_FLAGS = ("pitIn", "pitOut", "pitlane", "pit_in", "pit_out", "pit_lane")
+
+
+def is_full_lap(l) -> bool:
+    """Not marked partial (incomplete/missing) or as a pit lap by Garage 61."""
+    return not any(g(l, k) for k in _PARTIAL_FLAGS + _PIT_FLAGS)
+
+
+def full_lap_best(laps):
+    """Your best lap time from a list of Garage 61 laps that can stand as "your best": a full, clean lap
+    no shorter than 75% of the median full lap (so a 7 s "lap" at the finish line never counts).
+    Falls back to flagged full laps (still plausible) when every lap was flagged; None if nothing fits."""
+    full = [l for l in laps if lap_time(l) and is_full_lap(l)]
+    ts = [lap_time(l) for l in full]
+    if not ts:
+        return None
+    med = st.median(ts)
+    ok = [l for l in full if 0.75 * med <= lap_time(l) <= 1.25 * med]
+    clean = [lap_time(l) for l in ok if is_clean(l)]
+    if clean:
+        return min(clean)
+    return min((lap_time(l) for l in ok), default=None)
+
+
 def session_type(l):
     v = g(l, "session_type", "sessionType")
     if isinstance(v, dict):
@@ -267,8 +300,13 @@ def pick_refs(api: Garage61, car, track, my_best: float, my_slug: str, limit: in
     except Garage61Error as e:
         say(f"  Couldn't load comparison laps: {e}")
         return []
+    from . import team   # lazy: team imports app
     cands = [c for c in cands if g(g(c, "driver", default={}) or {}, "slug") != my_slug
-             and lap_time(c) and is_clean(c)]
+             and lap_time(c) and is_clean(c) and team.usable(c)]
+    # a driver's "best" can be a partial lap (e.g. 6 s at the line): judge every candidate against the
+    # typical full lap (their laps plus your best), the same way the team and prep pages do
+    anchor = team.anchor_for([lap_time(c) for c in cands], my_best)
+    cands = [c for c in cands if team.plausible(lap_time(c), anchor)]
     if not cands:
         return []
     cands.sort(key=lap_time)
@@ -310,6 +348,18 @@ def on_track(api: Garage61, track, event_id, my_slug: str, my_car, classes=None)
     my_car_name = name_of(api, "car", my_car) if my_car is not None else ""
     my_class = classes(my_car_name) if classes else None
     by_driver = {}
+    names, refreshed = {}, [False]
+
+    def car_name_of(car):
+        # unknown car ids: refresh Garage 61's car list at most once for the whole page
+        if car not in names:
+            if not refreshed[0]:
+                names[car] = name_of(api, "car", car)
+                refreshed[0] = names[car] == f"car {_id(car)}"
+            else:   # the list was already refreshed once on this page: look it up without another download
+                it = next((x for x in api.cars(False) if g(x, "id") == _id(car)), None)
+                names[car] = item_name(it) if it else f"car {_id(car)}"
+        return names[car]
     for l in laps:
         drv = g(l, "driver", default={}) or {}
         slug = g(drv, "slug")
@@ -321,13 +371,13 @@ def on_track(api: Garage61, track, event_id, my_slug: str, my_car, classes=None)
         cur = by_driver.get(key)
         if cur is None:
             name = " ".join(filter(None, [g(drv, "firstName", "firstname"), g(drv, "lastName", "lastname")])) or slug
-            car_name = name_of(api, "car", car) if car is not None else ""
+            car_name = car_name_of(car) if car is not None else ""
             cls = classes(car_name) if classes else None
             cur = by_driver[key] = {"name": name, "car": car_name, "car_id": car, "best": None, "lap_id": None,
                                     "same_car": car == _id(my_car),
                                     "same_class": None if (cls is None or my_class is None) else cls == my_class,
                                     "class": cls}
-        if t and is_clean(l) and (cur["best"] is None or t < cur["best"]):
+        if t and is_clean(l) and is_full_lap(l) and (cur["best"] is None or t < cur["best"]):
             cur["best"], cur["lap_id"] = round(t, 3), str(g(l, "id"))
     drivers = sorted(by_driver.values(), key=lambda d: (d["best"] is None, d["best"] or 0))
     return {"drivers": drivers, "multiclass": any(d["same_class"] is False for d in drivers)}
@@ -446,8 +496,8 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     if len(tel) < 2:
         raise SystemExit("Garage 61 didn't return telemetry for this race. Run Check connection to see what your account can access.")
     with_tel = [l for l in laps if g(l, "id") in tel]
-    clean_t = [lap_time(l) for l in with_tel if is_clean(l)]
-    my_best = min(clean_t) if clean_t else min(lap_time(l) for l in with_tel)
+    # never a partial lap (the 7 s "lap" at the finish line) or a pit lap: that would pick nonsense refs
+    my_best = full_lap_best(with_tel) or min(lap_time(l) for l in with_tel)
     step("Looking for comparison laps from your teammates and followed drivers...", 0.72)
     refs = pick_refs(api, _id(car), _id(track), my_best, slug, cfg["max_reference_laps"])
     ref_tel = {}
@@ -479,8 +529,8 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
             "started_at": min(starts).isoformat() if starts else "",
             "session": {1: "Practice", 2: "Qualifying", 3: "Race"}.get(sessions[0], "Session")
                        if len(sessions) == 1 else "Session",
-            # the owner likes "Sir" in his own (source) install; installed copies for teammates stay neutral
-            "salutation": "" if getattr(sys, "frozen", False) else "Sir",
+            # how the review addresses you (settings: salutation); empty = neutral
+            "salutation": normalise_salutation(cfg.get("salutation", "")),
             "multiclass": multiclass,
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     for l in laps:  # normalise fields the engine relies on

@@ -1,16 +1,20 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Team hub</title>
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="connect-src 'none'; object-src 'none'; base-uri 'none'">
+<script>try{const t=localStorage.getItem('debrief-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" referrerpolicy="no-referrer" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
 /* Team hub: same tokens and base styles as the review and library pages.
    You = blue (--a), teammates = orange / purple / grey, corner king = timing purple. */
 :root{
   --bg:#f3f4f6; --panel:#ffffff; --ink:#161a1f; --ink2:#47505a; --muted:#68717b;
   --line:#e3e6ea; --axis:#c4c9d0; --band:#f2f4f6; --track:#dfe3e8; --hi:#eef3fb;
-  --a:#2a78d6; --b:#eb6834; --mid:#d6dade; --pb:#6250d6; --pbbg:#ece9fb;
-  --warn:#a66c00; --good:#0a7a2f; --bad:#c43c3c;
+  --a:#1f6cc4; --b:#eb6834; --mid:#d6dade; --pb:#6250d6; --pbbg:#ece9fb;
+  --warn:#946000; --good:#0a7a2f; --bad:#c43c3c;
+  --bt:#b8461a; --on-a:#ffffff;
   --h1:#e6effb; --h7:#0d366b;
   --shadow:0 8px 28px rgba(20,26,34,.14);
   /* legacy aliases used by the library page */
@@ -25,13 +29,13 @@
   --bg:#0e1114; --panel:#161a1e; --ink:#eceff2; --ink2:#b8bfc7; --muted:#8b949d;
   --line:#262b31; --axis:#3b424a; --band:#1b2025; --track:#2b3138; --hi:#1b2430;
   --a:#3987e5; --b:#d95926; --mid:#3b4047; --pb:#9085e9; --pbbg:#262240;
-  --warn:#e2a83a; --good:#3dbb63; --bad:#e66767;
+  --warn:#e2a83a; --good:#3dbb63; --bad:#e66767; --bt:#e07a4f; --on-a:#0e1114;
   --h1:#1a2430; --h7:#9ec5f4; --shadow:0 8px 28px rgba(0,0,0,.5); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0e1114; --panel:#161a1e; --ink:#eceff2; --ink2:#b8bfc7; --muted:#8b949d;
   --line:#262b31; --axis:#3b424a; --band:#1b2025; --track:#2b3138; --hi:#1b2430;
   --a:#3987e5; --b:#d95926; --mid:#3b4047; --pb:#9085e9; --pbbg:#262240;
-  --warn:#e2a83a; --good:#3dbb63; --bad:#e66767;
+  --warn:#e2a83a; --good:#3dbb63; --bad:#e66767; --bt:#e07a4f; --on-a:#0e1114;
   --h1:#1a2430; --h7:#9ec5f4; --shadow:0 8px 28px rgba(0,0,0,.5); color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -101,7 +105,7 @@ button:hover{background:var(--band)}
 button.ghost{border-color:transparent;color:var(--ink2)}
 button.ghost:hover{color:var(--ink)}
 button[aria-pressed="true"]{border-color:var(--a);background:var(--hi)}
-select:focus-visible,button:focus-visible,[tabindex]:focus-visible,a:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+select:focus-visible,button:focus-visible,[tabindex]:focus-visible,a:focus-visible,svg[tabindex]:focus-visible{outline:2px solid var(--a);outline-offset:2px}
 .presets{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center}
 .presets .lab{font-size:var(--t-sm);color:var(--muted);margin-right:2px}
 .result{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s4);align-items:baseline;padding-top:var(--s3);border-top:1px solid var(--line)}
@@ -200,7 +204,7 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 .ro-row{display:grid;grid-template-columns:62px 1fr 1fr;gap:8px;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .ro-row .ro-k{color:var(--muted);font-family:var(--body)}
 .ro-row b{font-weight:600}
-.ro-row .ca{color:var(--a)} .ro-row .cb{color:var(--b)}
+.ro-row .ca{color:var(--a)} .ro-row .cb{color:var(--bt)}
 .ro-row b.ca,.ro-row span.cb{font-weight:600}
 .ro-ref{color:var(--ink2)}
 /* library page helpers */
@@ -276,6 +280,7 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
   <ul id="notes"></ul>
 </footer>
 </div>
+<div id="srLive" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)" aria-live="polite"></div>
 <div id="tip" hidden></div>
 
 <script>window.TEAM=/*TEAM*/null;</script>
@@ -296,6 +301,17 @@ const tip=$('tip');
 function showTip(html,x,y){tip.innerHTML=html;tip.hidden=false;const w=tip.offsetWidth,hh=tip.offsetHeight;
   let L=x+14,T=y+14;if(L+w>innerWidth-8)L=x-w-14;if(T+hh>innerHeight-8)T=y-hh-14;tip.style.left=Math.max(8,L)+'px';tip.style.top=Math.max(8,T)+'px'}
 const hideTip=()=>{tip.hidden=true};
+// keyboard and screen-reader access to the hover tooltips: each chart is ONE tab stop; the arrow keys step
+// through its marks and the tooltip text is read out through a polite live region (2.2.2)
+function keyTips(host,label,items){if(!host||!items.length)return;host.setAttribute('tabindex','0');host.setAttribute('role','group');
+  host.setAttribute('aria-label',label+'. Use the arrow keys to step through it.');let i=-1;
+  const go=j=>{if(i>=0&&items[i].off)items[i].off();i=Math.max(0,Math.min(items.length-1,j));const it=items[i];if(it.on)it.on();
+    let x,y;if(it.pos){[x,y]=it.pos()}else{const r=(it.node||host).getBoundingClientRect();x=r.left+r.width/2;y=r.top+r.height/2}
+    showTip(it.html(),x,y);const lv=document.getElementById('srLive');if(lv)lv.textContent=tip.textContent};
+  host.addEventListener('keydown',e=>{const k=e.key;if(k==='ArrowRight'||k==='ArrowDown'){e.preventDefault();go(i+1)}else if(k==='ArrowLeft'||k==='ArrowUp'){e.preventDefault();go(i<0?0:i-1)}
+    else if(k==='Home'){e.preventDefault();go(0)}else if(k==='End'){e.preventDefault();go(items.length-1)}else if(k==='Escape'){hideTip()}});
+  host.addEventListener('blur',()=>{hideTip();if(i>=0&&items[i].off)items[i].off();i=-1})}
+
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 if(!D||!Array.isArray(D.combos)){
@@ -366,14 +382,16 @@ function kings(i){const host=$('kingBody');host.replaceChildren();const c=kc[i];
   const draw=()=>{const W=Math.max(320,box.clientWidth||640),rowH=30,ml=70,mr=24,mt=8,mb=30,H=mt+mb+rowH*K.corners.length;
     const mx=Math.max(0.1,...K.corners.flatMap(z=>Object.values(z.times).map(v=>v-z.king_t)));
     const steps=[0.02,0.05,0.1,0.2,0.25,0.5,1,2];const st=steps.find(s=>mx/s<=5)||2;const hi=Math.ceil(mx/st)*st;
-    const X=v=>ml+v/hi*(W-ml-mr);const s=el('svg',{viewBox:`0 0 ${W} ${H}`,width:W,height:H,role:'img','aria-label':'Time behind the corner king at '+(c.track_short||c.track)});
+    const X=v=>ml+v/hi*(W-ml-mr);const s=el('svg',{viewBox:`0 0 ${W} ${H}`,width:W,height:H,role:'img','aria-label':'Time behind the corner king at '+(c.track_short||c.track)});const tipItems=[];
     for(let v=0;v<=hi+1e-9;v+=st){const x=X(v);s.append(el('line',{x1:x,x2:x,y1:mt,y2:H-mb,stroke:'var(--line)'}));s.append(el('text',{x,y:H-mb+16,'text-anchor':'middle','font-size':11,fill:'var(--muted)'},v===0?'0':'+'+v.toFixed(st<0.1?2:(st<1?1:0))))}
     K.corners.forEach((z,j)=>{const y=mt+rowH*j+rowH/2;s.append(el('line',{x1:ml,x2:W-mr,y1:y,y2:y,stroke:'var(--band)','stroke-width':rowH-6}));
       s.append(el('text',{x:ml-10,y:y+4,'text-anchor':'end','font-size':12,'font-weight':600,fill:'var(--ink)'},z.id));
       const ks=Object.keys(z.times).sort((a,b)=>(a===meKey)-(b===meKey));
       ks.forEach(k=>{const v=z.times[k]-z.king_t;const c0=el('circle',{cx:X(v),cy:y,r:k===meKey?6:5,fill:col(k),stroke:'var(--panel)','stroke-width':2});
-        c0.addEventListener('mousemove',e=>showTip('<b>'+esc(z.id)+' · '+esc(nm(k))+'</b>'+z.times[k].toFixed(3)+' s through this stretch<br>'+(v<0.0005?'Quickest here'+(z.margin>0?' by '+z.margin.toFixed(3)+' s':''):fmtD(v)+' behind '+esc(nm(z.king))),e.clientX,e.clientY));
+        const html=()=>'<b>'+esc(z.id)+' · '+esc(nm(k))+'</b>'+z.times[k].toFixed(3)+' s through this stretch<br>'+(v<0.0005?'Quickest here'+(z.margin>0?' by '+z.margin.toFixed(3)+' s':''):fmtD(v)+' behind '+esc(nm(z.king)));
+        c0.addEventListener('mousemove',e=>showTip(html(),e.clientX,e.clientY));tipItems.push({node:c0,html});
         c0.addEventListener('mouseleave',hideTip);s.append(c0)})});
+    keyTips(s,'Time behind the corner king in each stretch',tipItems);
     s.append(el('text',{x:W-mr,y:H-4,'text-anchor':'end','font-size':11,fill:'var(--muted)'},'seconds behind the quickest'));
     box.replaceChildren(s)};
   draw();redraw=draw;
@@ -403,16 +421,18 @@ else{sel.addEventListener('change',()=>kings(+sel.value));kings(0)}
     // diverging bars: left (blue) = you quicker, right (their colour) = they're quicker
     const W=440,rowH=26,ml=110,mr=70,mt=6,H=mt+rowH*p.combos.length+20,mid=ml+(W-ml-mr)/2;
     const mx=Math.max(0.3,...p.combos.map(e=>Math.abs(e.gap)));const X=v=>mid+v/mx*(W-ml-mr)/2;
-    const s=el('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',role:'img','aria-label':'Gap to '+p.name+' per track'});s.style.maxWidth=W+'px';
+    const s=el('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',role:'img','aria-label':'Gap to '+p.name+' per track'});s.style.maxWidth=W+'px';const h2h=[];
     s.append(el('line',{x1:mid,x2:mid,y1:mt-2,y2:H-18,stroke:'var(--axis)'}));
     p.combos.forEach((e,j)=>{const y=mt+rowH*j;const lab=el('text',{x:ml-8,y:y+16,'text-anchor':'end','font-size':11.5,fill:'var(--ink)'},(e.track_short||e.track));s.append(lab);
       const x0=Math.min(mid,X(e.gap)),w=Math.max(1.5,Math.abs(X(e.gap)-mid));
       const r=el('rect',{x:x0,y:y+5,width:w,height:rowH-10,rx:2,fill:e.gap<0?'var(--a)':col(p.key)});
-      r.addEventListener('mousemove',ev=>showTip('<b>'+esc(e.track_short||e.track)+' · '+esc(e.car)+'</b>You '+fmt(e.you)+'<br>'+esc(first(p.name))+' '+fmt(e.them)+'<br>Gap '+fmtD(e.gap)+(e.corners?'<br>Corners: you '+e.corners.you+', '+esc(first(p.name))+' '+e.corners.them:''),ev.clientX,ev.clientY));
+      const html=()=>'<b>'+esc(e.track_short||e.track)+' · '+esc(e.car)+'</b>You '+fmt(e.you)+'<br>'+esc(first(p.name))+' '+fmt(e.them)+'<br>Gap '+fmtD(e.gap)+(e.corners?'<br>Corners: you '+e.corners.you+', '+esc(first(p.name))+' '+e.corners.them:'');
+      r.addEventListener('mousemove',ev=>showTip(html(),ev.clientX,ev.clientY));h2h.push({node:r,html});
       r.addEventListener('mouseleave',hideTip);s.append(r);
       s.append(el('text',{x:W-4,y:y+16,'text-anchor':'end','font-size':11,'font-weight':600,fill:e.gap<0?'var(--good)':'var(--ink2)'},fmtD(e.gap,2)))});
     s.append(el('text',{x:mid-6,y:H-4,'text-anchor':'end','font-size':10.5,fill:'var(--muted)'},'◀ you quicker'));
     s.append(el('text',{x:mid+6,y:H-4,'text-anchor':'start','font-size':10.5,fill:'var(--muted)'},first(p.name)+' quicker ▶'));
+    keyTips(s,'Gap to '+p.name+' per track',h2h);
     const c=h('div','chart');c.append(s);pn.append(c);host.append(pn)})})();
 
 // ---------- footer

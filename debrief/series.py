@@ -74,13 +74,26 @@ def save(library_folder, ids: list, sched) -> dict:
 
 
 def resolve(mine: dict, sched) -> list:
-    """Your saved series as they appear in the loaded schedule (matched by id, then by name), in order.
-    Series not running this season come back with "missing": True."""
+    """Your saved series as they appear in the loaded schedule (matched by name, then by id), in order.
+    Name first: ids made from duplicate names ('-2') depend on the PDF's order and can point at another
+    series next season. Series not running this season come back with "missing": True."""
     out = []
+    all_s = (sched or {}).get("series") or []
+    used = set()
     for x in mine.get("series") or []:
-        s = schedule.find_series(sched, x["id"])
-        if s is None:
-            s = next((y for y in (sched or {}).get("series") or [] if schedule.norm(y["name"]) == schedule.norm(x["name"])), None)
+        named = [y for y in all_s if schedule.norm(y["name"]) == schedule.norm(x["name"]) and id(y) not in used]
+        if len(named) == 1:
+            s = named[0]
+        elif named:   # the same name twice: the id says which one
+            s = next((y for y in named if y.get("id") == x["id"]), named[0])
+        else:
+            s = schedule.find_series(sched, x["id"])
+            if s is not None and schedule.norm(s["name"]) != schedule.norm(x["name"]):
+                # same id, different name: only trust it when the names are close (a renamed series)
+                if not (schedule._tokens(s["name"]) & schedule._tokens(x["name"])):
+                    s = None
+        if s is not None:
+            used.add(id(s))
         out.append(s if s is not None else {"id": x["id"], "name": x["name"], "missing": True})
     return out
 
@@ -92,16 +105,18 @@ def _session_day(s) -> date | None:
         return None
 
 
-def suggest(sched, sessions: list, today: date | None = None) -> list:
+def suggest(sched, sessions: list, today: date | None = None, matcher=None) -> list:
     """Series your recent races match. Each: {"id", "name", "races", "weeks", "sure", "shared"}.
-    Only race sessions (type 3) from this season count."""
+    Only race sessions (type 3) inside this season's race weeks count. matcher: a schedule.Matcher built
+    from Garage 61's cached track/car lists, so sessions match by id where the names allow it."""
+    matcher = matcher or schedule.Matcher()
     if not sched:
         return []
     a, b = schedule.season_range(sched)
     if a is None:
         return []
     today = today or datetime.now(timezone.utc).date()
-    lo = a - timedelta(days=7)   # a race in the off-week before week 1 still counts for week 1
+    lo = a   # races before week 1 belong to the previous season (or its off-week), not to week 1
     hits: dict = {}
     for s in sessions or []:
         if s.get("type") != 3:
@@ -109,13 +124,15 @@ def suggest(sched, sessions: list, today: date | None = None) -> list:
         day = _session_day(s)
         if day is None or not lo <= day < b or day > today:
             continue
-        wk = schedule.week_on(sched, day) or 1
+        wk = schedule.week_on(sched, day)
+        if wk is None:
+            continue
         cands = []
         for ser in sched.get("series") or []:
             w = next((w for w in ser["weeks"] if w["week"] == wk), None)
-            if w is None or not schedule.same_track(s.get("track"), w["track"]):
+            if w is None or not matcher.track(s, w["track"]):
                 continue
-            if ser["cars"] and not any(schedule.same_car(s.get("car"), c) for c in ser["cars"]):
+            if ser["cars"] and not any(matcher.car(s, c) for c in ser["cars"]):
                 continue
             cands.append(ser)
         for ser in cands:

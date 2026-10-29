@@ -10,7 +10,8 @@
 <link rel="stylesheet" href="static/app.css">
 <script>try{const t=localStorage.getItem('debrief-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 </head><body>
-<aside class="side" aria-label="Debrief">
+<button type="button" class="btn menubtn" id="btnMenu" aria-controls="side" aria-expanded="false">Menu</button>
+<aside class="side" id="side" aria-label="Debrief">
   <div class="brand">
     <img src="static/icon.png" alt="" width="34" height="34">
     <div><div class="name">Debrief</div><div class="eyebrow">Garage 61 race reviews</div></div>
@@ -34,7 +35,7 @@
     <button type="button" class="navbtn" data-nav="settings">Settings</button>
   </nav>
   <div class="revhead"><span class="eyebrow">Past reviews</span><span class="eyebrow" id="revcount"></span></div>
-  <div id="revlist" class="revlist" role="list"></div>
+  <nav id="revlist" class="revlist" aria-label="Past reviews"></nav>
   <div class="sidefoot">
     <div class="seg" role="radiogroup" aria-label="Theme">
       <button type="button" role="radio" data-theme-set="auto">Auto</button>
@@ -140,6 +141,7 @@
       <div class="panel">
         <div class="phead"><h3 id="sessSyncTitle">Sync</h3><span class="pill" id="sessSyncPill"></span></div>
         <p class="note" id="sessSyncNote"></p>
+        <ul class="warnlist" id="sessWarn" hidden></ul>
         <div class="progress small" id="sessProg" hidden><div class="bar" id="sessBar"><i></i></div></div>
         <p class="now" id="sessNow" hidden></p>
         <div class="row"><button type="button" class="btn primary" id="btnSync">Sync now</button><button type="button" class="btn" id="btnSyncStop" hidden>Pause</button><span class="msg" id="sessMsg" role="status"></span></div>
@@ -173,6 +175,7 @@
           <input type="file" id="schFile" accept="application/pdf,.pdf" hidden>
           <span class="msg" id="schMsg" role="status"></span>
         </div>
+        <ul class="warnlist" id="schWarn" hidden></ul>
       </div>
       <div class="panel" id="seriesPicker" hidden>
         <div class="phead"><h3>Which series are you racing?</h3><button type="button" class="btn ghost" id="btnPickClose">Close</button></div>
@@ -355,7 +358,7 @@
     <label class="field wide" for="c_limits"><span>Track limits / kerbs</span><textarea id="c_limits" maxlength="300" rows="2" placeholder="e.g. Exit of T5 is policed; avoid the sausage kerb at T7"></textarea></label>
     <label class="field wide" for="c_focus"><span>Focus this week (up to 3 lines)</span><textarea id="c_focus" maxlength="300" rows="3" placeholder="One thing per line"></textarea></label>
     <label class="field wide" for="c_car" id="cCarWrap"><span id="cCarLab">Car note</span><input id="c_car" type="text" maxlength="200" placeholder="Anything specific to this car here"></label>
-    <div class="row"><button type="submit" class="btn primary" id="cardSave">Save card</button><span class="msg" id="cardMsg" role="status"></span><span class="note" id="cardUpdated"></span></div>
+    <div class="row"><button type="submit" class="btn primary" id="cardSave">Save card</button><span class="msg" id="cardMsg" role="status"></span><button type="button" class="btn" id="cardReload" hidden>Reload the card</button><span class="note" id="cardUpdated"></span></div>
   </form>
 </dialog>
 <script src="static/app.js"></script>

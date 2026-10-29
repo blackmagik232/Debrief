@@ -15,7 +15,7 @@ def _embed(obj) -> str:
             .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
 
 
-LAYOUT = "2.2.1"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
+LAYOUT = "2.2.2"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
 
 
 def write(out_dir: Path, data: dict) -> Path:
@@ -25,11 +25,34 @@ def write(out_dir: Path, data: dict) -> Path:
         data["insights"] = insights.build(data)
     except Exception:  # noqa: BLE001
         data.pop("insights", None)
-    (out_dir / "review.json").write_text(json.dumps(data), encoding="utf-8")
     html = fill((TPL / "review.html").read_text(encoding="utf-8"), {"/*DATA*/null": _embed(data)})
+    # each file is written to a temp file and swapped in, so a crash or a forced close mid-write leaves
+    # the old file whole (review.json is the only copy of an analysed review)
+    atomic_write(out_dir / "review.json", json.dumps(data))
     page = out_dir / "index.html"
-    page.write_text(html, encoding="utf-8")
+    atomic_write(page, html)
     return page
+
+
+def atomic_write(path: Path, text: str) -> None:
+    """Write text to path via a temp file in the same folder + fsutil.replace (never a half-written file)."""
+    import os
+    import tempfile
+    from . import fsutil
+    path = Path(path)
+    fd, tmp = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        fsutil.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def refresh_all(library_folder, log=None) -> int:
@@ -54,7 +77,7 @@ def refresh_all(library_folder, log=None) -> int:
                 log(f"  Couldn't refresh {p.parent.name}: {e}")
     try:
         lib.mkdir(parents=True, exist_ok=True)
-        marker.write_text(LAYOUT, encoding="utf-8")
+        atomic_write(marker, LAYOUT)
     except OSError:
         pass
     return n

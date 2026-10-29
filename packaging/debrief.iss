@@ -42,9 +42,13 @@ UninstallDisplayName={#AppName}
 WizardStyle=modern
 Compression=lzma2/max
 SolidCompression=yes
-; Debrief.exe must not be running while its files are replaced or removed
+; Debrief.exe must not be running while its files are replaced or removed. A normal (interactive)
+; install offers to close it. The in-app updater passes /NOCLOSEAPPLICATIONS instead: Setup then waits
+; for Debrief's own "DebriefRunning" mutex to go (InitializeSetup below), so Debrief is never killed
+; in the middle of writing a review.
 CloseApplications=yes
 RestartApplications=no
+SetupLogging=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -54,12 +58,16 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [InstallDelete]
-; an upgrade replaces the bundled Python files completely, so nothing stale from an older version stays behind
-Type: filesandordirs; Name: "{app}\_internal"
+; leftovers of an earlier update that didn't finish
+Type: filesandordirs; Name: "{app}\_internal.new"
+Type: files; Name: "{app}\{#AppExe}.new"
 
 [Files]
-Source: "..\dist\Debrief\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\dist\Debrief\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
+; The new version is copied next to the old one first and swapped in at the very end (SwapInNewVersion),
+; so an install that fails part-way (antivirus, full disk, cancelled) leaves the old Debrief working.
+; The swap also replaces the bundled Python files completely: nothing stale from an older version stays.
+Source: "..\dist\Debrief\{#AppExe}"; DestDir: "{app}"; DestName: "{#AppExe}.new"; Flags: ignoreversion
+Source: "..\dist\Debrief\_internal\*"; DestDir: "{app}\_internal.new"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Comment: "Review your iRacing races from Garage 61"
@@ -76,6 +84,91 @@ begin
   Result := WizardSilent and (ExpandConstant('{param:RELAUNCH|0}') = '1');
 end;
 
+function InitializeSetup: Boolean;
+var
+  i: Integer;
+begin
+  // The in-app updater starts Setup, then Debrief closes on its own a few seconds later (after any
+  // review it is writing is saved). Wait up to 90 s for that instead of force-closing it.
+  Result := True;
+  i := 0;
+  while CheckForMutexes('DebriefRunning') and (i < 180) do
+  begin
+    Sleep(500);
+    i := i + 1;
+  end;
+  if CheckForMutexes('DebriefRunning') then
+  begin
+    Log('Debrief is still running after 90 s.');
+    if WizardSilent then
+      Result := False   // nothing has been changed; Debrief reports the update didn't finish
+    else
+      Result := MsgBox('Debrief is still open. Close it, then click OK to carry on.', mbConfirmation, MB_OKCANCEL) = IDOK;
+  end;
+end;
+
+function SwapInNewVersion(const AppDir: String): Boolean;
+var
+  Exe: String;
+begin
+  Result := False;
+  Exe := AppDir + '\{#AppExe}';
+  if not DirExists(AppDir + '\_internal.new') or not FileExists(Exe + '.new') then
+  begin
+    Log('The new files are missing; the old version was kept.');
+    Exit;
+  end;
+  if DirExists(AppDir + '\_internal.old') then
+    DelTree(AppDir + '\_internal.old', True, True, True);
+  DeleteFile(Exe + '.old');
+  if DirExists(AppDir + '\_internal') and not RenameFile(AppDir + '\_internal', AppDir + '\_internal.old') then
+  begin
+    Log('Could not move the old _internal folder aside; the old version was kept.');
+    Exit;
+  end;
+  if not RenameFile(AppDir + '\_internal.new', AppDir + '\_internal') then
+  begin
+    Log('Could not move the new _internal folder in; putting the old one back.');
+    RenameFile(AppDir + '\_internal.old', AppDir + '\_internal');
+    Exit;
+  end;
+  if FileExists(Exe) and not RenameFile(Exe, Exe + '.old') then
+  begin
+    Log('Could not move the old Debrief.exe aside; putting the old version back.');
+    RenameFile(AppDir + '\_internal', AppDir + '\_internal.new');
+    RenameFile(AppDir + '\_internal.old', AppDir + '\_internal');
+    Exit;
+  end;
+  if not RenameFile(Exe + '.new', Exe) then
+  begin
+    Log('Could not move the new Debrief.exe in; putting the old version back.');
+    RenameFile(Exe + '.old', Exe);
+    RenameFile(AppDir + '\_internal', AppDir + '\_internal.new');
+    RenameFile(AppDir + '\_internal.old', AppDir + '\_internal');
+    Exit;
+  end;
+  DelTree(AppDir + '\_internal.old', True, True, True);
+  DeleteFile(Exe + '.old');
+  Result := True;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+  begin
+    if SwapInNewVersion(ExpandConstant('{app}')) then
+      Log('New version swapped in.')
+    else
+      Log('UPDATE NOT APPLIED: the previous version is still installed.');
+  end;
+end;
+
 [UninstallDelete]
-; only the program folder itself (if anything is left in it); user data lives elsewhere and is kept
+; the program files (installed under staging names, then swapped in) and the program folder itself.
+; User data lives elsewhere (%LOCALAPPDATA%\Debrief, Documents\Debrief Reviews) and is kept.
+Type: filesandordirs; Name: "{app}\_internal"
+Type: filesandordirs; Name: "{app}\_internal.old"
+Type: filesandordirs; Name: "{app}\_internal.new"
+Type: files; Name: "{app}\{#AppExe}"
+Type: files; Name: "{app}\{#AppExe}.old"
 Type: dirifempty; Name: "{app}"

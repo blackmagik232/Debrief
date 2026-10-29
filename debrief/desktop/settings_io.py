@@ -7,7 +7,10 @@ the page only learns whether each one is saved.
 """
 from __future__ import annotations
 
+import os
 import re
+import tempfile
+import threading
 from pathlib import Path
 
 from .. import app, fsutil
@@ -16,6 +19,7 @@ PLACEHOLDER_PREFIX = "PASTE"
 _TOKEN_OK = re.compile(r"^[\x21-\x7e]{8,4096}$")  # printable ASCII, no spaces
 _SLUG_OK = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
 _CRED_OK = re.compile(r"^[\x21-\x7e]{1,512}$")
+MAX_SALUTATION = 20
 
 
 def _example_text() -> str:
@@ -81,6 +85,7 @@ def public_view() -> dict:
         "sync_on_open": bool(raw.get("sync_on_open", True)),
         "sync_telemetry": "none" if str(raw.get("sync_telemetry", "best")).lower() == "none" else "best",
         "check_updates": bool(raw.get("check_updates", True)),
+        "salutation": clean_salutation(raw.get("salutation")),
         "library_folder": None,
         "team_slug": str(raw.get("team_slug") or app.DEFAULT_TEAM).strip().lower() or app.DEFAULT_TEAM,
         # present/absent only: the values are never sent to the page
@@ -101,6 +106,14 @@ def public_view() -> dict:
     return out
 
 
+def clean_salutation(v) -> str:
+    """How reviews address you (e.g. "sir"). "" = no salutation. Anything odd in a hand-edited file reads as ""."""
+    if not isinstance(v, str):
+        return ""
+    v = " ".join(v.split())
+    return v if len(v) <= MAX_SALUTATION and not re.search(r"[\x00-\x1f\x7f<>]", v) else ""
+
+
 def _toml_value(v) -> str:
     if isinstance(v, bool):
         return "true" if v else "false"
@@ -110,14 +123,82 @@ def _toml_value(v) -> str:
     return f'"{s}"'
 
 
+def _line_states(lines: list[str]) -> list[bool]:
+    """For each line: does it start outside any string (True), or inside a multi-line string (False)?
+    A small TOML scanner: enough to know where real keys and [table] headers are."""
+    out, state = [], None   # None | '"""' | "'''"
+    for ln in lines:
+        out.append(state is None)
+        i, n = 0, len(ln)
+        while i < n:
+            if state is None:
+                c = ln[i]
+                if c == "#":
+                    break
+                if ln.startswith('"""', i) or ln.startswith("'''", i):
+                    state = ln[i:i + 3]
+                    i += 3
+                    continue
+                if c == '"':          # one-line basic string: skip to its closing quote
+                    i += 1
+                    while i < n and ln[i] != '"':
+                        i += 2 if ln[i] == "\\" else 1
+                    i += 1
+                    continue
+                if c == "'":         # one-line literal string
+                    j = ln.find("'", i + 1)
+                    i = n if j < 0 else j + 1
+                    continue
+                i += 1
+            else:
+                if state == '"""' and ln[i] == "\\":
+                    i += 2
+                    continue
+                if ln.startswith(state, i):
+                    i += 3
+                    while i < n and ln[i] == state[0]:   # up to two extra quotes belong to the string
+                        i += 1
+                    state = None
+                    continue
+                i += 1
+    return out
+
+
 def _set_key(text: str, key: str, value) -> str:
+    """Set a top-level key. Only real top-level lines count: never a line inside a [table] or inside a
+    multi-line string. A new key goes before the first [table], so TOML reads it as top-level."""
     line = f"{key} = {_toml_value(value)}"
-    pat = re.compile(rf"^[ \t]*{re.escape(key)}[ \t]*=.*$", re.M)
-    if pat.search(text):
-        return pat.sub(lambda _m: line, text, count=1)
-    if text and not text.endswith("\n"):
-        text += "\n"
-    return text + line + "\n"
+    lines = text.splitlines(keepends=True)
+    states = _line_states(lines)
+    pat = re.compile(rf"^[ \t]*{re.escape(key)}[ \t]*=")
+    first_table = len(lines)
+    for i, (ln, free) in enumerate(zip(lines, states)):
+        if free and ln.lstrip().startswith("["):
+            first_table = i
+            break
+    for i in range(first_table):
+        if states[i] and pat.match(lines[i]):
+            j = i + 1   # a multi-line value: replace its continuation lines too
+            while j < len(lines) and not states[j]:
+                j += 1
+            end = "\n" if lines[j - 1].endswith("\n") or j < len(lines) else ""
+            lines[i:j] = [line + end]
+            return "".join(lines)
+    if first_table == len(lines):
+        if text and not text.endswith("\n"):
+            text += "\n"
+        return text + line + "\n"
+    head = lines[:first_table]
+    if head and not head[-1].endswith("\n"):
+        head[-1] += "\n"
+    # the new key goes after the last top-level line, before any blank lines or comments that lead into the table
+    k = len(head)
+    while k > 0 and (not head[k - 1].strip() or head[k - 1].lstrip().startswith("#")) and states[k - 1]:
+        k -= 1
+    return "".join(head[:k]) + line + "\n" + "".join(head[k:]) + "".join(lines[first_table:])
+
+
+_SAVE_LOCK = threading.Lock()
 
 
 def save(updates: dict) -> dict:
@@ -160,6 +241,18 @@ def save(updates: dict) -> dict:
         if v not in ("best", "none"):
             raise ValueError("Pick whether the sync downloads telemetry.")
         clean["sync_telemetry"] = v
+    if "salutation" in updates:
+        v = updates["salutation"]
+        if v is None:
+            v = ""
+        if not isinstance(v, str):
+            raise ValueError("The salutation must be text.")
+        v = " ".join(v.split())
+        if len(v) > MAX_SALUTATION:
+            raise ValueError(f"Keep the salutation short: up to {MAX_SALUTATION} characters.")
+        if re.search(r"[\x00-\x1f\x7f<>]", v):
+            raise ValueError("The salutation can't contain < or >.")
+        clean["salutation"] = v
     if "team_slug" in updates:
         slug = str(updates["team_slug"] or "").strip().lower()
         if not _SLUG_OK.match(slug):
@@ -180,18 +273,32 @@ def save(updates: dict) -> dict:
         raise ValueError("Nothing to save.")
 
     p = app.settings_path()
-    text = p.read_text(encoding="utf-8-sig") if p.exists() else _example_text()
-    before_ok = True
-    try:
-        app._parse_toml(text)
-    except SystemExit:
-        before_ok = False
-    for k, v in clean.items():
-        text = _set_key(text, k, v)
-    if before_ok:
-        app._parse_toml(text)  # raises SystemExit if our edit broke the file (it shouldn't)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_name(p.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    fsutil.replace(tmp, p)
+    with _SAVE_LOCK:   # one read-modify-write at a time
+        text = p.read_text(encoding="utf-8-sig") if p.exists() else _example_text()
+        before_ok = True
+        try:
+            app._parse_toml(text)
+        except SystemExit:
+            before_ok = False
+        for k, v in clean.items():
+            text = _set_key(text, k, v)
+        if before_ok:
+            after = app._parse_toml(text)  # raises SystemExit if our edit broke the file (it shouldn't)
+            # every change must read back as a top-level setting with the new value, or nothing is saved
+            if any(after.get(k) != v for k, v in clean.items()):
+                raise ValueError("Debrief couldn't save that safely, because settings.toml has been edited "
+                                 "by hand in an unusual way. Open settings.toml and change it there, or "
+                                 "delete it to start again.")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix="." + p.name + ".", suffix=".tmp", dir=str(p.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+                f.write(text)
+            fsutil.replace(tmp, p)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
     return public_view()

@@ -24,11 +24,11 @@ a{color:var(--me)}
 .btn{font:inherit;font-size:14px;font-weight:500;color:var(--fg);background:var(--bg);border:1px solid var(--axis);border-radius:5px;padding:8px 14px;cursor:pointer;line-height:1.3}
 .btn:hover{border-color:var(--fg2)}
 .btn:disabled{opacity:.55;cursor:default}
-.btn.primary{background:var(--me);border-color:var(--me);color:#fff;font-weight:600}
+.btn.primary{background:var(--me);border-color:var(--me);color:var(--on-a,#fff);font-weight:600}
 .btn.primary:hover{filter:brightness(1.08)}
 .btn.big{width:100%;padding:12px 14px;font-size:15px;text-align:left;position:relative;overflow:hidden;display:grid;gap:6px}
 .minibar{display:none;height:4px;border-radius:2px;background:rgba(255,255,255,.3);overflow:hidden}
-.minibar i{display:block;height:100%;width:0;background:#fff;transition:width .4s ease}
+.minibar i{display:block;height:100%;width:0;background:var(--on-a,#fff);transition:width .4s ease}
 .btn.big.busy .minibar{display:block}
 .btn.big.busy{cursor:pointer}
 .nav{display:grid;gap:2px}
@@ -137,7 +137,7 @@ dialog form{display:grid;gap:14px}
 .gstep{display:grid;grid-template-columns:44px minmax(0,1fr);gap:14px;padding:16px 0;border-top:1px solid var(--grid)}
 .gstep:first-child{border-top:3px solid var(--fg)}
 .gnum{width:34px;height:34px;border-radius:50%;border:2px solid var(--axis);display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:20px;color:var(--fg2)}
-.gstep.now .gnum{border-color:var(--me);background:var(--me);color:#fff}
+.gstep.now .gnum{border-color:var(--me);background:var(--me);color:var(--on-a,#fff)}
 .gstep.done .gnum{border-color:var(--good);color:var(--good)}
 .gstep.done .gnum::after{content:"✓";font-size:18px}
 .gstep.done .gnum{font-size:0}
@@ -171,7 +171,7 @@ dialog form{display:grid;gap:14px}
 .sercard .shead h3{font-size:24px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{font-family:var(--mono);font-size:11px;letter-spacing:.04em;border:1px solid var(--axis);border-radius:3px;padding:2px 7px;color:var(--fg2);white-space:nowrap}
-.chip.mc{border-color:var(--ref);color:var(--ref)}
+.chip.mc{border-color:var(--ref);color:var(--bt,var(--ref))}
 .chip.ok{border-color:var(--good);color:var(--good)}
 .wk2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
 .wk{border:1px solid var(--grid);border-radius:4px;padding:12px 14px;display:grid;gap:6px;align-content:start;background:var(--bg)}
@@ -198,3 +198,22 @@ details.sub>summary{cursor:pointer;font-size:13.5px;color:var(--fg2)}
 .updstrip b{font-weight:600}
 .updstrip span{color:var(--me);font-weight:600;white-space:nowrap}
 .updstrip:hover{background:var(--band)}
+
+/* ---------- 2.2.2: data-layer warnings (sync summary, season schedule) */
+.warnlist{margin:0;padding:8px 12px 8px 26px;border-left:3px solid var(--warn);background:var(--bg);font-size:13px;color:var(--fg2);display:grid;gap:2px;max-width:72ch}
+.warnlist li.wlead{list-style:none;margin-left:-14px;font-weight:600;color:var(--fg)}
+
+/* ---------- 2.2.2: narrow windows (half of a laptop screen and below): the sidebar becomes a slide-in menu */
+.menubtn{display:none}
+.revul{list-style:none;margin:0;padding:0;display:grid;gap:1px}
+.revul .rev{width:100%}
+h1{font-size:clamp(30px,5vw,46px)}
+@media (max-width:760px){
+  body{grid-template-columns:minmax(0,1fr)}
+  .menubtn{display:block;position:fixed;z-index:40;top:8px;right:10px;padding:6px 12px;background:var(--panel)}
+  .side{position:fixed;z-index:39;top:0;left:0;bottom:0;width:min(280px,86vw);transform:translateX(-100%);visibility:hidden;transition:transform .2s ease,visibility .2s;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+  body.navopen .side{transform:none;visibility:visible}
+  .pad{padding-top:52px}
+  .framebar{padding-right:84px}
+}
+@media (prefers-reduced-motion:reduce){.side{transition:none}}

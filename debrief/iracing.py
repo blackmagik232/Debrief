@@ -94,20 +94,35 @@ def get_result(token: dict, subsession_id: int) -> dict:
 
 
 def to_result_fields(res: dict, cust_id: int) -> dict | None:
-    """UNTESTED. Map iRacing's result JSON to results.save() fields for one driver (race session only).
-    Field names follow the data API's documented shape (session_results[].results[])."""
+    """UNTESTED against iRacing. Map iRacing's result JSON to results.save() fields for one driver (race
+    session only). Field names follow the data API's documented shape (session_results[].results[]):
+    laps_led (not laps_lead); team events list drivers under each team row's driver_results; field_size
+    counts only the driver's own class in a multi-class race."""
     for sess in res.get("session_results") or []:
         if str(sess.get("simsession_type_name", "")).lower() != "race":
             continue
-        rows = sess.get("results") or []
+        rows = [r for r in sess.get("results") or [] if isinstance(r, dict)]
         for row in rows:
-            if row.get("cust_id") != cust_id:
+            me = row if row.get("cust_id") == cust_id else next(
+                (d for d in row.get("driver_results") or [] if isinstance(d, dict) and d.get("cust_id") == cust_id), None)
+            if me is None:
                 continue
-            sr = lambda v: round(v / 100.0, 2) if isinstance(v, (int, float)) else None  # 399 -> 3.99
-            return {"start_pos": (row.get("starting_position") or 0) + 1,
-                    "finish_pos": (row.get("finish_position") or 0) + 1,
-                    "field_size": len(rows), "incidents": row.get("incidents"),
-                    "irating_before": row.get("oldi_rating"), "irating_after": row.get("newi_rating"),
-                    "sr_before": sr(row.get("old_sub_level")), "sr_after": sr(row.get("new_sub_level")),
-                    "sof": res.get("event_strength_of_field"), "laps_led": row.get("laps_lead")}
+            cls = row.get("car_class_id")
+            field = [r for r in rows if r.get("car_class_id") == cls] if cls is not None else rows
+            pos = lambda k: (row.get(k) + 1) if isinstance(row.get(k), int) and row.get(k) >= 0 else None
+            if cls is not None and isinstance(row.get("finish_position_in_class"), int):
+                fin = row["finish_position_in_class"] + 1
+                start = (row["starting_position_in_class"] + 1
+                         if isinstance(row.get("starting_position_in_class"), int) and row["starting_position_in_class"] >= 0
+                         else pos("starting_position"))
+            else:
+                fin, start = pos("finish_position"), pos("starting_position")
+            sr = lambda v: round(v / 100.0, 2) if isinstance(v, (int, float)) and v >= 0 else None  # 399 -> 3.99
+            ir = lambda v: v if isinstance(v, int) and v >= 0 else None   # -1 means "not counted"
+            return {"start_pos": start, "finish_pos": fin, "field_size": len(field),
+                    "incidents": me.get("incidents", row.get("incidents")),
+                    "irating_before": ir(me.get("oldi_rating")), "irating_after": ir(me.get("newi_rating")),
+                    "sr_before": sr(me.get("old_sub_level")), "sr_after": sr(me.get("new_sub_level")),
+                    "sof": res.get("event_strength_of_field"),
+                    "laps_led": me.get("laps_led", row.get("laps_led"))}
     return None

@@ -40,9 +40,19 @@ function getTheme(){try{const t=localStorage.getItem('debrief-theme');return THE
 function applyTheme(doc,t){if(!doc)return;const r=doc.documentElement;if(t==='auto')r.removeAttribute('data-theme');else r.setAttribute('data-theme',t)}
 function setTheme(t){try{localStorage.setItem('debrief-theme',t)}catch(e){}
   applyTheme(document,t);try{applyTheme($('frame').contentDocument,t)}catch(e){}
-  document.querySelectorAll('[data-theme-set]').forEach(b=>b.setAttribute('aria-checked',String(b.dataset.themeSet===t)))}
+  document.querySelectorAll('[data-theme-set]').forEach(b=>{const on=b.dataset.themeSet===t;b.setAttribute('aria-checked',String(on));b.tabIndex=on?0:-1})}
 document.querySelectorAll('[data-theme-set]').forEach(b=>b.addEventListener('click',()=>setTheme(b.dataset.themeSet)));
+// radio groups: one tab stop (the checked radio); arrow keys move the choice, as the ARIA radio pattern promises
+function radioKeys(group){group.addEventListener('keydown',e=>{const rs=[...group.querySelectorAll('[role=radio]')];const i=rs.indexOf(document.activeElement);if(i<0)return;
+  let j=null;if(e.key==='ArrowRight'||e.key==='ArrowDown')j=(i+1)%rs.length;else if(e.key==='ArrowLeft'||e.key==='ArrowUp')j=(i-1+rs.length)%rs.length;else if(e.key==='Home')j=0;else if(e.key==='End')j=rs.length-1;
+  if(j==null)return;e.preventDefault();rs[j].click();rs[j].focus()})}
+document.querySelectorAll('[role=radiogroup]').forEach(radioKeys);
 setTheme(getTheme());
+
+/* ---------- narrow window: the sidebar slides in from a Menu button */
+$('btnMenu').addEventListener('click',()=>{const on=!document.body.classList.contains('navopen');document.body.classList.toggle('navopen',on);$('btnMenu').setAttribute('aria-expanded',String(on));if(on){const f=document.querySelector('.side .navbtn');f&&f.focus()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('navopen')){document.body.classList.remove('navopen');$('btnMenu').setAttribute('aria-expanded','false');$('btnMenu').focus()}});
+new MutationObserver(()=>$('btnMenu').setAttribute('aria-expanded',String(document.body.classList.contains('navopen')))).observe(document.body,{attributes:true,attributeFilter:['class']});
 
 /* ---------- views */
 const VIEWS=['vFrame','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam','vSessions'];
@@ -52,8 +62,9 @@ let current={view:null,dir:null};
 function show(view){VIEWS.forEach(v=>$(v).hidden=(v!==view))}
 function markNav(){
   const nav=NAV_OF[current.view]||null;
-  document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.nav===nav));
-  document.querySelectorAll('.rev').forEach(b=>b.classList.toggle('active',current.view==='review'&&b.dataset.dir===current.dir));
+  document.querySelectorAll('.navbtn').forEach(b=>{const on=b.dataset.nav===nav;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+  document.querySelectorAll('.rev').forEach(b=>{const on=current.view==='review'&&b.dataset.dir===current.dir;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+  document.body.classList.remove('navopen');
   frameBar();
 }
 function openFrame(rel){const f=$('frame');const want=BASE+rel;const wantDoc=want.split('#')[0];
@@ -81,7 +92,7 @@ function openSettings(){current={view:'settings',dir:null};show('vSettings');mar
 function openJob(){current={view:'job',dir:null};show('vJob');markNav()}
 /* ---------- welcome + first-run guide (shown until a token is saved, then for the rest of that session) */
 let guideOn=false,checkOk=false,firstName=null,installed=false;
-function greet(){$('welcomeTitle').textContent=firstName?'Welcome, '+firstName+'.':(installed?'Welcome.':'Welcome, sir.')}
+function greet(){$('welcomeTitle').textContent=firstName?'Welcome, '+firstName+'.':'Welcome.'}
 function updateGuide(){
   const st=(id,cls)=>{$(id).classList.toggle('now',cls==='now');$(id).classList.toggle('done',cls==='done')};
   st('gs1',tokenSaved?'done':'');st('gs2',tokenSaved?'done':'');
@@ -148,20 +159,23 @@ async function loadReviews(){
   let j;try{j=await api('reviews')}catch(e){connectionLost();return []}
   libFolder=j.folder;groupsCache=j.groups||[];
   const host=$('revlist');host.replaceChildren();let n=0;
-  groupsCache.forEach(g=>{const box=h('div','grp');box.setAttribute('role','group');box.setAttribute('aria-label',g.track+', '+g.car);
-    const gh=h('div','gh');const gt=h('div','gt',g.track);gt.title=g.track;const gc=h('div','gc',g.car);gc.title=g.car;gh.append(gt,gc);box.append(gh);
-    g.reviews.forEach(r=>{n++;const b=h('button','rev');b.type='button';b.dataset.dir=r.dir;b.setAttribute('role','listitem');
-      b.title=(r.session||'Review')+' · '+r.laps+' laps';
-      b.append(h('span','d',r.date),h('span','b',r.best));b.addEventListener('click',()=>openReview(r.dir));box.append(b)});
-    host.append(box)});
+  // one heading and one <ul> per track and car; each review is a plain button inside an <li>
+  groupsCache.forEach((g,gi)=>{const box=h('div','grp');
+    const gh=h('div','gh');gh.id='revg'+gi;const gt=h('div','gt',g.track);gt.title=g.track;const gc=h('div','gc',g.car);gc.title=g.car;gh.append(gt,gc);box.append(gh);
+    const ul=h('ul','revul');ul.setAttribute('aria-labelledby',gh.id);
+    (g.reviews||[]).forEach(r=>{n++;const li=h('li');const b=h('button','rev');b.type='button';b.dataset.dir=r.dir;
+      b.title=(r.session||'Review')+' · '+r.laps+' laps';b.setAttribute('aria-label',(r.session||'Review')+', '+fmtDate(r.date)+', best '+(r.best||'–'));
+      b.append(h('span','d',fmtDate(r.date)),h('span','b',r.best));b.addEventListener('click',()=>openReview(r.dir));li.append(b);ul.append(li)});
+    box.append(ul);host.append(box)});
   if(!n)host.append(h('p','revempty',libFolder?'Your reviews will appear here.':'Set up Settings first.'));
   $('revcount').textContent=n?String(n):'';
   markNav();return groupsCache;
 }
 
 /* ---------- jobs: review / prep / team share the progress screen; check stays in Settings */
-const TITLES={update:'Updating Debrief',sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
+const TITLES0={update:'Updating Debrief',sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
 const STOPPED={update:'The update stopped',review:'The review stopped',prep:'The prep page stopped',team:'The team refresh stopped'};
+const TITLES=Object.assign({},TITLES0);   // the review title can change per job; TITLES0 keeps the defaults
 let handled=new Set(),polling=false,lastJob=null,lastStart=null;
 async function startJob(kind,body){
   if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){
@@ -177,7 +191,7 @@ async function startJob(kind,body){
 async function startCheck(){
   if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){banner('Debrief is busy: '+(lastJob.title||'a job').toLowerCase()+'. Wait for it to finish.',true);return}
   setMsg('chkMsg','Checking...');setMsg('tokMsg','');$('btnCheck').disabled=true;
-  let r;try{r=await post('check')}catch(e){connectionLost();return}
+  let r;try{r=await post('check')}catch(e){$('btnCheck').disabled=false;setMsg('chkMsg','');connectionLost();return}
   if(!r.ok){$('btnCheck').disabled=false;setMsg('chkMsg',r.error,'bad');return}
   $('chkOut').hidden=true;$('chkOut').replaceChildren();$('chkProg').hidden=false;$('chkBar').firstElementChild.style.width='4%';
   $('gChkOut').hidden=true;$('gChkOut').replaceChildren();$('gChkProg').hidden=false;$('gChkBar').firstElementChild.style.width='4%';
@@ -187,6 +201,7 @@ $('btnCheck').addEventListener('click',startCheck);
 $('btnReview').addEventListener('click',()=>startJob('review'));
 
 function resetJobView(kind){
+  if(kind==='review'&&!(lastJob&&lastJob.title))TITLES.review=TITLES0.review;   // a plain "Review last race" never keeps an earlier job's title
   $('jobTitle').textContent=TITLES[kind]||'Working';$('jobErrTitle').textContent=STOPPED[kind]||'It stopped';
   $('jobEyebrow').textContent='Working';$('jobErr').hidden=true;$('jobSteps').replaceChildren();
   $('jobNow').textContent='Starting...';setBar(0);$('jobBar').parentElement.className='progress';
@@ -215,7 +230,7 @@ function render(s){
     setBar(1);$('jobEyebrow').textContent='Installing';$('jobNow').textContent='Debrief is closing to install the update. It reopens on its own in about a minute; you can close this window.';
     lost=true;return}
   if(s.kind==='review'||s.kind==='prep'||s.kind==='team'||s.kind==='update'){
-    if(s.kind==='review'&&s.title&&s.state==='running')TITLES.review=s.title;
+    if(s.kind==='review'&&s.state==='running')TITLES.review=s.title||TITLES0.review;
     setBar(s.frac||0);$('jobNow').textContent=s.state==='error'?'Stopped.':(s.message||'');
     if($('jobTitle').textContent!==TITLES[s.kind]&&s.state==='running')resetJobView(s.kind);
     const ol=$('jobSteps');const steps=s.steps||[];
@@ -263,6 +278,11 @@ function render(s){
   }
 }
 
+/* ---------- warnings from the data layer (sync summary, season schedule): optional lists of plain strings */
+const warnList=v=>Array.isArray(v)?v.filter(x=>typeof x==='string'&&x.trim()).map(x=>x.trim()):[];
+function showWarnings(id,list,lead){const ul=$(id);if(!ul)return;ul.replaceChildren();const w=warnList(list);ul.hidden=!w.length;if(!w.length)return;
+  if(lead)ul.append(h('li','wlead',lead));w.slice(0,8).forEach(t=>ul.append(h('li',null,t)));if(w.length>8)ul.append(h('li',null,'and '+(w.length-8)+' more.'))}
+
 /* ---------- Sessions + history sync */
 let sessData=null,sessFilter='all',sessShown=60;
 const KIND={1:'practice',2:'qualifying',3:'race'};
@@ -275,8 +295,10 @@ function syncLine(sum){if(!sum)return 'Not synced yet';if(!sum.synced)return sum
   return 'Synced '+ago(sum.last_sync)}
 function renderStrip(sum,job){const el=$('syncStrip');if(!tokenSaved){el.hidden=true;return}el.hidden=false;
   const busy=job&&job.state==='running'&&job.kind==='sync';
-  el.classList.toggle('busy',!!busy);el.classList.toggle('warn',!busy&&!!sum&&(!sum.synced||sum.stopped));
-  $('syncText').textContent=busy?'Syncing... '+Math.round((job.frac||0)*100)+'%':syncLine(sum);
+  el.classList.toggle('busy',!!busy);
+  const w=warnList(sum&&sum.warnings);el.classList.toggle('warn',!busy&&(!!w.length||(!!sum&&(!sum.synced||sum.stopped))));
+  el.title=w.length?'Last sync: '+w.length+' warning'+(w.length===1?'':'s')+'\n'+w.slice(0,5).join('\n')+(w.length>5?'\n...':''):'Open Sessions';
+  $('syncText').textContent=busy?'Syncing... '+Math.round((job.frac||0)*100)+'%':syncLine(sum)+(w.length?' · '+w.length+' warning'+(w.length===1?'':'s'):'');
   $('syncBar').style.width=busy?Math.round((job.frac||0)*100)+'%':'0'}
 async function loadSessions(){let j;try{j=await api('sessions')}catch(e){connectionLost();return null}
   if(j&&j.ok)sessData=j;renderStrip(sessData&&sessData.summary,lastJob);return sessData}
@@ -293,6 +315,7 @@ function renderSessions(){
     if(sum&&sum.synced&&ok(sum.last_requests))note+=' Last sync used '+sum.last_requests+' Garage 61 request'+(sum.last_requests===1?'':'s')+'.';
     if(j.sync_on_open)note+=' Debrief syncs each time it opens.';
     $('sessSyncNote').textContent=note}
+  showWarnings('sessWarn',sum&&sum.warnings,'The last sync noted:');
   $('btnSyncStop').hidden=!busy;$('sessProg').hidden=!busy;$('sessNow').hidden=!busy;
   const host=$('sessList');host.replaceChildren();
   const all=(j.sessions||[]).filter(s=>sessFilter==='all'||String(s.type)===sessFilter);
@@ -336,7 +359,8 @@ $('btnSync').addEventListener('click',()=>startSync(false));
 $('btnSyncStop').addEventListener('click',async()=>{try{await post('sync-stop')}catch(e){}setMsg('sessMsg','Pausing...')});
 $('sessMore').addEventListener('click',()=>{sessShown+=120;renderSessions()});
 document.querySelectorAll('#sessFilter [data-f]').forEach(b=>b.addEventListener('click',()=>{sessFilter=b.dataset.f;sessShown=60;
-  document.querySelectorAll('#sessFilter [data-f]').forEach(x=>x.setAttribute('aria-checked',String(x===b)));renderSessions()}));
+  document.querySelectorAll('#sessFilter [data-f]').forEach(x=>{x.setAttribute('aria-checked',String(x===b));x.tabIndex=x===b?0:-1});renderSessions()}));
+document.querySelectorAll('#sessFilter [data-f]').forEach(x=>{const on=x.dataset.f===sessFilter;x.setAttribute('aria-checked',String(on));x.tabIndex=on?0:-1});
 setInterval(()=>{if(!(lastJob&&lastJob.state==='running'))renderStrip(sessData&&sessData.summary,lastJob)},60000);
 
 /* ---------- Prep */
@@ -368,6 +392,7 @@ function renderPrepare(){const j=prepData;if(!j)return;const sc=j.schedule;
     $('schNote').textContent=sc.out_of_date?'This season has ended. Load the new season\'s schedule when iRacing publishes it.':
       sc.series+' series, '+sc.weeks+' weeks ('+fmtDate(sc.first_day)+' to '+fmtDate(sc.last_day)+'). Load it again when the next season comes out.'}
   $('btnSchDl').textContent=sc?'Download latest schedule':'Download official schedule';
+  showWarnings('schWarn',sc&&sc.warnings,'Check the schedule:');
   const showPicker=!!sc&&(pickerOpen||!j.chosen);
   $('seriesPicker').hidden=!showPicker;if(showPicker)renderPicker();
   renderMySeries()}
@@ -454,15 +479,19 @@ $('schFile').addEventListener('change',async()=>{const f=$('schFile').files[0];$
   if(!r.ok){schBusy(false);setMsg('schMsg',r.error,'bad');return}lastJob={state:'running',kind:'schedule',id:r.id};poll()});
 /* track card */
 let cardFor=null;
-function openCard(track,s){cardFor={track,cars:(s&&s.cars)||[],season:prepData&&prepData.schedule&&prepData.schedule.season};
-  $('cardTitle').textContent='Track card: '+track;setMsg('cardMsg','');$('cardUpdated').textContent='';
+function openCard(track,s){cardFor={track,cars:(s&&s.cars)||[],season:prepData&&prepData.schedule&&prepData.schedule.season,loaded:false};
+  $('cardTitle').textContent='Track card: '+track;setMsg('cardMsg','');$('cardUpdated').textContent='';$('cardReload').hidden=true;
   ['lap1','hotspots','passing','limits','focus'].forEach(k=>$('c_'+k).value='');$('c_car').value='';
   const car=cardFor.cars.length===1?cardFor.cars[0]:null;cardFor.car=car;$('cCarWrap').hidden=!car;if(car)$('cCarLab').textContent='Note for the '+car;
   const d=$('dlgCard');if(d.showModal)d.showModal();else d.setAttribute('open','');
-  api('notes?track='+encodeURIComponent(track)).then(j=>{if(!j.ok){setMsg('cardMsg',j.error,'bad');return}const c=j.card;cardFor.card=c;
+  loadCard(track)}
+// (re)load the saved card into the open dialog; remembers its "updated" time so a save can't overwrite a newer one
+function loadCard(track){$('cardSave').disabled=true;
+  api('notes?track='+encodeURIComponent(track)).then(j=>{if(!cardFor||cardFor.track!==track)return;if(!j.ok){setMsg('cardMsg',j.error,'bad');return}const c=j.card||{};cardFor.card=c;cardFor.loaded=true;
+    cardFor.base=typeof c.updated==='string'&&c.updated?c.updated:null;const car=cardFor.car;
     ['lap1','hotspots','passing','limits','focus'].forEach(k=>$('c_'+k).value=(c.fields||{})[k]||'');
     if(car)$('c_car').value=(c.car_notes||{})[car]||'';
-    if(c.updated)$('cardUpdated').textContent='Last saved '+fmtDate(c.updated)+(c.season?' ('+c.season+')':'');
+    $('cardUpdated').textContent=c.updated?'Last saved '+fmtDate(c.updated)+(c.season?' ('+c.season+')':''):'';
     if(c.read_only){$('cardSave').disabled=true;setMsg('cardMsg','Saved by a newer Debrief: update to edit.','bad')}else $('cardSave').disabled=false})
   .catch(()=>connectionLost())}
 function closeCard(){const d=$('dlgCard');if(d.close)d.close();else d.removeAttribute('open')}
@@ -470,8 +499,14 @@ $('cardClose').addEventListener('click',closeCard);
 $('fCard').addEventListener('submit',async e=>{e.preventDefault();if(!cardFor)return;
   const fields={};['lap1','hotspots','passing','limits','focus'].forEach(k=>fields[k]=$('c_'+k).value);
   const car_notes=Object.assign({},(cardFor.card&&cardFor.card.car_notes)||{});if(cardFor.car)car_notes[cardFor.car]=$('c_car').value;
-  setMsg('cardMsg','Saving...');let r;try{r=await post('notes',{card:{track:cardFor.track,fields,car_notes,season:cardFor.season}})}catch(err){connectionLost();return}
-  if(!r.ok){setMsg('cardMsg',r.error,'bad');return}closeCard();banner('Track card saved.');loadPrepare(true)});
+  if(!cardFor.loaded){setMsg('cardMsg','The card is still loading. Try again in a moment.','bad');return}
+  setMsg('cardMsg','Saving...');$('cardReload').hidden=true;let r;
+  try{r=await post('notes',{card:{track:cardFor.track,fields,car_notes,season:cardFor.season,base_updated:cardFor.base}})}catch(err){connectionLost();return}
+  if(!r.ok){setMsg('cardMsg',r.error||'The card wasn\'t saved.','bad');
+    // saved somewhere else since this dialog opened: offer to load the newer card
+    if(r.conflict||/changed somewhere else|open it again|newer notes/i.test(r.error||''))$('cardReload').hidden=false;return}
+  closeCard();banner('Track card saved.');loadPrepare(true)});
+$('cardReload').addEventListener('click',()=>{if(!cardFor)return;$('cardReload').hidden=true;setMsg('cardMsg','Loaded the newer card. Your unsaved text was replaced; add your change again.');loadCard(cardFor.track)});
 function renderPrep(j){
   const host=$('prepCombos');host.replaceChildren();
   if(!j){host.append(h('p','note','Couldn\'t load your tracks.'));return}

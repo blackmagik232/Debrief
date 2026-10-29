@@ -29,6 +29,12 @@ MAX_PART = 10 * 1024 * 1024
 MAX_SHEETS = 20
 MAX_CELLS = 200_000          # cells kept across the whole workbook (rows x width, gaps included)
 MAX_TEXT = 10_000_000        # characters of cell text kept across the whole workbook
+MAX_DEPTH = 64               # real spreadsheet XML nests about 6 deep
+MAX_ELEMENTS = 1_000_000     # elements in one streamed sheet part (a full 10 MB sheet is about 660k)
+MAX_TREE_ELEMENTS = 400_000  # elements in a part read whole (workbook, styles, shared strings)
+MAX_BOOK_ELEMENTS = 1_500_000  # elements across the whole workbook
+MAX_ROW_CELLS = 16_384       # Excel's own column limit
+MAX_SEEN_CELLS = 300_000     # cell elements looked at across the workbook, empty ones included
 MAX_STR = 4000               # characters kept from one string (the importer keeps 2,000)
 _TOO_MUCH = "That spreadsheet has more in it than Debrief can read. Keep the Track Intel sheet to one table of tips."
 _ENC_OK = {"utf-8", "utf8", "us-ascii", "ascii"}
@@ -78,8 +84,14 @@ def _date_text(v: str, date1904: bool) -> str:
     if not (0 <= f < 2958466):   # up to 9999-12-31
         return _num_text(v)
     base = datetime(1904, 1, 1) if date1904 else datetime(1899, 12, 30)   # 1900 system incl. the leap-year bug
-    dt = base + timedelta(days=f)
-    dt = dt.replace(microsecond=0) + (timedelta(seconds=1) if dt.microsecond >= 500000 else timedelta())
+    try:
+        dt = base + timedelta(days=f)
+    except (OverflowError, ValueError):
+        return _num_text(v)
+    try:
+        dt = dt.replace(microsecond=0) + (timedelta(seconds=1) if dt.microsecond >= 500000 else timedelta())
+    except OverflowError:
+        dt = dt.replace(microsecond=0)
     if f < 1 and not date1904:
         return dt.strftime("%H:%M")
     return dt.strftime("%Y-%m-%d") if (dt.hour, dt.minute, dt.second) == (0, 0, 0) else dt.strftime("%Y-%m-%d %H:%M")
@@ -91,6 +103,7 @@ class _Budget:
     def __init__(self):
         self.cells = 0
         self.text = 0
+        self.seen = 0
 
     def add(self, cells=0, text=0):
         self.cells += cells
@@ -103,7 +116,7 @@ def _refuse_dtd(*_a):
     raise XlsxError("That spreadsheet has something Debrief won't read. Save it again as .xlsx or CSV.")
 
 
-def _check_xml(raw: bytes) -> None:
+def _check_xml(raw: bytes, limit: int = MAX_ELEMENTS, counter=None) -> None:
     """Refuse anything but plain UTF-8 XML with no DOCTYPE or ENTITY (M1 of the 2.4.0 review)."""
     bad = "That spreadsheet has something Debrief won't read. Save it again as .xlsx or CSV."
     body = raw[3:] if raw[:3] == b"\xef\xbb\xbf" else raw
@@ -125,6 +138,33 @@ def _check_xml(raw: bytes) -> None:
     p.EntityDeclHandler = _refuse_dtd
     p.UnparsedEntityDeclHandler = _refuse_dtd
     p.ExternalEntityRefHandler = lambda *a: _refuse_dtd()
+    # shape limits, checked while streaming so a tiny file can't make a huge tree (2.4.0 review r2 M-r2-1)
+    st = {"depth": 0, "n": 0, "row": None}
+
+    def _start(name, _attrs):
+        st["depth"] += 1
+        st["n"] += 1
+        if st["depth"] > MAX_DEPTH or st["n"] > limit:
+            raise XlsxError(_TOO_MUCH)
+        if counter is not None:
+            counter[0] += 1
+            if counter[0] > MAX_BOOK_ELEMENTS:
+                raise XlsxError(_TOO_MUCH)
+        local = name.rsplit(":", 1)[-1]
+        if local == "row":
+            st["row"] = [st["depth"], 0]
+        elif st["row"] is not None and st["depth"] == st["row"][0] + 1:
+            st["row"][1] += 1
+            if st["row"][1] > MAX_ROW_CELLS:
+                raise XlsxError(_TOO_MUCH)
+
+    def _end(_name):
+        if st["row"] is not None and st["depth"] == st["row"][0]:
+            st["row"] = None
+        st["depth"] -= 1
+
+    p.StartElementHandler = _start
+    p.EndElementHandler = _end
     try:
         p.Parse(raw, True)
     except expat.ExpatError:
@@ -136,12 +176,13 @@ class _Book:
         self.zf = zf
         self.names = {i.filename: i for i in zf.infolist()}
         self.lower = {n.lower(): n for n in self.names}
+        self.elements = [0]     # elements seen across every part read so far
 
     def has(self, name: str) -> bool:
         return name.lower() in self.lower
 
     def xml(self, name: str):
-        raw = self.raw(name)
+        raw = self.raw(name, MAX_TREE_ELEMENTS)
         if raw is None:
             return None
         try:
@@ -149,7 +190,7 @@ class _Book:
         except ET.ParseError:
             raise XlsxError("That spreadsheet looks damaged. Open it, save it again as .xlsx and try again.")
 
-    def raw(self, name: str):
+    def raw(self, name: str, limit: int = MAX_ELEMENTS):
         """The checked bytes of one XML part (or None when it isn't there)."""
         real = self.lower.get(name.lower())
         if real is None:
@@ -165,7 +206,7 @@ class _Book:
             raise XlsxError("That spreadsheet looks damaged. Open it, save it again as .xlsx and try again.")
         if len(raw) > MAX_PART:   # the header lied about the size
             raise XlsxError("That spreadsheet is too big to read. Keep it under 5 MB with fewer rows.")
-        _check_xml(raw)
+        _check_xml(raw, limit, self.elements)
         return raw
 
 
@@ -317,10 +358,18 @@ def _cell_value(c, shared, dates, date1904) -> str:
 def _row_elements(raw: bytes):
     """Each <row> as it is parsed, cleared afterwards, so a big sheet never sits in memory as a tree."""
     try:
-        for _ev, el in ET.iterparse(io.BytesIO(raw), events=("end",)):
-            if _local(el.tag) == "row":
+        in_row = 0
+        for ev, el in ET.iterparse(io.BytesIO(raw), events=("start", "end")):
+            is_row = _local(el.tag) == "row"
+            if ev == "start":
+                in_row += is_row
+                continue
+            if is_row:
+                in_row -= 1
                 yield el
                 el.clear()
+            elif not in_row:
+                el.clear()          # anything outside a row is never needed once it has ended
     except ET.ParseError:
         raise XlsxError("That spreadsheet looks damaged. Open it, save it again as .xlsx and try again.")
 
@@ -346,6 +395,9 @@ def _rows(rows_iter, shared, dates, date1904, max_rows, max_cols, budget=None) -
         for c in row:
             if _local(c.tag) != "c":
                 continue
+            budget.seen += 1
+            if budget.seen > MAX_SEEN_CELLS:
+                raise XlsxError(_TOO_MUCH)
             m = _REF.match(c.get("r") or "")
             ci = _col(m.group(1)) if m else next_c
             next_c = ci + 1
@@ -381,11 +433,17 @@ def read(path_or_bytes, max_rows=2000, max_cols=40) -> dict:
         budget.add(text=sum(len(x) for x in shared))
         out = []
         for name, path in sheets:
-            raw = book.raw(path)
-            if raw is None:
-                continue
-            out.append({"name": str(name)[:100],
-                        "rows": _rows(_row_elements(raw), shared, dates, date1904, max_rows, max_cols, budget)})
+            try:
+                raw = book.raw(path)
+                if raw is None:
+                    continue
+                rows = _rows(_row_elements(raw), shared, dates, date1904, max_rows, max_cols, budget)
+            except XlsxError as e:
+                # a big later sheet (lap data, say) shouldn't sink the tips sheet already read: keep what fits
+                if out and (str(e) == _TOO_MUCH or "too big" in str(e)):
+                    break
+                raise
+            out.append({"name": str(name)[:100], "rows": rows})
             del raw
     if not out:
         raise XlsxError("That spreadsheet has no sheets Debrief can read.")

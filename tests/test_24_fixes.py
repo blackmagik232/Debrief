@@ -280,12 +280,17 @@ def test_h3_two_sheets_cant_point_at_one_part():
 
 
 def test_h3_cell_budget_across_sheets():
-    """Distinct parts, short text: 3 sheets of 2,000 x 40 (240k cells) is over the 200k-cell budget."""
+    """Distinct parts, short text: 3 sheets of 2,000 x 40 (240k cells) is over the 200k-cell budget,
+    so reading stops before the sheet that would cross it and keeps the ones already read (r2 review L-r2-4)."""
     sst = f'<sst {NS}><si><t>x</t></si></sst>'
     parts = [(f"S{i}", f"xl/worksheets/sheet{i}.xml", _grid(2000, 40)) for i in range(3)]
     out, secs, peak = _measure(lambda: xlsx.read(_book(parts, sst)))
-    assert isinstance(out, xlsx.XlsxError) and str(out).endswith("."), out
+    assert not isinstance(out, Exception) and [s["name"] for s in out["sheets"]] == ["S0", "S1"], out
     assert peak < 100e6, peak
+    # a first sheet that is itself over a budget is still refused with a plain message
+    big = [("S0", "xl/worksheets/sheet0.xml", _grid(2000, 160))]   # 320k cells looked at
+    out = _measure(lambda: xlsx.read(_book(big, sst)))[0]
+    assert isinstance(out, xlsx.XlsxError) and str(out).endswith("."), out
     # two of them (160k cells) are fine
     book = xlsx.read(_book(parts[:2], sst))
     assert len(book["sheets"]) == 2 and len(book["sheets"][0]["rows"]) == 2000
@@ -294,7 +299,7 @@ def test_h3_cell_budget_across_sheets():
            f"<row r=\"2000\"><c r=\"AN2000\" t=\"s\"><v>0</v></c></row></sheetData></worksheet>").encode()
     parts = [(f"S{i}", f"xl/worksheets/sheet{i}.xml", one) for i in range(3)]
     out = _measure(lambda: xlsx.read(_book(parts, sst)))[0]
-    assert isinstance(out, xlsx.XlsxError), out
+    assert not isinstance(out, Exception) and len(out["sheets"]) == 2, out
 
 
 def test_h3_text_budget_and_string_cap():
@@ -551,6 +556,72 @@ def test_l5_lap1_insight_wording():
         for word in ("standing", "rolling", "caution", "moment", "because"):
             assert word not in it["text"].lower(), it["text"]
     assert "Some of that is the standing" not in (ROOT / "debrief" / "insights.py").read_text(encoding="utf-8")
+
+
+# ================================================================ r2 review: shape limits and real workbooks
+def _tips_sheet():
+    def cell(t):
+        return f'<c t="inlineStr"><is><t>{t}</t></is></c>'
+    rows = [("Track", "Notes")] + [(f"Track {i}", f"Brake early into T{i % 9 + 1}") for i in range(38)]
+    return (f"<worksheet {NS}><sheetData>" + "".join(
+        f'<row r="{r}">' + cell(a) + cell(b) + "</row>" for r, (a, b) in enumerate(rows, 1)) +
+        "</sheetData></worksheet>").encode()
+
+
+def test_r2_tips_sheet_survives_big_lap_data_sheets():
+    lap = _grid(1800, 40, cell="<c><v>93.456</v></c>")
+    data = _book([("Tips", "xl/worksheets/sheet1.xml", _tips_sheet())] +
+                 [(f"Laps{i}", f"xl/worksheets/sheet{i + 2}.xml", lap) for i in range(3)])
+    out, secs, peak = _measure(lambda: xlsx.read(data))
+    assert not isinstance(out, Exception), out
+    names = [sh["name"] for sh in out["sheets"]]
+    assert names[0] == "Tips" and out["sheets"][0]["rows"][0] == ["Track", "Notes"], names
+    assert len(out["sheets"]) < 4          # the budget stopped at a later lap sheet instead of failing
+    r = intel.parse_upload(data, "intel.xlsx")
+    assert r["sheets"][0]["header"][:2] == ["Track", "Notes"], r["sheets"][0]
+    assert secs < 10, secs
+
+
+def _nested(depth, close=True):
+    body = "<a>" * depth + ("</a>" * depth if close else "")
+    return f"<worksheet {NS}><sheetData>{body}</sheetData></worksheet>".encode()
+
+
+def test_r2_deep_nesting_refused_fast_and_small():
+    for close in (True, False):
+        data = _book([("S", "xl/worksheets/sheet1.xml", _nested(1_500_000, close))])
+        out, secs, peak = _measure(lambda: xlsx.read(data))
+        assert isinstance(out, xlsx.XlsxError), out
+        assert secs < 2 and peak < 64 * 1024 * 1024, (close, secs, peak)
+
+
+def test_r2_nested_workbook_xml_refused():
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("xl/workbook.xml", f"<workbook {NS}>" + "<x>" * 500_000 + "</x>" * 500_000 + "</workbook>")
+    out, secs, peak = _measure(lambda: xlsx.read(b.getvalue()))
+    assert isinstance(out, xlsx.XlsxError) and secs < 2 and peak < 64 * 1024 * 1024, (out, secs, peak)
+
+
+def test_r2_one_giant_row_refused():
+    data = _book([("S", "xl/worksheets/sheet1.xml",
+                   (f'<worksheet {NS}><sheetData><row r="1">' + "<c/>" * 2_000_000 + "</row></sheetData></worksheet>").encode())])
+    out, secs, peak = _measure(lambda: xlsx.read(data))
+    assert isinstance(out, xlsx.XlsxError) and secs < 2 and peak < 64 * 1024 * 1024, (out, secs, peak)
+
+
+def test_r2_many_empty_cells_bounded():
+    data = _book([("S", "xl/worksheets/sheet1.xml",
+                   (f"<worksheet {NS}><sheetData>" + '<row r="1"><c r="A1"/><c r="B1"/></row>' * 400_000 +
+                    "</sheetData></worksheet>").encode())])
+    out, secs, peak = _measure(lambda: xlsx.read(data))
+    assert isinstance(out, xlsx.XlsxError) and secs < 3, (out, secs)
+
+
+def test_r2_date_near_year_9999_does_not_crash():
+    for v in ("2958465.99999999", "2958465.9999999999", "1e308", "-1e308", "nan", "inf"):
+        for d1904 in (False, True):
+            xlsx._date_text(v, d1904)          # must not raise
 
 
 # ================================================================ CI

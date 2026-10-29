@@ -228,6 +228,9 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 .rstats span{font-size:var(--t-sm);color:var(--ink2)}
 .rstats b{font-family:var(--mono);font-size:var(--t-lg);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .rstats i{font-style:normal;font-size:var(--t-sm);color:var(--muted)}
+.otrow{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1.6fr) auto auto;gap:var(--s2) var(--s4);align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line);font-size:var(--t-sm)}
+.otrow:last-child{border-bottom:none}.otrow .car{color:var(--ink2)}.otrow .t{font-family:var(--mono,ui-monospace,monospace)}.otrow .cls{font-size:11px;padding:1px 6px;border-radius:3px;background:var(--band);color:var(--ink2);white-space:nowrap}
+.otrow.me b{color:var(--a)}
 .rnotes{font-size:var(--t-sm);color:var(--ink2);white-space:pre-wrap;border-top:1px solid var(--line);padding-top:var(--s3)}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:30;background:var(--ink);color:var(--panel);padding:8px 14px;border-radius:6px;font-size:var(--t-sm);box-shadow:var(--shadow)}
 
@@ -303,6 +306,7 @@ td.d b{color:var(--ink);font-weight:600}
   <div class="pbbanner" id="pbBanner" hidden></div>
   <div class="stats" id="stats"></div>
   <div class="panel" id="resultPanel" hidden><h3>Race result <span class="note" id="resultSub"></span></h3><div class="rstats" id="resultStats"></div></div>
+  <div class="panel" id="otPanel" hidden><h3>On track with you <span class="note" id="otSub"></span></h3><div id="otRows"></div><p class="note" id="otNote"></p></div>
   <p class="story" id="story"></p>
 </section>
 
@@ -842,6 +846,20 @@ const PB=D.pb&&typeof D.pb==='object'?D.pb:null;
   if(n(RES.laps_led)!=null)add('Laps led',String(n(RES.laps_led)));
   if(RES.notes){const p=h('p','rnotes');p.textContent=String(RES.notes).slice(0,500);$('resultPanel').append(p)}
   $('resultSub').textContent='Entered by you';$('resultPanel').hidden=false})();
+
+// ---------- v2.2: who else was on track (teammates and followed drivers only: all Garage 61 shares)
+(function(){const OT=D.on_track;if(!OT||!Array.isArray(OT.drivers))return;const host=$('otRows');
+  const mine=D.meta&&D.meta.car;const myBest=D.best&&D.best.t;
+  const rows=[{name:'You',car:mine,best:myBest,laps:(D.laps||[]).length,me:true}].concat(OT.drivers);
+  rows.sort((a,b)=>(a.same_class===false)-(b.same_class===false)||((a.best||1e9)-(b.best||1e9)));
+  rows.forEach(r=>{const d=h('div','otrow'+(r.me?' me':''));const nm=h('b',null,r.name||'Driver');
+    const tag=r.me?'':(r.same_car?'Same car':r.same_class===false?'Other class':'Other car');
+    const c=h('span','car',r.car||'');const t=h('span','t',fmt(r.best));const cl=h('span','cls',tag||'You');
+    d.append(nm,c,t,cl);host.append(d)});
+  $('otSub').textContent=OT.drivers.length?(OT.multiclass?'Multi-class race · ':'')+OT.drivers.length+' teammate'+(OT.drivers.length===1?'':'s')+' or followed driver'+(OT.drivers.length===1?'':'s'):'';
+  $('otNote').textContent=OT.drivers.length?'Best laps from drivers Garage 61 lets you see (you, teammates and drivers you follow). The rest of the field isn\'t shared.':
+    'None of your teammates or followed drivers were in this session. Garage 61 only shares laps from them, so follow more drivers to see more of the field.';
+  $('otPanel').hidden=false})();
 
 // ---------- v2: corner technique
 const techFmt={brake_on:v=>Math.round(v).toLocaleString()+' m',peak_brake:v=>Math.round(v)+'%',min_mph:v=>v.toFixed(1)+' mph',full_thr:v=>Math.round(v).toLocaleString()+' m',coast_s:v=>v.toFixed(2)+' s',exit_mph:v=>v.toFixed(1)+' mph',gear:v=>String(v)};

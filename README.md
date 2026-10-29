@@ -45,7 +45,8 @@ If Windows shows a blue "Windows protected your PC" box, click **More info → R
 - **Add race result** (bar at the top of an open review): type in where you started and finished, incidents, iRating and safety rating from the iRacing results page. Only the finishing position is needed. You can edit or delete it later. No Garage 61 requests.
 - **Season**: your iRating, races and results across the season, from the reviews in your library.
 - **Goals**: set a target lap time for a track and car (for example 1:23.500). Debrief shows how close your best is and marks it achieved when you beat it. Edit or delete goals any time. No Garage 61 requests.
-- **Prep**: before a race, pick a track and car you have raced (or search any track and car) and click **Build prep page**. You get your history there, where teammates are quicker, the corners that keep costing you, and a practice plan. Searching any track and car needs Garage 61's track and car lists; the first time, click **Load track and car lists** (2 requests, then saved for a week).
+- **Prepare**: load iRacing's season schedule once a season (**Download official schedule**, or **Load PDF...** for a copy you downloaded; Debrief reads it on your PC and never shares it). Debrief suggests your series from this season's races; tick the ones you race. For each series you see this week's and next week's track, race length and start time, your history there, and a **track card**: five short optional notes (lap 1, crash hotspots, passing spots, track limits, focus this week) for what telemetry can't see. Cards are saved per track in `track-notes` in your reviews folder, so a card follows the track into every series. **Build prep page** still gives your history, teammates' pace, the corners that keep costing you and a practice plan; prep pages for any track and car are under the same page.
+- **Multi-class races**: a review lists every teammate and followed driver who was in the same session, in any car or class (1 extra request; Garage 61 doesn't share the rest of the field). In a multi-class race, clean laps that lost their time in one short stretch (usually traffic) are left out of your pace and consistency numbers and listed in the review.
 - **Team**: the Midfield Menace hub. Click **Refresh team data** to get:
   - **Leaderboards**: everyone's best clean lap at your six most recent tracks and cars, with you highlighted.
   - **Corner kings**: who is quickest through each corner, from each driver's best lap with telemetry (up to five drivers per track and car).
@@ -72,6 +73,9 @@ The Garage 61 API only shares laps from **you, your teammates, and drivers you f
 - Everything is cached in the `.cache` folder inside Debrief (`%LOCALAPPDATA%\Debrief\.cache` for the installed app), so a lap is never downloaded twice. A new race is about 30 requests; re-opening it costs none.
 - Team refresh: at most about 60 requests the first time (six tracks and cars); clicking it again within ten minutes uses none, and later refreshes only download what's new.
 - Prep page: a handful of requests (teammates' best laps at that track and car).
+- Review: one more request to list teammates and followed drivers who were in the same session.
+- Prepare page and track cards: none (the schedule comes from iRacing's PDF; downloading it is one request to iRacing, only when you click).
+- Requests are spaced about a second apart; if Garage 61 asks Debrief to slow down, later requests in that run are spaced further apart.
 - Goals, race results and Season use no requests at all.
 
 ## Team and iRacing settings

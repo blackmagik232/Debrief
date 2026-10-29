@@ -176,7 +176,7 @@ def design_tokens() -> str:
 # ---------------------------------------------------------------- background jobs
 JOB_TITLES = {"review": "Reviewing your last race", "check": "Checking the connection",
               "prep": "Building your track prep page", "team": "Updating the team hub",
-              "sync": "Syncing your Garage 61 history"}
+              "sync": "Syncing your Garage 61 history", "schedule": "Loading the iRacing season schedule"}
 
 
 class Jobs:
@@ -272,6 +272,8 @@ class Jobs:
             elif kind == "prep":
                 page = app.cmd_prep(cfg, params["track_id"], params["car_id"], progress=cb)
                 result = {"page": _lib_rel(cfg, page)}
+            elif kind == "schedule":
+                result = {"schedule": _run_schedule(params, cb)}
             elif kind == "team":
                 page = app.cmd_team(cfg, progress=cb)
                 result = {"page": _lib_rel(cfg, page)}
@@ -294,6 +296,33 @@ class Jobs:
             self.st["result"] = result
             self.st["frac"] = self.st["frac"] if error else 1.0
             self.st["finished"] = time.time()
+
+
+def _run_schedule(params, cb) -> dict:
+    """Import a season PDF: one you picked (params["path"], a temp copy) or iRacing's current one."""
+    from .. import schedule
+    path = params.get("path")
+    tmp = None
+    try:
+        if not path:
+            cb(0.1, "Downloading the season schedule from iRacing...")
+            path = tmp = schedule.download_official()
+        cb(0.4, "Reading the schedule (this takes a few seconds)...")
+        try:
+            info = schedule.import_pdf(path, kind="pdf" if params.get("path") else "official")
+        except schedule.ScheduleError as e:
+            raise SystemExit(str(e))
+        cb(0.95, f"Loaded {info['season']}: {info['series']} series, {info['weeks']} weeks.")
+        return info
+    except schedule.ScheduleError as e:
+        raise SystemExit(str(e))
+    finally:
+        for p in filter(None, [tmp, params.get("path")]):
+            try:
+                Path(p).unlink()
+                Path(p).parent.rmdir()
+            except OSError:
+                pass
 
 
 def _rebuild_library(cfg) -> None:
@@ -499,7 +528,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"groups": self.server.reviews.list(lib), "folder": str(lib)})
         if r.startswith("lib/"):
             return self._lib(r[len("lib/"):])
-        if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/pages", "api/sessions"):
+        if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/pages", "api/sessions", "api/prepare",
+                 "api/notes"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -631,6 +661,27 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"ok": True, "token": True, "summary": store.summary(), "sessions": rows,
                            "sync_on_open": cfg.get("sync_on_open", True)})
 
+    def _synced_sessions(self, api):
+        if api is None:
+            return []
+        from .. import sync
+        return sync.Store.for_api(api).sessions()
+
+    def _get_prepare(self, q):
+        """Everything the Prepare page shows. Never a request: schedule, sync store and library only."""
+        cfg = self._cfg()
+        prepare = self._module("prepare")
+        api = self._cache_api(cfg)
+        return self._json(prepare.view(cfg, api, self._synced_sessions(api)))
+
+    def _get_notes(self, q):
+        cfg = self._cfg()
+        notes = self._module("notes")
+        track = q.get("track")
+        if not isinstance(track, str) or not track.strip() or len(track) > 200:
+            raise ValueError("Pick a track.")
+        return self._json({"ok": True, "card": notes.load(cfg["library_folder"], track), "labels": notes.LABELS})
+
     def _get_pages(self, q):
         """Pages built by the Prep and Team views, so the window can offer to reopen them."""
         cfg = self._cfg()
@@ -691,6 +742,8 @@ class Handler(BaseHTTPRequestHandler):
         r = self._route()
         if r is None or self.headers.get("X-Debrief") != "1":
             return self._nf()
+        if r == "api/schedule-upload":
+            return self._post_schedule_upload()
         try:  # read the body first (even for ping/bye) so a kept-alive connection stays in step
             body = self._body()
         except (ValueError, UnicodeDecodeError, RecursionError):
@@ -717,7 +770,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
         if r == "api/check":
             return self._json(self.server.jobs.start("check"))
-        if r in ("api/prep", "api/team", "api/goals", "api/result"):
+        if r in ("api/prep", "api/team", "api/goals", "api/result", "api/series", "api/notes", "api/schedule"):
             try:
                 return getattr(self, "_post_" + r[4:])(body)
             except ValueError as e:
@@ -772,6 +825,70 @@ class Handler(BaseHTTPRequestHandler):
         tid, cid = _pos_int(body.get("track_id"), "track"), _pos_int(body.get("car_id"), "car")
         self._cfg()
         return self._json(self.server.jobs.start("prep", {"track_id": tid, "car_id": cid}))
+
+    MAX_PDF = 40 * 1024 * 1024
+
+    def _post_schedule_upload(self):
+        """The season PDF you picked, sent as the raw request body (application/pdf). Saved to a temp file,
+        then read by a background job."""
+        cl = (self.headers.get("Content-Length") or "").strip()
+        if not cl.isdigit() or self.headers.get("Transfer-Encoding"):
+            self.close_connection = True
+            return self._json({"ok": False, "error": "Bad request."}, 400)
+        n = int(cl)
+        if n > self.MAX_PDF or n < 1000:
+            self.close_connection = True
+            return self._json({"ok": False, "error": "That file isn't the season schedule PDF."}, 400)
+        import tempfile
+        d = Path(tempfile.mkdtemp(prefix="debrief-sched-"))
+        p = d / "upload.pdf"
+        left = n
+        with open(p, "wb") as f:
+            while left:
+                chunk = self.rfile.read(min(65536, left))
+                if not chunk:
+                    break
+                f.write(chunk)
+                left -= len(chunk)
+        def drop():
+            try:
+                p.unlink()
+                d.rmdir()
+            except OSError:
+                pass
+        if left:
+            drop()
+            self.close_connection = True
+            return self._json({"ok": False, "error": "The file didn't arrive in full. Try again."}, 400)
+        with open(p, "rb") as f:
+            if f.read(5) != b"%PDF-":
+                drop()
+                return self._json({"ok": False, "error": "That file isn't a PDF. Pick iRacing's season schedule PDF."}, 400)
+        res = self.server.jobs.start("schedule", {"path": str(p)})
+        if not res.get("ok"):
+            drop()
+        return self._json(res)
+
+    def _post_schedule(self, body):
+        if body.get("action") != "download":
+            raise ValueError("Bad request.")
+        return self._json(self.server.jobs.start("schedule", {}))
+
+    def _post_series(self, body):
+        cfg = self._cfg()
+        from .. import schedule
+        series = self._module("series")
+        sched = schedule.load_current()
+        if sched is None:
+            raise ValueError("Load the season schedule first.")
+        mine = series.save(cfg["library_folder"], body.get("ids"), sched)
+        return self._json({"ok": True, "mine": mine})
+
+    def _post_notes(self, body):
+        cfg = self._cfg()
+        notes = self._module("notes")
+        card = notes.save(cfg["library_folder"], notes.clean(body.get("card")))
+        return self._json({"ok": True, "card": card})
 
     def _post_team(self, body):
         self._cfg()

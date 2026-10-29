@@ -244,6 +244,34 @@ def lap_style(R):
 
 
 # ---------------------------------------------------------------- main
+def detect_traffic(clean: list, median: float, window_m: float = 400.0) -> list:
+    """Clean laps that lost their time in one short stretch of track, in a way your other clean laps
+    didn't: in a multi-class race that's usually traffic (lifting for a faster class, or stuck behind
+    a slower one), not your driving. Returns [{"n", "at_m", "lost"}].
+    Needs at least 5 clean laps; a lap must be at least 0.3 s off the median to be considered."""
+    if len(clean) < 5:
+        return []
+    TT = np.array([x["R"]["tt"] for x in clean], dtype=float)
+    ref = np.median(TT, axis=0)
+    w = max(2, int(window_m / STEP))
+    if TT.shape[1] <= w + 1:
+        return []
+    D = TT - ref                       # time lost (+) or gained (-) vs the typical lap, along the lap
+    W = D[:, w:] - D[:, :-w]           # time lost inside each window_m stretch
+    med_w = np.median(W, axis=0)
+    mad = np.median(np.abs(W - med_w), axis=0)
+    out = []
+    for i, x in enumerate(clean):
+        excess = x["t"] - median
+        if excess < 0.3:
+            continue
+        j = int(np.argmax(W[i]))
+        top = float(W[i][j])
+        if top >= max(0.25, 0.5 * excess) and top > med_w[j] + 4 * max(float(mad[j]), 0.03):
+            out.append({"n": x["n"], "at_m": float(x["R"]["d"][j + w // 2]), "lost": round(top, 2)})
+    return out
+
+
 def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, track_length: float | None = None, log=None) -> dict:
     """
     meta: {driver, car, track, event_name, started_at, ...}
@@ -316,6 +344,13 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
     slow = [x["n"] for x in laps if x["clean"] and x["t"] > median + 1.0]
     outlier = sorted(unclean + slow)
     clean = [x for x in laps if x["n"] not in outlier]
+    # multi-class races: a "clean" lap can still have lost time to traffic. Those laps are left out of
+    # the pace, consistency and corner numbers, like laps more than a second off.
+    traffic = detect_traffic(clean, median) if meta.get("multiclass") else []
+    if traffic:
+        tn = {t["n"] for t in traffic}
+        outlier = sorted(set(outlier) | tn)
+        clean = [x for x in clean if x["n"] not in tn]
     pool = clean or [x for x in laps if x["clean"]] or laps
     best = min(pool, key=lambda x: x["t"])
     clean_t = np.array([x["t"] for x in clean]) if clean else times
@@ -457,6 +492,9 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
 
     span = (max(nums) - min(nums)) if nums else 0
     findings = build_findings(laps, best, median, unclean, slow, excluded, sl, span, optimal, ranked, ref_out)
+    if traffic:
+        findings.insert(1, "Multi-class race: lap(s) " + ", ".join(f"{t['n']} (~{t['lost']:.2f}s around {t['at_m']:.0f} m)" for t in traffic) +
+                        " lost time in one short stretch, most likely traffic, so they're left out of your pace and consistency numbers.")
     plan = build_plan(ranked, sl, span, outlier, ref_out)
 
     segments = build_segments(corner_out, laps, ref_out, L)
@@ -484,6 +522,7 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
         "refs": [{"key": f"ref{i}", "name": r["name"], "t": r["t"], "rating": r["rating"], "role": r["role"],
                   "main": r["main"], "style": r["style"]} for i, r in enumerate(ref_out)],
         "counts": {"analysed": len(laps), "clean": len(clean), "unclean": unclean, "slow": slow, "excluded": excluded,
+                   "traffic": [t["n"] for t in traffic], "traffic_detail": traffic, "multiclass": bool(meta.get("multiclass")),
                    "partial": flagged + partial},
         "findings": findings, "plan": plan,
         "segments": segments,

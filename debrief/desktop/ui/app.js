@@ -47,7 +47,7 @@ setTheme(getTheme());
 /* ---------- views */
 const VIEWS=['vFrame','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam','vSessions'];
 const FRAME_VIEWS=['review','library','season','prepPage','teamPage'];
-const NAV_OF={sync:'sessions',sessions:'sessions',library:'library',season:'season',goals:'goals',prep:'prep',prepPage:'prep',team:'team',teamPage:'team',settings:'settings'};
+const NAV_OF={sync:'sessions',sessions:'sessions',library:'library',season:'season',goals:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings'};
 let current={view:null,dir:null};
 function show(view){VIEWS.forEach(v=>$(v).hidden=(v!==view))}
 function markNav(){
@@ -230,6 +230,13 @@ function render(s){
         banner(s.kind==='team'?'Team hub updated.':'Prep page ready.')}if(current.view==='prep')renderPrepPages()});
     }
   }
+  if(s.kind==='schedule'){
+    if(s.state==='running')setMsg('schMsg',s.message||'Loading...');
+    if((s.state==='done'||s.state==='error')&&!handled.has(s.id)){handled.add(s.id);schBusy(false);
+      if(s.state==='done'){const r=(s.result&&s.result.schedule)||{};setMsg('schMsg','Loaded '+(r.season||'the schedule')+': '+(r.series||0)+' series.','ok');
+        banner('Season schedule loaded.');loadPrepare(true)}
+      else{setMsg('schMsg',s.error,'bad');if(current.view!=='prep')banner('The schedule didn\'t load: '+s.error,true,9000)}}
+  }
   if(s.kind==='check'){
     $('chkBar').firstElementChild.style.width=Math.round((s.frac||0)*100)+'%';
     $('gChkBar').firstElementChild.style.width=Math.round((s.frac||0)*100)+'%';
@@ -337,7 +344,131 @@ async function loadCombos(fetchLists){
   combosCache=j;return j}
 function comboLabel(c){return c.track+' · '+c.car}
 async function openPrep(){current={view:'prep',dir:null};show('vPrep');markNav();
-  const [j]=await Promise.all([loadCombos(false),loadPages()]);renderPrep(j);renderPrepPages()}
+  const [j]=await Promise.all([loadCombos(false),loadPages(),loadPrepare(false)]);renderPrep(j);renderPrepPages();renderPrepare()}
+
+/* ---------- Prepare (2.2): schedule, your series, this/next week, track cards */
+let prepData=null,picked=new Set(),pickerOpen=false;
+const WEEKDAY=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function dayRange(start){const m=/^(\d{4})-(\d\d)-(\d\d)/.exec(start||'');if(!m)return '';const a=new Date(Date.UTC(+m[1],+m[2]-1,+m[3]));const b=new Date(a.getTime()+6*864e5);
+  const f=d=>MON[d.getUTCMonth()]+' '+d.getUTCDate();return f(a)+' – '+f(b)}
+function raceWhen(rt){const m=/^(\d{4})-(\d\d)-(\d\d) (\d{1,2}):(\d\d)/.exec(rt||'');if(!m)return '';
+  const d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5]));return WEEKDAY[d.getDay()]+' '+MON[d.getMonth()]+' '+d.getDate()+', '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
+async function loadPrepare(render){let j;try{j=await api('prepare')}catch(e){connectionLost();return null}
+  if(!j.ok){setMsg('schMsg',j.error,'bad');return null}
+  prepData=j;if(render!==false)renderPrepare();return j}
+function schBusy(b){$('btnSchDl').disabled=b;$('btnSchLoad').disabled=b}
+function renderPrepare(){const j=prepData;if(!j)return;const sc=j.schedule;
+  const pill=$('schPill');
+  if(!sc){pill.textContent='Not loaded';pill.className='pill no';
+    $('schNote').textContent='Load iRacing\'s official season schedule to see what your series are racing. Debrief reads the PDF on this PC and never shares it.'}
+  else{pill.textContent=sc.season+(sc.current_week?' · Week '+sc.current_week:'');pill.className='pill '+(sc.out_of_date?'no':'ok');
+    $('schNote').textContent=sc.out_of_date?'This season has ended. Load the new season\'s schedule when iRacing publishes it.':
+      sc.series+' series, '+sc.weeks+' weeks ('+fmtDate(sc.first_day)+' to '+fmtDate(sc.last_day)+'). Load it again when the next season comes out.'}
+  $('btnSchDl').textContent=sc?'Download latest schedule':'Download official schedule';
+  const showPicker=!!sc&&(pickerOpen||!j.chosen);
+  $('seriesPicker').hidden=!showPicker;if(showPicker)renderPicker();
+  renderMySeries()}
+function serMeta(s){const bits=[];if(s.category)bits.push(s.category);if(s.license)bits.push(s.license.replace(/\s*-->\s*/,' → '));
+  if(s.setup)bits.push(s.setup==='fixed'?'Fixed setup':'Open setup');return bits.join(' · ')}
+function pickRow(s,sub,checked){const lab=h('label','pick');const cb=document.createElement('input');cb.type='checkbox';cb.checked=checked;
+  cb.addEventListener('change',()=>{if(cb.checked)picked.add(s.id);else picked.delete(s.id);
+    document.querySelectorAll('.pick input[data-id="'+CSS.escape(s.id)+'"]').forEach(x=>{if(x!==cb)x.checked=cb.checked})});
+  cb.dataset.id=s.id;const tx=h('span','itx');tx.append(h('b',null,s.name),h('span','sub2',sub));lab.append(cb,tx);return lab}
+function renderPicker(){const j=prepData;
+  if(!renderPicker.init){renderPicker.init=true;picked=new Set((j.mine||[]).map(s=>s.id));
+    if(!j.chosen)(j.suggestions||[]).forEach(s=>{if(s.sure)picked.add(s.id)})}
+  const sug=$('pickSuggest');sug.replaceChildren();const list=j.suggestions||[];
+  $('pickNote').textContent=list.length?'Debrief matched these from your races this season. Sure matches are ticked; check the rest.':
+    'No races this season to match yet. Search for your series below.';
+  list.forEach(s=>{const sub=s.races+' race'+(s.races===1?'':'s')+' this season'+(s.shared?' · shares a car with another series':'')+(s.multiclass?' · multi-class':'');
+    sug.append(pickRow(s,sub,picked.has(s.id)))});
+  renderPickAll()}
+function renderPickAll(){const q=$('seriesSearch').value.trim().toLowerCase();const host=$('pickAll');host.replaceChildren();
+  const all=(prepData&&prepData.all)||[];
+  const hit=all.filter(s=>!q||[s.name,s.track,s.category].concat(s.cars||[]).some(x=>String(x||'').toLowerCase().includes(q)));
+  hit.slice(0,80).forEach(s=>host.append(pickRow(s,[s.category,s.track?'This week: '+s.track:'',s.multiclass?'Multi-class':''].filter(Boolean).join(' · '),picked.has(s.id))));
+  if(hit.length>80)host.append(h('p','note','Showing 80 of '+hit.length+'. Type more to narrow it down.'));
+  if(!hit.length)host.append(h('p','note','No series match that.'))}
+$('seriesSearch').addEventListener('input',renderPickAll);
+$('btnSeriesSave').addEventListener('click',async()=>{setMsg('pickMsg','Saving...');
+  let r;try{r=await post('series',{ids:Array.from(picked)})}catch(e){connectionLost();return}
+  if(!r.ok){setMsg('pickMsg',r.error,'bad');return}
+  setMsg('pickMsg','');pickerOpen=false;renderPicker.init=false;await loadPrepare(true)});
+$('btnPickSkip').addEventListener('click',async()=>{pickerOpen=false;renderPicker.init=false;
+  if(!prepData.chosen){let r;try{r=await post('series',{ids:[]})}catch(e){connectionLost();return}}
+  await loadPrepare(true)});
+$('btnPickClose').addEventListener('click',()=>{pickerOpen=false;renderPicker.init=false;if(prepData&&prepData.chosen)$('seriesPicker').hidden=true});
+function weekBox(w,label,s,now){const box=h('div','wk'+(now?' now':''));
+  box.append(h('span','wlab',label+' · Week '+w.week+' · '+dayRange(w.start)),h('span','wtrack',w.track));
+  const facts=[];if(w.length)facts.push(w.length);const rt=raceWhen(w.race_time);if(rt)facts.push('Race '+rt);
+  if(facts.length)box.append(h('span','sub2',facts.join(' · ')));
+  if(w.conditions)box.append(h('span','sub2',w.conditions));
+  const hs=w.history||{};
+  box.append(h('span','sub2',hs.sessions?('You: '+hs.sessions+' session'+(hs.sessions===1?'':'s')+(hs.races?' ('+hs.races+' race'+(hs.races===1?'':'s')+')':'')+
+    (hs.best?' · best '+fmtT(hs.best):'')+(hs.last?' · last '+fmtDate(hs.last):'')):(hs.other_car_sessions?'You\'ve driven here in another car, not this one yet.':'You haven\'t driven here yet.')));
+  if(w.has_notes){const cv=h('div','cardview');const c=w.card.fields||{};
+    [['lap1','Lap 1'],['hotspots','Hotspots'],['passing','Passing'],['limits','Limits'],['focus','Focus']].forEach(([k,lab])=>{if(c[k]){const p=h('p');p.append(h('b',null,lab+': '),document.createTextNode(c[k]));cv.append(p)}});
+    const cn=(w.card.car_notes||{});Object.keys(cn).forEach(car=>{if((s.cars||[]).some(x=>x===car)){const p=h('p');p.append(h('b',null,car+': '),document.createTextNode(cn[car]));cv.append(p)}});
+    box.append(cv)}
+  const row=h('div','row');const bc=h('button','btn',w.has_notes?'Edit track card':'Add track card');bc.type='button';
+  bc.addEventListener('click',()=>openCard(w.track,s));row.append(bc);
+  const bp=h('button','btn','Build prep page');bp.type='button';
+  if(w.track_id==null||w.car_id==null){bp.disabled=true;bp.title='Debrief needs Garage 61\'s ids for this track and car: drive it once, or load the track and car lists under "Prep pages for any track and car".'}
+  bp.addEventListener('click',()=>startJob('prep',{track_id:w.track_id,car_id:w.car_id}));row.append(bp);
+  box.append(row);return box}
+function renderMySeries(){const host=$('mySeries');host.replaceChildren();const j=prepData;if(!j||!j.schedule)return;
+  const mine=j.mine||[];
+  const head=h('div','phead');head.append(h('h3',null,mine.length?'Your series':'No series picked yet'));
+  const be=h('button','btn',mine.length?'Change series':'Pick your series');be.type='button';
+  be.addEventListener('click',()=>{pickerOpen=true;renderPicker.init=false;renderPrepare();$('seriesPicker').scrollIntoView({behavior:'smooth',block:'start'})});
+  head.append(be);host.append(head);
+  if(!mine.length){host.append(h('p','note','Pick the series you race and Debrief shows this week\'s and next week\'s tracks for each one.'));return}
+  mine.forEach(s=>{const c=h('div','sercard');const sh=h('div','shead');sh.append(h('h3',null,s.name));
+    const chips=h('div','chips');if(s.missing)chips.append(h('span','chip','Not running this season'));
+    if(s.multiclass)chips.append(h('span','chip mc','Multi-class: '+(s.classes||[]).join(', ')));
+    if(s.setup)chips.append(h('span','chip',s.setup==='fixed'?'Fixed':'Open'));sh.append(chips);c.append(sh);
+    if(s.missing){c.append(h('p','note','This series isn\'t in the loaded schedule. Change series to remove it.'));host.append(c);return}
+    const meta=serMeta(s);if(meta)c.append(h('span','sub2',meta));
+    if(s.cars&&s.cars.length)c.append(h('span','sub2',(s.cars.length>1?'Cars: ':'Car: ')+s.cars.slice(0,8).join(', ')+(s.cars.length>8?' and '+(s.cars.length-8)+' more':'')));
+    const wk=h('div','wk2');
+    if(s.this_week)wk.append(weekBox(s.this_week,'This week',s,true));
+    if(s.next_week)wk.append(weekBox(s.next_week,'Next week',s,false));
+    if(!s.this_week&&!s.next_week)wk.append(h('p','note','No race this week (off-week or season over).'));
+    c.append(wk);
+    if(s.season&&s.season.length){const d=h('details','sub');d.append(h('summary',null,'Whole season ('+s.season.length+' weeks)'));
+      const sl=h('div','seasonlist');s.season.forEach(w=>{const r=h('div',w.week===j.current_week?'now':null);
+        r.append(h('span','mono','Wk '+w.week),h('span','mono',fmtDate(w.start).replace(/, \d{4}$/,'')),h('span',null,w.track),h('span','sub2',w.has_notes?'Card ✓':(w.length||'')));sl.append(r)});
+      d.append(sl);c.append(d)}
+    host.append(c)})}
+$('btnSchDl').addEventListener('click',async()=>{if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){banner('Debrief is busy. Wait for it to finish.',true);return}
+  setMsg('schMsg','Starting...');schBusy(true);let r;try{r=await post('schedule',{action:'download'})}catch(e){connectionLost();return}
+  if(!r.ok){schBusy(false);setMsg('schMsg',r.error,'bad');return}lastJob={state:'running',kind:'schedule',id:r.id};poll()});
+$('btnSchLoad').addEventListener('click',()=>$('schFile').click());
+$('schFile').addEventListener('change',async()=>{const f=$('schFile').files[0];$('schFile').value='';if(!f)return;
+  if(f.size>40*1024*1024){setMsg('schMsg','That file is too big to be the season schedule.','bad');return}
+  setMsg('schMsg','Sending '+f.name+'...');schBusy(true);let r;
+  try{r=await fetch(BASE+'api/schedule-upload',{method:'POST',headers:{'X-Debrief':'1','Content-Type':'application/pdf'},body:f}).then(x=>x.json())}catch(e){schBusy(false);setMsg('schMsg','Couldn\'t send the file.','bad');return}
+  if(!r.ok){schBusy(false);setMsg('schMsg',r.error,'bad');return}lastJob={state:'running',kind:'schedule',id:r.id};poll()});
+/* track card */
+let cardFor=null;
+function openCard(track,s){cardFor={track,cars:(s&&s.cars)||[],season:prepData&&prepData.schedule&&prepData.schedule.season};
+  $('cardTitle').textContent='Track card: '+track;setMsg('cardMsg','');$('cardUpdated').textContent='';
+  ['lap1','hotspots','passing','limits','focus'].forEach(k=>$('c_'+k).value='');$('c_car').value='';
+  const car=cardFor.cars.length===1?cardFor.cars[0]:null;cardFor.car=car;$('cCarWrap').hidden=!car;if(car)$('cCarLab').textContent='Note for the '+car;
+  const d=$('dlgCard');if(d.showModal)d.showModal();else d.setAttribute('open','');
+  api('notes?track='+encodeURIComponent(track)).then(j=>{if(!j.ok){setMsg('cardMsg',j.error,'bad');return}const c=j.card;cardFor.card=c;
+    ['lap1','hotspots','passing','limits','focus'].forEach(k=>$('c_'+k).value=(c.fields||{})[k]||'');
+    if(car)$('c_car').value=(c.car_notes||{})[car]||'';
+    if(c.updated)$('cardUpdated').textContent='Last saved '+fmtDate(c.updated)+(c.season?' ('+c.season+')':'');
+    if(c.read_only){$('cardSave').disabled=true;setMsg('cardMsg','Saved by a newer Debrief: update to edit.','bad')}else $('cardSave').disabled=false})
+  .catch(()=>connectionLost())}
+function closeCard(){const d=$('dlgCard');if(d.close)d.close();else d.removeAttribute('open')}
+$('cardClose').addEventListener('click',closeCard);
+$('fCard').addEventListener('submit',async e=>{e.preventDefault();if(!cardFor)return;
+  const fields={};['lap1','hotspots','passing','limits','focus'].forEach(k=>fields[k]=$('c_'+k).value);
+  const car_notes=Object.assign({},(cardFor.card&&cardFor.card.car_notes)||{});if(cardFor.car)car_notes[cardFor.car]=$('c_car').value;
+  setMsg('cardMsg','Saving...');let r;try{r=await post('notes',{card:{track:cardFor.track,fields,car_notes,season:cardFor.season}})}catch(err){connectionLost();return}
+  if(!r.ok){setMsg('cardMsg',r.error,'bad');return}closeCard();banner('Track card saved.');loadPrepare(true)});
 function renderPrep(j){
   const host=$('prepCombos');host.replaceChildren();
   if(!j){host.append(h('p','note','Couldn\'t load your tracks.'));return}

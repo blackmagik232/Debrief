@@ -17,6 +17,11 @@ from pathlib import Path
 
 from .. import app
 
+# Feature modules the window loads by name (app.optional_module / lazy imports). The selftest imports
+# each one, so a build that leaves one out fails in CI instead of on someone's PC.
+FEATURE_MODULES = ("engine", "report", "library", "prep", "goals", "results", "team", "sync",
+                   "analysis_plus", "schedule", "series", "notes", "prepare")
+
 
 def find_edge() -> str | None:
     cands = []
@@ -87,8 +92,18 @@ def selftest() -> int:
         from .. import report
         import numpy  # noqa: F401  (bundled dependencies import)
         import requests  # noqa: F401
+        import pypdf  # noqa: F401  (season schedule PDF reader)
         from .. import sync  # noqa: F401  (history sync)
         checks["imports"] = True
+        # every page's code must load, including the ones only imported by name (2.1.0 lost prep this way)
+        import importlib
+        for mod in FEATURE_MODULES:
+            try:
+                importlib.import_module(f"{__package__.rsplit('.', 1)[0]}.{mod}")
+                checks["module:" + mod] = True
+            except Exception:  # noqa: BLE001
+                app.say(f"Selftest: module {mod} failed to load:\n" + traceback.format_exc())
+                checks["module:" + mod] = False
         tpl = Path(report.TPL)
         for name in ("review.html", "library.html", "prep.html", "team.html"):
             p = tpl / name
@@ -110,6 +125,11 @@ def selftest() -> int:
         checks["page"] = get("", b'id="vWelcome"')
         checks["api/status"] = get("api/status", b'"state"')
         checks["api/settings"] = get("api/settings", b'"version"')
+        # the Prepare page's data builds (schedule, series and track cards) without settings or a schedule
+        import tempfile
+        from .. import prepare
+        with tempfile.TemporaryDirectory() as td:
+            checks["prepare"] = prepare.view({"library_folder": td}, None, []).get("ok") is True
         for asset, want in (("static/app.js", b"use strict"), ("static/app.css", b"box-sizing"),
                             ("static/tokens.css", b":root"), ("static/icon.png", b"PNG")):
             checks[asset] = get(asset, want)

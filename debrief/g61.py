@@ -48,6 +48,8 @@ class Garage61:
         self.cache = Path(cache_dir) / ns
         self.cache.mkdir(parents=True, exist_ok=True)
         self.min_gap = min_gap_s
+        self.base_gap = min_gap_s   # the gap widens after a 429 and eases back after a run of successes
+        self._ok_run = 0
         self._last = 0.0
         self.requests_made = 0
         self.log = log
@@ -58,6 +60,36 @@ class Garage61:
         if gap < self.min_gap:
             time.sleep(self.min_gap - gap)
         self._last = time.monotonic()
+
+    MAX_GAP = 6.0
+
+    def _slow_down(self):
+        """Garage 61 said slow down: space later requests further apart for the rest of this run."""
+        new = min(self.MAX_GAP, max(self.min_gap * 1.6, self.base_gap + 0.5))
+        if new > self.min_gap:
+            self.log(f"  Pacing Garage 61 requests {new:.1f}s apart to stay under its limit")
+        self.min_gap = new
+        self._ok_run = 0
+
+    def _went_ok(self, r):
+        """After 40 requests in a row without a 429, ease the gap back toward normal. If Garage 61 says
+        the quota is almost used up, wait for it to reset instead of running into a 429."""
+        self._ok_run += 1
+        if self.min_gap > self.base_gap and self._ok_run >= 40:
+            self.min_gap = max(self.base_gap, self.min_gap * 0.8)
+            self._ok_run = 0
+        try:
+            left = int(r.headers.get("X-RateLimit-Remaining", ""))
+            reset = float(r.headers.get("X-RateLimit-Reset", ""))
+        except (TypeError, ValueError):
+            return
+        if left <= 1:
+            # Reset is either seconds-to-wait or an epoch time; never wait more than 2 minutes
+            secs = reset - time.time() if reset > 1e9 else reset
+            secs = max(0.0, min(120.0, secs))
+            if secs > 0:
+                self.log(f"  Garage 61 request quota nearly used; waiting {secs:.0f}s for it to reset")
+                time.sleep(secs)
 
     @staticmethod
     def _retry_after(r, default):
@@ -105,6 +137,8 @@ class Garage61:
             if r.status_code == 404:
                 return None
             if r.status_code == 429 or r.status_code >= 500:
+                if r.status_code == 429:
+                    self._slow_down()
                 if last:
                     break
                 wait = self._retry_after(r, delay)
@@ -113,6 +147,7 @@ class Garage61:
             if not (200 <= r.status_code < 300):
                 detail = (r.text or "").strip().replace("\n", " ")[:300]
                 raise Garage61Error(f"Garage 61 returned {r.status_code} for /{path}?{urlencode(params)}: {detail}")
+            self._went_ok(r)
             if raw:
                 return r.content.decode("utf-8-sig", errors="replace")
             try:

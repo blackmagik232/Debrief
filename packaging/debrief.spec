@@ -25,7 +25,25 @@ datas += [(str(PKG / "desktop" / "icon.png"), "debrief/desktop"),
 
 # app.optional_module() imports feature modules by name (prep, goals, results, team, ...), which
 # PyInstaller can't see, so include every debrief module. make_icon is a build-time helper (needs Pillow).
+# collect_submodules imports the package in a helper process, which only finds it when the repo root is
+# on sys.path. Without this it silently returned nothing, and 2.1.0 shipped without debrief.prep.
+import sys
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 hiddenimports = collect_submodules("debrief", filter=lambda name: not name.endswith(".make_icon"))
+# Belt and braces: every module file in the package is listed by name too, and the build stops if
+# collect_submodules missed any of them.
+_on_disk = sorted("debrief." + ".".join(p.relative_to(PKG).with_suffix("").parts)
+                  for p in PKG.rglob("*.py")
+                  if p.name not in ("__init__.py", "__main__.py", "make_icon.py") and "__pycache__" not in p.parts)
+_missing = [m for m in _on_disk if m not in hiddenimports]
+if _missing:
+    print(f"collect_submodules missed {_missing}; adding them by name")
+hiddenimports = sorted(set(hiddenimports) | set(_on_disk))
+for _must in ("debrief.prep", "debrief.goals", "debrief.results", "debrief.team", "debrief.sync",
+              "debrief.schedule", "debrief.series", "debrief.notes", "debrief.prepare"):
+    if _must not in hiddenimports:
+        raise SystemExit(f"Build stopped: {_must} would be left out of Debrief.exe")
 
 excludes = ["tkinter", "_tkinter", "turtle", "turtledemo", "idlelib", "lib2to3", "pydoc_data",
             "test", "tests", "pytest", "_pytest", "playwright", "PIL", "matplotlib", "IPython",

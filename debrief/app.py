@@ -293,6 +293,45 @@ def pick_refs(api: Garage61, car, track, my_best: float, my_slug: str, limit: in
     return chosen[:limit]
 
 
+def on_track(api: Garage61, track, event_id, my_slug: str, my_car, classes=None) -> dict:
+    """Everyone Garage 61 lets you see (teammates and followed drivers) who drove in the same event, in any
+    car. One request. classes(car_name) -> class name or None comes from the season schedule when one is
+    loaded, so a different car can be told apart from a different class."""
+    teams = [g(t, "slug", "id") for t in api.teams() if g(t, "slug", "id")]
+    params = dict(tracks=[track], event=event_id, drivers=["following"], group="driver", unclean=True, limit=200)
+    if teams:
+        params["teams"] = teams
+    try:
+        laps = api.find_laps(**params)
+    except Garage61Error as e:
+        say(f"  Couldn't load who else was on track: {e}")
+        return {"drivers": [], "multiclass": False, "error": True}
+    my_car_name = name_of(api, "car", my_car) if my_car is not None else ""
+    my_class = classes(my_car_name) if classes else None
+    by_driver = {}
+    for l in laps:
+        drv = g(l, "driver", default={}) or {}
+        slug = g(drv, "slug")
+        if not slug or slug == my_slug or str(g(l, "event")) != str(event_id):
+            continue
+        t = lap_time(l)
+        car = _id(g(l, "car_id", "carId", "car"))
+        key = (slug, car)
+        cur = by_driver.get(key)
+        if cur is None:
+            name = " ".join(filter(None, [g(drv, "firstName", "firstname"), g(drv, "lastName", "lastname")])) or slug
+            car_name = name_of(api, "car", car) if car is not None else ""
+            cls = classes(car_name) if classes else None
+            cur = by_driver[key] = {"name": name, "car": car_name, "car_id": car, "best": None, "lap_id": None,
+                                    "same_car": car == _id(my_car),
+                                    "same_class": None if (cls is None or my_class is None) else cls == my_class,
+                                    "class": cls}
+        if t and is_clean(l) and (cur["best"] is None or t < cur["best"]):
+            cur["best"], cur["lap_id"] = round(t, 3), str(g(l, "id"))
+    drivers = sorted(by_driver.values(), key=lambda d: (d["best"] is None, d["best"] or 0))
+    return {"drivers": drivers, "multiclass": any(d["same_class"] is False for d in drivers)}
+
+
 # ---------------------------------------------------------------- commands
 def recent_combos(api, days=30, cache_dir=None):
     """(track, car) pairs you've driven recently, newest first. Garage 61's lap search needs a track,
@@ -418,13 +457,30 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     refs = [r for r in refs if g(r, "id") in ref_tel]
     step(f"  {len(refs)} comparison lap(s) with telemetry." if refs else
          "  No comparison laps (follow a few drivers in this car on Garage 61 to get some).", 0.8)
+    step("Checking which teammates and followed drivers were on track...", 0.82)
+    classes, sched_mc = None, None
     starts = [lap_start_dt(l) for l in laps if lap_start_dt(l)]
+    try:
+        from . import schedule
+        sched = schedule.load_current(min(starts).date() if starts else None)
+        classes = schedule.class_lookup(sched)
+        if starts:
+            sched_mc = schedule.multiclass_at(sched, track_name, car_name, min(starts).astimezone(timezone.utc).date())
+    except Exception:  # noqa: BLE001  (no schedule loaded: classes stay unknown)
+        classes = None
+    others = on_track(api, track, event_id, slug, car, classes)
+    # multi-class if the schedule says so, or if a teammate/followed driver was there in another class
+    multiclass = bool(sched_mc) or bool(others.get("multiclass"))
+    others["multiclass"] = multiclass
+    if multiclass:
+        step("  Multi-class race: laps that lost time to traffic will be left out of your pace numbers.")
     meta = {"driver": my_name, "event_id": event_id, "car": car_name, "track": track_name,
             "started_at": min(starts).isoformat() if starts else "",
             "session": {1: "Practice", 2: "Qualifying", 3: "Race"}.get(sessions[0], "Session")
                        if len(sessions) == 1 else "Session",
             # the owner likes "Sir" in his own (source) install; installed copies for teammates stay neutral
             "salutation": "" if getattr(sys, "frozen", False) else "Sir",
+            "multiclass": multiclass,
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     for l in laps:  # normalise fields the engine relies on
         l["clean"] = is_clean(l)
@@ -435,6 +491,7 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
         data = engine.analyze(meta, laps, tel, refs, ref_tel, track_length=track_length(api, track), log=say)
     except ValueError as e:
         raise SystemExit(f"Couldn't build the review: {e}")
+    data["on_track"] = others
     data["meta"]["requests"] = api.requests_made
     step("Saving the review and updating the library...", 0.95)
     # a practice or qualifying review of the same event gets its own folder, next to the race's

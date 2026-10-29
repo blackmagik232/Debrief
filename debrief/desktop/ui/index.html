@@ -28,7 +28,7 @@
     <button type="button" class="navbtn" data-nav="library">Library</button>
     <button type="button" class="navbtn" data-nav="season">Season</button>
     <button type="button" class="navbtn" data-nav="goals">Goals</button>
-    <button type="button" class="navbtn" data-nav="prep">Prep</button>
+    <button type="button" class="navbtn" data-nav="prep">Prepare</button>
     <button type="button" class="navbtn" data-nav="team">Team</button>
     <button type="button" class="navbtn" data-nav="settings">Settings</button>
   </nav>
@@ -160,10 +160,31 @@
 
   <section id="vPrep" class="view pad" hidden>
     <div class="col">
-      <span class="eyebrow">Track prep</span>
-      <h1>Prep</h1>
-      <p class="lede">Get ready for your next race: your history at the track, where teammates are quicker, the corners that keep costing you, and a practice plan.</p>
-      <div class="panel">
+      <span class="eyebrow">Get ready</span>
+      <h1>Prepare</h1>
+      <p class="lede">What your series are racing this week and next, your history at each track, and a short track card for the things telemetry can't see.</p>
+      <div class="panel" id="schPanel">
+        <div class="phead"><h3>Season schedule</h3><span class="pill" id="schPill">Not loaded</span></div>
+        <p class="note" id="schNote">Debrief reads iRacing's official season schedule PDF on this PC. It's never shared anywhere.</p>
+        <div class="row">
+          <button type="button" class="btn" id="btnSchDl">Download official schedule</button>
+          <button type="button" class="btn" id="btnSchLoad">Load PDF...</button>
+          <input type="file" id="schFile" accept="application/pdf,.pdf" hidden>
+          <span class="msg" id="schMsg" role="status"></span>
+        </div>
+      </div>
+      <div class="panel" id="seriesPicker" hidden>
+        <div class="phead"><h3>Which series are you racing?</h3><button type="button" class="btn ghost" id="btnPickClose">Close</button></div>
+        <p class="note" id="pickNote">Debrief matched these from your recent races. Tick the ones you race.</p>
+        <div id="pickSuggest" class="list"></div>
+        <label class="field wide" for="seriesSearch"><span>Browse all series</span><input id="seriesSearch" type="search" placeholder="Search by series, car or track" spellcheck="false"></label>
+        <div id="pickAll" class="list pickall"></div>
+        <div class="row"><button type="button" class="btn primary" id="btnSeriesSave">Show my schedule</button><button type="button" class="btn ghost" id="btnPickSkip">Skip for now</button><span class="msg" id="pickMsg" role="status"></span></div>
+      </div>
+      <div id="mySeries" class="gridf"></div>
+      <details class="panel" id="prepAnyWrap">
+        <summary><h3>Prep pages for any track and car</h3></summary>
+      <div class="panel inner">
         <div class="phead"><h3>Tracks and cars you have raced</h3></div>
         <div id="prepCombos" class="list"></div>
       </div>
@@ -183,6 +204,7 @@
         <div id="prepPages" class="list"></div>
       </div>
       <p class="note">A prep page uses a handful of Garage 61 requests (teammates' best laps at that track and car). Debrief shows the exact number when it's done.</p>
+      </details>
     </div>
   </section>
 
@@ -313,6 +335,19 @@
     </div>
     <label class="field wide" for="r_notes"><span>Notes</span><textarea id="r_notes" name="notes" maxlength="500" rows="3" placeholder="Anything worth remembering about this race"></textarea></label>
     <div class="row"><button type="submit" class="btn primary" id="resSave">Save result</button><button type="button" class="btn" id="resDelete" hidden>Delete result</button><span class="msg" id="resMsg" role="status"></span></div>
+  </form>
+</dialog>
+<dialog id="dlgCard" aria-labelledby="cardTitle">
+  <form id="fCard" method="dialog" autocomplete="off">
+    <div class="phead"><h3 id="cardTitle">Track card</h3><button type="button" class="btn ghost" id="cardClose" aria-label="Close">Close</button></div>
+    <p class="note" id="cardSub">One or two lines each, all optional. Brake points, gears and corner speeds come from your laps, so leave those out.</p>
+    <label class="field wide" for="c_lap1"><span>Lap 1 / start</span><textarea id="c_lap1" maxlength="300" rows="2" placeholder="e.g. Pile-up risk into T1; hold the outside and leave room"></textarea></label>
+    <label class="field wide" for="c_hotspots"><span>Crash hotspots</span><textarea id="c_hotspots" maxlength="300" rows="2" placeholder="e.g. Bus stop chicane: cars dive late on cold tyres"></textarea></label>
+    <label class="field wide" for="c_passing"><span>Passing spots</span><textarea id="c_passing" maxlength="300" rows="2" placeholder="e.g. Down the back straight into T10; defend the inside"></textarea></label>
+    <label class="field wide" for="c_limits"><span>Track limits / kerbs</span><textarea id="c_limits" maxlength="300" rows="2" placeholder="e.g. Exit of T5 is policed; avoid the sausage kerb at T7"></textarea></label>
+    <label class="field wide" for="c_focus"><span>Focus this week (up to 3 lines)</span><textarea id="c_focus" maxlength="300" rows="3" placeholder="One thing per line"></textarea></label>
+    <label class="field wide" for="c_car" id="cCarWrap"><span id="cCarLab">Car note</span><input id="c_car" type="text" maxlength="200" placeholder="Anything specific to this car here"></label>
+    <div class="row"><button type="submit" class="btn primary" id="cardSave">Save card</button><span class="msg" id="cardMsg" role="status"></span><span class="note" id="cardUpdated"></span></div>
   </form>
 </dialog>
 <script src="static/app.js"></script>

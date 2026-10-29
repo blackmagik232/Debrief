@@ -163,3 +163,32 @@ dialog form{display:grid;gap:14px}
 .sess .kind.practice{border-color:var(--good);color:var(--good)}
 .sess .kind.qualifying{border-color:var(--warn);color:var(--warn)}
 @media (prefers-reduced-motion:reduce){.syncstrip.busy .dot{animation:none}}
+
+/* ---------- Prepare (2.2) */
+.panel.inner{border:0;padding:0;background:none}
+.sercard{background:var(--panel);border:1px solid var(--grid);padding:18px 20px;display:grid;gap:12px}
+.sercard .shead{display:flex;justify-content:space-between;align-items:baseline;gap:8px 14px;flex-wrap:wrap}
+.sercard .shead h3{font-size:24px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-family:var(--mono);font-size:11px;letter-spacing:.04em;border:1px solid var(--axis);border-radius:3px;padding:2px 7px;color:var(--fg2);white-space:nowrap}
+.chip.mc{border-color:var(--ref);color:var(--ref)}
+.chip.ok{border-color:var(--good);color:var(--good)}
+.wk2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
+.wk{border:1px solid var(--grid);border-radius:4px;padding:12px 14px;display:grid;gap:6px;align-content:start;background:var(--bg)}
+.wk.now{border-left:4px solid var(--me)}
+.wk .wlab{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.wk .wtrack{font-weight:600;font-size:16px;line-height:1.3}
+.wk .row .btn{padding:6px 11px;font-size:13.5px}
+.cardview{font-size:13px;display:grid;gap:3px;border-top:1px solid var(--grid);padding-top:6px;color:var(--fg2)}
+.cardview b{color:var(--fg);font-weight:600}
+.cardview p{white-space:pre-wrap}
+.seasonlist{display:grid;gap:0;font-size:13px}
+.seasonlist div{display:grid;grid-template-columns:56px 92px minmax(0,1fr) auto;gap:10px;padding:5px 0;border-top:1px solid var(--grid)}
+.seasonlist div.now{font-weight:600}
+.seasonlist .mono{color:var(--fg2)}
+details.sub>summary{cursor:pointer;font-size:13.5px;color:var(--fg2)}
+.pickall{max-height:340px;overflow-y:auto;border:1px solid var(--grid);border-radius:4px;padding:0 10px}
+.pick{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--grid);cursor:pointer}
+.pick:first-child{border-top:none}
+.pick input{width:17px;height:17px;margin-top:3px;accent-color:var(--me);flex:none}
+.pick .itx{gap:1px}

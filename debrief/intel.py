@@ -279,8 +279,75 @@ def _merge_car(existing: str, incoming: str, mode: str) -> str:
 
 
 # ---------------------------------------------------------------- preview / apply
+def _venue(name):
+    from .schedule import _layout
+    try:
+        return _layout(name)[0]
+    except Exception:  # noqa: BLE001
+        return None
+
+
+class _Resolver:
+    """_resolve with the known tracks indexed by venue once (2.4.0 review L3): same_track is only true when
+    the venues are equal, so only names at the same venue are compared. Answers are cached per typed name.
+    Gives exactly what _resolve gives (the first match in list order)."""
+
+    def __init__(self, known: list):
+        self.known = [k for k in known if isinstance(k, str) and k.strip()]
+        self.k_exact, self.k_venue = {}, {}
+        for i, k in enumerate(self.known):
+            self.k_exact.setdefault(k, i)
+            v = _venue(k)
+            if v:
+                self.k_venue.setdefault(v, []).append(i)
+        self.seen, self.s_exact, self.s_key, self.s_venue = [], {}, {}, {}
+        self.cache = {}
+
+    def add_seen(self, name: str) -> None:
+        if name in self.s_exact:
+            return
+        i = len(self.seen)
+        self.seen.append(name)
+        self.s_exact[name] = i
+        self.s_key.setdefault(notes.track_key(name), i)
+        v = _venue(name)
+        if v:
+            self.s_venue.setdefault(v, []).append(i)
+
+    def __call__(self, typed: str) -> tuple[str, str | None]:
+        hit = self.cache.get(typed)
+        if hit is not None:
+            return hit
+        from .schedule import same_track
+        v = _venue(typed)
+        cands = [self.k_exact[typed]] if typed in self.k_exact else []
+        for i in self.k_venue.get(v, []) if v else []:
+            try:
+                if same_track(typed, self.known[i]):
+                    cands.append(i)
+                    break
+            except Exception:  # noqa: BLE001
+                continue
+        if cands:
+            k = self.known[min(cands)]
+            out = (k, k)
+        else:
+            sc = [self.s_exact[typed]] if typed in self.s_exact else []
+            tk = notes.track_key(typed)
+            if tk in self.s_key:
+                sc.append(self.s_key[tk])
+            for i in self.s_venue.get(v, []) if v else []:
+                if same_track(typed, self.seen[i]):
+                    sc.append(i)
+                    break
+            out = (self.seen[min(sc)], None) if sc else (typed, None)
+        self.cache[typed] = out
+        return out
+
+
 def _resolve(typed: str, known: list, seen: list) -> tuple[str, str | None]:
-    """(name the card is saved under, matched known track or None)."""
+    """(name the card is saved under, matched known track or None). The simple form; preview uses
+    _Resolver, which gives the same answers without comparing every row with every known track."""
     from .schedule import same_track
     for k in known:
         try:
@@ -309,16 +376,16 @@ def preview(parsed, sheet: int, mapping: dict, mode: str, cfg, known_tracks: lis
     sheet_warn = []
     if "car_note" in by and ccol is None:
         sheet_warn.append("Car notes need a column that names the car, so they were left out.")
-    groups, order, seen = {}, [], []
+    groups, order = {}, []
+    resolve = _Resolver(known)
     skipped = 0
     for r in sh["rows"]:
         typed = " ".join(r[tcol].split()) if tcol < len(r) else ""
         if not typed or len(typed) > 200:
             skipped += 1
             continue
-        name, matched = _resolve(typed, known, seen)
-        if name not in seen:
-            seen.append(name)
+        name, matched = resolve(typed)
+        resolve.add_seen(name)
         key = notes.track_key(name)
         g = groups.get(key)
         if g is None:

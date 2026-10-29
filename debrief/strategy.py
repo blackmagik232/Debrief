@@ -547,7 +547,9 @@ def plan(inputs: dict) -> dict:
         raise ValueError("Type the race length in laps or minutes.")
     lap_t = _in(inputs, "lap_t", 10, 1200, "lap time in seconds", required=minutes is not None)
     burn = _in(inputs, "burn_l", 0.05, 20, "fuel use per lap (litres)", required=True)
-    p90 = _in(inputs, "p90", 0.05, 20, "higher fuel use per lap (litres)")
+    # the window sends "p90" (2.4.0 sent "p90_l", the prefill's own name, which used to be ignored): accept both
+    p90_key = "p90" if inputs.get("p90") not in (None, "") else "p90_l"
+    p90 = _in(inputs, p90_key, 0.05, 20, "higher fuel use per lap (litres)")
     tank = _in(inputs, "tank_l", 1, 200, "tank size (litres)", required=True)
     pit_loss = _in(inputs, "pit_loss_s", 0, 300, "pit stop time in seconds")
     reserve = _in(inputs, "reserve_laps", 0, 5, "number of spare laps of fuel")
@@ -573,26 +575,37 @@ def plan(inputs: dict) -> dict:
     else:
         stops = int(math.ceil(laps / lpt)) - 1
         start_fuel = tank
-        while True:
-            bad = [k for k in range(1, stops + 1) if max(1, laps - (stops - k + 1) * lpt) > k * lpt]
-            if not bad:
-                break
-            stops += 1
-            warnings.append("The pit windows didn't fit, so this plan has one more stop.")
-        per = int(math.ceil(laps / (stops + 1)))
-        level, lap0 = tank, 1
+        per = int(math.ceil(laps / (stops + 1)))      # even split; per <= lpt because stops + 1 >= laps / lpt
+        ends, lap0 = [], 1                            # ends[k] = last lap of stint k (stop k+1 is after it)
         for k in range(stops + 1):
             n = per if k < stops else laps - per * stops
-            remaining = laps - (lap0 - 1)
-            want = min(tank, _ceil1((remaining + reserve) * burn))
-            add = 0.0 if k == 0 else max(0.0, _ceil1(want - level))
-            fuel = tank if k == 0 else min(tank, round(level + add, 1))
-            stints.append({"from_lap": lap0, "to_lap": lap0 + n - 1, "laps": n, "fuel_l": round(fuel, 1)})
-            if k > 0:
-                windows.append({"stop": k, "open": max(1, laps - (stops - k + 1) * lpt), "close": k * lpt,
-                                "at_lap": lap0 - 1, "fuel_add_l": round(add, 1)})
-            level = fuel - n * burn
+            ends.append(lap0 + n - 1)
             lap0 += n
+        # Fuel per stop (H1, 2.4.0 review). Fuel burned depends only on laps driven, so for stop k the amount
+        # that gets you from the previous stop's fill to the next planned stop (or the flag) with the reserve
+        # is the same whichever lap inside the window you pit on:
+        #   add_k = (next_k - prev_k + reserve) * burn - level_after_prev
+        # The window is every lap where that add is safe, assuming the earlier stops were made on their
+        # planned laps (the level after them is what the plan says, never "a full tank" unless it was):
+        #   close: you still arrive with the reserve in the tank  -> prev + floor((level - reserve*burn)/burn)
+        #   open:  the add fits without spilling over the tank    -> prev + ceil((level + add - tank)/burn)
+        # Because nothing spills, total fuel put in is the same wherever you stop inside the windows, so
+        # moving any stop within its window never leaves a later stint short.
+        stints.append({"from_lap": 1, "to_lap": ends[0], "laps": ends[0], "fuel_l": round(tank, 1)})
+        level, prev = tank, 0                         # level just after the last fill, and the lap it was made
+        for k in range(1, stops + 1):                 # stop k is after lap ends[k-1]; stint k runs to ends[k]
+            at, nxt = ends[k - 1], ends[k]
+            add = max(0.0, _ceil1((nxt - prev + reserve) * burn - level))
+            # open: the add fits in the tank without spilling, so nothing is lost and later stops stay right
+            w_open = max(1, prev + 1, nxt - lpt, prev + int(math.ceil((level + add - tank) / burn - 1e-9)))
+            # close: you still arrive with the reserve in the tank (from the planned fill, not a full tank)
+            w_close = min(laps - 1, prev + int(math.floor((level - reserve * burn) / burn + 1e-9)))
+            if not w_open <= at <= w_close:           # can't happen; never show a window that isn't safe
+                w_open = w_close = at
+            windows.append({"stop": k, "open": int(w_open), "close": int(w_close), "at_lap": at,
+                            "fuel_add_l": round(add, 1)})
+            level, prev = min(tank, level - (at - prev) * burn + add), at
+            stints.append({"from_lap": at + 1, "to_lap": nxt, "laps": nxt - at, "fuel_l": round(level, 1)})
     pit_time = 0.0 if stops == 0 else (round(stops * pit_loss, 1) if pit_loss is not None else None)
     if burn_n is not None and burn_n < FEW_BURN_LAPS:
         warnings.append(f"The fuel use comes from only {int(burn_n)} lap{'s' if int(burn_n) != 1 else ''}: "

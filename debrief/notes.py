@@ -322,8 +322,11 @@ def publish(cfg, card: dict, author: dict) -> bool:
     d = root / track_key(track)
     p = d / f"{slug}.json"
     if not has_notes(card):
+        if not (p.exists() or p.is_symlink()):
+            return True
+        _check_publish_target(root, d, p)
         try:
-            if p.is_file() and not p.is_symlink():
+            if p.is_file():
                 p.unlink()
         except FileNotFoundError:
             pass
@@ -335,11 +338,47 @@ def publish(cfg, card: dict, author: dict) -> bool:
             "car_notes": dict(card.get("car_notes") or {}),
             "updated": card.get("updated") if isinstance(card.get("updated"), str) else _now(),
             "app": f"Debrief {__version__}"}
+    _check_publish_target(root, d, p)
     d.mkdir(parents=True, exist_ok=True)
-    if p.is_symlink():
-        raise OSError("Your shared card is a link to somewhere else, so Debrief left it alone.")
+    _check_publish_target(root, d, p)          # again, now the folders exist
     _write_atomic(p, body)
     return True
+
+
+_LINK_MSG = "Your shared track card folder is a link to somewhere else, so Debrief left it alone."
+
+
+def _is_link(p: Path) -> bool:
+    """A symlink, or (Windows) a directory junction."""
+    try:
+        if p.is_symlink():
+            return True
+        isj = getattr(os.path, "isjunction", None)          # Python 3.12+
+        return bool(isj and isj(str(p)))
+    except OSError:
+        return True
+
+
+def _check_publish_target(root: Path, d: Path, p: Path) -> None:
+    """Before writing or deleting YOUR shared card (2.4.0 review M2): the 'Debrief track cards' folder, the
+    track folder and the file must not be links (or junctions), and each must really be where it looks
+    (os.path.realpath, which also follows junctions) inside the shared root. Raises OSError (plain)."""
+    try:
+        if _is_link(root) or _is_link(d) or _is_link(p):
+            raise OSError(_LINK_MSG)
+        for x in (root, d):
+            if x.exists() and not x.is_dir():
+                raise OSError(_LINK_MSG)
+        if p.exists() and not p.is_file():
+            raise OSError(_LINK_MSG)
+        rbase = os.path.realpath(str(root.parent))
+        rroot = os.path.realpath(str(root))
+        rd = os.path.realpath(str(d))
+        rp = os.path.realpath(str(p))
+        if os.path.dirname(rroot) != rbase or os.path.dirname(rd) != rroot or os.path.dirname(rp) != rd:
+            raise OSError(_LINK_MSG)
+    except ValueError:
+        raise OSError(_LINK_MSG)
 
 
 def _share(cfg, saved: dict, out: dict) -> dict:

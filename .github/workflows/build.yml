@@ -109,6 +109,8 @@ jobs:
         run: python tests/test_24_c.py
       - name: Test shell (2.4)
         run: python tests/test_24_d.py
+      - name: Test 2.4.0 review fixes
+        run: python tests/test_24_fixes.py
 
       - name: Build with PyInstaller
         run: pyinstaller packaging/debrief.spec --noconfirm --clean

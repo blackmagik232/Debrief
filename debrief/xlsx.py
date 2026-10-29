@@ -6,6 +6,10 @@ cached value. Nothing else (styles, merged cells, charts) is looked at.
 
 Untrusted files: the zip is checked before anything is decompressed (size, entry count, total and per-part
 uncompressed size), and an XML part with a DOCTYPE is refused, so entity tricks never reach the parser.
+Parts must be UTF-8 (a UTF-16/32 part, or one declaring another encoding, is refused, so the DOCTYPE check
+sees the same text the parser does), and expat itself is run with handlers that refuse any DOCTYPE or
+ENTITY declaration. The whole workbook has one budget of cells and of text, so a tiny file can't fan out
+into gigabytes (one string repeated in every cell, or many sheets pointing at one part).
 """
 from __future__ import annotations
 
@@ -16,12 +20,19 @@ import zipfile
 import zlib
 from datetime import datetime, timedelta
 from xml.etree import ElementTree as ET
+from xml.parsers import expat
 
 MAX_FILE = 5 * 1024 * 1024
 MAX_ENTRIES = 2000
 MAX_TOTAL = 25 * 1024 * 1024
 MAX_PART = 10 * 1024 * 1024
 MAX_SHEETS = 20
+MAX_CELLS = 200_000          # cells kept across the whole workbook (rows x width, gaps included)
+MAX_TEXT = 10_000_000        # characters of cell text kept across the whole workbook
+MAX_STR = 4000               # characters kept from one string (the importer keeps 2,000)
+_TOO_MUCH = "That spreadsheet has more in it than Debrief can read. Keep the Track Intel sheet to one table of tips."
+_ENC_OK = {"utf-8", "utf8", "us-ascii", "ascii"}
+_XML_DECL = re.compile(r'^\s*<\?xml[^>]*?\bencoding\s*=\s*["\']([^"\']*)["\']')
 
 _OLE = b"\xd0\xcf\x11\xe0"
 _ZIP = b"PK\x03\x04"
@@ -74,6 +85,52 @@ def _date_text(v: str, date1904: bool) -> str:
     return dt.strftime("%Y-%m-%d") if (dt.hour, dt.minute, dt.second) == (0, 0, 0) else dt.strftime("%Y-%m-%d %H:%M")
 
 
+class _Budget:
+    """Cells and characters kept so far, across every sheet of one workbook."""
+
+    def __init__(self):
+        self.cells = 0
+        self.text = 0
+
+    def add(self, cells=0, text=0):
+        self.cells += cells
+        self.text += text
+        if self.cells > MAX_CELLS or self.text > MAX_TEXT:
+            raise XlsxError(_TOO_MUCH)
+
+
+def _refuse_dtd(*_a):
+    raise XlsxError("That spreadsheet has something Debrief won't read. Save it again as .xlsx or CSV.")
+
+
+def _check_xml(raw: bytes) -> None:
+    """Refuse anything but plain UTF-8 XML with no DOCTYPE or ENTITY (M1 of the 2.4.0 review)."""
+    bad = "That spreadsheet has something Debrief won't read. Save it again as .xlsx or CSV."
+    body = raw[3:] if raw[:3] == b"\xef\xbb\xbf" else raw
+    try:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError:
+        raise XlsxError(bad)                      # UTF-16/32 (with or without a BOM) and other encodings
+    if "\x00" in text:
+        raise XlsxError(bad)                      # BOM-less UTF-16/32 decodes as "UTF-8" full of NULs
+    m = _XML_DECL.match(text[:400])
+    if m and m.group(1).strip().lower() not in _ENC_OK:
+        raise XlsxError(bad)
+    up = text.upper()
+    if "<!DOCTYPE" in up or "<!ENTITY" in up:
+        raise XlsxError(bad)
+    # and the parser's own view: expat refuses a DOCTYPE or an entity however it was spelled
+    p = expat.ParserCreate()
+    p.StartDoctypeDeclHandler = _refuse_dtd
+    p.EntityDeclHandler = _refuse_dtd
+    p.UnparsedEntityDeclHandler = _refuse_dtd
+    p.ExternalEntityRefHandler = lambda *a: _refuse_dtd()
+    try:
+        p.Parse(raw, True)
+    except expat.ExpatError:
+        raise XlsxError("That spreadsheet looks damaged. Open it, save it again as .xlsx and try again.")
+
+
 class _Book:
     def __init__(self, zf: zipfile.ZipFile):
         self.zf = zf
@@ -84,6 +141,16 @@ class _Book:
         return name.lower() in self.lower
 
     def xml(self, name: str):
+        raw = self.raw(name)
+        if raw is None:
+            return None
+        try:
+            return ET.fromstring(raw)
+        except ET.ParseError:
+            raise XlsxError("That spreadsheet looks damaged. Open it, save it again as .xlsx and try again.")
+
+    def raw(self, name: str):
+        """The checked bytes of one XML part (or None when it isn't there)."""
         real = self.lower.get(name.lower())
         if real is None:
             return None
@@ -98,12 +165,8 @@ class _Book:
             raise XlsxError("That spreadsheet looks damaged. Open it, save it again as .xlsx and try again.")
         if len(raw) > MAX_PART:   # the header lied about the size
             raise XlsxError("That spreadsheet is too big to read. Keep it under 5 MB with fewer rows.")
-        if b"<!DOCTYPE" in raw.upper() or b"<!ENTITY" in raw.upper():
-            raise XlsxError("That spreadsheet has something Debrief won't read. Save it again as .xlsx or CSV.")
-        try:
-            return ET.fromstring(raw)
-        except ET.ParseError:
-            raise XlsxError("That spreadsheet looks damaged. Open it, save it again as .xlsx and try again.")
+        _check_xml(raw)
+        return raw
 
 
 def _open(src) -> zipfile.ZipFile:
@@ -146,7 +209,7 @@ def _text_of(el) -> str:
             for t in child:
                 if _local(t.tag) == "t":
                     parts.append(t.text or "")
-    return "".join(parts)
+    return "".join(parts)[:MAX_STR]
 
 
 def _shared(book: _Book) -> list:
@@ -207,11 +270,14 @@ def _sheet_list(book: _Book) -> tuple[list, bool]:
                 t = (r.get("Target") or "").replace("\\", "/")
                 t = t.lstrip("/") if t.startswith("/") else posixpath.normpath(posixpath.join("xl", t))
                 targets[r.get("Id")] = t
-    out = []
+    out, seen = [], set()
     for i, (name, rid) in enumerate(sheets):
         path = targets.get(rid) or f"xl/worksheets/sheet{i + 1}.xml"
         if path.startswith("../") or not path.lower().endswith(".xml"):
             continue
+        if path.lower() in seen:          # two sheets can't point at the same part (H3)
+            continue
+        seen.add(path.lower())
         out.append((name, path))
     return out[:MAX_SHEETS], date1904
 
@@ -248,10 +314,22 @@ def _cell_value(c, shared, dates, date1904) -> str:
     return _date_text(v, date1904) if style in dates else _num_text(v)
 
 
-def _rows(root, shared, dates, date1904, max_rows, max_cols) -> list:
+def _row_elements(raw: bytes):
+    """Each <row> as it is parsed, cleared afterwards, so a big sheet never sits in memory as a tree."""
+    try:
+        for _ev, el in ET.iterparse(io.BytesIO(raw), events=("end",)):
+            if _local(el.tag) == "row":
+                yield el
+                el.clear()
+    except ET.ParseError:
+        raise XlsxError("That spreadsheet looks damaged. Open it, save it again as .xlsx and try again.")
+
+
+def _rows(rows_iter, shared, dates, date1904, max_rows, max_cols, budget=None) -> list:
+    budget = budget or _Budget()
     rows = {}
     next_r = 0
-    for row in root.iter():
+    for row in rows_iter:
         if _local(row.tag) != "row":
             continue
         try:
@@ -275,6 +353,7 @@ def _rows(root, shared, dates, date1904, max_rows, max_cols) -> list:
                 continue
             val = _cell_value(c, shared, dates, date1904)
             if val != "":
+                budget.add(cells=1, text=len(val))
                 cells[ci] = val
         if cells:
             rows[r] = cells
@@ -282,6 +361,8 @@ def _rows(root, shared, dates, date1904, max_rows, max_cols) -> list:
         return []
     width = max(max(c) for c in rows.values()) + 1
     last = max(rows)
+    filled = sum(len(c) for c in rows.values())
+    budget.add(cells=(last + 1) * width - filled)      # the gaps that become ""
     return [[rows.get(r, {}).get(ci, "") for ci in range(width)] for r in range(last + 1)]
 
 
@@ -296,12 +377,16 @@ def read(path_or_bytes, max_rows=2000, max_cols=40) -> dict:
         sheets, date1904 = _sheet_list(book)
         shared = _shared(book)
         dates = _date_styles(book)
+        budget = _Budget()
+        budget.add(text=sum(len(x) for x in shared))
         out = []
         for name, path in sheets:
-            root = book.xml(path)
-            if root is None:
+            raw = book.raw(path)
+            if raw is None:
                 continue
-            out.append({"name": str(name)[:100], "rows": _rows(root, shared, dates, date1904, max_rows, max_cols)})
+            out.append({"name": str(name)[:100],
+                        "rows": _rows(_row_elements(raw), shared, dates, date1904, max_rows, max_cols, budget)})
+            del raw
     if not out:
         raise XlsxError("That spreadsheet has no sheets Debrief can read.")
     return {"sheets": out}

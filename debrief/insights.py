@@ -335,8 +335,9 @@ def build(data: dict) -> dict:
                 l1_detail += " Most of it was in " + _and([f"{s['id']} ({s['lost_s']:.1f} s)" for s in segs]) + \
                              " (that includes the start)."
                 l1_corners = [s["id"] for s in segs]
-            bad("lap1", "Lap 1", f"Lap 1 was {d:.1f} s slower than your typical lap. Some of that is the standing or "
-                "rolling start and traffic; the rest is time lost to caution or a moment.", round(d, 1),
+            # correlational only (2.4.0 review L5): we don't know if it was a standing or rolling start, or why
+            bad("lap1", "Lap 1", f"Lap 1 was {d:.1f} s slower than your typical lap (that includes the start).",
+                round(d, 1),
                 detail=l1_detail, laps=[1], corners=l1_corners)
         elif d <= 0.5 * k and len(laps) >= 5:
             good("lap1", "Strong first lap", f"Lap 1 was within {max(d, 0):.1f} s of your typical pace.",

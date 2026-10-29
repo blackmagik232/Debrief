@@ -77,52 +77,23 @@ def sample(name):
 
 
 # ================================================================ stand-in modules (§2.1 shapes)
+def _load_real_strategy():
+    """The real strategy module under a private name, so modules() can still swap debrief.strategy out."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("debrief._real_strategy_for_24d", ROOT / "debrief" / "strategy.py")
+    m = importlib.util.module_from_spec(spec)
+    m.__package__ = "debrief"
+    spec.loader.exec_module(m)
+    return m
+
+
+_REAL_STRATEGY = _load_real_strategy()
+
+
 def stub_plan(inp):
-    """strategy.plan as §2.2 describes it (enough for the shell's tests; 24-A owns the real one)."""
-    def num(k, lo, hi, msg, req=True):
-        v = inp.get(k)
-        if v is None:
-            if req:
-                raise ValueError(msg)
-            return None
-        if isinstance(v, bool) or not isinstance(v, (int, float)) or not lo <= v <= hi:
-            raise ValueError(msg)
-        return float(v)
-    warn = []
-    if inp.get("laps") is not None:
-        laps = int(num("laps", 1, 2000, "Race laps must be between 1 and 2000."))
-    else:
-        mins = num("minutes", 1, 1440, "Type in the race length.")
-        lt = num("lap_t", 10, 1200, "Type in your lap time.")
-        laps = math.floor(mins * 60 / lt) + 1
-        warn.append("Timed race: if the leader is quicker than you, you may run one lap less.")
-    burn = num("burn_l", 0.05, 20, "Fuel use must be between 0.05 and 20 litres a lap.")
-    if inp.get("use_p90", True) and isinstance(inp.get("p90_l"), (int, float)):
-        burn = float(inp["p90_l"])
-    tank = num("tank_l", 1, 200, "The tank size must be between 1 and 200 litres.")
-    res = num("reserve_laps", 0, 5, "Spare laps must be between 0 and 5.", req=False)
-    res = 1.0 if res is None else res
-    loss = num("pit_loss_s", 0, 300, "The pit stop loss must be between 0 and 300 seconds.", req=False)
-    need = math.ceil((laps + res) * burn * 10 - 1e-9) / 10
-    lpt = math.floor((tank - res * burn) / burn)
-    if lpt < 1:
-        raise ValueError("The tank is too small for one lap at that fuel use.")
-    if need <= tank:
-        stops, start, wins = 0, need, []
-    else:
-        stops, start = math.ceil(laps / lpt) - 1, tank
-        wins = [{"stop": k, "open": max(1, laps - (stops - k + 1) * lpt), "close": k * lpt,
-                 "fuel_add_l": round(min(tank, (laps - k * lpt + res) * burn), 1)} for k in range(1, stops + 1)]
-    per = math.ceil(laps / (stops + 1))
-    stints, a = [], 1
-    for i in range(stops + 1):
-        b = laps if i == stops else min(laps, a + per - 1)
-        stints.append({"from_lap": a, "to_lap": b, "laps": b - a + 1, "fuel_l": round((b - a + 1) * burn, 1)})
-        a = b + 1
-    if loss is None:
-        warn.append("Pit stop loss unknown.")
-    return {"laps": laps, "fuel_needed_l": need, "stops": stops, "start_fuel_l": start, "stints": stints,
-            "windows": wins, "pit_time_s": round(stops * (loss or 0), 1), "laps_per_tank": lpt, "warnings": warn}
+    """strategy.plan: the real one (2.4.0 review H2: a hand-made stand-in let the window and the planner
+    disagree on the thirstier-laps field name, so the shell now tests against the planner itself)."""
+    return _REAL_STRATEGY.plan(inp)
 
 
 class XlsxError(Exception):
@@ -366,7 +337,7 @@ def test_clean_result_fields_new_fields():
            ({"incident_laps": [{"lap": 0, "kind": "off", "points": 0}]}, "lap"),
            ({"incident_laps": [{"lap": 2001, "kind": "off", "points": 0}]}, "lap"),
            ({"incident_laps": [{"lap": float("nan"), "kind": "off", "points": 0}]}, "lap"),
-           ({"incident_laps": ["x"]}, "Incident 1")]
+           ({"incident_laps": ["x"]}, "row 1")]
     for extra, want in bad:
         body = dict(base)
         body.update({k: v for k, v in extra.items() if v is not None})
@@ -638,7 +609,11 @@ def test_intel_upload_checks():
         for data, name, ct, want in cases:
             code, _, body = upload(data, name, ct)
             assert code == 400 and want in json.loads(body)["error"], (name, body)
-        code, _, body = upload("Track,Notes\nRoval,T1\n".encode("utf-8"), "intel.csv")
+        code, _, body = upload(b"a,b\n", "intel.csv")
+        assert code == 400 and "too small" in json.loads(body)["error"]          # a near-empty CSV is refused
+        csv_ok = ("Track,Notes\n" + "".join(f"Roval {i},Brake early into T1 and keep it tidy\n" for i in range(30))).encode("utf-8")
+        assert len(csv_ok) >= 1024
+        code, _, body = upload(csv_ok, "intel.csv")
         assert code == 200 and json.loads(body)["sheets"][0]["header"] == ["Track", "Notes"]
         # over 5 MB: refused from the Content-Length alone (the body is never read, the connection closes)
         code, h, body = raw_headers_only("api/intel-upload?name=big.xlsx", 5 * 1024 * 1024 + 1)
@@ -883,10 +858,10 @@ def test_window_fuel_dialog_40_laps():
                               " w: [...document.querySelectorAll('#fuelWindows li')].map(e => e.textContent)})")
             assert res["k"][0].startswith("Stops2"), res
             wins = [x for x in res["w"] if x.startswith("Stop ")]
-            assert len(wins) == 2 and re.match(r"Stop 1: between laps \d+ and \d+, add ", wins[0]), res
+            assert len(wins) == 2 and re.match(r"Stop 1 after lap \d+ \(window \d+–\d+\): add ", wins[0]), res
             for w in wins:
-                a, b = map(int, re.search(r"between laps (\d+) and (\d+)", w).groups())
-                assert a <= b, w
+                at, a, b = map(int, re.search(r"after lap (\d+) \(window (\d+)–(\d+)\)", w).groups())
+                assert a <= at <= b, w
             # out of range: the window says which box before sending anything
             pg.fill("#f_burn", "30")
             pg.click("#fuelGo")

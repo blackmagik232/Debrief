@@ -88,14 +88,33 @@ GOAL_ID_OK = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 # race result fields: (kind, min, max). results.save validates again; this is the server's own gate.
 RESULT_FIELDS = {"start_pos": (int, 1, 200), "finish_pos": (int, 1, 200), "field_size": (int, 1, 200),
                  "incidents": (int, 0, 999), "irating_before": (int, 0, 20000), "irating_after": (int, 0, 20000),
-                 "sr_before": (float, 0.0, 10.0), "sr_after": (float, 0.0, 10.0), "sof": (int, 0, 20000),
+                 "sr_before": (float, 0.0, 4.99), "sr_after": (float, 0.0, 4.99), "sof": (int, 0, 20000),
                  "laps_led": (int, 0, 2000)}
 
 
+RESULT_DERIVED = ("irating_change", "sr_change", "positions_gained", "positions_lap1")
+
+
 def clean_result_fields(raw) -> dict:
-    """Validate the race-result form. Empty boxes are left out. Raises ValueError with a friendly message."""
+    """Validate the race-result form. Empty boxes are left out. Raises ValueError with a friendly message.
+    Uses results.validate itself, so the server and results follow exactly the same rules (2.4.0 review L1;
+    spec §2.5); the derived fields are left for results.save to work out. The local rules below are only a
+    fallback for when the results module can't be loaded."""
     if not isinstance(raw, dict):
         raise ValueError("Bad request.")
+    if raw.get("notes") not in (None, "") and not isinstance(raw.get("notes"), str):
+        raise ValueError("Notes must be text.")
+    results = app.optional_module("results")
+    if results is not None and callable(getattr(results, "validate", None)):
+        out = results.validate(raw)
+        for k in RESULT_DERIVED:
+            out.pop(k, None)
+        return out
+    return _clean_result_fields_local(raw)
+
+
+def _clean_result_fields_local(raw) -> dict:
+    out = {}
     out = {}
     labels = {"start_pos": "Start position", "finish_pos": "Finish position", "field_size": "Cars in the race",
               "incidents": "Incidents", "irating_before": "iRating before", "irating_after": "iRating after",
@@ -108,7 +127,7 @@ def clean_result_fields(raw) -> dict:
         if isinstance(v, bool):
             raise ValueError(f"{labels[k]} must be a number.")
         try:
-            num = float(str(v).strip().replace(",", "")) if isinstance(v, str) else float(v)
+            num = float(str(v).strip().replace(",", ".")) if isinstance(v, str) else float(v)   # as results._value
         except (TypeError, ValueError, OverflowError):
             raise ValueError(f"{labels[k]} must be a number.")
         if not math.isfinite(num):  # NaN, Infinity, 1e400
@@ -173,6 +192,7 @@ def _clean_result_extras(raw: dict, out: dict) -> None:
             continue
         out[k] = _whole(v, lo, hi, RESULT_EXTRA_LABELS[k])
     fs = raw.get("finish_status")
+    fs = fs.strip().lower() if isinstance(fs, str) else fs
     if fs not in (None, ""):
         if fs not in FINISH_STATUS:
             raise ValueError("Pick how the race ended.")
@@ -190,9 +210,12 @@ def _clean_result_extras(raw: dict, out: dict) -> None:
             raise ValueError(f"Incident {i}: add the lap, what happened and the points.")
         lap = _whole(e.get("lap"), 1, 2000, f"Incident {i}: the lap")
         kind = e.get("kind")
+        kind = kind.strip().lower() if isinstance(kind, str) else kind
         if kind not in INCIDENT_KINDS:
             raise ValueError(f"Incident {i}: pick off track, spin, contact or other.")
         pts = e.get("points", 0)
+        if pts is None or (isinstance(pts, str) and not pts.strip()):
+            pts = 0
         if isinstance(pts, bool) or not isinstance(pts, (int, float, str)):
             raise ValueError(f"Incident {i}: points must be 0, 1, 2 or 4.")
         try:
@@ -634,6 +657,9 @@ class IntelUploads:
 
     def __init__(self):
         self.lock = threading.Lock()
+        # one sheet is parsed at a time (2.4.0 review H3): each parse is bounded by xlsx.MAX_CELLS/MAX_TEXT,
+        # and this keeps two uploads at once from doubling the peak
+        self.parse_lock = threading.Lock()
         self.items = {}   # id -> {"parsed", "name", "t"}
         self.clock = time.monotonic   # replaced in tests
 
@@ -1421,6 +1447,7 @@ class Handler(BaseHTTPRequestHandler):
 
     MAX_INTEL = 5 * 1024 * 1024
     MIN_XLSX = 1024
+    MIN_CSV = 16            # a short Track Intel CSV (a few rows) is legitimate; xlsx keeps the 1 KB floor
     INTEL_NAME_OK = re.compile(r"^[^\x00-\x1f/\\<>:\"|?*]{1,160}\.(xlsx|csv)$", re.I)
 
     def _post_intel_upload(self):
@@ -1440,9 +1467,9 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             return self._json({"ok": False, "error": "Pick an .xlsx or .csv file."}, 400)
         is_xlsx = name.lower().endswith(".xlsx")
-        if n < (self.MIN_XLSX if is_xlsx else 16):
+        if n < (self.MIN_XLSX if is_xlsx else self.MIN_CSV):
             self.close_connection = True
-            return self._json({"ok": False, "error": "That file is too small to be a Track Intel sheet."}, 400)
+            return self._json({"ok": False, "error": "That file is too small to be a Track Intel sheet (it's under 1 KB)."}, 400)
         buf = bytearray()
         while len(buf) < n:
             chunk = self.rfile.read(min(65536, n - len(buf)))
@@ -1465,7 +1492,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             intel = self._module("intel")
             try:
-                parsed = intel.parse_upload(data, name)
+                with self.server.intel.parse_lock:
+                    parsed = intel.parse_upload(data, name)
             except ValueError:
                 raise
             except Exception as e:  # noqa: BLE001  (XlsxError and friends carry plain messages)

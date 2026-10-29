@@ -621,7 +621,7 @@ function fuelInputs(){const inp={};const laps=numOr('f_laps'),mins=numOr('f_minu
   const rv=numOr('f_reserve');if(rv!=null)inp.reserve_laps=rv;
   const pre=(fuelFor&&fuelFor.pre)||{};const pb=pre.burn||{};
   // the thirstier-laps figure only applies to the prefilled fuel use; a typed-in number is used as it is
-  if(ok(pb.p90)&&!$('fP90Wrap').hidden&&ok(pb.value)&&b!=null&&Math.abs(b-pb.value)<0.005){inp.use_p90=$('f_p90').checked;inp.p90_l=pb.p90}else inp.use_p90=false;
+  if(ok(pb.p90)&&!$('fP90Wrap').hidden&&ok(pb.value)&&b!=null&&Math.abs(b-pb.value)<0.005){inp.use_p90=$('f_p90').checked;inp.p90=pb.p90}else inp.use_p90=false;
   if(ok(pb.n)&&ok(pb.value)&&b!=null&&Math.abs(b-pb.value)<0.005)inp.burn_n=pb.n;
   const pt=pre.tank||{};if(pt.estimated&&ok(pt.value)&&t!=null&&Math.abs(t-pt.value)<0.01)inp.tank_estimated=true;
   return inp}
@@ -634,8 +634,12 @@ function renderFuelPlan(p){$('fuelRes').hidden=false;const k=$('fuelKpis');k.rep
   if(ok(p.pit_time_s)&&p.stops>0)k.append(kpi('Time in the pits',p.pit_time_s.toFixed(0)+' s'));
   const ul=$('fuelWindows');ul.replaceChildren();
   (Array.isArray(p.windows)?p.windows:[]).forEach((w,i)=>{const li=h('li');const n=ok(w.stop)?w.stop:i+1;
-    li.append(h('b',null,'Stop '+n+': '),document.createTextNode('between laps '+w.open+' and '+w.close));
-    const add=ok(w.fuel_add_l)?w.fuel_add_l:ok(w.add_l)?w.add_l:null;if(add!=null)li.append(document.createTextNode(', add '+fmtL(add)));ul.append(li)});
+    // "Stop after lap 14 (window 11–17): add 25.5 L" — the add is right for any lap in the window
+    const at=ok(w.at_lap)?w.at_lap:null,win=ok(w.open)&&ok(w.close)?(w.open===w.close?'lap '+w.open:w.open+'–'+w.close):null;
+    li.append(h('b',null,'Stop '+n),document.createTextNode(at!=null?' after lap '+at+(win?' (window '+win+')':''):(win?' in laps '+win:'')));
+    const add=ok(w.fuel_add_l)?w.fuel_add_l:ok(w.add_l)?w.add_l:null;if(add!=null)li.append(document.createTextNode(': add '+fmtL(add)));ul.append(li)});
+  if((Array.isArray(p.windows)?p.windows:[]).length){const li=h('li','sub2');
+    li.textContent='Pit on any lap in its window and add the same amount. Keep to the windows for every stop.';ul.append(li)}
   (Array.isArray(p.stints)?p.stints:[]).forEach((st,i)=>{if(!ok(st.from_lap))return;const li=h('li','sub2');
     li.textContent='Stint '+(i+1)+': laps '+st.from_lap+'–'+st.to_lap+(ok(st.fuel_l)?' · '+fmtL(st.fuel_l):'');ul.append(li)});
   showWarnings('fuelWarn',p.warnings,'Worth knowing:')}

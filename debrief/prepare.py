@@ -58,12 +58,16 @@ def _ids_from_lists(api, track: str, cars: list, matcher=None):
 
 
 def _race_length(cfg, sched, track, cars, week):
-    """strategy.prefill(...)["race"] (24-A): the race length from the schedule week. No requests, no store."""
+    """The race length from the schedule week: strategy.race_length(week), which is exactly what
+    strategy.prefill(...)["race"] gives, without reading the library's reviews for every week (2.4.0
+    review L4). No requests, no store. The full prefill is loaded on demand by api/strategy."""
     try:
         from . import strategy
     except ImportError:   # strategy.py not merged yet
         return None
     try:
+        if callable(getattr(strategy, "race_length", None)):
+            return strategy.race_length(week)
         return strategy.prefill(cfg, None, sched, track, cars, week).get("race")
     except Exception:  # noqa: BLE001  (a fuel hint is never worth breaking the Prepare page)
         return None

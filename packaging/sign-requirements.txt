@@ -1,0 +1,20 @@
+# The release job's signing library, and nothing else (see packaging/SIGNING.md). Installed with
+#   python -m pip install --only-binary ":all:" --require-hashes -r packaging/sign-requirements.txt
+# so pip refuses any file whose sha256 isn't listed here. Never bundled into Debrief.exe.
+# Hashes from PyPI's JSON API (https://pypi.org/pypi/<name>/<version>/json), wheels only:
+# the abi3 / cp312 wheels for Linux x86_64 (the release job runs on ubuntu-latest) and Windows x64.
+# To move to a new version, replace every hash for it from that page; never pin without them.
+cryptography==46.0.3 \
+    --hash=sha256:01ca9ff2885f3acc98c29f1860552e37f6d7c7d013d7334ff2a9de43a449315d \
+    --hash=sha256:a2c0cd47381a3229c403062f764160d57d4d175e022c1df84e168c6251a22eec \
+    --hash=sha256:10b01676fc208c3e6feeb25a8b83d81767e8059e1fe86e1dc62d10a3018fa926 \
+    --hash=sha256:a9a3008438615669153eb86b26b61e09993921ebdd75385ddd748702c5adfddb \
+    --hash=sha256:15ab9b093e8f09daab0f2159bb7e47532596075139dd74365da52ecc9cb46c5d \
+    --hash=sha256:1000713389b75c449a6e979ffc7dcc8ac90b437048766cef052d4d30b8220971 \
+    --hash=sha256:402b58fc32614f00980b66d6e56a5b4118e6cb362ae8f3fda141ba4689bd4506 \
+    --hash=sha256:416260257577718c05135c55958b674000baef9a1c7d9e8f306ec60d71db850f
+cffi==2.0.0 \
+    --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba \
+    --hash=sha256:da68248800ad6320861f129cd9c1bf96ca849a2771a59e0344e88681905916f5
+pycparser==2.23 \
+    --hash=sha256:e5c6e8d3fbad53479cab09ac03729e0a9faf2bee3db8208a550daf5af81a5934

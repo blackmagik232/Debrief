@@ -683,8 +683,11 @@ def test_workflow_kept_and_signing_job():
     for s in steps:
         if str(s.get("uses", "")).startswith("actions/checkout"):
             assert s["with"]["persist-credentials"] is False
-    inst = next(s for s in steps if "cryptography" in str(s.get("run", "")))
-    assert re.search(r'cryptography==\d+\.\d+\.\d+"', inst["run"]), "cryptography must be pinned exactly"
+    # 2.5 fixes L6: installed from packaging/sign-requirements.txt with --require-hashes
+    inst = next(s for s in steps if "sign-requirements.txt" in str(s.get("run", "")))
+    assert "--require-hashes" in inst["run"], "the signing library must be installed with hashes"
+    reqs = (ROOT / "packaging" / "sign-requirements.txt").read_text(encoding="utf-8")
+    assert re.search(r"^cryptography==\d+\.\d+\.\d+ \\$", reqs, re.M), "cryptography must be pinned exactly"
     signs = [s for s in steps if "DEBRIEF_SIGNING_KEY" in json.dumps(s.get("env", {}))]
     assert len(signs) == 1
     sg = signs[0]

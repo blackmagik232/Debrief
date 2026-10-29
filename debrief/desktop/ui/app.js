@@ -822,8 +822,14 @@ function weeklyText(j){
   if(!j.schedule)return 'Load the season schedule on the Prepare page and pick your series to see this week\'s team leaderboards.';
   if(j.token===false)return 'Add your Garage 61 token in Settings first.';
   if(!weeklyRows(j).length)return 'Pick your series on the Prepare page to see this week\'s team leaderboards.';
-  const n=ok(j.plan.est_total)?j.plan.est_total:0;
-  return 'This week\'s leaderboards for your series. About '+n+' Garage 61 request'+(n===1?'':'s')+' (1 per series, 2 if a lap needs a second look).'}
+  const p=j.plan,n=ok(p.est_total)?p.est_total:0;
+  let t='This week\'s leaderboards for your series. About '+n+' Garage 61 request'+(n===1?'':'s')+' (1 per series, 2 if a lap needs a second look).';
+  // 2.5 fixes L3: past-week fills and the one-off look-up of your Garage 61 name are part of the count
+  const past=ok(p.est_past)?p.est_past:0,me=ok(p.est_me)?p.est_me:0,mx=ok(p.est_max)?p.est_max:0;
+  const inc=[];if(past>0)inc.push(past+' for earlier weeks');if(me>0)inc.push('1 to look up your Garage 61 name');
+  if(inc.length)t+=' That includes '+inc.join(' and ')+'.';
+  if(mx>n)t+=' At most '+mx+'.';
+  return t}
 function renderWeekly(){const j=weeklyInfo;const t=weeklyText(j);$('weeklyNote').textContent=t;$('fbWeekly').title=t;
   const rows=weeklyRows(j);const can=!!(j&&j.ok&&j.available&&j.schedule&&j.token!==false&&rows.length);
   $('btnWeekly').disabled=!can;$('fbWeekly').disabled=!can;
@@ -860,11 +866,21 @@ async function stageCard(url,text){let blob;try{blob=pngBlob(url)}catch(e){banne
   if(!r||!r.ok){banner((r&&r.error)||'Couldn\'t prepare the preview. Try again.',true);return}
   openDiscord(r,url,text)}
 function discordCount(){const n=$('discordText').value.length;$('discordCount').textContent=n+' / 2000';$('discordCount').classList.toggle('over',n>2000)}
+const POST_ARM_MS=600;
 function openDiscord(r,url,text){staged={nonce:r.nonce};
-  $('discordImg').src=url;$('discordText').value=String(text||'').slice(0,2000);discordCount();
+  $('discordText').value=String(text||'').slice(0,2000);discordCount();
   const t=r.target||{};
   $('discordTarget').textContent='Posts to '+(t.name?'the webhook \u201c'+t.name+'\u201d':'your team\'s webhook')+' ('+(t.hint||discordHint||'…')+')';
-  setMsg('discordDlgMsg','');$('discordPost').disabled=false;
+  setMsg('discordDlgMsg','');
+  // 2.5 fixes L7: Post stays off until the preview picture has loaded and for POST_ARM_MS after the dialog
+  // opens, so a click (or double-click) meant for something else can't land on it as the dialog appears
+  const post=$('discordPost'),arm={img:false,time:false,nonce:r.nonce};post.disabled=true;
+  const ready=()=>{if(staged&&staged.nonce===arm.nonce&&arm.img&&arm.time&&$('dlgDiscord').open)post.disabled=false};
+  const img=$('discordImg');
+  const loaded=()=>{arm.img=true;ready()};
+  img.onload=loaded;img.onerror=()=>{if(staged&&staged.nonce===arm.nonce)setMsg('discordDlgMsg','The preview couldn\'t be shown, so it can\'t be posted. Close this and press Post to Discord again.','bad')};img.src=url;
+  if(img.complete&&img.naturalWidth>0)loaded();
+  setTimeout(()=>{arm.time=true;ready()},POST_ARM_MS);
   const d=$('dlgDiscord');if(d.showModal)d.showModal();else d.setAttribute('open','');$('discordText').focus()}
 $('discordText').addEventListener('input',discordCount);
 // Cancel, Close or Escape: nothing is sent; the staged card is forgotten on the server within 10 minutes
@@ -872,7 +888,7 @@ function closeDiscord(){staged=null;const d=$('dlgDiscord');if(d.open){if(d.clos
 $('discordCancel').addEventListener('click',closeDiscord);$('discordClose').addEventListener('click',closeDiscord);
 $('dlgDiscord').addEventListener('close',()=>{staged=null});
 // THE ONLY PLACE THAT SENDS api/discord-post: a real click on Post in the open dialog, once per preview
-$('discordPost').addEventListener('click',async e=>{if(!e.isTrusted||!staged||!$('dlgDiscord').open)return;
+$('discordPost').addEventListener('click',async e=>{if(!e.isTrusted||!staged||!$('dlgDiscord').open||$('discordPost').disabled)return;
   const content=$('discordText').value;
   if(content.length>2000){setMsg('discordDlgMsg','The message can be up to 2000 characters.','bad');return}
   const nonce=staged.nonce;staged=null;$('discordPost').disabled=true;setMsg('discordDlgMsg','Posting...');

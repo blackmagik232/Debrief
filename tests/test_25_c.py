@@ -157,7 +157,7 @@ def test_static_team_no_innerhtml_tokens_only_words():
     html = _between(s, '<section id="weekly"', '<section id="boards">') + _between(s, '<section id="learn"', '<section id="h2h">')
     for seg in (blk, html, _review25((TPL / "review.html").read_text(encoding="utf-8"))):
         assert not BAD_WORDS.search(seg), BAD_WORDS.search(seg)
-    assert "Both are best laps, so this compares your best driving, not your typical lap." in html
+    assert "Both are best laps: this compares your best driving, not your typical lap." in html   # 2.5 fixes L4: no causal "so"
 
 
 def test_static_fixture_shapes():

@@ -1413,7 +1413,7 @@ function learnFor(cid){if(!LF.length)return null;const c=cornerById[cid];const t
   if(c&&num(c.apex_m)){let best=null,bd=Infinity;LF.forEach(x=>{if(!num(x.apex_m))return;const d=Math.abs(x.apex_m-c.apex_m);if(d<=tol&&d<bd){bd=d;best=x}});if(best)return best}
   return LF.find(x=>!num(x.apex_m)&&String(x.corner)===String(cid))||null}
 function learnLine(lf,cid){const p=h('p','learn');const tm=isObj(lf.teammate)?lf.teammate:{};
-  const txt=typeof lf.text==='string'&&lf.text?lf.text:firstName(tm.name||'A teammate')+'’s best lap was '+(num(lf.gap_s)?lf.gap_s.toFixed(2)+' s ':'')+'quicker than yours through '+cid+'. Both are best laps, so this compares your best driving, not your typical lap.';
+  const txt=typeof lf.text==='string'&&lf.text?lf.text:firstName(tm.name||'A teammate')+'’s best lap was '+(num(lf.gap_s)?lf.gap_s.toFixed(2)+' s ':'')+'quicker than yours through '+cid+'. Both are best laps: this compares your best driving, not your typical lap.';
   p.append(h('b',null,'Who to learn from: '),document.createTextNode(txt));
   const a=h('a',null,'Team page');a.href='../../team/index.html';p.append(a);return p}
 function fixCard(f,i){const d=h('div','fix');d.append(h('span','rk',String(i+1)));const mid=h('div');const {c,nums,times,refName}=fixData(f);

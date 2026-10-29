@@ -14,11 +14,21 @@ Garage 61 request budget (spec 2.5, section 3.7):
                 outside the race week): the same search with group="none", limit=1000  cached 10 min
     Never more than 2 per series per week. Past weeks: at most MAX_PAST_WEEKS week fetches per refresh
     in all (most recent first); only the 3 most recent past weeks are filled on their own, older or
-    final ones need force_old. Worst case per refresh: (8 + 3) x 2 = 22.
+    final ones need force_old. Worst case per refresh: (8 + 3) x 2 = 22, plus 1 me() (below).
+    Back-fill is throttled: once a refresh has filled (or tried to fill) past weeks, another refresh within
+    FRESH_S fills no past week on its own (0 requests), and a past week tried within FRESH_S is never
+    tried again in that window, even with force_old (attempts are kept in <season>/attempts.json).
     The track and car ids come from the cached lists only (prepare._ids_from_lists): never a request.
     Your Garage 61 slug comes from the saved "me" answer (peek); only if none was ever saved is me()
-    asked once (cached a day).
+    asked once (cached a day). That one possible me() request is counted in plan()'s estimate.
     plan() and view() never send a request.
+
+Plausibility (a partial lap Garage 61 didn't flag, e.g. 11 s): laps are judged against a reference that
+partial laps can't move. First choice: your own best full lap at this track in one of the series' cars,
+from your review library (library.clean_best, the same reference team.build uses). Without one, the
+slowest laps set the floor: a partial lap is always shorter than a full lap, so laps under 0.6 x the
+slowest returned lap are dropped and the anchor is the median of the rest. However many partial laps
+come back, they can't anchor the board or push a real lap off it.
 
 Sign conventions:
     board gap        = driver's best - class leader's best        (>= 0)
@@ -216,10 +226,41 @@ def _jobs(sched, mine_series, now, series_ids=None):
     return season_slug(sched), used, left, current, past
 
 
+def _attempts_path(lib, season) -> Path:
+    return weekly_dir(lib) / _safe(season) / "attempts.json"
+
+
+def _attempts(lib, season) -> dict:
+    d = _read(_attempts_path(lib, season)) or {}
+    weeks = d.get("weeks") if isinstance(d.get("weeks"), dict) else {}
+    return {"backfill_at": d.get("backfill_at"), "weeks": {str(k): v for k, v in weeks.items()}}
+
+
+def _week_key(ser, w) -> str:
+    return f"{ser['id']}/w{int(w['week']):02d}"
+
+
+def _recent(ts, now) -> bool:
+    dt = _parse_dt(ts)
+    return dt is not None and 0 <= (now - dt).total_seconds() < FRESH_S
+
+
+def _save_attempts(lib, season, att, now) -> None:
+    keep = {k: v for k, v in (att.get("weeks") or {}).items() if _recent(v, now)}
+    _write_json(_attempts_path(lib, season), {"schema": SCHEMA, "backfill_at": att.get("backfill_at"),
+                                               "weeks": keep})
+
+
 def _past_candidates(lib, season, past, force_old, now):
-    """Past weeks worth fetching, most recent first across series (k = 0 is last week)."""
+    """Past weeks worth fetching, most recent first across series (k = 0 is last week). None of them
+    within FRESH_S of a back-fill (unless force_old), and never a week already tried in that window."""
     cands = []
+    att = _attempts(lib, season)
+    if not force_old and _recent(att["backfill_at"], now):
+        return cands
     for k, ser, w in sorted(past, key=lambda x: x[0]):
+        if _recent(att["weeks"].get(_week_key(ser, w)), now):
+            continue
         snap = load_snapshot(lib, season, ser["id"], w["week"])
         if force_old:
             if is_fresh(snap, now):
@@ -276,8 +317,8 @@ def _left_note(left):
 def plan(cfg, api_or_none, sched, mine_series) -> dict:
     """What a refresh would do, and about how many Garage 61 requests it would take. Never a request."""
     now = _now()
-    out = {"series": [], "est_total": 0, "skipped": [], "season": (sched or {}).get("season"),
-           "left_out": 0, "notes": []}
+    out = {"series": [], "est_total": 0, "est_past": 0, "est_me": 0, "est_max": 0, "skipped": [],
+           "season": (sched or {}).get("season"), "left_out": 0, "notes": []}
     if not sched:
         out["notes"].append("Load this season's schedule first (Prepare).")
         return out
@@ -295,22 +336,34 @@ def plan(cfg, api_or_none, sched, mine_series) -> dict:
                "cached": j["why"] in ("fresh", "final"), "past": j["past"], "final": bool((j["snapshot"] or {}).get("final"))}
         out["series"].append(row)
         out["est_total"] += j["est_requests"]
+        if j["past"]:
+            out["est_past"] += j["est_requests"]
         if not j["ids_known"] and ser["id"] not in seen:
             out["skipped"].append({"id": ser["id"], "name": ser["name"], "note": NO_IDS_NOTE})
         seen.add(ser["id"])
+    fetches = sum(1 for j in jobs if j["est_requests"] > 0)
+    out["est_me"] = 1 if fetches and _saved_me(api_or_none) is None else 0
+    out["est_total"] += out["est_me"]
+    out["est_max"] = 2 * fetches + out["est_me"]
     return out
 
 
 # ---------------------------------------------------------------- one board
+def _saved_me(api):
+    """The saved "me" answer (any age), or None. Never a request."""
+    peek = getattr(api, "peek", None)
+    if not callable(peek):
+        return None
+    try:
+        me = peek("me")
+    except Exception:  # noqa: BLE001
+        return None
+    return me if isinstance(me, dict) else None
+
+
 def _me(api) -> tuple[str, str | None]:
     """(your Garage 61 slug, your name) from the saved "me" answer; me() only if none was ever saved."""
-    me = None
-    peek = getattr(api, "peek", None)
-    if callable(peek):
-        try:
-            me = peek("me")
-        except Exception:  # noqa: BLE001
-            me = None
+    me = _saved_me(api)
     if not isinstance(me, dict):
         try:
             me = api.me() or {}
@@ -338,9 +391,70 @@ def _ok_lap(l, a, b) -> bool:
     return team.usable(l) and _in_window(l, a, b)
 
 
-def build_board(laps, my_slug, my_name, car_names, a: date, b: date, multiclass: bool) -> list:
+def _ref_for(refs, k):
+    """Your library reference time for class key k (refs is {class or None: seconds} or one number)."""
+    if isinstance(refs, (int, float)) and not isinstance(refs, bool):
+        return float(refs) if refs > 0 else None
+    if isinstance(refs, dict):
+        v = refs.get(k)
+        try:
+            v = float(v) if v is not None else None
+        except (TypeError, ValueError):
+            v = None
+        return v if v and v > 0 else None
+    return None
+
+
+def board_anchor(times, ref=None):
+    """The time laps are judged against (team.plausible). With a reference (your best full lap at this
+    track from the library) that's the anchor, the way team.build does it. Without one, laps under 0.6 x
+    the slowest one can't be full laps, so they never count towards the median: a pile of partial laps
+    can't drag the anchor down and push the real laps out."""
+    if ref:
+        return team.anchor_for([], ref)
+    xs = [float(t) for t in times if t and t > 0]
+    if not xs:
+        return None
+    floor = 0.6 * max(xs)
+    return team.anchor_for([t for t in xs if t >= floor])
+
+
+def library_refs(combos, ser, w, track_id, car_ids, car_names, multiclass) -> dict:
+    """{class or None: your best full lap} at this week's track in one of the series' cars, from the review
+    library (team.library_combos: library.clean_best, so a partial or flagged best never counts). No requests."""
+    out = {}
+    cars = ser.get("cars") or []
+    ids = {int(c) for c in car_ids or [] if c is not None}
+    for c in combos or []:
+        t = c.get("best")
+        if not t or t <= 0:
+            continue
+        tid = c.get("track_id")
+        if tid is not None and track_id is not None:
+            try:
+                if int(tid) != int(track_id):
+                    continue
+            except (TypeError, ValueError):
+                continue
+        elif not schedule.same_track(c.get("track"), w.get("track")):
+            continue
+        cid = c.get("car_id")
+        try:
+            car_ok = cid is not None and int(cid) in ids
+        except (TypeError, ValueError):
+            car_ok = False
+        car_ok = car_ok or any(schedule.same_car(c.get("car"), x) for x in cars)
+        if not car_ok:
+            continue
+        k = schedule.class_of(c.get("car")) if multiclass else None
+        if k not in out or t < out[k]:
+            out[k] = float(t)
+    return out
+
+
+def build_board(laps, my_slug, my_name, car_names, a: date, b: date, multiclass: bool, refs=None) -> list:
     """Each driver's best usable lap inside [a, b) (per class in a multi-class series), with overall
-    position and in-class position and gap."""
+    position and in-class position and gap. refs: your library best per class (see board_anchor)."""
     cands = []
     for l in laps or []:
         if not isinstance(l, dict) or not _ok_lap(l, a, b):
@@ -365,7 +479,7 @@ def build_board(laps, my_slug, my_name, car_names, a: date, b: date, multiclass:
         by_cls.setdefault(c["class"] if multiclass else None, []).append(c)
     best = {}
     for k, rows in by_cls.items():
-        anchor = team.anchor_for([r["t"] for r in rows])
+        anchor = board_anchor([r["t"] for r in rows], _ref_for(refs, k))
         for r in rows:
             if not team.plausible(r["t"], anchor):
                 continue
@@ -388,11 +502,11 @@ def build_board(laps, my_slug, my_name, car_names, a: date, b: date, multiclass:
                                "gap", "gap_pct", "is_me")} for r in board]
 
 
-def _needs_second_look(laps, a, b) -> bool:
+def _needs_second_look(laps, a, b, ref=None) -> bool:
     """True when some driver's returned "best" can't be used: partial, unclean, pit, set outside the race
     week, or implausible against the others (an 11 s partial lap Garage 61 didn't flag)."""
     timed = [team.app.lap_time(l) for l in laps if isinstance(l, dict) and team.usable(l)]
-    anchor = team.anchor_for(timed)
+    anchor = board_anchor(timed, ref)
     for l in laps:
         if not isinstance(l, dict):
             continue
@@ -401,19 +515,29 @@ def _needs_second_look(laps, a, b) -> bool:
     return False
 
 
-def fetch_week(api, cfg, ser, w, track_id, car_ids, car_names, my_slug, my_name, season_name, now, log=print):
-    """One series-week: at most 2 Garage 61 requests. Returns the snapshot dict (not yet written)."""
+def fetch_week(api, cfg, ser, w, track_id, car_ids, car_names, my_slug, my_name, season_name, now, log=print,
+               refs=None):
+    """One series-week: at most 2 Garage 61 requests. Returns the snapshot dict (not yet written).
+    refs: your library best per class (library_refs); None reads the library here."""
     a, b = _window(w)
     multiclass = bool(ser.get("multiclass"))
+    if refs is None:
+        try:
+            refs = library_refs(team.library_combos(cfg["library_folder"]), ser, w, track_id, car_ids, car_names,
+                                multiclass)
+        except Exception:  # noqa: BLE001  (no library: judge the laps against each other)
+            refs = {}
     slug = cfg.get("team_slug") or "midfield-menace"
     base = dict(tracks=[int(track_id)], cars=list(car_ids), teams=[slug], drivers=["me"],
                 after=_iso(_midnight(a)), age=max(1, (now.date() - a).days + 2))
     used = 1
     laps = api.find_laps(group="driver-car" if multiclass else "driver", limit=200, **base) or []
-    if _needs_second_look(laps, a, b):
+    # a multi-class set has no single reference time: its laps are judged against each other here
+    one_ref = None if multiclass else _ref_for(refs, None)
+    if _needs_second_look(laps, a, b, one_ref):
         used = 2
         laps = list(laps) + list(api.find_laps(group="none", limit=1000, **base) or [])
-    board = build_board(laps, my_slug, my_name, car_names, a, b, multiclass)
+    board = build_board(laps, my_slug, my_name, car_names, a, b, multiclass, refs)
     final = now > _midnight(b) + FINAL_AFTER
     return {"schema": SCHEMA, "season": season_name, "series_id": ser["id"], "series": ser["name"],
             "week": w["week"], "start": a.isoformat(), "end": b.isoformat(), "track": w.get("track"),
@@ -442,6 +566,21 @@ def refresh(api, cfg, sched, mine_series, series_ids=None, force_old=False, log=
         out["skipped"].append({"id": s["id"], "name": s["name"], "note": _left_note(left)})
     work = [j for j in jobs if j["est_requests"] > 0]
     my_slug, my_name = _me(api) if work else ("", None)
+    combos = None
+    if work:
+        try:
+            combos = team.library_combos(lib)
+        except Exception:  # noqa: BLE001
+            combos = []
+    att = _attempts(lib, season)
+    if any(j["past"] for j in work):
+        # record the back-fill (and each week tried) before any request, so a failed or stopped refresh
+        # isn't retried within FRESH_S either
+        att["backfill_at"] = _iso(now)
+        for j in work:
+            if j["past"]:
+                att["weeks"][_week_key(j["series"], j["week"])] = _iso(now)
+        _save_attempts(lib, season, att, now)
     for j in jobs:
         ser, w = j["series"], j["week"]
         label = f"{ser['name']} week {w['week']}"
@@ -453,8 +592,9 @@ def refresh(api, cfg, sched, mine_series, series_ids=None, force_old=False, log=
             out["done"].append({"id": ser["id"], "week": w["week"], "requests": 0, "cached": True})
             continue
         log(f"{label}: loading the team's best laps at {w.get('track')}...")
+        refs = library_refs(combos, ser, w, j["track_id"], j["car_ids"], j["car_names"], bool(ser.get("multiclass")))
         snap = fetch_week(api, cfg, ser, w, j["track_id"], j["car_ids"], j["car_names"], my_slug, my_name,
-                          sched.get("season"), now, log)
+                          sched.get("season"), now, log, refs=refs)
         _write_json(snapshot_path(lib, season, ser["id"], w["week"]), snap)   # checkpoint
         n = snap["requests"]
         out["requests"] += n

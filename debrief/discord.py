@@ -120,10 +120,23 @@ def _png_size(png):
     return struct.unpack(">II", bytes(png[16:24]))
 
 
+_CONTROL = re.compile(r"[\x00-\x09\x0b-\x1f\x7f-\x9f]")
+_MASS_MENTION = re.compile(r"@+(?=everyone|here)", re.I)
+
+
 def clean_content(content) -> str:
-    """The message text with @everyone / @here taken out (they are also neutered by allowed_mentions)."""
+    """The message text as it is sent: control characters taken out (C0, DEL and C1; line breaks are kept,
+    \r\n and \r become \n, a tab becomes a space), then the @ of every @everyone / @here taken out, again
+    and again until nothing changes, so '@@everyone' or '@every@everyoneone' can't leave a mention behind.
+    Mentions are also neutered by allowed_mentions."""
     s = "" if content is None else str(content)
-    s = re.sub(r"@(everyone|here)\b", r"\1", s, flags=re.I)
+    s = s.replace("\r\n", "\n").replace("\r", "\n").replace("\t", " ")
+    s = _CONTROL.sub("", s)      # first, so '@\x00everyone' can't join up into a mention afterwards
+    while True:
+        t = _MASS_MENTION.sub("", s)
+        if t == s:
+            break
+        s = t
     return s.strip()
 
 

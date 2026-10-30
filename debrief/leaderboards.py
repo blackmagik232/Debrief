@@ -576,8 +576,10 @@ def refresh(api, cfg, sched, mine_series, series_ids=None, force_old=False, log=
     out = {"season": (sched or {}).get("season"), "done": [], "skipped": [], "notes": [], "requests": 0,
            "left_out": 0}
     slug = _slug(cfg)
+    start = getattr(api, "requests_made", 0)
     mem, teams_list = team.membership_for(api, slug, log)
     out["membership"], out["team"] = mem, team.team_info(slug, teams_list)
+    out["requests"] += max(0, getattr(api, "requests_made", 0) - start)   # a "not a member" re-check (1)
     if not sched:
         out["notes"].append("Load this season's schedule first (Prepare).")
         return out

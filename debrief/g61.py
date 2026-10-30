@@ -343,8 +343,10 @@ class Garage61:
     def me(self):
         return self._cached("me", lambda: self._get("me"), max_age_s=86400)
 
-    def teams(self):
-        d = self._cached("teams", lambda: self._get("teams"), max_age_s=86400)
+    def teams(self, refresh=False):
+        """Your Garage 61 teams, cached for a day; refresh=True asks again (1 request), e.g. right after
+        you join a team."""
+        d = self._cached("teams", lambda: self._get("teams"), max_age_s=0 if refresh else 86400)
         return (d or {}).get("items", [])
 
     def cars(self, refresh=False):

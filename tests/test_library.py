@@ -475,7 +475,9 @@ def test_replace_retries_briefly_locked_files():
                 raise AssertionError("expected PermissionError")
             except PermissionError:
                 pass
-            assert len(fsutil_calls) == fsutil.RETRIES
+            # the row index (.rows.json) is saved best-effort with its own few tries; count the page's tries
+            page_calls = [c for c in fsutil_calls if library.INDEX_FILE not in str(c)]
+            assert len(page_calls) == fsutil.RETRIES, fsutil_calls
             # other errors are not retried
             fsutil_calls.clear()
 

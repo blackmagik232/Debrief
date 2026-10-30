@@ -242,7 +242,24 @@ def membership_for(api, slug=None, log=print) -> tuple[str, list | None]:
     if teams is None:
         return brand.UNKNOWN, None
     teams = [t for t in teams if isinstance(t, dict)]
-    return brand.membership(teams, slug), teams
+    status = brand.membership(teams, slug)
+    if status == brand.NOT_MEMBER and getattr(api, "teams", None) is not None:
+        # the list is cached for a day: someone who just joined would keep seeing the join panel, so a
+        # "not a member" answer is checked once more against Garage 61 (1 request) before it's believed
+        try:
+            fresh = api.teams(refresh=True)
+        except TypeError:   # a client without refresh (older stand-ins in tests)
+            fresh = None
+        except Exception as e:  # noqa: BLE001
+            try:
+                log(f"  Couldn't re-check your Garage 61 teams: {e}")
+            except Exception:  # noqa: BLE001
+                pass
+            fresh = None
+        if fresh is not None:
+            teams = [t for t in fresh if isinstance(t, dict)]
+            status = brand.membership(teams, slug)
+    return status, teams
 
 
 def team_info(slug=None, teams=None) -> dict:

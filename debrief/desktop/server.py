@@ -1145,13 +1145,16 @@ class Handler(BaseHTTPRequestHandler):
         teams = api.cached_items("teams") if api else None
         used = 0
         if api and self._fetch_allowed(q):
-            teams = api.teams()
+            try:
+                teams = api.teams(refresh=True)   # "Check again" must see a team you've just joined
+            except TypeError:
+                teams = api.teams()
             used = api.requests_made
         out = None if teams is None else [{"slug": str(t.get("slug")), "name": str(t.get("name") or t.get("slug"))}
                                          for t in teams if isinstance(t, dict) and t.get("slug")]
         from .. import brand
         return self._json({"ok": True, "teams": out, "team_slug": cfg["team_slug"], "requests": used,
-                           "token": api is not None, "membership": brand.membership(teams)})
+                           "token": api is not None, "membership": brand.membership(teams, cfg["team_slug"])})
 
     def _get_goals(self, q):
         cfg = self._cfg()
@@ -1444,7 +1447,7 @@ class Handler(BaseHTTPRequestHandler):
             p.relative_to(root)
         except (ValueError, OSError):
             return self._nf()
-        if p.suffix.lower() not in LIB_TYPES or not p.is_file() or p.name == library.INDEX_FILE:
+        if p.suffix.lower() not in LIB_TYPES or not p.is_file() or p.name.lower() == library.INDEX_FILE.lower():
             return self._nf()
         self._file(p, lib=True)
 

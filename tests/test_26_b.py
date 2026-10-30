@@ -270,6 +270,8 @@ def test_warm_scan_benchmark_300():
         out = lib / "reviews" / f"2026-{1 + i % 12:02d}-{1 + i % 28:02d}_bench_{i:04d}"
         out.mkdir(parents=True)
         (out / "review.json").write_text(json.dumps(d), encoding="utf-8")
+        old = time.time_ns() - 3600 * 10**9   # a library's reviews are older than the racy window
+        os.utime(out / "review.json", ns=(old, old))
     t0 = time.perf_counter()
     library.list_reviews(lib)
     cold = time.perf_counter() - t0
@@ -591,6 +593,33 @@ def test_messages_point_to_settings_and_welcome():
     assert "settings.toml" not in S.friendly(Garage61Error("401 Unauthorized. Open settings.toml and paste a new one"))
 
 
+def test_racy_entries_are_read_again_until_they_settle():
+    """A review rewritten with the same size inside one coarse mtime tick (FAT/exFAT: 2 s) is not served
+    from a stale index entry: entries for files changed just before they were read are re-read next scan."""
+    lib = TMP / "racy"
+    make_fixture_library.main(str(lib))
+    rj = sorted((lib / "reviews").glob("*/review.json"))[0]
+    name = rj.parent.name
+    d = json.loads(rj.read_text(encoding="utf-8"))
+    d["meta"]["track"] = "Track AAAA"
+    rj.write_text(json.dumps(d), encoding="utf-8")
+    st = rj.stat()
+    first = {x["dir"]: x for x in library.review_summaries(lib)}
+    assert first[name]["track"] == "Track AAAA"
+    idx = json.loads((lib / library.INDEX_FILE).read_text(encoding="utf-8"))
+    assert idx["reviews"][name].get("racy") is True
+    d["meta"]["track"] = "Track BBBB"          # same size, same time stamp: what a 2 s file system reports
+    rj.write_text(json.dumps(d), encoding="utf-8")
+    os.utime(rj, ns=(st.st_atime_ns, st.st_mtime_ns))
+    assert rj.stat().st_size == st.st_size
+    assert {x["dir"]: x for x in library.review_summaries(lib)}[name]["track"] == "Track BBBB"
+    old = st.st_mtime_ns - 10 * library.RACY_NS   # settled: trusted again
+    os.utime(rj, ns=(old, old))
+    library.review_summaries(lib)
+    idx = json.loads((lib / library.INDEX_FILE).read_text(encoding="utf-8"))
+    assert not idx["reviews"][name].get("racy")
+
+
 if __name__ == "__main__":
     failed = 0
     names = [n for n in globals() if n.startswith("test_") and callable(globals()[n])]
@@ -609,3 +638,4 @@ if __name__ == "__main__":
     shutil.rmtree(TMP, ignore_errors=True)
     print(f"{len(names) - failed}/{len(names)} passed")
     sys.exit(1 if failed else 0)
+

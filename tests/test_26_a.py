@@ -50,14 +50,18 @@ class CountingApi:
         self.requests_made += 1
 
     def me(self):
-        return {"slug": "me", "firstName": "Swazi", "lastName": "Williams"}
+        return {"slug": "me", "firstName": "Alex", "lastName": "Driver"}
 
     def peek(self, key):
         return self.me() if key == "me" else None
 
-    def teams(self):
+    def teams(self, refresh=False):
         if self.teams_raises:
             raise g61.Garage61Error(g61.MSG_OFFLINE)
+        if refresh:
+            self._req("teams", refresh=True)
+            if getattr(self, "joined", None):
+                self._teams = list(self.joined)
         return list(self._teams)
 
     def cached_items(self, name):
@@ -213,10 +217,13 @@ def test_leaderboards_not_member_no_requests():
     mine = {"chosen": True, "series": [{"id": sched["series"][0]["id"], "name": "Mazda Cup"}]}
     api = CountingApi(teams=[])
     res = leaderboards.refresh(api, cfg, sched, mine, log=QUIET)
-    assert res["membership"] == brand.NOT_MEMBER and api.calls == [] and res["requests"] == 0
+    # only the one re-check of the teams list (a cached "not a member" may be a day old); no lap requests
+    assert res["membership"] == brand.NOT_MEMBER and api.calls == [("teams", {"refresh": True})]
+    assert res["requests"] == 1
     assert res["team"] == {"slug": "midfield-menace", "name": "Midfield Menace"}
     v = leaderboards.view(lib, sched)
     assert v["membership"] == brand.NOT_MEMBER and v["series"] == [] and v["team"]["name"] == "Midfield Menace"
+    api.calls.clear()   # plan() reads the saved teams list only
     p = leaderboards.plan(cfg, api, sched, mine)
     assert p["membership"] == brand.NOT_MEMBER and p["team"]["name"] == "Midfield Menace" and api.calls == []
     # the team page picks the newest weekly check up
@@ -530,6 +537,41 @@ def test_check_telemetry_line_is_info():
     row = next(r for r in rows if r["text"] == app.TELEMETRY_INFO)
     assert row["level"] == "info" and all(r["level"] in ("ok", "info") for r in rows)
     assert lines.info == [app.TELEMETRY_INFO]
+
+
+# ================================================================ 2.6.0 verifier fixes
+def test_newest_synced_race_already_reviewed_searches_for_a_newer_one():
+    """H1: a sync that finished before Garage 61 had your latest race must not make "Review last race"
+    quietly review the previous race again: when the store's newest race already has a review, search."""
+    api = StatsApi()
+    now = datetime.now(timezone.utc)
+    _seed_store(api, sync._iso(now - timedelta(minutes=3)), SESS)
+    lib = TMP / "lib-h1"
+    (lib / "reviews" / "2026-10-30_race_evrace").mkdir(parents=True)
+    (lib / "reviews" / "2026-10-30_race_evrace" / "review.json").write_text("{}", encoding="utf-8")
+    assert app.find_last_event(api, [3], library_folder=str(lib)) == ("EVSEARCH", 5, 7)
+    assert api.requests_made == 2, api.calls
+    api2 = StatsApi()      # not reviewed yet: the store answers with no requests
+    _seed_store(api2, sync._iso(now - timedelta(minutes=3)), SESS)
+    assert app.find_last_event(api2, [3], library_folder=str(TMP / "lib-empty")) == ("EVRACE", 5, 7)
+    assert api2.requests_made == 0
+
+
+def test_not_member_answer_is_rechecked_once_so_a_new_join_shows_up():
+    """H2: the teams list is cached for a day; a cached "not a member" is checked once more against
+    Garage 61 so someone who just joined sees the team straight away (1 request)."""
+    api = CountingApi(teams=[])
+    api.joined = [{"slug": "midfield-menace", "name": "Midfield Menace"}]
+    mem, teams_list = team.membership_for(api, None, QUIET)
+    assert mem == brand.MEMBER and api.calls == [("teams", {"refresh": True})]
+    api2 = CountingApi(teams=[])     # still not on the team: exactly one extra request, still not a member
+    assert team.membership_for(api2, None, QUIET)[0] == brand.NOT_MEMBER and api2.requests_made == 1
+    api3 = CountingApi()             # already a member: no re-check
+    assert team.membership_for(api3, None, QUIET)[0] == brand.MEMBER and api3.requests_made == 0
+
+
+def test_real_client_teams_refresh_skips_the_day_cache():
+    assert "refresh" in g61.Garage61.teams.__code__.co_varnames
 
 
 if __name__ == "__main__":

@@ -500,9 +500,24 @@ def _no_race_msg(sessions) -> str:
     return NO_RACE_MSG + ("" if 1 in (sessions or []) else " " + PRACTICE_OFF_MSG)
 
 
-def last_event_from_store(api, sessions, max_age_s=STORE_FRESH_S, now=None):
+def _already_reviewed(library_folder, event, stype) -> bool:
+    """A review folder for this event exists (folders end with "_" + the event's last 6 characters, plus
+    _practice / _qualifying)."""
+    if not library_folder or not event:
+        return False
+    end = "_" + str(event)[-6:].lower() + {1: "_practice", 2: "_qualifying"}.get(stype, "")
+    try:
+        return any(d.name.lower().endswith(end) for d in (Path(library_folder) / "reviews").iterdir()
+                   if (d / "review.json").is_file())
+    except OSError:
+        return False
+
+
+def last_event_from_store(api, sessions, max_age_s=STORE_FRESH_S, now=None, library_folder=None):
     """(event, track_id, car_id) of the newest synced session of the wanted types when the local history
-    sync finished under max_age_s ago, else None. Reads files only: never a request."""
+    sync finished under max_age_s ago, else None. Reads files only: never a request.
+    None too when that session already has a review: the race you just finished may have reached Garage 61
+    after the sync, so the search runs instead of quietly reviewing the previous race again."""
     try:
         from . import sync
         store = sync.Store.for_api(api)
@@ -519,6 +534,8 @@ def last_event_from_store(api, sessions, max_age_s=STORE_FRESH_S, now=None):
                 started = sync._parse(s.get("start"))
                 if started is not None and (now - started).days > 30:
                     return None   # same 30-day window as the search: the search then says so
+                if _already_reviewed(library_folder, s["event"], s.get("type")):
+                    return None
                 return s["event"], s["track_id"], s.get("car_id")
     except Exception:  # noqa: BLE001  (an odd store only means the normal search runs)
         import traceback
@@ -526,10 +543,10 @@ def last_event_from_store(api, sessions, max_age_s=STORE_FRESH_S, now=None):
     return None
 
 
-def find_last_event(api, sessions, cache_dir=None):
+def find_last_event(api, sessions, cache_dir=None, library_folder=None):
     """Newest race across the tracks/cars you drove recently. A history sync from the last 10 minutes
     answers with no requests; otherwise the driving statistics plus up to 6 lap searches."""
-    hit = last_event_from_store(api, sessions)
+    hit = last_event_from_store(api, sessions, library_folder=library_folder)
     if hit is not None:
         say("  Newest session taken from your synced history (no Garage 61 requests).")
         return hit
@@ -577,7 +594,7 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     ev_track, ev_car = track_id, car_id
     if not event_id:
         step("Finding your most recent race...", 0.08)
-        event_id, ev_track, ev_car = find_last_event(api, sessions, cfg["cache_dir"])
+        event_id, ev_track, ev_car = find_last_event(api, sessions, cfg["cache_dir"], cfg["library_folder"])
     step(f"Loading event {event_id}...", 0.18)
     if ev_track is not None:
         all_laps = laps_for(api, ev_track, ev_car, event=event_id, unclean=True, limit=1000)
@@ -892,8 +909,8 @@ def cmd_check(cfg, progress=None, open_after=False):
     return lines
 
 
-TELEMETRY_INFO = ("Telemetry: not included with your Garage 61 plan (reviews still work, with fewer corner "
-                  "details).")
+TELEMETRY_INFO = ("Telemetry: not included with your Garage 61 plan. Race reviews need lap telemetry, so check "
+                  "your plan on garage61.net. Sessions, history and team pages still work.")
 
 
 class CheckLines(list):

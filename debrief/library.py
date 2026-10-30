@@ -560,6 +560,7 @@ def season_summary(rows: list) -> dict:
 # rewritten atomically. Losing the index only costs one slow scan.
 INDEX_FILE = ".rows.json"
 INDEX_VERSION = 1
+RACY_NS = 3_000_000_000   # entries for files changed less than 3 s before they were read are re-read
 _INDEX_LOCK = __import__("threading").Lock()
 
 
@@ -623,7 +624,7 @@ def _scan(folder) -> list:
             rkey = _stat_key(p.parent / "result.json")
             e = old.get(name)
             if not (isinstance(e, dict) and [e.get("m"), e.get("s")] == key and e.get("r") == rkey
-                    and "row" in e and "sum" in e):
+                    and "row" in e and "sum" in e and not e.get("racy")):
                 try:
                     text = p.read_text(encoding="utf-8")
                 except OSError:        # locked for a moment (antivirus, OneDrive): skip, don't remember
@@ -641,6 +642,12 @@ def _scan(folder) -> list:
                 except Exception:  # noqa: BLE001
                     summ = None
                 e = {"m": key[0], "s": key[1], "r": rkey, "row": row, "sum": summ}
+                # "racy" (as in git): a file changed within RACY_NS of this read could change again with the
+                # same size and a time stamp the drive can't tell apart (FAT/exFAT keep 2 s, some network
+                # shares worse), so it is read again next scan until it has settled
+                newest = max(key[0], (rkey or [0, 0])[0])
+                if __import__("time").time_ns() - newest < RACY_NS:
+                    e["racy"] = True
                 dirty = True
             new[name] = e
             out.append((name, e))

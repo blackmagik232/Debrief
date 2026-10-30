@@ -19,10 +19,12 @@ Everything lives in the same per-account folder as Debrief's Garage 61 cache:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import tempfile
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -41,6 +43,8 @@ TEL_RETRY = timedelta(days=30)   # telemetry Garage 61 refused (403/404) is aske
 INCOMPLETE_TRIES = 3             # a track/car Garage 61 keeps sending short is retried on this many syncs
 TEL_FAIL_RUN = 3                 # this many telemetry failures in a row: Garage 61 is struggling, stop for now
 SESSION_NAMES = {1: "Practice", 2: "Qualifying", 3: "Race"}
+STATS_KEEP = timedelta(days=60)  # statistics rows kept in state.json (older days are dropped)
+MIN_REQ_S = 1.0                  # Garage 61 asks for about one request a second: the time estimate never assumes less
 
 
 class Stopped(Exception):
@@ -403,6 +407,68 @@ def _combos_from_stats(rows) -> dict:
     return out
 
 
+_STAT_ID_KEYS = ("track", "trackId", "track_id", "car", "carId", "car_id", "day", "date", "startDate", "start")
+
+
+def _stats_rows(rows) -> dict:
+    """{"T:C": {day: fingerprint}} from Garage 61's driving statistics: a short hash of each row (laps,
+    time driven...), so a later sync can tell whether a track/car's driving changed without asking /laps."""
+    out: dict = {}
+    for r in rows or []:
+        t = _int(_id(g(r, "track", "trackId", "track_id")))
+        c = _int(_id(g(r, "car", "carId", "car_id")))
+        if t is None or c is None or not isinstance(r, dict):
+            continue
+        day = str(g(r, "day", "date", "startDate", "start", default="") or "")[:10]
+        if not day or not any(isinstance(v, (int, float)) and not isinstance(v, bool)
+                              for k, v in r.items() if k not in _STAT_ID_KEYS):
+            continue   # no lap count or time in the row: it can't tell us nothing changed, so always ask
+        fp = hashlib.sha1(json.dumps(r, sort_keys=True, default=str).encode()).hexdigest()[:12]
+        d = out.setdefault(f"{t}:{c}", {})
+        # two rows for the same day (shouldn't happen): fingerprint them together
+        d[day] = fp if day not in d else hashlib.sha1((d[day] + fp).encode()).hexdigest()[:12]
+    return out
+
+
+def _stats_unchanged(saved: dict, fresh: dict, edge: str = "") -> bool:
+    """True when every statistics row Garage 61 sent for a track/car matches the one saved last sync. The
+    first day of the window (edge) can be a part day (the window starts mid-day), so it only has to have
+    been seen before; laps that reach Garage 61 that late are caught by the weekly deep pass."""
+    if not fresh or not isinstance(saved, dict) or not saved:
+        return False
+    return all((day in saved) if day <= edge else saved.get(day) == fp for day, fp in fresh.items())
+
+
+def _merge_stats(saved: dict, fresh: dict, edge: str = "") -> dict:
+    """Saved rows updated with fresh ones; a part-day row at the window's edge never replaces a whole one."""
+    out = dict(saved or {})
+    for day, fp in (fresh or {}).items():
+        if day <= edge and day in out:
+            continue
+        out[day] = fp
+    return out
+
+
+def _prune_stats(stats: dict, now: datetime) -> dict:
+    cut = (now - STATS_KEEP).strftime("%Y-%m-%d")
+    out = {}
+    for key, days in (stats or {}).items():
+        if isinstance(days, dict):
+            keep = {d: fp for d, fp in days.items() if isinstance(d, str) and d >= cut}
+            if keep:
+                out[key] = keep
+    return out
+
+
+def _eta_text(left_combos: int, reqs_per_combo: float, secs_per_req: float) -> str:
+    if left_combos <= 0:
+        return ""
+    secs = left_combos * max(1.0, reqs_per_combo) * max(MIN_REQ_S, secs_per_req)
+    if secs < 60:
+        return "under a minute left"
+    return f"about {max(1, round(secs / 60))} min left"
+
+
 def _fetch_combo(api, t, c, after, age, check, warn):
     """Every lap for one track/car since `after`. Pages by offset, and checks the answers: stops when a page
     brings nothing new (a server that ignores offset), keeps going when Garage 61's total says there's more
@@ -509,12 +575,25 @@ def run(api, log=print, progress=None, should_stop=None, telemetry: str = "best"
              "Checking Garage 61 for new laps...", 0.03)
         rows = api.my_statistics(since)
         driven = _combos_from_stats(rows)
+        fresh_stats = _stats_rows(rows)
+        saved_stats = st.get("stats") if isinstance(st.get("stats"), dict) else {}
+        edge = "" if since == EPOCH else since[:10]
         todo = []
+        unchanged = 0
         for (t, c), day in sorted(driven.items(), key=lambda kv: kv[1], reverse=True):
-            info = combos.get(f"{t}:{c}") or {}
+            key = f"{t}:{c}"
+            info = combos.get(key) or {}
             prev = _parse(info.get("synced_until"))
             if first and info.get("done") and prev is not None and day and day < _iso(prev - OVERLAP)[:10]:
+                saved_stats[key] = _merge_stats(saved_stats.get(key), fresh_stats.get(key), edge)
                 continue   # resumed first sync: saved already and not driven since
+            if (not first and not deep and info.get("done") and prev is not None and not info.get("incomplete")
+                    and _stats_unchanged(saved_stats.get(key), fresh_stats.get(key), edge)):
+                # same laps and time driven as last sync: nothing new to ask /laps for
+                info["synced_until"] = run_start
+                combos[key] = info
+                unchanged += 1
+                continue
             todo.append((t, c))
         # an interrupted sync (or a damaged file): finish the combos it hadn't reached
         for key, info in combos.items():
@@ -522,6 +601,9 @@ def run(api, log=print, progress=None, should_stop=None, telemetry: str = "best"
                 t, c = (int(x) for x in key.split(":"))
                 if (t, c) not in todo:
                     todo.append((t, c))
+        st["stats"] = saved_stats
+        if unchanged:
+            store.save_state(st)
         names = _names(api) if todo else {}
         if first and not todo and not combos:
             step("Garage 61 shows no driving on your account yet.", 0.6)
@@ -532,6 +614,8 @@ def run(api, log=print, progress=None, should_stop=None, telemetry: str = "best"
                  f"{'download' if first else 'check'}.", 0.05)
 
         # 2. laps, one track/car at a time, with a checkpoint after each
+        loop_t0, loop_req0 = time.monotonic(), api.requests_made
+        seen_sessions: set = set()
         for i, (t, c) in enumerate(todo):
             key = f"{t}:{c}"
             info = combos.get(key) or {}
@@ -548,8 +632,13 @@ def run(api, log=print, progress=None, should_stop=None, telemetry: str = "best"
             added, total = store.merge(t, c, got)
             new_laps += added
             changed = changed or added > 0
+            for l in got:
+                ev, typ = g(l, "event"), lap_session_type(l)
+                seen_sessions.add(f"{ev}|{typ}" if ev else f"{t}|{c}|{lap_start(l)[:10]}|{typ}")
             if complete:
                 combos[key] = {"done": True, "synced_until": run_start, "laps": total}
+                if key in fresh_stats:   # only once the laps are saved, so a stopped sync re-asks next time
+                    saved_stats[key] = _merge_stats(saved_stats.get(key), fresh_stats[key], edge)
             else:
                 # laps are missing: don't move the checkpoint, so the next syncs ask for them again
                 tries = int(info.get("incomplete") or 0) + 1
@@ -558,7 +647,11 @@ def run(api, log=print, progress=None, should_stop=None, telemetry: str = "best"
                     combos[key]["synced_until"] = info["synced_until"]
             store.save_state(st)
             label = f"{names.get(('track', t)) or f'Track {t}'} · {names.get(('car', c)) or f'Car {c}'}"
-            step(f"  {label}: {total} laps" + (f" ({added} new)" if added and not first else ""),
+            reqs = max(1, api.requests_made - loop_req0)
+            eta = _eta_text(len(todo) - i - 1, reqs / (i + 1), (time.monotonic() - loop_t0) / reqs)
+            n_s = len(seen_sessions)
+            step(f"  {label}: {total} laps" + (f" ({added} new)" if added and not first else "")
+                 + f" · {n_s} session{'s' if n_s != 1 else ''} so far" + (f" · {eta}" if eta else ""),
                  0.05 + 0.55 * (i + 1) / max(1, len(todo)))
 
         # 3. sessions (no requests apart from the track and car names, saved for a week)
@@ -569,6 +662,7 @@ def run(api, log=print, progress=None, should_stop=None, telemetry: str = "best"
             sessions = build_sessions(store, names or _names(api))
         else:
             sessions = list(old["sessions"])   # nothing new: the saved list is still right
+        st["stats"] = _prune_stats(saved_stats, now)
         st["first_complete"] = True
         st["first_success"] = st.get("first_success") or run_start
         st["last_success"] = run_start

@@ -20,9 +20,10 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
-import requests
-
 from . import fsutil
+
+# requests is imported when the first client is made (not at import time), so modules that only read the
+# saved cache (peek_saved, the window's pickers) start faster.
 
 BASE = "https://garage61.net/api/v1/"
 
@@ -38,6 +39,18 @@ class Garage61Error(RuntimeError):
     def fatal(self) -> bool:
         """True when retrying other requests won't help (the token was rejected)."""
         return self.status == 401
+
+
+# What the user sees when a request fails. The full detail (path, query, response body) only goes to the log.
+MSG_OFFLINE = "Debrief can't reach Garage 61. Check your internet connection, then try again."
+MSG_TOKEN = "Garage 61 didn't accept that token. Copy it again from garage61.net and paste it in Settings."
+MSG_SERVER = "Garage 61 had a problem (error {code}). Try again in a few minutes."
+MSG_BUSY = "Garage 61 is busy right now. Try again in a few minutes."
+MSG_FORBIDDEN = ("Garage 61 says this isn't available to your account (error 403). Some data needs a Pro plan "
+                 "or a different privacy setting.")
+MSG_OTHER = "Garage 61 couldn't answer that request (error {code}). Try again later."
+MSG_NOT_DATA = "Garage 61 sent an answer Debrief couldn't read. Try again later."
+MSG_NO_TOKEN = "No Garage 61 token saved yet. Open Settings (or the welcome screen) and paste your token."
 
 
 class Interrupted(Exception):
@@ -70,17 +83,24 @@ _PACE = {"last": 0.0}
 
 
 class Garage61:
+    # first wait (seconds) before retrying after a network error, 429 or 5xx; doubles each retry.
+    # Tests set it to 0 (Garage61(..., backoff_base=0)) so retries don't sleep.
+    BACKOFF_BASE = 5
+
     def __init__(self, token: str, cache_dir: Path, min_gap_s: float = 1.0,
-                 base_url: str = BASE, log=print, stop_event: "threading.Event | None" = None):
+                 base_url: str = BASE, log=print, stop_event: "threading.Event | None" = None,
+                 backoff_base: float | None = None):
         token = (token or "").strip()
         if not token or token.startswith("PASTE"):
-            raise Garage61Error(
-                "No Garage 61 token found. Open settings.toml and paste your token "
-                "from garage61.net/developer after token = ")
+            raise Garage61Error(MSG_NO_TOKEN)
         u = urlparse(base_url)
         if u.scheme != "https" and u.hostname not in ("127.0.0.1", "localhost"):
-            raise Garage61Error("api_base must use https so your token isn't sent in clear text.")
+            raise Garage61Error("The Garage 61 address in your settings must start with https:// so your token "
+                                "isn't sent in clear text.")
         self.base = base_url.rstrip("/") + "/"
+        if backoff_base is not None:
+            self.BACKOFF_BASE = backoff_base
+        import requests
         self.s = requests.Session()
         self.s.headers.update({"Authorization": f"Bearer {token}",
                                "User-Agent": "Debrief/1.0 (personal, non-commercial)"})
@@ -168,7 +188,7 @@ class Garage61:
                     secs = (parsedate_to_datetime(v).timestamp() - time.time())
                 except (TypeError, ValueError):
                     secs = default
-        return max(1, min(120, int(secs)))
+        return max(1 if (v or default >= 1) else 0, min(120, int(secs)))
 
     def _get(self, path: str, params: dict | None = None, raw: bool = False, forbidden_ok: bool = False):
         params = {k: v for k, v in (params or {}).items() if v is not None}
@@ -180,7 +200,10 @@ class Garage61:
         url = self.base + path.lstrip("/")
         if params:
             url += "?" + urlencode(params)
-        delay = 5
+        where = "/" + path.lstrip("/") + (("?" + urlencode(params)) if params else "")   # for the log only
+        import requests
+        delay = self.BACKOFF_BASE
+        r = None
         for attempt in range(5):
             last = attempt == 4
             self._wait()
@@ -189,16 +212,17 @@ class Garage61:
                 r = self.s.get(url, timeout=30)
             except requests.RequestException as e:
                 if last:
-                    raise Garage61Error(f"Could not reach Garage 61 ({type(e).__name__}).")
+                    self.log(f"  Garage 61 unreachable for {where}: {type(e).__name__}: {e}")
+                    raise Garage61Error(MSG_OFFLINE)
                 self._sleep(delay); delay *= 2; continue
             if r.status_code == 401:
-                raise Garage61Error("Garage 61 rejected the token (401). Check settings.toml, "
-                                    "or create a new token at garage61.net/developer.", status=401)
+                self.log(f"  Garage 61 rejected the token (401) for {where}")
+                raise Garage61Error(MSG_TOKEN, status=401)
             if r.status_code == 403:
                 if forbidden_ok:
                     return None
-                raise Garage61Error(f"Garage 61 says this isn't available to your account (403): /{path}. "
-                                    "Some data needs a Pro plan or a different privacy setting.", status=403)
+                self.log(f"  Garage 61 returned 403 for {where}")
+                raise Garage61Error(MSG_FORBIDDEN, status=403)
             if r.status_code == 404:
                 return None
             if r.status_code == 429 or r.status_code >= 500:
@@ -211,17 +235,21 @@ class Garage61:
                 self._sleep(wait); delay *= 2; continue
             if not (200 <= r.status_code < 300):
                 detail = (r.text or "").strip().replace("\n", " ")[:300]
-                raise Garage61Error(f"Garage 61 returned {r.status_code} for /{path}?{urlencode(params)}: {detail}",
-                                    status=r.status_code)
+                self.log(f"  Garage 61 returned {r.status_code} for {where}: {detail}")
+                raise Garage61Error(MSG_OTHER.format(code=r.status_code), status=r.status_code)
             self._went_ok(r)
             if raw:
                 return r.content.decode("utf-8-sig", errors="replace")
             try:
                 return r.json()
             except ValueError:
-                raise Garage61Error(f"Garage 61 sent something that isn't data for /{path}. Try again later.",
-                                    status=r.status_code)
-        raise Garage61Error("Garage 61 kept refusing requests; try again later.", status=r.status_code)
+                self.log(f"  Garage 61 sent something that isn't JSON for {where}")
+                raise Garage61Error(MSG_NOT_DATA, status=r.status_code)
+        code = r.status_code if r is not None else None
+        self.log(f"  Garage 61 kept refusing {where} (last status {code})")
+        if code is not None and code >= 500:
+            raise Garage61Error(MSG_SERVER.format(code=code), status=code)
+        raise Garage61Error(MSG_BUSY, status=code)
 
     def _cached(self, key: str, fn, max_age_s: float | None = None, suffix=".json"):
         p = self.cache / (hashlib.sha1(key.encode()).hexdigest()[:20] + suffix)

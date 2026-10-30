@@ -386,7 +386,7 @@ def test_fixture_shapes_match_the_code():
     leaderboards.refresh(api, cfg, sched, mine(sched), log=lambda m: None)
     got = leaderboards.view(cfg["library_folder"], sched)
     fx = json.loads((FIX / "sample_weekly_view.json").read_text(encoding="utf-8"))
-    assert set(fx) == set(got), (set(fx) ^ set(got))
+    assert set(fx) | {"membership", "team"} == set(got), (set(fx) ^ set(got))   # 2.6: membership keys
     assert set(fx["series"][0]) == set(got["series"][0])
     assert set(fx["series"][0]["weeks"][0]) == set(got["series"][0]["weeks"][0])
     assert set(fx["series"][0]["weeks"][0]["board"][0]) == set(got["series"][0]["weeks"][0]["board"][0])

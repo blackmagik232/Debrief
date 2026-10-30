@@ -22,11 +22,11 @@ import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import engine, report, library
+from . import brand, engine, report, library
 from .engine import g
 from .g61 import Garage61, Garage61Error
 
-DEFAULT_TEAM = "midfield-menace"
+DEFAULT_TEAM = brand.TEAM_SLUG
 
 # Two ways Debrief runs:
 #  * from source (Setup.bat + .venv): everything lives in the Debrief folder next to the code, as always.
@@ -145,9 +145,10 @@ def load_settings() -> dict:
         p = settings_path()
     if not p.exists():
         if FROZEN:
-            raise SystemExit(f"settings.toml is missing from {data_folder_label()}, and Debrief couldn't "
-                             "create it. Close Debrief and open it again.")
-        raise SystemExit(f"settings.toml not found in {HERE}. Run Setup.bat first.")
+            raise SystemExit("Debrief's settings are missing and couldn't be created. Close Debrief and open "
+                             "it again: the welcome screen sets them up.")
+        raise SystemExit("Debrief's settings are missing. Close Debrief and open it again: the welcome screen "
+                         "sets it up (or open the Settings page).")
     cfg = _parse_toml(p.read_text(encoding="utf-8-sig"))
     lib = cfg.get("library_folder") or ""
     if not lib or lib.replace("\\", "/").rstrip("/") in ("~/Documents/Debrief Reviews",):
@@ -305,13 +306,46 @@ def session_type(l):
     return v
 
 
+# Garage 61's car and track lists are downloaded again (refresh=True) at most once each per run, however many
+# unknown ids a review, a page or the on-track list meets. Keyed by the client, so a new run (a new client)
+# may refresh again; reset_refreshed() clears it. Weak keys: a finished run's client isn't kept alive.
+import weakref as _weakref
+_REFRESHED = _weakref.WeakKeyDictionary()
+
+
+def reset_refreshed() -> None:
+    _REFRESHED.clear()
+
+
+def _was_refreshed(api, kind) -> bool:
+    try:
+        return kind in _REFRESHED.get(api, ())
+    except TypeError:   # an object that can't be weakly referenced: no memory, as before
+        return False
+
+
+def _list_for(api, kind, refresh=False):
+    if refresh:
+        if _was_refreshed(api, kind):
+            refresh = False
+        else:
+            try:
+                _REFRESHED.setdefault(api, set()).add(kind)
+            except TypeError:
+                pass
+    return api.cars(refresh) if kind == "car" else api.tracks(refresh)
+
+
 def name_of(api, kind, value):
-    """Name for a car/track id; uses the object's own name if the lap already includes it."""
+    """Name for a car/track id; uses the object's own name if the lap already includes it. An id missing
+    from the saved list downloads the list again, at most once per kind per run."""
     if isinstance(value, dict) and g(value, "name"):
         return g(value, "name") + ((" (" + g(value, "variant") + ")") if g(value, "variant") else "")
     vid = _id(value)
     for refresh in (False, True):
-        items = api.cars(refresh) if kind == "car" else api.tracks(refresh)
+        if refresh and _was_refreshed(api, kind):
+            break   # already downloaded again this run: it isn't there
+        items = _list_for(api, kind, refresh)
         for it in items:
             if g(it, "id") == vid:
                 return g(it, "name", default=str(vid)) + ((" (" + g(it, "variant") + ")") if g(it, "variant") else "")
@@ -383,6 +417,7 @@ def on_track(api: Garage61, track, event_id, my_slug: str, my_car, classes=None)
     """Everyone Garage 61 lets you see (teammates and followed drivers) who drove in the same event, in any
     car. One request. classes(car_name) -> class name or None comes from the season schedule when one is
     loaded, so a different car can be told apart from a different class."""
+    track = _id(track)   # Garage 61 wants the id, never the track object
     teams = [g(t, "slug", "id") for t in api.teams() if g(t, "slug", "id")]
     params = dict(tracks=[track], event=event_id, drivers=["following"], group="driver", unclean=True, limit=200)
     if teams:
@@ -395,17 +430,12 @@ def on_track(api: Garage61, track, event_id, my_slug: str, my_car, classes=None)
     my_car_name = name_of(api, "car", my_car) if my_car is not None else ""
     my_class = classes(my_car_name) if classes else None
     by_driver = {}
-    names, refreshed = {}, [False]
+    names = {}
 
     def car_name_of(car):
-        # unknown car ids: refresh Garage 61's car list at most once for the whole page
+        # unknown car ids: name_of refreshes Garage 61's car list at most once per run
         if car not in names:
-            if not refreshed[0]:
-                names[car] = name_of(api, "car", car)
-                refreshed[0] = names[car] == f"car {_id(car)}"
-            else:   # the list was already refreshed once on this page: look it up without another download
-                it = next((x for x in api.cars(False) if g(x, "id") == _id(car)), None)
-                names[car] = item_name(it) if it else f"car {_id(car)}"
+            names[car] = name_of(api, "car", car)
         return names[car]
     for l in laps:
         drv = g(l, "driver", default={}) or {}
@@ -460,11 +490,52 @@ def laps_for(api, track, car, fresh=True, **params):
     return api.find_laps(fresh=fresh, **q)
 
 
+NO_RACE_MSG = ("Debrief couldn't find a race from the last 30 days. If you just finished, wait a few minutes for "
+               "Garage 61 to upload it and try again. Older race? Pick it on the Sessions page.")
+PRACTICE_OFF_MSG = "Practice sessions are off: turn on 'Include practice' in Settings > Review options."
+STORE_FRESH_S = 600   # a sync this recent is trusted for "your newest race" (no requests)
+
+
+def _no_race_msg(sessions) -> str:
+    return NO_RACE_MSG + ("" if 1 in (sessions or []) else " " + PRACTICE_OFF_MSG)
+
+
+def last_event_from_store(api, sessions, max_age_s=STORE_FRESH_S, now=None):
+    """(event, track_id, car_id) of the newest synced session of the wanted types when the local history
+    sync finished under max_age_s ago, else None. Reads files only: never a request."""
+    try:
+        from . import sync
+        store = sync.Store.for_api(api)
+        stt = store.state()
+        if not stt.get("first_complete") or stt.get("stopped"):
+            return None
+        last = sync._parse(stt.get("last_success"))
+        now = now or datetime.now(timezone.utc)
+        if last is None or not (0 <= (now - last).total_seconds() < max_age_s):
+            return None
+        want = set(sessions or [3])
+        for s in store.sessions():   # newest first
+            if s.get("event") and s.get("type") in want and s.get("track_id") is not None:
+                started = sync._parse(s.get("start"))
+                if started is not None and (now - started).days > 30:
+                    return None   # same 30-day window as the search: the search then says so
+                return s["event"], s["track_id"], s.get("car_id")
+    except Exception:  # noqa: BLE001  (an odd store only means the normal search runs)
+        import traceback
+        say("  Couldn't read the synced sessions; searching Garage 61 instead:\n" + traceback.format_exc())
+    return None
+
+
 def find_last_event(api, sessions, cache_dir=None):
-    """Newest race across the tracks/cars you drove recently."""
+    """Newest race across the tracks/cars you drove recently. A history sync from the last 10 minutes
+    answers with no requests; otherwise the driving statistics plus up to 6 lap searches."""
+    hit = last_event_from_store(api, sessions)
+    if hit is not None:
+        say("  Newest session taken from your synced history (no Garage 61 requests).")
+        return hit
     combos = recent_combos(api, 30, cache_dir)
     if not combos:
-        raise SystemExit("Garage 61 shows no driving in the last 30 days.")
+        raise SystemExit(_no_race_msg(sessions))
     best = None
     for t, c in combos[:6]:  # most recent few combinations is plenty
         laps = laps_for(api, t, c, sessionTypes=sessions, age=30, limit=1000)
@@ -474,8 +545,7 @@ def find_last_event(api, sessions, cache_dir=None):
             if best is None or lap_start_dt(newest) > lap_start_dt(best):
                 best = newest
     if best is None:
-        raise SystemExit("No races found in the last 30 days on Garage 61 (practice sessions are skipped "
-                         "unless include_practice = true in settings).")
+        raise SystemExit(_no_race_msg(sessions))
     return g(best, "event"), _id(g(best, "track_id", "trackId", "track")), _id(g(best, "car_id", "carId", "car"))
 
 
@@ -520,8 +590,9 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     laps = [l for l in all_laps if session_type(l) in sessions]
     if not laps:
         keys = sorted(all_laps[0].keys()) if all_laps else []
-        raise SystemExit(("That session has no laps for you." if session_kind else "That event has no race laps for you.") +
-                         (f" (Lap fields seen: {', '.join(keys)})" if keys else ""))
+        if keys:
+            say(f"  Lap fields seen: {', '.join(keys)}")
+        raise SystemExit("That session has no laps for you." if session_kind else "That event has no race laps for you.")
     car, track = g(laps[0], "car_id", "carId", "car"), g(laps[0], "track_id", "trackId", "track")
     car_name, track_name = name_of(api, "car", car), name_of(api, "track", track)
     timed = [l for l in laps if lap_time(l)]
@@ -541,7 +612,7 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     if refused:
         step(f"  {refused} lap(s) had no telemetry available.")
     if len(tel) < 2:
-        raise SystemExit("Garage 61 didn't return telemetry for this race. Run Check connection to see what your account can access.")
+        raise SystemExit("Garage 61 didn't return telemetry for this race. Run Check connection (Settings) to see what your account can access.")
     with_tel = [l for l in laps if g(l, "id") in tel]
     # never a partial lap (the 7 s "lap" at the finish line) or a pit lap: that would pick nonsense refs
     my_best = full_lap_best(with_tel) or min(lap_time(l) for l in with_tel)
@@ -566,7 +637,7 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
             sched_mc = schedule.multiclass_at(sched, track_name, car_name, min(starts).astimezone(timezone.utc).date())
     except Exception:  # noqa: BLE001  (no schedule loaded: classes stay unknown)
         classes = None
-    others = on_track(api, track, event_id, slug, car, classes)
+    others = on_track(api, _id(track), event_id, slug, car, classes)
     # multi-class if the schedule says so, or if a teammate/followed driver was there in another class
     multiclass = bool(sched_mc) or bool(others.get("multiclass"))
     others["multiclass"] = multiclass
@@ -782,8 +853,10 @@ def cmd_sync(cfg, progress=None, should_stop=None, open_after=False) -> dict:
 
 
 def cmd_check(cfg, progress=None, open_after=False):
-    """Test the token. Returns the result lines. open_after is accepted for symmetry (nothing to open)."""
-    lines = []
+    """Test the token. Returns the result lines (a list of strings, as before; see CheckLines for the
+    neutral notes). open_after is accepted for symmetry (nothing to open)."""
+    lines = CheckLines()
+    info = lines.info
     step0 = _stepper(progress)
 
     def step(msg, frac=None):
@@ -796,7 +869,7 @@ def cmd_check(cfg, progress=None, open_after=False):
     # cache like api.me() does, so the window can greet you by name without asking Garage 61 again
     me = api._cached("me", lambda: api._get("me"), max_age_s=0)
     if not me:
-        raise SystemExit("Garage 61 returned nothing for your account.")
+        raise SystemExit("Garage 61 returned nothing for your account. Check the token in Settings.")
     step(f"Token works. Account: {g(me, 'slug')}", 0.2)
     step(f"Teams: {', '.join(str(g(t, 'name', 'slug', default='?')) for t in api.teams()) or 'none'}", 0.35)
     combos = recent_combos(api, 30, cfg["cache_dir"])
@@ -805,7 +878,11 @@ def cmd_check(cfg, progress=None, open_after=False):
     step(f"Recent laps visible: {len(recent)}", 0.7)
     if recent:
         csv = api.lap_csv(g(recent[0], "id"))
-        step("Telemetry download: " + ("works" if csv else "NOT available for your account"), 0.9)
+        if csv:
+            step("Telemetry download: works", 0.9)
+        else:
+            step(TELEMETRY_INFO, 0.9)
+            info.append(TELEMETRY_INFO)
         dbg = Path(cfg["cache_dir"]) / "sample_lap.json"
         dbg.parent.mkdir(parents=True, exist_ok=True)
         dbg.write_text(json.dumps(recent[0], indent=2), encoding="utf-8")
@@ -813,6 +890,23 @@ def cmd_check(cfg, progress=None, open_after=False):
     step(f"Library folder: {cfg['library_folder']}", 0.97)
     step(f"Requests used: {api.requests_made}", 1.0)
     return lines
+
+
+TELEMETRY_INFO = ("Telemetry: not included with your Garage 61 plan (reviews still work, with fewer corner "
+                  "details).")
+
+
+class CheckLines(list):
+    """cmd_check's result: still a list of lines (old callers keep working), plus .info, the lines that are
+    neutral notes rather than problems, and .rows(): [{"text", "level"}] with level "info" for those and
+    "ok" for the rest. Nothing in it is an error."""
+
+    def __init__(self, *a):
+        super().__init__(*a)
+        self.info = []
+
+    def rows(self) -> list:
+        return [{"text": t, "level": "info" if t in self.info else "ok"} for t in self]
 
 
 def main(argv=None):

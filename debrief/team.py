@@ -31,7 +31,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import app, engine, fsutil, library
+from . import app, brand, engine, fsutil, library
 from .engine import g
 
 TPL = Path(__file__).resolve().parent / "templates" / "team.html"
@@ -234,6 +234,31 @@ def head_to_heads(combos, my_key="me"):
     return out
 
 
+# ---------------------------------------------------------------- membership (2.6)
+def membership_for(api, slug=None, log=print) -> tuple[str, list | None]:
+    """(brand.MEMBER / NOT_MEMBER / UNKNOWN, the teams list or None) from api.teams(), which the client
+    caches for a day. UNKNOWN when the list couldn't be loaded: callers then carry on as before."""
+    slug = slug or brand.TEAM_SLUG
+    try:
+        teams = api.teams()
+    except Exception as e:  # noqa: BLE001  (unknown membership never stops a page)
+        try:
+            log(f"  Couldn't check your Garage 61 teams: {e}")
+        except Exception:  # noqa: BLE001
+            pass
+        return brand.UNKNOWN, None
+    if teams is None:
+        return brand.UNKNOWN, None
+    teams = [t for t in teams if isinstance(t, dict)]
+    return brand.membership(teams, slug), teams
+
+
+def team_info(slug=None, teams=None) -> dict:
+    """{"slug", "name"} for a data dict: the display name, never the bare slug."""
+    slug = slug or brand.TEAM_SLUG
+    return {"slug": slug, "name": brand.team_name_for(teams, slug)}
+
+
 # ---------------------------------------------------------------- build
 def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
     max_combos = max(1, min(MAX_COMBOS, int(max_combos)))
@@ -242,14 +267,12 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
     me = api.me() or {}
     my_slug = g(me, "slug", default="") or ""
     my_name = " ".join(filter(None, [g(me, "firstName", "firstname"), g(me, "lastName", "lastname")])) or my_slug or "You"
-    team_name = team_slug
-    for t in api.teams():
-        if g(t, "slug") == team_slug:
-            team_name = g(t, "name", default=team_slug)
-            break
-    else:
-        notes.append(f"Your Garage 61 account doesn't list a team called \"{team_slug}\". "
-                     "Pick your team in Settings.")
+    team_slug = team_slug or brand.TEAM_SLUG
+    mem, teams_list = membership_for(api, team_slug, log)
+    team_name = brand.team_name_for(teams_list, team_slug)
+    not_member = mem == brand.NOT_MEMBER
+    if not_member:
+        log(f"You're not on the {team_name} team on Garage 61, so no team laps were loaded.")
 
     combos_lib = library_combos(folder)
     if not combos_lib:
@@ -283,7 +306,9 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
         if tid is None or cid is None:
             entry["note"] = "Couldn't match this track or car to Garage 61, so it was skipped."
             continue
-        team_laps = api.find_laps(tracks=[tid], cars=[cid], teams=[team_slug], group="driver", age=-2, limit=100)
+        # not on the team: zero team-lap requests, only your own laps (your board row and telemetry)
+        team_laps = [] if not_member else api.find_laps(tracks=[tid], cars=[cid], teams=[team_slug],
+                                                         group="driver", age=-2, limit=100)
         my_laps = api.find_laps(tracks=[tid], cars=[cid], drivers=["me"], group="none", age=-2, limit=1000)
         anchor = anchor_for([app.lap_time(l) for l in my_laps if usable(l)], c["best"])
         my_ok = sorted((l for l in my_laps if usable(l) and plausible(app.lap_time(l), anchor)), key=app.lap_time)
@@ -322,7 +347,7 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
             r["pos"] = pos
             r["gap"] = round(r["t"] - p1, 3)  # always >= 0
         if not mates:
-            entry["note"] = "No teammate laps here yet."
+            entry["note"] = brand.JOIN_TITLE + "." if not_member else "No teammate laps here yet."
         # corner kings: one lap of yours + the fastest teammates, MAX_TEL_DRIVERS in all
         entries = []
         mates_sorted = [r for r in board if not r["is_me"]][:MAX_TEL_DRIVERS - (1 if my_ok else 0)]
@@ -365,6 +390,7 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
     data = {
         "version": 1,
         "team": {"slug": team_slug, "name": team_name},
+        "membership": mem,
         "me": {"name": my_name, "key": "me"},
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "combos": out_combos,
@@ -576,8 +602,12 @@ def render_saved(library_folder) -> Path:
         if not isinstance(data, dict):
             raise ValueError
     except (OSError, ValueError):
-        data = {"version": 1, "team": {"slug": "", "name": "Your team"}, "me": {"name": "You", "key": "me"},
+        data = {"version": 1, "team": team_info(), "membership": brand.UNKNOWN, "me": {"name": "You", "key": "me"},
                 "generated_at": None, "combos": [], "h2h": [], "requests": 0, "notes": []}
+    data.setdefault("membership", brand.UNKNOWN)
+    tm = data.get("team") if isinstance(data.get("team"), dict) else {}
+    if not tm.get("slug") or not tm.get("name") or tm.get("name") == tm.get("slug"):
+        data["team"] = team_info(tm.get("slug") or None, None)
     for c in data.get("combos") or []:
         if isinstance(c, dict) and "learn" not in c:
             try:
@@ -585,4 +615,9 @@ def render_saved(library_folder) -> Path:
             except Exception:  # noqa: BLE001
                 c["learn"] = []
     data["weekly"] = leaderboards.view(folder)
+    wk = data["weekly"] if isinstance(data["weekly"], dict) else {}
+    if wk.get("membership") in (brand.MEMBER, brand.NOT_MEMBER):   # the newest check wins
+        data["membership"] = wk["membership"]
+        if isinstance(wk.get("team"), dict):
+            data["team"] = wk["team"]
     return write(folder, data)

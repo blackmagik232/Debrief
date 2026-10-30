@@ -18,7 +18,7 @@ import statistics as st
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import library, report, goals
+from . import brand, library, report, goals
 from .engine import g, fmt_t
 
 MAX_TEAMMATES = 12
@@ -184,17 +184,26 @@ def _technique(latest: dict | None) -> list | None:
     return out or None
 
 
+def _membership(api, slug):
+    """(membership, team {"slug", "name"}) from api.teams() (cached a day). UNKNOWN when it can't be read."""
+    from . import team
+    if api is None or not callable(getattr(api, "teams", None)):
+        return brand.UNKNOWN, team.team_info(slug, None)
+    mem, teams = team.membership_for(api, slug, log=lambda m: None)
+    return mem, team.team_info(slug, teams)
+
+
 def _teammates(api, track_id, car_id, team_slug, my_best, log):
-    """ONE /laps request: best lap per driver on the team at this combo (group=driver)."""
+    """ONE /laps request: best lap per driver on the team at this combo (group=driver). None when you're
+    not on the team (then no request at all)."""
+    team_slug = team_slug or brand.TEAM_SLUG
     if api is None:
         return {"laps": [], "team": team_slug, "error": "Offline: teammates' laps weren't loaded."}
     if track_id is None or car_id is None:
         return {"laps": [], "team": team_slug, "error": "Garage 61 doesn't know this track or car id yet."}
     from .g61 import Garage61Error
     try:
-        teams = [team_slug] if team_slug else [g(t, "slug", "id") for t in api.teams() if g(t, "slug", "id")]
-        if not teams:
-            return {"laps": [], "team": None, "error": "You're not on a Garage 61 team yet."}
+        teams = [team_slug]
         me = (api.me() or {})
         my_slug = g(me, "slug", default="")
         laps = api.find_laps(teams=teams, tracks=[track_id], cars=[car_id], group="driver", limit=100)
@@ -477,8 +486,14 @@ def build(api, folder, track_id: int, car_id: int, team_slug: str | None, log=pr
     if track_id is None or car_id is None:
         ids = next(((r["track_id"], r["car_id"]) for r in mine if r.get("track_id") is not None), (None, None))
         track_id, car_id = track_id if track_id is not None else ids[0], car_id if car_id is not None else ids[1]
-    log("Loading your teammates' best laps here (1 request)...")
-    mates = _teammates(api, track_id, car_id, team_slug, hist["best"] if hist else None, log)
+    team_slug = team_slug or brand.TEAM_SLUG
+    mem, team_d = _membership(api, team_slug)
+    if mem == brand.NOT_MEMBER:
+        log(f"You're not on the {team_d['name']} team on Garage 61, so teammates' laps weren't loaded.")
+        mates = {"laps": [], "team": team_slug, "error": None, "skipped": 0}
+    else:
+        log("Loading your teammates' best laps here (1 request)...")
+        mates = _teammates(api, track_id, car_id, team_slug, hist["best"] if hist else None, log)
     # drills quote technique as "in your latest race", so only use it when it IS from the latest race
     tech_latest = tech if (tech_src is not None and latest is not None and tech_src.get("meta") == latest.get("meta")) else None
     plan = practice_plan(hist, weak, latest, tech_latest, goal, mates)
@@ -492,6 +507,7 @@ def build(api, folder, track_id: int, car_id: int, team_slug: str | None, log=pr
             "latest": ({"date": newest[0]["date"], "path": newest[0]["path"], "L": newest[0].get("L")}
                        if newest else None),
             "teammates": mates, "goal": goal, "plan": plan, "requests": used,
+            "membership": mem, "team": team_d,
             "test_data": any(r.get("test_data") for r in mine)}
 
 

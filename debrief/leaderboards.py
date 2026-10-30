@@ -49,7 +49,7 @@ import tempfile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from . import fsutil, prepare, schedule, series, team
+from . import brand, fsutil, prepare, schedule, series, team
 from .engine import g
 
 SCHEMA = 1
@@ -319,6 +319,7 @@ def plan(cfg, api_or_none, sched, mine_series) -> dict:
     now = _now()
     out = {"series": [], "est_total": 0, "est_past": 0, "est_me": 0, "est_max": 0, "skipped": [],
            "season": (sched or {}).get("season"), "left_out": 0, "notes": []}
+    out.update(_saved_membership(api_or_none, cfg))
     if not sched:
         out["notes"].append("Load this season's schedule first (Prepare).")
         return out
@@ -346,6 +347,26 @@ def plan(cfg, api_or_none, sched, mine_series) -> dict:
     out["est_total"] += out["est_me"]
     out["est_max"] = 2 * fetches + out["est_me"]
     return out
+
+
+# ---------------------------------------------------------------- membership (2.6)
+def _slug(cfg) -> str:
+    return (cfg or {}).get("team_slug") or brand.TEAM_SLUG
+
+
+def _saved_membership(api, cfg) -> dict:
+    """{"membership", "team"} from the saved teams list only (never a request): plan() and view()."""
+    slug = _slug(cfg)
+    teams = None
+    ci = getattr(api, "cached_items", None) if api is not None else None
+    if callable(ci):
+        try:
+            teams = ci("teams")
+        except Exception:  # noqa: BLE001
+            teams = None
+    if not isinstance(teams, list):
+        teams = None
+    return {"membership": brand.membership(teams, slug), "team": team.team_info(slug, teams)}
 
 
 # ---------------------------------------------------------------- one board
@@ -527,7 +548,7 @@ def fetch_week(api, cfg, ser, w, track_id, car_ids, car_names, my_slug, my_name,
                                 multiclass)
         except Exception:  # noqa: BLE001  (no library: judge the laps against each other)
             refs = {}
-    slug = cfg.get("team_slug") or "midfield-menace"
+    slug = cfg.get("team_slug") or brand.TEAM_SLUG
     base = dict(tracks=[int(track_id)], cars=list(car_ids), teams=[slug], drivers=["me"],
                 after=_iso(_midnight(a)), age=max(1, (now.date() - a).days + 2))
     used = 1
@@ -554,8 +575,19 @@ def refresh(api, cfg, sched, mine_series, series_ids=None, force_old=False, log=
     lib = cfg["library_folder"]
     out = {"season": (sched or {}).get("season"), "done": [], "skipped": [], "notes": [], "requests": 0,
            "left_out": 0}
+    slug = _slug(cfg)
+    mem, teams_list = team.membership_for(api, slug, log)
+    out["membership"], out["team"] = mem, team.team_info(slug, teams_list)
     if not sched:
         out["notes"].append("Load this season's schedule first (Prepare).")
+        return out
+    if mem == brand.NOT_MEMBER:
+        # not on the team: no team-lap requests and no boards; the page shows the join panel
+        log(f"You're not on the {out['team']['name']} team on Garage 61, so no team leaderboards were loaded.")
+        season = season_slug(sched)
+        _write_json(weekly_dir(lib) / season / "status.json",
+                    {"schema": SCHEMA, "season": sched.get("season"), "updated": _iso(now), "skipped": [],
+                     "notes": [], "left_out": 0, "membership": mem, "team": out["team"]})
         return out
     season, used, left, jobs = _job_rows(api, cfg, sched, mine_series, now, series_ids, force_old)
     out["left_out"] = len(left)
@@ -602,7 +634,8 @@ def refresh(api, cfg, sched, mine_series, series_ids=None, force_old=False, log=
                             "drivers": len(snap["board"])})
     _write_json(weekly_dir(lib) / season / "status.json",
                 {"schema": SCHEMA, "season": sched.get("season"), "updated": _iso(now),
-                 "skipped": out["skipped"], "notes": out["notes"], "left_out": out["left_out"]})
+                 "skipped": out["skipped"], "notes": out["notes"], "left_out": out["left_out"],
+                 "membership": mem, "team": out["team"]})
     log(f"Weekly leaderboards ready. Garage 61 requests used: {out['requests']}.")
     return out
 
@@ -680,19 +713,28 @@ def view(library_folder, sched=None) -> dict:
     head-to-heads. Reads files only."""
     lib = Path(library_folder)
     out = {"season": (sched or {}).get("season"), "season_slug": None, "series": [], "h2h": [], "notes": [],
-           "skipped": []}
+           "skipped": [], "membership": brand.UNKNOWN, "team": team.team_info()}
     if sched:
         folder = weekly_dir(lib) / season_slug(sched)
     else:
         best, best_t = None, -1.0
         for p in _seasons(lib):
             ts = [f.stat().st_mtime for f in p.glob("*/w*.json")]
+            if (p / "status.json").is_file():   # a refresh that found you off the team writes only this
+                ts.append((p / "status.json").stat().st_mtime)
             if ts and max(ts) > best_t:
                 best, best_t = p, max(ts)
         folder = best
     if folder is None or not folder.is_dir():
         return out
     out["season_slug"] = folder.name
+    st = _read(folder / "status.json") or {}
+    if st.get("membership") in (brand.MEMBER, brand.NOT_MEMBER, brand.UNKNOWN):
+        out["membership"] = st["membership"]
+    if isinstance(st.get("team"), dict) and st["team"].get("slug") and st["team"].get("name"):
+        out["team"] = {"slug": str(st["team"]["slug"]), "name": str(st["team"]["name"])}
+    if out["membership"] == brand.NOT_MEMBER:
+        return out   # boards stay empty until you're on the team (old snapshots aren't shown)
     snaps = []
     for f in sorted(folder.glob("*/w*.json")):
         d = _read(f)
@@ -724,7 +766,6 @@ def view(library_folder, sched=None) -> dict:
             "weeks": [{k: s.get(k) for k in ("week", "start", "end", "track", "track_id", "car_ids", "multiclass",
                                              "fetched_at", "final", "requests", "note", "board")} for s in ws]})
     out["h2h"] = head_to_heads(snaps)
-    st = _read(folder / "status.json") or {}
     out["notes"] = [n for n in st.get("notes") or [] if isinstance(n, str)]
     out["skipped"] = [x for x in st.get("skipped") or [] if isinstance(x, dict)]
     out["generated_at"] = _iso(_now())

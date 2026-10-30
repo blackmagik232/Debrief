@@ -52,28 +52,20 @@ def _num(x):
 def library_combos(folder) -> list[dict]:
     """Track/car combos from the review library, newest race first, with your best lap at each."""
     out = {}
-    for p in (Path(folder) / "reviews").glob("*/review.json"):
-        try:
-            d = json.loads(p.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if not isinstance(d, dict):
-            continue
-        m = d.get("meta") or {}
-        track, car = m.get("track"), m.get("car")
+    for d in library.review_summaries(folder):   # row index: no review.json is parsed unless it changed
+        track, car = d.get("track"), d.get("car")
         if not track or not car:
             continue
-        best = library.clean_best(d)   # None when every lap was flagged or the "best" is a partial lap
-        ids = d.get("combo_ids") if isinstance(d.get("combo_ids"), dict) else {}
+        best = d.get("clean_best")   # None when every lap was flagged or the "best" is a partial lap
         c = out.setdefault((track, car), {"track": track, "car": car, "track_id": None, "car_id": None,
                                           "races": 0, "best": None, "best_date": None, "last": ""})
         c["races"] += 1
-        c["track_id"] = c["track_id"] or ids.get("track_id")
-        c["car_id"] = c["car_id"] or ids.get("car_id")
-        started = str(m.get("started_at") or "")
+        c["track_id"] = c["track_id"] or d.get("track_id")
+        c["car_id"] = c["car_id"] or d.get("car_id")
+        started = str(d.get("started_at") or "")
         c["last"] = max(c["last"], started)
         if best is not None and (c["best"] is None or best < c["best"]):
-            c["best"], c["best_date"] = best, library.local_day(started) or p.parent.name[:10]
+            c["best"], c["best_date"] = best, library.local_day(started) or str(d.get("dir") or "")[:10]
     return sorted(out.values(), key=lambda c: c["last"], reverse=True)
 
 

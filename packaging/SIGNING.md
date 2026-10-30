@@ -99,12 +99,12 @@ update should install.
 
 A release whose `.sig` is missing or unreadable should be refused with (`updater.NOT_SIGNED`):
 
-> This update isn't signed by Debrief's release key, so it wasn't installed. Download it from the release page if you trust it.
+> This update isn't signed by Debrief's release key, so it wasn't installed. Download it from the release page (github.com/blackmagik232/debrief/releases) if you trust it.
 
 A release whose `.sig` is there but doesn't verify (signed with another key, or signed for another
 version, another file name or another file) should be refused with (`updater.BAD_SIGNATURE`):
 
-> This update's signature doesn't match Debrief's release key, so it wasn't installed. Download it from the release page if you trust it.
+> This update's signature doesn't match Debrief's release key, so it wasn't installed. Download it from the release page (github.com/blackmagik232/debrief/releases) if you trust it.
 
 (An installer whose file name doesn't match the release's version is refused before any signature
 check, with "This release's installer doesn't match its version, so it wasn't installed.")

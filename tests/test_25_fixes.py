@@ -50,12 +50,12 @@ class FakeApi:
         self.laps_fn, self.me_saved, self.fail_after = laps_fn, me_saved, fail_after
 
     def peek(self, key):
-        return {"slug": "swazi", "firstName": "Swazi", "lastName": "Williams"} if key == "me" and self.me_saved else None
+        return {"slug": "alex", "firstName": "Alex", "lastName": "Driver"} if key == "me" and self.me_saved else None
 
     def me(self):
         self.calls.append(("me", {}))
         self.requests_made += 1
-        return {"slug": "swazi", "firstName": "Swazi", "lastName": "Williams"}
+        return {"slug": "alex", "firstName": "Alex", "lastName": "Driver"}
 
     def cached_items(self, name):
         return {"tracks": TRACKS, "cars": CARS}.get(name, [])
@@ -138,7 +138,7 @@ def test_m1_majority_of_unflagged_partials_never_takes_the_board():
 
     def laps(kw):
         d = in_week(kw)
-        return [lap("jordan-x", 11.0, day=d), lap("sam-y", 12.0, day=d), lap("swazi", 98.9, day=d)]
+        return [lap("jordan-x", 11.0, day=d), lap("sam-y", 12.0, day=d), lap("alex", 98.9, day=d)]
     api = FakeApi(laps)
     res = leaderboards.refresh(api, cfg, sched, mine(sched), log=quiet)
     assert board_of(cfg, sched) == [("me", 98.9)], board_of(cfg, sched)
@@ -152,7 +152,7 @@ def test_m1_partials_never_push_out_a_real_lap_even_five_to_two():
     def laps(kw):
         d = in_week(kw)
         part = [lap(f"p{i}-x", 6.0 + 3 * i, day=d) for i in range(5)]
-        return part + [lap("swazi", 98.9, day=d), lap("jordan-x", 97.4, day=d)]
+        return part + [lap("alex", 98.9, day=d), lap("jordan-x", 97.4, day=d)]
     leaderboards.refresh(FakeApi(laps), cfg, sched, mine(sched), log=quiet)
     assert board_of(cfg, sched) == [("jordan-x", 97.4), ("me", 98.9)], board_of(cfg, sched)
 
@@ -167,7 +167,7 @@ def test_m1_any_mix_of_partials_never_reaches_a_board():
         part = {f"p{i}": round(rnd.uniform(3, 50), 3) for i in range(n_part)}
         laps = [lap(k, t) for k, t in {**real, **part}.items()]
         rnd.shuffle(laps)
-        board = leaderboards.build_board(laps, "swazi", "Swazi", {67: "Global Mazda MX-5 Cup"}, a, b, False)
+        board = leaderboards.build_board(laps, "alex", "Alex", {67: "Global Mazda MX-5 Cup"}, a, b, False)
         got = {r["key"]: r["t"] for r in board}
         assert got == real, (real, part, got)
 
@@ -177,7 +177,7 @@ def test_m1_multiclass_partials_stay_off_each_class_board():
     names = {170: "Porsche 963 GTP", 180: "BMW M4 GT3 EVO"}
     laps = [lap("g1", 92.0, car=170), lap("g2", 10.0, car=170), lap("g3", 11.0, car=170),
             lap("t1", 104.0, car=180), lap("t2", 12.0, car=180), lap("t3", 13.5, car=180)]
-    board = leaderboards.build_board(laps, "swazi", "Swazi", names, a, b, True)
+    board = leaderboards.build_board(laps, "alex", "Alex", names, a, b, True)
     assert sorted((r["key"], r["class_pos"]) for r in board) == [("g1", 1), ("t1", 1)], board
 
 
@@ -193,7 +193,7 @@ def test_m1_library_best_is_the_reference_like_team_build():
     def laps(kw):
         d = in_week(kw)
         return [lap("jordan-x", 97.0, day=d), lap("sam-y", 99.0, day=d), lap("tyler-q", 160.0, day=d),
-                lap("swazi", 11.0, day=d)]
+                lap("alex", 11.0, day=d)]
     leaderboards.refresh(FakeApi(laps), cfg, sched, mine(sched), log=quiet)
     assert board_of(cfg, sched) == [("jordan-x", 97.0), ("sam-y", 99.0)], board_of(cfg, sched)
     refs = leaderboards.library_refs(__import__("debrief.team", fromlist=["x"]).library_combos(cfg["library_folder"]),
@@ -204,8 +204,8 @@ def test_m1_library_best_is_the_reference_like_team_build():
 def test_m1_still_keeps_a_much_quicker_teammate():
     """The floor is 0.6 x, as before: a teammate 25% quicker than the rest is a real lap, not a partial."""
     a, b = datetime(2026, 10, 28).date(), datetime(2026, 11, 4).date()
-    laps = [lap("swazi", 100.0), lap("jordan-x", 75.0), lap("sam-y", 101.0)]
-    got = [r["key"] for r in leaderboards.build_board(laps, "swazi", "Swazi", {}, a, b, False)]
+    laps = [lap("alex", 100.0), lap("jordan-x", 75.0), lap("sam-y", 101.0)]
+    got = [r["key"] for r in leaderboards.build_board(laps, "alex", "Alex", {}, a, b, False)]
     assert got == ["jordan-x", "me", "sam-y"], got
 
 
@@ -282,7 +282,7 @@ def test_l2_control_characters_are_dropped_but_line_breaks_kept():
 # ================================================================ L3: back-fill budget and the estimate
 def all_partial(kw):
     d = in_week(kw)
-    return [lap("jordan-x", 11.0, day=d), lap("swazi", 98.9, day=d), lap("sam-y", 99.5, day=d)]
+    return [lap("jordan-x", 11.0, day=d), lap("alex", 98.9, day=d), lap("sam-y", 99.5, day=d)]
 
 
 def test_l3_second_refresh_within_ten_minutes_spends_nothing_on_past_weeks():
@@ -342,7 +342,7 @@ def test_l3_me_request_is_counted_in_the_estimate():
 
     def clean(kw):
         d = in_week(kw)
-        return [lap("jordan-x", 98.4, day=d), lap("swazi", 98.9, day=d)]
+        return [lap("jordan-x", 98.4, day=d), lap("alex", 98.9, day=d)]
     p = leaderboards.plan(cfg, FakeApi(clean, me_saved=False), sched, mine(sched))
     assert p["est_me"] == 1 and p["est_total"] == 2 and p["est_max"] == 3, p
     api = FakeApi(clean, me_saved=False)
@@ -437,8 +437,13 @@ def test_ci_runs_this_file_after_the_shell_tests():
     yml = (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
     steps = _steps(yml)
     names = [n for n, _ in steps]
-    i = names.index("Test shell (2.5)")
-    assert "python tests/ci_run.py tests/test_25_fixes.py" in steps[i + 1][1], steps[i + 1]
+    if "Test shell (2.5)" in names:                  # one step per file
+        i = names.index("Test shell (2.5)")
+        assert "python tests/ci_run.py tests/test_25_fixes.py" in steps[i + 1][1], steps[i + 1]
+        return
+    sys.path.insert(0, str(ROOT / "tests"))
+    from run_all import ci_runs              # each file has its own step, or run_all.py runs them all
+    assert ci_runs(yml, "test_25_fixes.py") and ci_runs(yml, "test_25_d.py")
 
 
 # ================================================================ L7: Post isn't live the moment the dialog opens

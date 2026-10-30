@@ -127,7 +127,32 @@ def serve(fake: FakeG61):
 
 def client(base, cache):
     from debrief.g61 import Garage61
-    return Garage61("test-token-123456", Path(cache), min_gap_s=0.0, base_url=base, log=lambda m: None)
+    api = Garage61("test-token-123456", Path(cache), min_gap_s=0.0, base_url=base, log=lambda m: None)
+    _no_backoff(api)
+    return api
+
+
+def _no_backoff(api):
+    """The fake server answers at once, so retries needn't wait 5+10+20+40 s. Garage61.BACKOFF_BASE (2.6)
+    sets the first retry delay; on a client without it, only the retry waits inside _get are cut to 0 s
+    (other waits, which some tests pause on purpose, are left alone, and stop checks still run)."""
+    if hasattr(type(api), "BACKOFF_BASE"):
+        api.BACKOFF_BASE = 0
+        return
+    real_get, real_sleep = api._get, api._sleep
+    state = {"in_get": 0}
+
+    def get(*a, **k):
+        state["in_get"] += 1
+        try:
+            return real_get(*a, **k)
+        finally:
+            state["in_get"] -= 1
+
+    def sleep(secs):
+        return real_sleep(0 if state["in_get"] and secs >= 1 else secs)   # pacing gaps (< 1 s) unchanged
+
+    api._get, api._sleep = get, sleep
 
 
 # ================================================================ sync engine

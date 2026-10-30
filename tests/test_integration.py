@@ -384,13 +384,13 @@ def test_log_writes_tilde_for_the_home_folder():
     log = TMP / "logs2" / "debrief.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     old_env = os.environ.get("USERPROFILE")
-    os.environ["USERPROFILE"] = r"C:\Users\Swazi"
+    os.environ["USERPROFILE"] = r"C:\Users\Driver"
     old = app.LOG_FILE
     app.LOG_FILE = str(log)
     try:
-        app.say(r"Review saved to C:\Users\Swazi\Documents\Debrief Reviews\x\index.html")
-        app.say("Settings in c:/users/swazi/AppData/Local/Debrief")
-        app.say(r"Not a match: C:\Users\SwaziB\x")
+        app.say(r"Review saved to C:\Users\Driver\Documents\Debrief Reviews\x\index.html")
+        app.say("Settings in c:/users/driver/AppData/Local/Debrief")
+        app.say(r"Not a match: C:\Users\DriverB\x")
         app.say("Home: " + str(Path.home()) + "/x")
     finally:
         app.LOG_FILE = old
@@ -400,8 +400,8 @@ def test_log_writes_tilde_for_the_home_folder():
             os.environ["USERPROFILE"] = old_env
     t = log.read_text(encoding="utf-8")
     assert r"~\Documents\Debrief Reviews" in t and "~/AppData/Local" in t, t
-    assert r"C:\Users\SwaziB\x" in t          # a different user folder that merely starts the same
-    assert "Swazi\\" not in t.replace(r"SwaziB\x", "")
+    assert r"C:\Users\DriverB\x" in t          # a different user folder that merely starts the same
+    assert "Driver\\" not in t.replace(r"DriverB\x", "")
     assert str(Path.home()) + "/" not in t and "Home: ~/x" in t
 
 

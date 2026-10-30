@@ -270,7 +270,7 @@ def mock_race(event=MOCK_EVENT, all_unclean=False):
         l["_start"] = datetime.fromisoformat(l["startTime"].replace("Z", "+00:00")).timestamp()
         laps.append(l)
         tel[l["id"]] = open(p, encoding="utf-8").read()
-    meta = {"driver": "Swazi Williams", "event_id": event, "track": "Charlotte Motor Speedway (Roval 2019)",
+    meta = {"driver": "Alex Driver", "event_id": event, "track": "Charlotte Motor Speedway (Roval 2019)",
             "car": "Ford Mustang GT4", "started_at": min(l["startTime"] for l in laps), "session": "Race"}
     return engine.analyze(meta, laps, tel, [], {}, track_length=None)
 

@@ -65,63 +65,12 @@ jobs:
             throw "Tag $env:GITHUB_REF_NAME doesn't match __version__ $v (expected v$v)"
           }
 
+      # Every tests/test_*.py, four files at a time, each in its own process and temp folder (tests/run_all.py
+      # finds new files itself). A failing file is run again on its own before the step fails, and its
+      # failure lines come out as ::error annotations, as tests/ci_run.py writes them for one file.
       # Tests that need the mock Garage 61 data or Playwright print SKIPPED here (neither is on the runner).
-      - name: Test analysis
-        run: python tests/ci_run.py tests/test_analysis.py
-      - name: Test library
-        run: python tests/ci_run.py tests/test_library.py
-      - name: Test desktop
-        run: python tests/ci_run.py tests/test_desktop.py
-      - name: Test history sync
-        run: python tests/ci_run.py tests/test_sync.py
-      - name: Test Prepare page
-        run: python tests/ci_run.py tests/test_prepare.py
-      - name: Test updater
-        run: python tests/ci_run.py tests/test_updater.py
-      - name: Test coaching summary
-        run: python tests/ci_run.py tests/test_insights.py
-      - name: Test fixes (server, security, updater)
-        run: python tests/ci_run.py tests/test_fix_c.py
-      - name: Test fixes (analysis)
-        run: python tests/ci_run.py tests/test_fix_a.py
-      - name: Test fixes (data)
-        run: python tests/ci_run.py tests/test_fix_b.py
-      - name: Test fixes (UI)
-        run: python tests/ci_run.py tests/test_fix_d.py
-      - name: Test integration (2.2.2)
-        run: python tests/ci_run.py tests/test_integration.py
-      - name: Test name matching
-        run: python tests/ci_run.py tests/test_match_aliases.py
-      - name: Test 2.3.0 fixes
-        run: python tests/ci_run.py tests/test_230_fixes.py
-      - name: Test technique detail (2.3)
-        run: python tests/ci_run.py tests/test_23_a.py
-      - name: Test skills, sessions and profile (2.3)
-        run: python tests/ci_run.py tests/test_23_b.py
-      - name: Test review and library pages (2.3)
-        run: python tests/ci_run.py tests/test_23_c.py
-      - name: Test shell (2.3)
-        run: python tests/ci_run.py tests/test_23_d.py
-      - name: Test strategy and race craft (2.4)
-        run: python tests/ci_run.py tests/test_24_a.py
-      - name: Test team cards, Track Intel import and results (2.4)
-        run: python tests/ci_run.py tests/test_24_b.py
-      - name: Test review and prep pages (2.4)
-        run: python tests/ci_run.py tests/test_24_c.py
-      - name: Test shell (2.4)
-        run: python tests/ci_run.py tests/test_24_d.py
-      - name: Test 2.4.0 review fixes
-        run: python tests/ci_run.py tests/test_24_fixes.py
-      - name: Test leaderboards and who to learn from (2.5)
-        run: python tests/ci_run.py tests/test_25_a.py
-      - name: Test Discord and release signing (2.5)
-        run: python tests/ci_run.py tests/test_25_b.py
-      - name: Test team and review pages (2.5)
-        run: python tests/ci_run.py tests/test_25_c.py
-      - name: Test shell (2.5)
-        run: python tests/ci_run.py tests/test_25_d.py
-      - name: Test 2.5.0 review fixes
-        run: python tests/ci_run.py tests/test_25_fixes.py
+      - name: Run tests
+        run: python tests/run_all.py -j 4
 
       - name: Build with PyInstaller
         run: pyinstaller packaging/debrief.spec --noconfirm --clean

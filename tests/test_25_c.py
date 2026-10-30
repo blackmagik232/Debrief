@@ -19,6 +19,7 @@ import shutil
 import struct
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -26,6 +27,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from debrief import report, team  # noqa: E402
+from pw_settle import settle  # noqa: E402
 
 TPL = ROOT / "debrief" / "templates"
 HERE = Path(__file__).resolve().parent
@@ -105,7 +107,7 @@ def _open(path, scheme="light", width=1280, init=None, wait=450):
     if init:
         pg.add_init_script(init)
     pg.goto(Path(path).resolve().as_uri())
-    pg.wait_for_timeout(wait)
+    settle(pg, cap_ms=max(1500, 3 * wait))     # loaded, painted and quiet (was a fixed `wait` ms)
     return pg, ctx, errs
 
 
@@ -544,10 +546,14 @@ def test_share_no_reply_to_non_parent_or_wrong_type():
           w.postMessage('debrief:share-request','*');
           w.postMessage({type:'debrief:share-request',id:{}},'*');
           w.postMessage({type:'debrief:share-request',id:'x'.repeat(500)},'*')})()""")
-        pg.wait_for_timeout(3000)
+        # instead of a fixed 3 s wait: the valid request below is answered after the bad ones were handled,
+        # and waiting as long again as its reply took covers a reply to a bad one that started earlier
         none = pg.evaluate("window.got")
+        t0 = time.perf_counter()
         pg.evaluate("document.getElementById('rv').contentWindow.postMessage({type:'debrief:share-request',id:'ok'},'*')")
         pg.wait_for_function("window.got.length>0", timeout=15000)
+        reply_ms = int((time.perf_counter() - t0) * 1000)
+        pg.wait_for_timeout(max(300, reply_ms))
         after = pg.evaluate("window.got.map(m=>m.id)")
         ctx.close()
         assert not errs, errs
@@ -558,7 +564,7 @@ def test_share_no_reply_to_non_parent_or_wrong_type():
         pg, ctx, errs = _open(_review_page(review_25(), lib),
                               init="window.__got=[];addEventListener('message',e=>{if(e.data&&e.data.type==='debrief:share-card')window.__got.push(e.data)})")
         pg.evaluate("window.postMessage({type:'debrief:share-request',id:'self'},'*')")
-        pg.wait_for_timeout(2500)
+        pg.wait_for_timeout(max(500, 2 * reply_ms))      # twice what a real reply took above (was a fixed 2.5 s)
         got = pg.evaluate("window.__got")
         ctx.close()
         assert not errs and got == [], (errs, got)

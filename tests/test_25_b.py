@@ -652,8 +652,10 @@ def _wf():
 def test_workflow_kept_and_signing_job():
     wf = _wf()
     assert "pyinstaller==6.22.3" in wf
+    sys.path.insert(0, str(ROOT / "tests"))
+    from run_all import ci_runs              # each file has its own step, or run_all.py runs them all
     for t in ("test_25_a", "test_25_b", "test_25_c", "test_25_d"):
-        assert f"python tests/{t}.py" in wf, t
+        assert ci_runs(wf, f"{t}.py"), t
     try:
         import yaml
     except ImportError:
@@ -670,9 +672,12 @@ def test_workflow_kept_and_signing_job():
     for must in ("Smoke test the built app", "Upgrade test (previous release -> this build, the way the in-app updater does it)",
                  "Silent install smoke test", "Build with PyInstaller", "Upload installer"):
         assert must in names, must
-    i_last_old = names.index("Test 2.4.0 review fixes")
-    assert names[i_last_old + 1:i_last_old + 5] == [n for n in names if "(2.5)" in n] and len(
-        [n for n in names if "(2.5)" in n]) == 4
+    if "Test 2.4.0 review fixes" in names:          # one step per file: the 2.5 ones right after 2.4's
+        i_last_old = names.index("Test 2.4.0 review fixes")
+        assert names[i_last_old + 1:i_last_old + 5] == [n for n in names if "(2.5)" in n] and len(
+            [n for n in names if "(2.5)" in n]) == 4
+    else:                                            # tests/run_all.py runs them all before the build
+        assert names.index("Run tests") < names.index("Build with PyInstaller")
     assert b["permissions"] == {"contents": "read"} and d["permissions"] == {"contents": "read"}
     assert not any("gh release" in str(s.get("run", "")) or "DEBRIEF_SIGNING_KEY" in json.dumps(s) for s in b["steps"])
     assert rel["needs"] == "windows" and rel["environment"] == "release"

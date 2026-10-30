@@ -53,8 +53,17 @@ class XlsxError(ValueError):
     """A plain message for the driver."""
 
 
+_LOCAL = {}                  # tag -> local name; a workbook uses a few dozen tags, each seen up to ~1M times
+
+
 def _local(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
+    try:
+        return _LOCAL[tag]
+    except KeyError:
+        local = tag.rsplit("}", 1)[-1]
+        if len(_LOCAL) < 4096:   # bounded, so a hostile file's made-up tags can't grow it without limit
+            _LOCAL[tag] = local
+        return local
 
 
 def _col(letters: str) -> int:
@@ -140,6 +149,7 @@ def _check_xml(raw: bytes, limit: int = MAX_ELEMENTS, counter=None) -> None:
     p.ExternalEntityRefHandler = lambda *a: _refuse_dtd()
     # shape limits, checked while streaming so a tiny file can't make a huge tree (2.4.0 review r2 M-r2-1)
     st = {"depth": 0, "n": 0, "row": None}
+    is_row = {}     # element name -> its local name is "row" (a sheet has a handful of names, seen millions of times)
 
     def _start(name, _attrs):
         st["depth"] += 1
@@ -150,8 +160,13 @@ def _check_xml(raw: bytes, limit: int = MAX_ELEMENTS, counter=None) -> None:
             counter[0] += 1
             if counter[0] > MAX_BOOK_ELEMENTS:
                 raise XlsxError(_TOO_MUCH)
-        local = name.rsplit(":", 1)[-1]
-        if local == "row":
+        row = is_row.get(name)
+        if row is None:
+            if len(is_row) < 4096:      # bounded: a hostile part can't grow the memo without limit
+                row = is_row[name] = name.rsplit(":", 1)[-1] == "row"
+            else:
+                row = name.rsplit(":", 1)[-1] == "row"
+        if row:
             st["row"] = [st["depth"], 0]
         elif st["row"] is not None and st["depth"] == st["row"][0] + 1:
             st["row"][1] += 1

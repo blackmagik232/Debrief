@@ -48,7 +48,7 @@ def _cfg(share=True, me=True, folder=True):
         ns = __import__("hashlib").sha256((g61.BASE.rstrip("/") + "/|" + TOKEN).encode()).hexdigest()[:10]
         p = Path(cfg["cache_dir"]) / ns / (__import__("hashlib").sha1(b"me").hexdigest()[:20] + ".json")
         p.parent.mkdir(parents=True)
-        p.write_text(json.dumps({"slug": "swazi-williams", "firstName": "Swazi", "lastName": "Williams"}),
+        p.write_text(json.dumps({"slug": "alex-driver", "firstName": "Alex", "lastName": "Driver"}),
                      encoding="utf-8")
     return cfg
 
@@ -138,7 +138,7 @@ def _raises(fn, *a, contains=None, exc=ValueError):
 def test_fixtures_have_the_interface_shapes():
     card = json.loads((FIX / "sample_card_file.json").read_text(encoding="utf-8"))
     assert card["kind"] == "debrief-track-card" and card["schema"] == 1
-    assert set(card["fields"]) == set(notes.FIELDS) and card["author"]["slug"] == "swazi-williams"
+    assert set(card["fields"]) == set(notes.FIELDS) and card["author"]["slug"] == "alex-driver"
     shared = json.loads((FIX / "sample_shared_for.json").read_text(encoding="utf-8"))
     assert all(set(c) == {"author", "updated", "fields", "car_notes"} for c in shared)
     assert [c["updated"] for c in shared] == sorted([c["updated"] for c in shared], reverse=True)
@@ -159,7 +159,7 @@ def test_fixtures_have_the_interface_shapes():
 # ================================================================ team track cards
 def test_author_from_cache_reads_only_the_cache():
     cfg = _cfg()
-    assert notes.author_from_cache(cfg) == {"slug": "swazi-williams", "name": "Swazi Williams"}
+    assert notes.author_from_cache(cfg) == {"slug": "alex-driver", "name": "Alex Driver"}
     assert notes.author_from_cache(_cfg(me=False)) is None
     assert notes.author_from_cache({"cache_dir": str(TMP), "token": ""}) is None
     assert notes.author_from_cache({}) is None
@@ -179,11 +179,11 @@ def test_publish_writes_exactly_one_file_at_the_right_path():
     saved = notes.save(cfg["library_folder"], _card(hotspots="Bus stop on lap 1"), cfg)
     assert "share_error" not in saved
     files = [p for p in team.rglob("*") if p.is_file()]
-    want = team / "Debrief track cards" / notes.track_key(ROVAL) / "swazi-williams.json"
+    want = team / "Debrief track cards" / notes.track_key(ROVAL) / "alex-driver.json"
     assert files == [want], files
     d = json.loads(want.read_text(encoding="utf-8"))
     assert d["kind"] == "debrief-track-card" and d["schema"] == 1 and d["track"] == ROVAL
-    assert d["author"] == {"slug": "swazi-williams", "name": "Swazi Williams"}
+    assert d["author"] == {"slug": "alex-driver", "name": "Alex Driver"}
     assert d["fields"]["hotspots"] == "Bus stop on lap 1" and d["app"].startswith("Debrief ")
     assert d["updated"] == saved["updated"]
     assert not [p for p in want.parent.iterdir() if p.name.startswith(".tmp")]   # temp file was moved into place
@@ -202,7 +202,7 @@ def test_sharing_off_writes_nothing():
     cfg = _cfg(share=False)
     notes.save(cfg["library_folder"], _card(lap1="x"), cfg)
     assert list(Path(cfg["team_cards_folder"]).rglob("*")) == []
-    assert notes.publish(cfg, _card(lap1="x"), {"slug": "swazi-williams", "name": "S"}) is False
+    assert notes.publish(cfg, _card(lap1="x"), {"slug": "alex-driver", "name": "S"}) is False
     assert list(Path(cfg["team_cards_folder"]).rglob("*")) == []
     # no cfg at all (2.3 callers): local save only
     notes.save(cfg["library_folder"], _card(lap1="y"))
@@ -228,7 +228,7 @@ def test_empty_card_deletes_only_your_shared_file():
     cfg = _cfg()
     root = Path(cfg["team_cards_folder"]) / "Debrief track cards"
     notes.save(cfg["library_folder"], _card(lap1="x"), cfg)
-    mine = root / notes.track_key(ROVAL) / "swazi-williams.json"
+    mine = root / notes.track_key(ROVAL) / "alex-driver.json"
     other = _mate(root, "hayden")
     assert mine.exists()
     notes.save(cfg["library_folder"], _card(), cfg)
@@ -260,8 +260,8 @@ def test_merge_read_returns_only_valid_cards_and_never_writes():
                                                      "fields": {"lap1": "copied"}, "updated": "2026-12-01T00:00:00Z"}),
                                          encoding="utf-8")
     # OneDrive conflict copy: the name looks like a slug, the author inside doesn't match
-    (d / "swazi-williams-DESKTOP-1.json").write_text(json.dumps({"schema": 1, "kind": "debrief-track-card",
-                                                                "author": {"slug": "swazi-williams"}, "fields": {"lap1": "c"}}),
+    (d / "alex-driver-DESKTOP-1.json").write_text(json.dumps({"schema": 1, "kind": "debrief-track-card",
+                                                                "author": {"slug": "alex-driver"}, "fields": {"lap1": "c"}}),
                                                      encoding="utf-8")
     (d / "josh-spence-desktop-1.json").write_text(json.dumps({"schema": 1, "kind": "debrief-track-card",
                                                              "author": {"slug": "josh-spence"}, "fields": {"lap1": "c"}}),
@@ -281,9 +281,9 @@ def test_merge_read_returns_only_valid_cards_and_never_writes():
                                                    "fields": {"lap1": "evil"}}), encoding="utf-8")
     linked = _symlink(d / "evil.json", outside / "evil.json")
     # your own file is skipped (yours is local)
-    _mate(root, "swazi-williams")
+    _mate(root, "alex-driver")
     before = _snapshot(Path(cfg["team_cards_folder"]))
-    out = notes.shared_for(cfg, "Charlotte Motor Speedway - Roval 2025", "swazi-williams")
+    out = notes.shared_for(cfg, "Charlotte Motor Speedway - Roval 2025", "alex-driver")
     after = _snapshot(Path(cfg["team_cards_folder"]))
     assert before == after   # no file created, changed or removed
     assert [c["author"]["slug"] for c in out] == ["josh-spence", "hayden"], out
@@ -292,7 +292,7 @@ def test_merge_read_returns_only_valid_cards_and_never_writes():
     if not linked:
         print("  (symlink part SKIPPED: this OS doesn't allow symlinks here)")
     # me_slug None: your own file shows like anyone else's
-    assert "swazi-williams" in [c["author"]["slug"] for c in notes.shared_for(cfg, ROVAL, None)]
+    assert "alex-driver" in [c["author"]["slug"] for c in notes.shared_for(cfg, ROVAL, None)]
 
 
 def test_merge_read_caps_and_length_rules():
@@ -629,7 +629,7 @@ def test_apply_publishes_when_sharing_is_on():
     cfg = _setup(share=True)
     parsed = intel.parse_upload(_intel_book([(ROVAL, "T1", "", "", "")]), "a.xlsx")
     intel.apply(parsed, 0, MAP, "fill_empty", cfg, KNOWN)
-    f = Path(cfg["team_cards_folder"]) / "Debrief track cards" / notes.track_key(ROVAL) / "swazi-williams.json"
+    f = Path(cfg["team_cards_folder"]) / "Debrief track cards" / notes.track_key(ROVAL) / "alex-driver.json"
     assert json.loads(f.read_text(encoding="utf-8"))["fields"]["hotspots"] == "T1"
 
 
@@ -687,11 +687,11 @@ def test_week_view_adds_shared_notes_and_strategy():
     root = Path(cfg["team_cards_folder"]) / "Debrief track cards"
     _mate(root, "josh-spence")
     _mate(root, "hayden")
-    _mate(root, "swazi-williams")
+    _mate(root, "alex-driver")
     ser = {"id": "s", "name": "Series", "cars": ["Ford Mustang GT4"],
            "weeks": [{"week": 1, "start": "2026-11-17", "track": "Charlotte Motor Speedway - Roval 2025", "length": "15 laps"}]}
     w = prepare._week_view(ser, 1, [], cfg["library_folder"], None, schedule.Matcher(), cfg=cfg, sched=None,
-                           me_slug="swazi-williams")
+                           me_slug="alex-driver")
     assert w["shared_notes"] == 2
     assert "strategy" in w
     try:

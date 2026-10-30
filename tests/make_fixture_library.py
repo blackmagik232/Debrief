@@ -69,7 +69,7 @@ def fake_review(combo, started, gain, v2, season, irating, result, rng):
                          "n": 14, "p25": float(apex - 118), "p75": float(apex - 104), "median": float(apex - 110)}]
             if avails[i] > 0.08 else [],
             "coaching": "", "per_lap": {str(best["n"]): {"t": 7.6, "min_mph": mn + 1, "gear": 3}}, "refs": {}})
-    d = {"meta": {"driver": "Swazi Williams", "event_id": "FIXTURE" + started[:10].replace("-", ""),
+    d = {"meta": {"driver": "Alex Driver", "event_id": "FIXTURE" + started[:10].replace("-", ""),
                   "car": combo["car"], "track": combo["track"], "started_at": started, "session": "Race",
                   "generated_at": started, "requests": 0, "test_data": True},
          "L": combo["L"], "step": 10, "laps": laps, "best": {"n": best["n"], "t": best["t"]},

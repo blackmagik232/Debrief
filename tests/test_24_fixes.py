@@ -246,17 +246,21 @@ def _grid(rows, cols, cell='<c t="s"><v>0</v></c>'):
                                                      for r in range(1, rows + 1)) + "</sheetData></worksheet>").encode()
 
 
-def _measure(fn):
-    tracemalloc.start()
+def _measure(fn, trace=True):
+    """(result or exception, seconds, peak bytes). trace=False skips tracemalloc (peak is None) where only the
+    result matters: tracing every allocation makes a big sheet several times slower to read."""
+    if trace:
+        tracemalloc.start()
     t = time.perf_counter()
     try:
         try:
             out = fn()
         except Exception as e:  # noqa: BLE001
             out = e
-        return out, time.perf_counter() - t, tracemalloc.get_traced_memory()[1]
+        return out, time.perf_counter() - t, tracemalloc.get_traced_memory()[1] if trace else None
     finally:
-        tracemalloc.stop()
+        if trace:
+            tracemalloc.stop()
 
 
 def test_h3_review_repro_is_refused_fast_and_small():
@@ -289,7 +293,7 @@ def test_h3_cell_budget_across_sheets():
     assert peak < 100e6, peak
     # a first sheet that is itself over a budget is still refused with a plain message
     big = [("S0", "xl/worksheets/sheet0.xml", _grid(2000, 160))]   # 320k cells looked at
-    out = _measure(lambda: xlsx.read(_book(big, sst)))[0]
+    out = _measure(lambda: xlsx.read(_book(big, sst)), trace=False)[0]
     assert isinstance(out, xlsx.XlsxError) and str(out).endswith("."), out
     # two of them (160k cells) are fine
     book = xlsx.read(_book(parts[:2], sst))
@@ -298,7 +302,7 @@ def test_h3_cell_budget_across_sheets():
     one = (f"<worksheet {NS}><sheetData><row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c></row>"
            f"<row r=\"2000\"><c r=\"AN2000\" t=\"s\"><v>0</v></c></row></sheetData></worksheet>").encode()
     parts = [(f"S{i}", f"xl/worksheets/sheet{i}.xml", one) for i in range(3)]
-    out = _measure(lambda: xlsx.read(_book(parts, sst)))[0]
+    out = _measure(lambda: xlsx.read(_book(parts, sst)), trace=False)[0]
     assert not isinstance(out, Exception) and len(out["sheets"]) == 2, out
 
 
@@ -311,7 +315,7 @@ def test_h3_text_budget_and_string_cap():
     assert len(row[0]) == xlsx.MAX_STR and len(row[1]) == xlsx.MAX_STR
     # 2,000 x 40 cells of a 200-character string = 16 M characters: over the text budget
     sst = f'<sst {NS}><si><t>{"Q" * 200}</t></si></sst>'
-    out = _measure(lambda: xlsx.read(_book([("S", "xl/worksheets/sheet1.xml", _grid(2000, 40))], sst)))[0]
+    out = _measure(lambda: xlsx.read(_book([("S", "xl/worksheets/sheet1.xml", _grid(2000, 40))], sst)), trace=False)[0]
     assert isinstance(out, xlsx.XlsxError) and "more in it" in str(out), out
 
 
@@ -387,7 +391,7 @@ def _share_cfg():
     return base, team, victim, {"team_cards_folder": str(team), "share_my_cards": True}
 
 
-ME = {"slug": "swazi-williams", "name": "Swazi Williams"}
+ME = {"slug": "alex-driver", "name": "Alex Driver"}
 CARD = {"track": "Spa", "fields": {"lap1": "Tidy into La Source"}, "car_notes": {}}
 EMPTY = {"track": "Spa", "fields": {}, "car_notes": {}}
 
@@ -408,9 +412,9 @@ def test_m2_symlinked_track_folder_refused_on_write_and_delete():
         return
     _raises_oserror(lambda: notes.publish(cfg, CARD, ME))
     assert os.listdir(victim) == []
-    (victim / "swazi-williams.json").write_text("{}", encoding="utf-8")
+    (victim / "alex-driver.json").write_text("{}", encoding="utf-8")
     _raises_oserror(lambda: notes.publish(cfg, EMPTY, ME))
-    assert os.listdir(victim) == ["swazi-williams.json"]          # never deleted through the link
+    assert os.listdir(victim) == ["alex-driver.json"]          # never deleted through the link
 
 
 def test_m2_symlinked_root_and_file_refused():
@@ -425,12 +429,12 @@ def test_m2_symlinked_root_and_file_refused():
     d.mkdir(parents=True)
     outside = victim / "keep.json"
     outside.write_text('{"keep": 1}', encoding="utf-8")
-    if not _try_symlink(outside, d / "swazi-williams.json", is_dir=False):
+    if not _try_symlink(outside, d / "alex-driver.json", is_dir=False):
         return
     _raises_oserror(lambda: notes.publish(cfg, CARD, ME))
     _raises_oserror(lambda: notes.publish(cfg, EMPTY, ME))
     assert outside.read_text(encoding="utf-8") == '{"keep": 1}'
-    assert (d / "swazi-williams.json").is_symlink()
+    assert (d / "alex-driver.json").is_symlink()
 
 
 def test_m2_resolved_path_outside_root_refused():
@@ -438,7 +442,7 @@ def test_m2_resolved_path_outside_root_refused():
     base, team, victim, cfg = _share_cfg()
     root = team / notes.SHARED_DIR
     d = root / notes.track_key("Spa")
-    p = d / "swazi-williams.json"
+    p = d / "alex-driver.json"
     real = os.path.realpath
     try:
         os.path.realpath = lambda x, *a, **k: str(victim / "x") if str(x) == str(d) else real(x, *a, **k)
@@ -451,7 +455,7 @@ def test_m2_resolved_path_outside_root_refused():
 def test_m2_normal_publish_and_delete_still_work():
     base, team, victim, cfg = _share_cfg()
     assert notes.publish(cfg, CARD, ME) is True
-    p = team / notes.SHARED_DIR / notes.track_key("Spa") / "swazi-williams.json"
+    p = team / notes.SHARED_DIR / notes.track_key("Spa") / "alex-driver.json"
     assert json.loads(p.read_text(encoding="utf-8"))["fields"]["lap1"] == "Tidy into La Source"
     assert notes.publish(cfg, EMPTY, ME) is True and not p.exists()
     assert notes.publish(cfg, EMPTY, ME) is True                    # nothing there: still fine
@@ -627,8 +631,11 @@ def test_r2_date_near_year_9999_does_not_crash():
 # ================================================================ CI
 def test_ci_runs_this_file():
     yml = (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8").replace("python tests/ci_run.py tests/", "python tests/")
-    assert "python tests/test_24_fixes.py" in yml
-    assert yml.index("tests/test_24_d.py") < yml.index("tests/test_24_fixes.py") < yml.index("Build with PyInstaller")
+    sys.path.insert(0, str(ROOT / "tests"))
+    from run_all import ci_runs              # each file has its own step, or run_all.py runs them all
+    assert ci_runs(yml, "test_24_fixes.py") and ci_runs(yml, "test_24_d.py")
+    if "tests/test_24_fixes.py" in yml:          # still one step per file: after the 2.4 shell tests
+        assert yml.index("tests/test_24_d.py") < yml.index("tests/test_24_fixes.py") < yml.index("Build with PyInstaller")
 
 
 if __name__ == "__main__":

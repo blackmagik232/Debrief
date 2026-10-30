@@ -5,7 +5,7 @@
   "name": "Midfield Menace"
  },
  "me": {
-  "name": "Swazi Williams",
+  "name": "Alex Driver",
   "key": "me"
  },
  "generated_at": "2026-10-30T19:00:00+00:00",
@@ -34,7 +34,7 @@
     },
     {
      "key": "me",
-     "name": "Swazi Williams",
+     "name": "Alex Driver",
      "t": 98.871,
      "is_me": true,
      "date": "2026-10-30",
@@ -67,7 +67,7 @@
      "sam-y"
     ],
     "names": {
-     "me": "Swazi Williams",
+     "me": "Alex Driver",
      "jordan-x": "Jordan X",
      "sam-y": "Sam Y"
     },
@@ -260,7 +260,7 @@
        },
        {
         "key": "me",
-        "name": "Swazi Williams",
+        "name": "Alex Driver",
         "t": 98.871,
         "car": "Global Mazda MX-5 Cup",
         "class": "MX-5",
@@ -305,7 +305,7 @@
       "board": [
        {
         "key": "me",
-        "name": "Swazi Williams",
+        "name": "Alex Driver",
         "t": 84.11,
         "car": "Global Mazda MX-5 Cup",
         "class": "MX-5",
@@ -406,7 +406,7 @@
        },
        {
         "key": "me",
-        "name": "Swazi Williams",
+        "name": "Alex Driver",
         "t": 136.903,
         "car": "BMW M4 GT3 EVO",
         "class": "GT3",

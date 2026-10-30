@@ -216,10 +216,10 @@ def test_combos_teams_settings():
     code, j = _req("api/teams")
     assert code == 200 and j["teams"] is None and j["requests"] == 0 and j["team_slug"] == "midfield-menace"
     code, j = _req("api/teams?fetch=1")
-    assert j["requests"] == 1 and {t["slug"] for t in j["teams"]} >= {"midfield-menace", "overdriveracademy"}
+    assert j["requests"] == 1 and "midfield-menace" in {t["slug"] for t in j["teams"]} and len(j["teams"]) >= 2
     # settings: team picker + optional iRacing credentials (never shown back)
-    code, j = _req("api/settings", {"team_slug": "OverdriverAcademy"})
-    assert code == 200 and j["settings"]["team_slug"] == "overdriveracademy"
+    code, j = _req("api/settings", {"team_slug": "Other-Team"})
+    assert code == 200 and j["settings"]["team_slug"] == "other-team"
     assert _req("api/settings", {"team_slug": "bad slug!"})[0] == 400
     code, j = _req("api/settings", {"iracing_client_id": "client-abc", "iracing_client_secret": "very-secret-xyz"})
     assert code == 200 and j["settings"]["iracing_client_id_saved"] and j["settings"]["iracing_client_secret_saved"]
@@ -379,7 +379,7 @@ class _FakeTeamApi:
     requests_made = 0
 
     def me(self):
-        return {"slug": "me", "firstName": "Swazi", "lastName": "Williams"}
+        return {"slug": "me", "firstName": "Alex", "lastName": "Driver"}
 
     def teams(self):
         return [{"slug": "midfield-menace", "name": "Midfield Menace"}]

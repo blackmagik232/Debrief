@@ -262,7 +262,7 @@ class FakeG61:
 
     def me(self):
         self._req("me")
-        return {"slug": "swazi-williams", "firstName": "Swazi", "lastName": "Williams"}
+        return {"slug": "alex-driver", "firstName": "Alex", "lastName": "Driver"}
 
     def teams(self):
         self._req("teams")
@@ -458,11 +458,11 @@ def test_nonce_single_use_and_expires():
         assert code == 200 and j["ok"] and j["width"] == 1200 and j["height"] == 630, j
         assert j["target"] == {"saved": True, "hint": "…/5678", "name": None}, j
         assert rec.count("discord.post") == 0 and not NET           # staging alone sends nothing
-        code, _, b = post("api/discord-post", {"nonce": j["nonce"], "content": "Swazi · Roval: best 1:25.612"})
+        code, _, b = post("api/discord-post", {"nonce": j["nonce"], "content": "Alex · Roval: best 1:25.612"})
         assert code == 200 and js(b) == {"ok": True, "id": "998877"}
         assert rec.count("discord.post") == 1
         _, url, png, content = rec.calls[-1]
-        assert url == HOOK and png == PNG and content == "Swazi · Roval: best 1:25.612"
+        assert url == HOOK and png == PNG and content == "Alex · Roval: best 1:25.612"
         code, _, b = post("api/discord-post", {"nonce": j["nonce"], "content": "again"})   # reuse
         assert code == 400 and js(b)["error"] == "Make the preview again."
         assert rec.count("discord.post") == 1
@@ -791,8 +791,8 @@ def test_review_job_never_posts_to_discord():
 
 # ================================================================ layout, modules, version, build lists
 def test_layout_version_modules_and_spec():
-    assert report.LAYOUT == "2.5.0"
-    assert debrief.__version__ == "2.5.0"
+    assert tuple(int(x) for x in report.LAYOUT.split(".")) >= (2, 5, 0)          # 2.5.0 or later
+    assert tuple(int(x) for x in debrief.__version__.split(".")) >= (2, 5, 0)
     for n in NEW:
         assert n in desktop.FEATURE_MODULES, n
     spec = (ROOT / "packaging" / "debrief.spec").read_text(encoding="utf-8")
@@ -810,7 +810,7 @@ def test_layout_version_modules_and_spec():
     (out / "review.json").write_text(json.dumps({"meta": {"track": "T", "car": "C"}, "laps": [{"n": 1, "t": 90.0, "clean": True}],
                                                  "corners": [], "best": {"n": 1, "t": 90.0}}), encoding="utf-8")
     (lib / ".layout").write_text("2.4.0", encoding="utf-8")
-    assert report.refresh_all(lib) == 1 and (lib / ".layout").read_text(encoding="utf-8").strip() == "2.5.0"
+    assert report.refresh_all(lib) == 1 and (lib / ".layout").read_text(encoding="utf-8").strip() == report.LAYOUT
 
 
 def test_selftest_with_stand_ins():
@@ -826,7 +826,7 @@ def test_selftest_with_stand_ins():
         app.HERE = old
     res = json.loads((home / "selftest.json").read_text(encoding="utf-8"))
     assert rc == 0 and res["ok"], res
-    assert res["version"] == "2.5.0"
+    assert res["version"] == debrief.__version__
 
 
 def test_window_security_model_unchanged():
@@ -935,7 +935,7 @@ def test_window_post_to_discord_dialog():
                             " text: document.getElementById('discordText').value,"
                             " to: document.getElementById('discordTarget').textContent,"
                             " n: document.getElementById('discordCount').textContent})")
-            assert v["src"] == "data:image/png;base64," and v["text"].startswith("Swazi Williams · Roval"), v
+            assert v["src"] == "data:image/png;base64," and v["text"].startswith("Alex Driver · Roval"), v
             assert v["text"] != "DECOY" and v["to"] == "Posts to your team's webhook (…/5678)", v
             assert v["n"] == f"{len(v['text'])} / 2000", v
             assert len(st) == 1
@@ -1122,7 +1122,7 @@ def test_window_real_review_page_share():
             _preview(pg)
             v = pg.evaluate("() => ({src: document.getElementById('discordImg').src.slice(0, 22),"
                             " text: document.getElementById('discordText').value})")
-            assert v["src"] == "data:image/png;base64," and "Swazi Williams" in v["text"], v
+            assert v["src"] == "data:image/png;base64," and "Alex Driver" in v["text"], v
             pg.click("#discordCancel")
             time.sleep(0.4)
             assert rec.count("discord.post") == 0

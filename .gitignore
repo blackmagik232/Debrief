@@ -33,3 +33,15 @@ shots/
 !debrief/desktop/icon.png
 selftest-hang.txt
 selftest.json
+
+# --- secrets and personal data that must never be committed (2.6)
+.env*
+*.pem
+*.key
+*.ed25519
+signing*
+!packaging/SIGNING.md
+# track cards and team hub pages from a reviews folder kept next to the code (directories only:
+# debrief/team.py and the other source files are not affected)
+track-notes/
+team/

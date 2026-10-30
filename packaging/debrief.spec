@@ -64,7 +64,7 @@ VERSION_FILE.write_text(f"""VSVersionInfo(
   ffi=FixedFileInfo(filevers={_vt}, prodvers={_vt}, mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1,
                     subtype=0x0, date=(0, 0)),
   kids=[StringFileInfo([StringTable('040904B0', [
-          StringStruct('CompanyName', 'Overdriver'),
+          StringStruct('CompanyName', 'Midfield Menace'),
           StringStruct('FileDescription', 'Debrief'),
           StringStruct('FileVersion', '{VERSION}'),
           StringStruct('InternalName', 'Debrief'),

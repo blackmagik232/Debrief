@@ -1,6 +1,6 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0.."
 title Debrief setup
 echo.
 echo  Debrief setup
@@ -14,7 +14,7 @@ if not defined PY (
   echo  Python isn't installed yet.
   echo  Install it from https://www.python.org/downloads/  ^(tick "Add python.exe to PATH"^)
   echo  or run this in a terminal:  winget install Python.Python.3.12
-  echo  Then run Setup.bat again.
+  echo  Then run dev\Setup.bat again.
   echo.
   pause
   exit /b 1
@@ -44,6 +44,6 @@ if not exist settings.toml (
 )
 
 echo.
-echo  Setup done. Next: double-click "Check connection.bat", then "Review last race.bat".
+echo  Setup done. Next: double-click "Install shortcut.bat" in the dev folder, then open Debrief from the desktop icon.
 echo.
 pause

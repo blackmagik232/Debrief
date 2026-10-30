@@ -1000,6 +1000,7 @@ def test_window_settings_discord_panel():
             note = pg.evaluate("() => document.getElementById('fDiscord').textContent")
             assert "Debrief only posts when you press Post and confirm. It never posts on its own." in note
             assert pg.evaluate("() => document.getElementById('discordCheck').hidden && document.getElementById('discordClear').hidden")
+            pg.click("#pExtras > summary")   # 2.6: Discord sits under "Team and extras"
             pg.fill("#discordHook", "https://example.com/hook")
             pg.click("#fDiscord button[type=submit]")
             pg.wait_for_function("() => document.getElementById('discordMsg').classList.contains('bad')", timeout=5000)

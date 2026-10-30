@@ -145,7 +145,7 @@ def test_not_newer_and_errors():
             updater.check(force=True)
             raise AssertionError("404 not reported")
         except updater.UpdateError as e:
-            assert "private" in str(e)
+            assert "github.com/blackmagik232/debrief/releases" in str(e) and "private" not in str(e)
 
         def boom(url, **kw):
             raise requests.ConnectionError("offline")

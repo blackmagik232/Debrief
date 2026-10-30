@@ -45,9 +45,9 @@ RELEASE_PUBLIC_KEY: str | None = None    # 2.2.2 name for a single key; still ho
 SIG_CONTEXT = "Debrief release v1"
 TEMP_PREFIX = "debrief-update-"
 NOT_SIGNED = ("This update isn't signed by Debrief's release key, so it wasn't installed. "
-              "Download it from the release page if you trust it.")
+              "Download it from the release page (github.com/blackmagik232/debrief/releases) if you trust it.")
 BAD_SIGNATURE = ("This update's signature doesn't match Debrief's release key, so it wasn't installed. "
-                 "Download it from the release page if you trust it.")
+                 "Download it from the release page (github.com/blackmagik232/debrief/releases) if you trust it.")
 
 
 class UpdateError(Exception):
@@ -138,7 +138,8 @@ def check(force: bool = False, now: float | None = None) -> dict:
         except requests.RequestException as e:
             raise UpdateError("Couldn't reach GitHub to check for updates. Check your connection.") from e
         if r.status_code == 404:
-            raise UpdateError("Couldn't see Debrief's releases on GitHub (the repository may be private).")
+            raise UpdateError("Couldn't find Debrief's releases on GitHub. Try again later, or download the newest installer from "
+                              "github.com/blackmagik232/debrief/releases.")
         if r.status_code != 200:
             raise UpdateError(f"GitHub returned {r.status_code} when checking for updates. Try again later.")
         try:
@@ -182,7 +183,7 @@ def release_keys() -> list:
         k = k.strip()
         if not re.fullmatch(r"[0-9a-fA-F]{64}", k):
             raise UpdateError("This copy of Debrief has a broken update key, so it can't check updates are "
-                              "genuine. Download the newest version from the release page instead.")
+                              "genuine. Download the newest version from the release page (github.com/blackmagik232/debrief/releases) instead.")
         b = bytes.fromhex(k)
         if b not in out:
             out.append(b)
@@ -293,7 +294,7 @@ def download(info: dict, progress=None, dest_dir=None) -> Path:
     if not want and not keys:
         # no key yet: the published SHA-256 is the only check, so it must be there
         raise UpdateError("This release has no checksum, so Debrief won't install it automatically. "
-                          "Download it from the release page instead.")
+                          "Download it from the release page (github.com/blackmagik232/debrief/releases) instead.")
     try:
         total = int(info.get("size") or 0)
     except (TypeError, ValueError, OverflowError):
@@ -412,7 +413,7 @@ def launch(path, version: str | None = None) -> None:
         except OSError:
             pass
         raise UpdateError("Windows wouldn't start the installer (antivirus may have blocked it). "
-                          "Download it from the release page instead.") from e
+                          "Download it from the release page (github.com/blackmagik232/debrief/releases) instead.") from e
 
 
 def pending_result(now: float | None = None, grace_s: float = 180.0) -> dict | None:
@@ -444,5 +445,5 @@ def pending_result(now: float | None = None, grace_s: float = 180.0) -> dict | N
     return {"ok": False, "version": to, "current": __version__, "log": log,
             "message": (f"The update to Debrief {to or 'the newest version'} didn't finish, so you still have "
                         f"{__version__}. Your reviews and settings are fine. Try Update again, or download the "
-                        "installer from the release page. Details: update-install.log in "
+                        "installer from the release page (github.com/blackmagik232/debrief/releases). Details: update-install.log in "
                         "Debrief's data folder.")}

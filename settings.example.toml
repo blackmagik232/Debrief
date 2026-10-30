@@ -27,13 +27,13 @@ check_updates = true
 # How reviews address you, e.g. "sir" (up to 20 characters). Leave empty for none.
 salutation = ""
 
-# Your Garage 61 team, for the Team hub and Prep pages. Pick it in Settings > Team, or type its
-# short name from the team's Garage 61 web address.
+# Your Garage 61 team, for the Team hub and Prep pages. Debrief is built for Midfield Menace; only change
+# this to use a different team (Settings > Team and extras > Team > Advanced does the same).
 team_slug = "midfield-menace"
 
 # OPTIONAL: iRacing data API credentials. iRacing only issues these on request, and nothing in
-# Debrief needs them today. If iRacing gives you a client ID and secret, paste them in
-# Settings > iRacing (optional) instead of here. Keep them private, like the token.
+# Debrief needs them today, so Settings doesn't show them. If iRacing gives you a client ID and
+# secret, put them here. Keep them private, like the token.
 # iracing_client_id = ""
 # iracing_client_secret = ""
 
@@ -44,7 +44,7 @@ team_slug = "midfield-menace"
 # share_my_cards = false
 
 # Team Discord (2.5): a webhook for your team's channel, so you can post a review's share card there.
-# Paste it in Settings > Discord instead of here (Debrief checks it). Keep it private, like the token:
+# Paste it in Settings > Team and extras > Discord instead of here (Debrief checks it). Keep it private, like the token:
 # anyone with the address can post to that channel. Debrief only posts when you press Post and confirm.
 # In Discord: channel settings > Integrations > Webhooks > Copy Webhook URL.
 # discord_webhook = ""

@@ -3,10 +3,11 @@ Option Explicit
 Dim fso, sh, here, pyw
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set sh = CreateObject("WScript.Shell")
-here = fso.GetParentFolderName(WScript.ScriptFullName)
+' this script lives in dev\; the code and .venv are one folder up
+here = fso.GetParentFolderName(fso.GetParentFolderName(WScript.ScriptFullName))
 pyw = here & "\.venv\Scripts\pythonw.exe"
 If Not fso.FileExists(pyw) Then
-  MsgBox "Debrief isn't set up yet." & vbCrLf & vbCrLf & "Double-click Setup.bat in the Debrief folder first.", vbExclamation, "Debrief"
+  MsgBox "Debrief isn't set up yet." & vbCrLf & vbCrLf & "Double-click Setup.bat in the Debrief\dev folder first.", vbExclamation, "Debrief"
   WScript.Quit 1
 End If
 sh.CurrentDirectory = here

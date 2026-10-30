@@ -172,7 +172,7 @@ def modules(calls=None, fail=(), missing=(), notes_extra=True, shared=None):
             notes.shared_root = lambda cfg: (Path(cfg["team_cards_folder"]) / "Debrief track cards"
                                              if cfg.get("team_cards_folder") else None)
             notes.shared_for = lambda cfg, track, me: copy.deepcopy(shared if shared is not None else sample("shared"))
-            notes.author_from_cache = lambda cfg: {"slug": "swazi-williams", "name": "Swazi Williams"}
+            notes.author_from_cache = lambda cfg: {"slug": "alex-driver", "name": "Alex Driver"}
             notes.publish = lambda cfg, card, author: False
         yield calls
     finally:
@@ -539,7 +539,7 @@ def test_api_notes_adds_shared_and_sharing():
         with modules():
             j = json.loads(get("api/notes?track=Roval")[2])
             assert j["ok"] and j["shared"][0]["author"]["slug"] == "josh-spence"
-            assert j["sharing"] == {"on": True, "folder_ok": True, "author": {"slug": "swazi-williams", "name": "Swazi Williams"},
+            assert j["sharing"] == {"on": True, "folder_ok": True, "author": {"slug": "alex-driver", "name": "Alex Driver"},
                                     "folder": str(SHARED), "available": True}, j["sharing"]
         with modules(notes_extra=False):          # notes without 24-B's additions: no team notes, no error
             if not hasattr(notes, "shared_for"):
@@ -907,7 +907,7 @@ def test_window_team_notes_copy_into_mine():
                                 " txt: document.getElementById('cardTeamList').textContent,"
                                 " share: document.getElementById('cardShareNote').textContent})")
                 assert t["who"].startswith("Josh Spence") and t["imgs"] == 0 and "<img src=x" in t["txt"], t
-                assert "as Swazi Williams" in t["share"], t
+                assert "as Alex Driver" in t["share"], t
                 pg.click("#cardTeamList button[data-copy=lap1]")
                 assert pg.evaluate("() => document.getElementById('c_lap1').value") == "Hold the outside into T1"
                 pg.click("#cardTeamList button[data-copy=lap1]")       # twice: not duplicated

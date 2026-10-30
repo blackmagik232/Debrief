@@ -323,7 +323,7 @@ def test_marker_and_script_text_in_notes_never_breaks_pages():
         d.mkdir(parents=True)
         data["combo_ids"] = {"track_id": 468, "car_id": 190}
         data["result"] = {"finish_pos": 5, "field_size": 20, "notes": NASTY}
-        data["meta"]["driver"] = "Swazi " + NASTY
+        data["meta"]["driver"] = "Alex " + NASTY
         review_page = report.write(d, data)
         goals.save_goal(f, {"track": ROVAL, "car": GT4, "target_s": 83.0, "note": NASTY})
         lib_page = library.rebuild(f)

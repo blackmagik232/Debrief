@@ -62,7 +62,7 @@ def in_week(kw, hours=30):
 
 def default_laps(kw):
     d = in_week(kw)
-    return [lap("jordan-x", 98.412, day=d), lap("swazi", 98.871, day=d), lap("sam-y", 99.5, day=d)]
+    return [lap("jordan-x", 98.412, day=d), lap("alex", 98.871, day=d), lap("sam-y", 99.5, day=d)]
 
 
 class FakeApi:
@@ -76,12 +76,12 @@ class FakeApi:
         self.me_saved = me_saved
 
     def peek(self, key):
-        return {"slug": "swazi", "firstName": "Swazi", "lastName": "Williams"} if key == "me" and self.me_saved else None
+        return {"slug": "alex", "firstName": "Alex", "lastName": "Driver"} if key == "me" and self.me_saved else None
 
     def me(self):
         self.calls.append(("me", {}))
         self.requests_made += 1
-        return {"slug": "swazi"}
+        return {"slug": "alex"}
 
     def cached_items(self, name):
         return {"tracks": TRACKS, "cars": CARS}.get(name, [])
@@ -147,7 +147,7 @@ def test_one_series_one_request_with_the_spec_params():
     assert snap and snap["requests"] == 1 and not snap["final"] and snap["end"] == "2026-11-04"
     assert [r["key"] for r in snap["board"]] == ["jordan-x", "me", "sam-y"]
     me = snap["board"][1]
-    assert me["name"] == "Swazi Williams" and me["is_me"] and me["gap"] == round(98.871 - 98.412, 3) and me["gap_pct"] > 0 and me["class"] == "MX-5"
+    assert me["name"] == "Alex Driver" and me["is_me"] and me["gap"] == round(98.871 - 98.412, 3) and me["gap_pct"] > 0 and me["class"] == "MX-5"
 
 
 def test_partial_best_costs_exactly_two_and_never_enters_the_board():
@@ -157,7 +157,7 @@ def test_partial_best_costs_exactly_two_and_never_enters_the_board():
         if kw["group"] == "none":
             return [lap("jordan-x", 11.02), lap("jordan-x", 98.6), lap("tyler-q", 99.9, pitIn=True),
                     lap("tyler-q", 99.1), lap("sam-y", 97.0, clean=False)]
-        return [lap("jordan-x", 11.02), lap("swazi", 98.871), lap("tyler-q", 6.0, incomplete=True),
+        return [lap("jordan-x", 11.02), lap("alex", 98.871), lap("tyler-q", 6.0, incomplete=True),
                 lap("sam-y", 97.0, clean=False), lap("sam-y", 99.4)]
     cfg, api = lib(), FakeApi(laps)
     sched = make_sched([MX5(first_week=7)])
@@ -177,7 +177,7 @@ def test_laps_outside_the_race_week_never_count():
         old = lap("jordan-x", 97.0, day="2026-10-27T23:59:00Z")      # the day before week 7
         if kw["group"] == "none":
             return [old, lap("jordan-x", 98.9)]
-        return [old, lap("swazi", 98.871)]
+        return [old, lap("alex", 98.871)]
     cfg, api = lib(), FakeApi(laps)
     sched = make_sched([MX5(first_week=7)])
     leaderboards.refresh(api, cfg, sched, mine(sched), log=lambda m: None)
@@ -258,7 +258,7 @@ def test_hard_budget_never_more_than_two_per_series_week():
 
     def laps(kw):   # every answer has a partial "best": the worst case
         d = in_week(kw)
-        return [lap("jordan-x", 9.0, day=d), lap("swazi", 98.871, day=d), lap("jordan-x", 98.5, day=d)]
+        return [lap("jordan-x", 9.0, day=d), lap("alex", 98.871, day=d), lap("jordan-x", 98.5, day=d)]
     cfg, api = lib(), FakeApi(laps)
     sched = make_sched([make_series(f"S{i}", ["Global Mazda MX-5 Cup"]) for i in range(10)])
     res = leaderboards.refresh(api, cfg, sched, mine(sched), force_old=True, log=lambda m: None)
@@ -299,7 +299,7 @@ def test_multiclass_positions_within_class_and_all_car_ids():
 
     def laps(kw):
         return [lap("alex-p", 126.512, car=170), lap("jordan-x", 127.204, car=170),
-                lap("swazi", 136.903, car=180), lap("sam-y", 137.48, car=190), lap("kim-z", 137.1, car=180)]
+                lap("alex", 136.903, car=180), lap("sam-y", 137.48, car=190), lap("kim-z", 137.1, car=180)]
     cfg, api = lib(), FakeApi(laps)
     imsa = make_series("IMSA SportsCar Championship", ["Porsche 963 GTP", "BMW M4 GT3 EVO", "Ferrari 296 GT3"],
                        track_id=18, first_week=7)
@@ -310,7 +310,7 @@ def test_multiclass_positions_within_class_and_all_car_ids():
     snap = leaderboards.load_snapshot(cfg["library_folder"], "2026-season-4", imsa["id"], 7)
     rows = {r["key"]: r for r in snap["board"]}
     assert snap["multiclass"] is True
-    assert [rows[k]["pos"] for k in ("alex-p", "jordan-x", "swazi" if "swazi" in rows else "me")] == [1, 2, 3]
+    assert [rows[k]["pos"] for k in ("alex-p", "jordan-x", "alex" if "alex" in rows else "me")] == [1, 2, 3]
     me = rows["me"]
     assert me["class"] == "GT3" and me["class_pos"] == 1 and me["gap"] == 0.0 and me["gap_pct"] == 0.0
     assert rows["kim-z"]["class_pos"] == 2 and abs(rows["kim-z"]["gap"] - round(137.1 - 136.903, 3)) < 1e-9
@@ -377,8 +377,8 @@ def test_fixture_shapes_match_the_code():
 
     def laps(kw):
         if kw["cars"] == [67]:
-            return [lap("jordan-x", 98.412), lap("swazi", 98.871), lap("sam-y", 99.5)]
-        return [lap("alex-p", 126.512, car=170), lap("swazi", 136.903, car=180), lap("sam-y", 137.48, car=190)]
+            return [lap("jordan-x", 98.412), lap("alex", 98.871), lap("sam-y", 99.5)]
+        return [lap("alex-p", 126.512, car=170), lap("alex", 136.903, car=180), lap("sam-y", 137.48, car=190)]
     cfg, api = lib(), FakeApi(laps)
     sched = make_sched([MX5(first_week=7), make_series("IMSA SportsCar Championship",
                                                         ["Porsche 963 GTP", "BMW M4 GT3 EVO", "Ferrari 296 GT3"],
@@ -409,7 +409,7 @@ def _team(corners, board=None, drivers=("me", "jordan-x", "sam-y", "fast-f")):
                       {"key": "sam-y", "t": 99.2}]
     return {"version": 1, "combos": [{"track": "Okayama", "car": "MX-5", "track_id": 51, "car_id": 67, "board": board,
                                       "kings": {"L": 3700.0, "drivers": list(drivers),
-                                                "names": {"me": "Swazi Williams", "jordan-x": "Jordan X",
+                                                "names": {"me": "Alex Driver", "jordan-x": "Jordan X",
                                                           "sam-y": "Sam Y", "fast-f": "Fast F"},
                                                 "corners": corners}}]}
 

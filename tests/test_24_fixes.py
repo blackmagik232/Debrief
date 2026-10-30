@@ -387,7 +387,7 @@ def _share_cfg():
     return base, team, victim, {"team_cards_folder": str(team), "share_my_cards": True}
 
 
-ME = {"slug": "swazi-williams", "name": "Swazi Williams"}
+ME = {"slug": "alex-driver", "name": "Alex Driver"}
 CARD = {"track": "Spa", "fields": {"lap1": "Tidy into La Source"}, "car_notes": {}}
 EMPTY = {"track": "Spa", "fields": {}, "car_notes": {}}
 
@@ -408,9 +408,9 @@ def test_m2_symlinked_track_folder_refused_on_write_and_delete():
         return
     _raises_oserror(lambda: notes.publish(cfg, CARD, ME))
     assert os.listdir(victim) == []
-    (victim / "swazi-williams.json").write_text("{}", encoding="utf-8")
+    (victim / "alex-driver.json").write_text("{}", encoding="utf-8")
     _raises_oserror(lambda: notes.publish(cfg, EMPTY, ME))
-    assert os.listdir(victim) == ["swazi-williams.json"]          # never deleted through the link
+    assert os.listdir(victim) == ["alex-driver.json"]          # never deleted through the link
 
 
 def test_m2_symlinked_root_and_file_refused():
@@ -425,12 +425,12 @@ def test_m2_symlinked_root_and_file_refused():
     d.mkdir(parents=True)
     outside = victim / "keep.json"
     outside.write_text('{"keep": 1}', encoding="utf-8")
-    if not _try_symlink(outside, d / "swazi-williams.json", is_dir=False):
+    if not _try_symlink(outside, d / "alex-driver.json", is_dir=False):
         return
     _raises_oserror(lambda: notes.publish(cfg, CARD, ME))
     _raises_oserror(lambda: notes.publish(cfg, EMPTY, ME))
     assert outside.read_text(encoding="utf-8") == '{"keep": 1}'
-    assert (d / "swazi-williams.json").is_symlink()
+    assert (d / "alex-driver.json").is_symlink()
 
 
 def test_m2_resolved_path_outside_root_refused():
@@ -438,7 +438,7 @@ def test_m2_resolved_path_outside_root_refused():
     base, team, victim, cfg = _share_cfg()
     root = team / notes.SHARED_DIR
     d = root / notes.track_key("Spa")
-    p = d / "swazi-williams.json"
+    p = d / "alex-driver.json"
     real = os.path.realpath
     try:
         os.path.realpath = lambda x, *a, **k: str(victim / "x") if str(x) == str(d) else real(x, *a, **k)
@@ -451,7 +451,7 @@ def test_m2_resolved_path_outside_root_refused():
 def test_m2_normal_publish_and_delete_still_work():
     base, team, victim, cfg = _share_cfg()
     assert notes.publish(cfg, CARD, ME) is True
-    p = team / notes.SHARED_DIR / notes.track_key("Spa") / "swazi-williams.json"
+    p = team / notes.SHARED_DIR / notes.track_key("Spa") / "alex-driver.json"
     assert json.loads(p.read_text(encoding="utf-8"))["fields"]["lap1"] == "Tidy into La Source"
     assert notes.publish(cfg, EMPTY, ME) is True and not p.exists()
     assert notes.publish(cfg, EMPTY, ME) is True                    # nothing there: still fine

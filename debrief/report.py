@@ -15,7 +15,7 @@ def _embed(obj) -> str:
             .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
 
 
-LAYOUT = "2.5.0"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
+LAYOUT = "2.6.0"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
 
 # Review-dict extras worked out on every write (so saved reviews get them when refresh_all re-renders them),
 # in this order, before insights.build (which reads them): (key, module, function). Each is guarded: a module
@@ -79,7 +79,8 @@ def write(out_dir: Path, data: dict, log=None) -> Path:
     except Exception:  # noqa: BLE001
         data.pop("insights", None)
     sanitize(data)   # never write NaN / Infinity into review.json or the page (2.3.0 verification L1)
-    html = fill((TPL / "review.html").read_text(encoding="utf-8"), {"/*DATA*/null": _embed(data)})
+    # the page gets D.brand (team names for the header); review.json itself doesn't keep it
+    html = fill((TPL / "review.html").read_text(encoding="utf-8"), {"/*DATA*/null": _embed(dict(data, brand=brand()))})
     # each file is written to a temp file and swapped in, so a crash or a forced close mid-write leaves
     # the old file whole (review.json is the only copy of an analysed review)
     atomic_write(out_dir / "review.json", json.dumps(data, allow_nan=False))
@@ -90,23 +91,8 @@ def write(out_dir: Path, data: dict, log=None) -> Path:
 
 def atomic_write(path: Path, text: str) -> None:
     """Write text to path via a temp file in the same folder + fsutil.replace (never a half-written file)."""
-    import os
-    import tempfile
     from . import fsutil
-    path = Path(path)
-    fd, tmp = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
-            f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
-        fsutil.replace(tmp, path)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    fsutil.atomic_write_text(path, text, fsync=True)
 
 
 def refresh_all(library_folder, log=None, should_stop=None, done=None, progress=None) -> int:
@@ -155,17 +141,44 @@ def refresh_all(library_folder, log=None, should_stop=None, done=None, progress=
         atomic_write(marker, LAYOUT)
     except OSError:
         pass
+    if n or done:   # the library page once, now that every review is in the new layout (also after a resumed run)
+        try:
+            from . import library
+            library.rebuild(lib)
+        except Exception as e:  # noqa: BLE001  (rebuilt again the next time it's opened)
+            if log:
+                log(f"  Couldn't update the library page: {e}")
     return n
 
 
 def render_library(rows: list, extra=None) -> str:
     """Library page with rows and extra (goals/season) embedded. Both markers are filled in one pass
-    over the template, so marker-like text inside the data is never substituted again."""
+    over the template, so marker-like text inside the data is never substituted again.
+    EXTRA.brand is the team identity (brand.as_dict()), added when extra is a dict or None."""
     tpl = (TPL / "library.html").read_text(encoding="utf-8")
+    if extra is None or isinstance(extra, dict):
+        extra = dict(extra or {}, brand=brand())
     return fill(tpl, {"/*ROWS*/[]": _embed(rows), "/*EXTRA*/null": _embed(extra)})
 
 
+BRAND_MARKER = "/*BRAND*/null"
+
+
+def brand() -> dict:
+    """debrief.brand.as_dict() (team names and links, no secrets): every page template gets it, as D.brand on
+    review pages, EXTRA.brand on the library page and, in any template, wherever /*BRAND*/null appears."""
+    try:
+        from . import brand as _brand
+        return _brand.as_dict()
+    except Exception:  # noqa: BLE001  (a page never fails over its header)
+        return {}
+
+
 def fill(tpl: str, values: dict) -> str:
-    """Replace each marker in the template exactly once, in a single pass (data never re-scanned)."""
+    """Replace each marker in the template exactly once, in a single pass (data never re-scanned).
+    A /*BRAND*/null marker in the template is filled with brand() unless the caller gives its own value."""
     import re
+    values = dict(values)
+    if BRAND_MARKER not in values and BRAND_MARKER in tpl:
+        values[BRAND_MARKER] = _embed(brand())
     return re.sub("|".join(re.escape(k) for k in values), lambda m: values.pop(m.group(0), m.group(0)), tpl)

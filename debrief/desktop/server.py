@@ -1145,10 +1145,9 @@ class Handler(BaseHTTPRequestHandler):
         teams = api.cached_items("teams") if api else None
         used = 0
         if api and self._fetch_allowed(q):
-            try:
-                teams = api.teams(refresh=True)   # "Check again" must see a team you've just joined
-            except TypeError:
-                teams = api.teams()
+            from .. import team as _team
+            # "Check again" must see a team you've just joined
+            teams = api.teams(refresh=True) if _team.can_refresh_teams(api) else api.teams()
             used = api.requests_made
         out = None if teams is None else [{"slug": str(t.get("slug")), "name": str(t.get("name") or t.get("slug"))}
                                          for t in teams if isinstance(t, dict) and t.get("slug")]

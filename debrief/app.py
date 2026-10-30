@@ -500,6 +500,22 @@ def _no_race_msg(sessions) -> str:
     return NO_RACE_MSG + ("" if 1 in (sessions or []) else " " + PRACTICE_OFF_MSG)
 
 
+_STORE_PICK: dict = {}   # the synced session last_event_from_store picked (for the progress message)
+
+
+def _store_pick_text() -> str:
+    s = _STORE_PICK
+    kind = {1: "practice", 2: "qualifying", 3: "race"}.get(s.get("type"), "session")
+    when = ""
+    try:
+        t = datetime.fromisoformat(str(s.get("start")).replace("Z", "+00:00")).astimezone()
+        when = t.strftime(" on %a %d %b at %H:%M")
+    except (TypeError, ValueError):
+        pass
+    where = f" at {s['track']}" if s.get("track") else ""
+    return f"your {kind}{where}{when}"
+
+
 def _already_reviewed(library_folder, event, stype) -> bool:
     """A review folder for this event exists (folders end with "_" + the event's last 6 characters, plus
     _practice / _qualifying)."""
@@ -536,6 +552,8 @@ def last_event_from_store(api, sessions, max_age_s=STORE_FRESH_S, now=None, libr
                     return None   # same 30-day window as the search: the search then says so
                 if _already_reviewed(library_folder, s["event"], s.get("type")):
                     return None
+                _STORE_PICK.clear()
+                _STORE_PICK.update(s)
                 return s["event"], s["track_id"], s.get("car_id")
     except Exception:  # noqa: BLE001  (an odd store only means the normal search runs)
         import traceback
@@ -548,7 +566,8 @@ def find_last_event(api, sessions, cache_dir=None, library_folder=None):
     answers with no requests; otherwise the driving statistics plus up to 6 lap searches."""
     hit = last_event_from_store(api, sessions, library_folder=library_folder)
     if hit is not None:
-        say("  Newest session taken from your synced history (no Garage 61 requests).")
+        say(f"  Reviewing {_store_pick_text()}, the newest in your synced history (no Garage 61 requests). "
+            "Just finished a race that isn't this one? Give Garage 61 a few minutes, then sync and try again.")
         return hit
     combos = recent_combos(api, 30, cache_dir)
     if not combos:
@@ -682,7 +701,8 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     step("Saving the review and updating the library...", 0.95)
     # a practice or qualifying review of the same event gets its own folder, next to the race's
     out_dir = library.review_dir(cfg["library_folder"], laps, track_name, car_name,
-                                 suffix={1: "practice", 2: "qualifying"}.get(session_kind, ""))
+                                 suffix={1: "practice", 2: "qualifying"}.get(
+                                     session_kind if session_kind in (1, 2, 3) else session_type(laps[0]), ""))
     # personal-best check against earlier reviews of this track and car (no Garage 61 requests)
     try:
         data["pb"] = library.pb_for(cfg["library_folder"], data, exclude_dir=out_dir.name)

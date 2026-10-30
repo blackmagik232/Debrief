@@ -574,6 +574,36 @@ def test_real_client_teams_refresh_skips_the_day_cache():
     assert "refresh" in g61.Garage61.teams.__code__.co_varnames
 
 
+def test_practice_reviewed_from_last_race_gets_the_practice_suffix():
+    """2nd verifier M-b: "Review last race" with practice included named practice folders without the
+    _practice suffix, so the already-reviewed check missed them."""
+    src = (ROOT / "debrief" / "app.py").read_text(encoding="utf-8")
+    assert "session_kind if session_kind in (1, 2, 3) else session_type(laps[0])" in src
+    assert app.session_type({"sessionType": 1}) == 1 and app.session_type({"session_type": "practice"}) == 1
+
+
+def test_store_pick_message_names_the_session():
+    app._STORE_PICK.clear()
+    app._STORE_PICK.update({"type": 3, "track": "Spa", "start": "2026-10-30T18:40:00Z"})
+    t = app._store_pick_text()
+    assert t.startswith("your race at Spa on ") and ":" in t
+
+
+def test_teams_refresh_is_detected_by_signature_not_by_catching_type_errors():
+    class Old:
+        def teams(self):
+            return []
+
+    class Broken:
+        def teams(self, refresh=False):
+            raise TypeError("a real bug inside teams()")
+    assert team.can_refresh_teams(CountingApi()) and not team.can_refresh_teams(Old())
+    assert team.membership_for(Old(), None, QUIET)[0] == brand.NOT_MEMBER
+    seen = []
+    assert team.membership_for(Broken(), None, seen.append)[0] == brand.UNKNOWN   # raised and logged
+    assert seen
+
+
 if __name__ == "__main__":
     failed = 0
     tests = [(n, f) for n, f in globals().items() if n.startswith("test_") and callable(f)]

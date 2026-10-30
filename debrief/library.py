@@ -646,7 +646,8 @@ def _scan(folder) -> list:
                 # same size and a time stamp the drive can't tell apart (FAT/exFAT keep 2 s, some network
                 # shares worse), so it is read again next scan until it has settled
                 newest = max(key[0], (rkey or [0, 0])[0])
-                if __import__("time").time_ns() - newest < RACY_NS:
+                if 0 <= __import__("time").time_ns() - newest < RACY_NS:   # a future time stamp (clock skew)
+                    # is not racy: it would otherwise be re-read on every scan for as long as it stays ahead
                     e["racy"] = True
                 dirty = True
             new[name] = e

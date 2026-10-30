@@ -227,6 +227,15 @@ def head_to_heads(combos, my_key="me"):
 
 
 # ---------------------------------------------------------------- membership (2.6)
+def can_refresh_teams(api) -> bool:
+    """The client's teams() takes refresh= (the real one does; some stand-ins don't)."""
+    import inspect
+    try:
+        return "refresh" in inspect.signature(api.teams).parameters
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
 def membership_for(api, slug=None, log=print) -> tuple[str, list | None]:
     """(brand.MEMBER / NOT_MEMBER / UNKNOWN, the teams list or None) from api.teams(), which the client
     caches for a day. UNKNOWN when the list couldn't be loaded: callers then carry on as before."""
@@ -243,13 +252,11 @@ def membership_for(api, slug=None, log=print) -> tuple[str, list | None]:
         return brand.UNKNOWN, None
     teams = [t for t in teams if isinstance(t, dict)]
     status = brand.membership(teams, slug)
-    if status == brand.NOT_MEMBER and getattr(api, "teams", None) is not None:
+    if status == brand.NOT_MEMBER and can_refresh_teams(api):
         # the list is cached for a day: someone who just joined would keep seeing the join panel, so a
         # "not a member" answer is checked once more against Garage 61 (1 request) before it's believed
         try:
             fresh = api.teams(refresh=True)
-        except TypeError:   # a client without refresh (older stand-ins in tests)
-            fresh = None
         except Exception as e:  # noqa: BLE001
             try:
                 log(f"  Couldn't re-check your Garage 61 teams: {e}")

@@ -1,7 +1,7 @@
 """OPTIONAL iRacing results connector -- UNTESTED SCAFFOLD. Nothing in Debrief calls this by default.
 
 Why it exists: iRacing removed password login for its data API (December 2025). The data API now needs
-OAuth client credentials that iRacing issues on request to individual developers. If Swazi ever gets
+OAuth client credentials that iRacing issues on request to individual developers. If the owner ever gets
 credentials, this module is where official results (finish position, incidents, iRating/SR change)
 could be fetched instead of typing them in (see results.py, which this would feed).
 

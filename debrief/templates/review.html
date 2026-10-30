@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Race Review</title>
+<title>Midfield Menace · Race Review</title>
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="connect-src 'none'; object-src 'none'; base-uri 'none'">
 <script>try{const t=localStorage.getItem('debrief-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
@@ -641,6 +641,7 @@ if(!isObj(D.best)||typeof D.best.t!=='number'){const pool=D.laps.filter(l=>l.cle
 if(typeof D.median!=='number'){const ts=D.laps.map(l=>l.t).sort((a,b)=>a-b);D.median=ts.length?(ts.length%2?ts[(ts.length-1)/2]:(ts[ts.length/2-1]+ts[ts.length/2])/2):null}
 if(typeof D.trend_total!=='number')D.trend_total=0;
 D.sector_names=Array.isArray(D.sector_names)?D.sector_names:[];
+const BRAND=(D.brand&&typeof D.brand==='object')?D.brand:{};const TEAM_NAME=(typeof BRAND.team_name==='string'&&BRAND.team_name.trim())||'Midfield Menace';
 const M=D.meta,L=typeof D.L==='number'&&D.L>0?D.L:1000,STEP=typeof D.step==='number'&&D.step>0?D.step:10,bestKey='me'+D.best.n;
 const trOk=t=>isObj(t)&&Array.isArray(t.tt)&&t.tt.length>1&&Array.isArray(t.v);
 // drop traces that can't be drawn, so every key left in TR is safe to use
@@ -681,7 +682,7 @@ function shortTrack(t){
 const MAKES=['Mercedes-AMG','Aston Martin','Global Mazda','Ford','Porsche','BMW','Mercedes','Audi','Lamborghini','Ferrari','McLaren','Chevrolet','Toyota','Mazda','Honda','Hyundai','Acura','Cadillac','Ligier','Radical','Nissan','Lotus','Renault','Volkswagen','VW','Subaru','Kia','Dodge','Pontiac','Mini','Alfa Romeo'];
 function shortCar(c){c=String(c||'').trim();for(const mk of MAKES){if(c.toLowerCase().startsWith(mk.toLowerCase()+' ')){const r=c.slice(mk.length).trim();return r.length>=2?r:c}}return c}
 const trackShort=shortTrack(M.track),carShort=shortCar(M.car);
-document.title=trackShort+' · '+carShort;
+document.title=TEAM_NAME+' · '+trackShort+' · '+carShort;
 
 // ---------- tooltips
 let px=0,py=0;const tip=$('tip'),ro=$('readout');
@@ -1375,7 +1376,7 @@ async function drawShareCard(){const W=1200,H=630;const cv=document.createElemen
     if(lab==='BEST LAP'&&badge){x.font='400 15px '+MON;sp('2.5px');const lw=x.measureText(lab).width;x.font='700 14px '+MON;sp('1.5px');const tw=x.measureText(badge[0]).width+20;x.fillStyle=badge[1];rr(bx+lw+10,y0-9,tw,26,13);x.fill();x.fillStyle=C.bg;x.fillText(badge[0],bx+lw+20,y0+9);sp('0px')}});
   // footer
   x.fillStyle=C.ink;x.font='600 26px '+BOD;const drv=String(M.driver||'').trim();x.fillText(drv||'Driver',64,H-44);
-  x.fillStyle=C.muted;x.font='400 16px '+MON;sp('2px');x.textAlign='right';x.fillText('DEBRIEF · GARAGE 61 TELEMETRY',W-64,H-48);x.textAlign='left';sp('0px');
+  x.fillStyle=C.muted;x.font='400 16px '+MON;sp('2px');x.textAlign='right';x.fillText((TEAM_NAME+' · Debrief').toUpperCase(),W-64,H-48);x.textAlign='left';sp('0px');
   return cv}
 $('btnShare').onclick=async()=>{const b=$('btnShare');b.disabled=true;try{const cv=await drawShareCard();const name=(fileBase+'_'+trackShort+'_'+carShort).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'_share.png';
   await new Promise((res,rej)=>cv.toBlob(bl=>{if(!bl)return rej(new Error('no image'));saveBlob(name,bl);res()},'image/png'));toast('Saved '+name+' to your downloads')}catch(e){toast('Couldn’t make the share card in this window. Try opening the review in your browser.')}finally{b.disabled=false}};
@@ -1692,4 +1693,8 @@ new ResizeObserver(()=>{const w=document.body.clientWidth;if(Math.abs(w-lastW)<4
 })();
 
 </script>
+<script>/* 2.6: Ctrl+R / Ctrl+, inside the page do what they do in the Debrief window (only when shown inside it) */
+addEventListener('keydown',function(e){if(parent===window||!(e.ctrlKey||e.metaKey)||e.altKey)return;var k=String(e.key).toLowerCase();
+  var m=k==='r'&&!e.shiftKey?'review':(k===','||e.code==='Comma')?'settings':null;if(!m)return;e.preventDefault();
+  try{parent.postMessage({type:'debrief-key',key:m},'*')}catch(_){}});</script>
 </body></html>

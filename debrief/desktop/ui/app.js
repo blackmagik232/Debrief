@@ -23,16 +23,39 @@ function parseLap(s){s=String(s||'').trim().replace(',','.');let m=/^(\d{1,2}):(
 /* ---------- connection lost */
 let lost=false;
 function connectionLost(){if(lost)return;lost=true;banner('Debrief has stopped. Close this window and open Debrief again.',true,0)}
-function banner(msg,bad,ms){const b=$('banner');b.textContent=msg;b.className='banner'+(bad?' bad':'');b.hidden=false;clearTimeout(banner.t);if(ms!==0)banner.t=setTimeout(()=>b.hidden=true,ms||5000)}
+// 2.6: error banners stay until the close button is pressed; other banners still fade after a few seconds
+function banner(msg,bad,ms){const b=$('banner');$('bannerText').textContent=msg;b.className='banner'+(bad?' bad':'');b.hidden=false;clearTimeout(banner.t);
+  if(ms!==0&&!bad)banner.t=setTimeout(()=>b.hidden=true,ms||5000)}
+$('bannerClose').addEventListener('click',()=>{clearTimeout(banner.t);$('banner').hidden=true});
 
 /* ---------- heartbeat (a worker keeps ticking while the window is minimised) */
 const PING=BASE+'api/ping';
 function ping(){fetch(PING,{method:'POST',headers:{'X-Debrief':'1'}}).catch(()=>{})}
-ping();setInterval(ping,5000);
+// 2.6: the worker is the only 5 s ping (it keeps ticking while the window is minimised); the main thread
+// takes over only if the worker can't be made
+ping();
 try{const src='setInterval(function(){fetch('+JSON.stringify(PING)+',{method:"POST",headers:{"X-Debrief":"1"}}).catch(function(){})},5000)';
-  new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})))}catch(e){}
+  new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})))}catch(e){setInterval(ping,5000)}
 document.addEventListener('visibilitychange',ping);
 addEventListener('pagehide',()=>{try{fetch(BASE+'api/bye',{method:'POST',headers:{'X-Debrief':'1'},keepalive:true})}catch(e){}});
+
+/* ---------- brand: the team name and join copy come from /api/brand (debrief/brand.py) */
+const BRAND0={app_name:'Debrief',team_slug:'midfield-menace',team_name:'Midfield Menace',team_short:'MM',team_url:'https://garage61.net',
+  join_title:'Join Midfield Menace on Garage 61',join_text:'Team comparisons need you on the Midfield Menace team on Garage 61. Ask a teammate to invite you, then press Refresh. Your own reviews, practice and prep work without it.'};
+let brand=Object.assign({},BRAND0);
+const appTitle=()=>(brand.app_name||'Debrief')+' · '+(brand.team_name||BRAND0.team_name);
+function applyBrand(){
+  document.querySelectorAll('.brandName').forEach(e=>{e.textContent=brand.team_name});
+  document.querySelectorAll('.joinTitle').forEach(e=>{e.textContent=brand.join_title});
+  document.querySelectorAll('.joinText').forEach(e=>{e.textContent=brand.join_text});
+  document.querySelectorAll('a.joinLink').forEach(e=>{if(/^https:\/\//.test(brand.team_url||''))e.href=brand.team_url});
+  $('brandTeam').textContent=brand.team_name;$('teamTitle').textContent=teamName||brand.team_name;
+  if(!FRAME_VIEWS.includes(current.view))document.title=appTitle()}
+async function loadBrand(){try{const j=await api('brand');
+    if(j&&typeof j==='object')Object.keys(BRAND0).forEach(k=>{if(typeof j[k]==='string'&&j[k].trim())brand[k]=j[k].trim()})}catch(e){}
+  if(!teamSlug)teamSlug=brand.team_slug;applyBrand();return brand}
+// Team, Prepare and the weekly leaderboards show a join panel when Garage 61 says you aren't on the team
+const notMember=j=>!!j&&typeof j==='object'&&(j.membership==='not_member'||(j.weekly&&typeof j.weekly==='object'&&j.weekly.membership==='not_member'));
 
 /* ---------- theme */
 const THEMES=['auto','light','dark'];
@@ -57,18 +80,26 @@ $('btnMenu').addEventListener('click',()=>{const on=!document.body.classList.con
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('navopen')){document.body.classList.remove('navopen');$('btnMenu').setAttribute('aria-expanded','false');$('btnMenu').focus()}});
 new MutationObserver(()=>$('btnMenu').setAttribute('aria-expanded',String(document.body.classList.contains('navopen')))).observe(document.body,{attributes:true,attributeFilter:['class']});
 
+/* ---------- keyboard: Ctrl+R = Review last race (not a reload), Ctrl+, = Settings */
+function shortcut(k){if(k==='review'){startReview();return true}if(k==='settings'){openSettings();return true}return false}
+document.addEventListener('keydown',e=>{if(!(e.ctrlKey||e.metaKey)||e.altKey)return;const k=e.key.toLowerCase();
+  if(k==='r'&&!e.shiftKey){e.preventDefault();shortcut('review')}
+  else if(k===','||e.code==='Comma'){e.preventDefault();shortcut('settings')}});
+
 /* ---------- views */
 const VIEWS=['vFrame','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam','vSessions'];
 const FRAME_VIEWS=['review','library','season','skills','prepPage','teamPage'];
 const NAV_OF={weekly:'team',sync:'sessions',sessions:'sessions',library:'library',season:'season',skills:'skills',goals:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings'};
 let current={view:null,dir:null};
-function show(view){VIEWS.forEach(v=>$(v).hidden=(v!==view))}
+function show(view){VIEWS.forEach(v=>$(v).hidden=(v!==view));if(view!=='vFrame')document.title=appTitle()}
+const LIB_TABS=['library','season','skills'];
 function markNav(){
   const nav=NAV_OF[current.view]||null;
   document.querySelectorAll('.navbtn').forEach(b=>{const on=b.dataset.nav===nav;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+  $('libGroup').classList.toggle('on',LIB_TABS.includes(nav));
   document.querySelectorAll('.rev').forEach(b=>{const on=current.view==='review'&&b.dataset.dir===current.dir;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
   document.body.classList.remove('navopen');
-  frameBar();
+  frameBar();lastRaceCard();
 }
 // where the frame really is: links inside it (library -> review) don't change f.src, and the sandboxed page
 // can't be looked into, so its bridge script tells us (see the 'message' listener below)
@@ -91,6 +122,12 @@ function openReview(dir){current={view:'review',dir};openFrame('lib/reviews/'+en
 function openLibrary(){
   if(!libFolder){current={view:'welcome'};welcome();return}
   current={view:'library',dir:null};openFrame('lib/index.html');markNav()}
+// 2.6: the newest review, pinned above the Library page so the last race is always one click away
+function newestReview(){const all=[];groupsCache.forEach(g=>(g.reviews||[]).forEach(r=>all.push(Object.assign({track:g.track,car:g.car},r))));
+  all.sort((a,b)=>String(b.started_at||b.date||'').localeCompare(String(a.started_at||a.date||''))||String(b.dir).localeCompare(String(a.dir)));return all[0]||null}
+function lastRaceCard(){const box=$('lastRace');const r=current.view==='library'?newestReview():null;box.hidden=!r;if(!r)return;
+  $('lrWhat').textContent=r.track+' · '+r.car;$('lrWhen').textContent=[r.session,fmtDate(r.date),r.best?'best '+r.best:''].filter(Boolean).join(' · ');
+  $('lrOpen').onclick=()=>openReview(r.dir)}
 function openSeason(){
   if(!libFolder){current={view:'welcome'};welcome();return}
   current={view:'season',dir:null};openFrame('lib/index.html#season');markNav()}
@@ -157,6 +194,7 @@ async function loadPages(){try{const j=await api('pages');if(j.ok)pages=j}catch(
 // the page in the frame says where it is (and its title) through the bridge; trust only our own frame
 // (check e.source, not e.origin: a sandboxed page's origin is "null")
 addEventListener('message',e=>{const f=$('frame');if(!f||e.source!==f.contentWindow)return;const m=e.data;
+  if(m&&typeof m==='object'&&m.type==='debrief-key'&&(m.key==='review'||m.key==='settings')){shortcut(m.key);return}
   if(!m||typeof m!=='object'||m.type!=='debrief-frame'||typeof m.href!=='string')return;
   frameHref=m.href;themeFrame(getTheme());framePlace(noQuery(m.href),typeof m.title==='string'?m.title:'')});
 $('frame').addEventListener('load',()=>themeFrame(getTheme()));
@@ -169,7 +207,7 @@ function framePlace(path,title){
     if(current.view==='skills'&&was!=='skills')loadProfile()}
   else if(/^lib\/prep\/[^/]+\.html$/.test(rel))current={view:'prepPage',dir:null,page:decodeURIComponent(rel.slice(4))};
   else if(rel==='lib/team/index.html'){if(current.view!=='teamPage')loadWeekly();current={view:'teamPage',dir:null,page:'team/index.html'}}
-  if(title)document.title=title==='Debrief Library'?'Debrief':'Debrief · '+title;
+  if(title)document.title=/(^Debrief Library$|· Library$)/.test(title)?appTitle():'Debrief · '+title;
   // (links that leave the app are opened in the normal browser by the bridge itself)
   markNav();
 }
@@ -178,7 +216,7 @@ document.addEventListener('click',e=>{
   const n=e.target.closest('[data-nav]');
   if(n){({sessions:openSessions,library:openLibrary,season:openSeason,skills:openSkills,goals:openGoals,prep:openPrep,team:openTeam,settings:openSettings})[n.dataset.nav]();return}
   const a=e.target.closest('[data-act]');if(!a)return;
-  if(a.dataset.act==='review')startJob('review');
+  if(a.dataset.act==='review')startReview();
   else if(a.dataset.act==='sync')startSync(false);
   else if(a.dataset.act==='team')startJob('team');
   else if(a.dataset.act==='retry'&&lastStart)startJob(lastStart.kind,lastStart.body);
@@ -198,7 +236,7 @@ async function loadReviews(){
       b.title=(r.session||'Review')+' · '+r.laps+' laps';b.setAttribute('aria-label',(r.session||'Review')+', '+fmtDate(r.date)+', best '+(r.best||'–'));
       b.append(h('span','d',fmtDate(r.date)),h('span','b',r.best));b.addEventListener('click',()=>openReview(r.dir));li.append(b);ul.append(li)});
     box.append(ul);host.append(box)});
-  if(!n)host.append(h('p','revempty',libFolder?'Your reviews will appear here.':'Set up Settings first.'));
+  if(!n)host.append(h('p','revempty',libFolder?'Your reviews will appear here.':'Finish setup on the welcome screen first.'));
   $('revcount').textContent=n?String(n):'';
   markNav();return groupsCache;
 }
@@ -228,8 +266,11 @@ async function startCheck(){
   $('gChkOut').hidden=true;$('gChkOut').replaceChildren();$('gChkProg').hidden=false;$('gChkBar').firstElementChild.style.width='4%';
   $('btnCheck').disabled=true;setMsg('chkMsg','Checking...');poll();
 }
-$('btnCheck').addEventListener('click',startCheck);
-$('btnReview').addEventListener('click',()=>startJob('review'));
+// 2.6: Review last race waits for a saved token (aria-disabled, so the tooltip still shows why)
+function reviewGate(){const b=$('btnReview');const off=!tokenSaved;b.setAttribute('aria-disabled',String(off));
+  b.title=off?'Finish step 3 first.':'Review last race (Ctrl+R)'}
+function startReview(){if(!tokenSaved){current={view:'welcome'};welcome();return}startJob('review')}
+$('btnReview').addEventListener('click',startReview);
 
 function resetJobView(kind){
   if(kind==='review'&&!(lastJob&&lastJob.title))TITLES.review=TITLES0.review;   // a plain "Review last race" never keeps an earlier job's title
@@ -296,7 +337,9 @@ function render(s){
       $('btnCheck').disabled=false;$('chkProg').hidden=true;
       const out=$('chkOut');out.replaceChildren();
       const lines=s.state==='done'?(s.result&&s.result.lines)||[]:(s.steps||[]);
-      lines.forEach(t=>out.append(h('li',/NOT available/.test(t)?'bad':null,t)));
+      // a line can be a string, or {text, level} (level "info" = neutral, e.g. telemetry that needs Pro)
+      lines.forEach(t=>{const o=t&&typeof t==='object';const tx=o?String(t.text||t.line||''):String(t);const lv=o?t.level:null;
+        out.append(h('li',lv==='info'?'info':(lv==='error'||lv==='bad'||(!lv&&/NOT available/.test(tx)))?'bad':null,tx))});
       if(s.state==='error')out.append(h('li','bad',s.error));
       out.hidden=!out.children.length;
       setMsg('chkMsg',s.state==='done'?'Connection works.':'Connection check failed.',s.state==='done'?'ok':'bad');
@@ -304,7 +347,9 @@ function render(s){
       const gout=$('gChkOut');gout.replaceChildren(...Array.from(out.children).map(li=>li.cloneNode(true)));
       gout.hidden=!gout.children.length;$('gChkProg').hidden=true;
       checkOk=s.state==='done';
-      setMsg('gTokMsg',checkOk?'Connection works. You\'re ready for step 4.':'The connection check failed. Check the token and paste it again.',checkOk?'ok':'bad');
+      const e401=/\b401\b|rejected the token/i.test(String(s.error||''));
+      setMsg('gTokMsg',checkOk?'Connection works. Debrief is downloading your history in the background. You can review your last race right now.':
+        (e401?'Garage 61 didn\'t accept that token. Check the token and paste it again.':(s.error||'The connection check failed.')),checkOk?'ok':'bad');
       updateGuide();
       if(s.state==='done'){loadSettings();loadTeams(false);loadSessions().then(()=>startSync(true))}
     }
@@ -317,7 +362,8 @@ function showWarnings(id,list,lead){const ul=$(id);if(!ul)return;ul.replaceChild
   if(lead)ul.append(h('li','wlead',lead));w.slice(0,8).forEach(t=>ul.append(h('li',null,t)));if(w.length>8)ul.append(h('li',null,'and '+(w.length-8)+' more.'))}
 
 /* ---------- Sessions + history sync */
-let sessData=null,sessFilter='all',sessShown=60;
+let sessData=null,sessFilter='all';
+const SESS_PAGE=60;   // 2.6: the server pages the list (offset/limit, total); Show more asks for the next page
 const KIND={1:'practice',2:'qualifying',3:'race'};
 function ago(iso){const t=Date.parse(iso||'');if(!isFinite(t))return '';const m=Math.round((Date.now()-t)/60000);
   if(m<1)return 'just now';if(m<60)return m+' min ago';const h=Math.round(m/60);if(h<24)return h+' hour'+(h===1?'':'s')+' ago';
@@ -333,8 +379,20 @@ function renderStrip(sum,job){const el=$('syncStrip');if(!tokenSaved){el.hidden=
   el.title=w.length?'Last sync: '+w.length+' warning'+(w.length===1?'':'s')+'\n'+w.slice(0,5).join('\n')+(w.length>5?'\n...':''):'Open Sessions';
   $('syncText').textContent=busy?'Syncing... '+Math.round((job.frac||0)*100)+'%':syncLine(sum)+(w.length?' · '+w.length+' warning'+(w.length===1?'':'s'):'');
   $('syncBar').style.width=busy?Math.round((job.frac||0)*100)+'%':'0'}
-async function loadSessions(){let j;try{j=await api('sessions')}catch(e){connectionLost();return null}
-  if(j&&j.ok)sessData=j;renderStrip(sessData&&sessData.summary,lastJob);return sessData}
+const sessTotal=j=>j&&ok(j.total)?j.total:((j&&j.sessions)||[]).length;
+// first page again (after a sync, or opening the page); keeps as many rows as were already shown
+async function loadSessions(){const n=Math.max(SESS_PAGE,sessData&&sessData.sessions?sessData.sessions.length:0);
+  let j;try{j=await api('sessions?offset=0&limit='+n)}catch(e){connectionLost();return null}
+  if(j&&j.ok){if(!Array.isArray(j.sessions))j.sessions=[];sessData=j}renderStrip(sessData&&sessData.summary,lastJob);return sessData}
+async function moreSessions(){if(!sessData)return;const have=sessData.sessions.length;$('sessMore').disabled=true;
+  let j;try{j=await api('sessions?offset='+have+'&limit='+SESS_PAGE)}catch(e){$('sessMore').disabled=false;connectionLost();return}
+  $('sessMore').disabled=false;if(!j||!j.ok)return;
+  const seen=new Set(sessData.sessions.map(x=>x.key));
+  sessData.sessions=sessData.sessions.concat((j.sessions||[]).filter(x=>!seen.has(x.key)));
+  if(ok(j.total))sessData.total=j.total;if(j.summary)sessData.summary=j.summary;
+  // an old server answers every session at once (no total): nothing more to ask for
+  if(!ok(j.total))sessData.total=sessData.sessions.length;
+  renderSessions()}
 function renderSessions(){
   const j=sessData||{},sum=j.summary,busy=lastJob&&lastJob.state==='running'&&lastJob.kind==='sync';
   if(j.token===false){$('sessSyncNote').textContent='Add your Garage 61 token in Settings first.';$('btnSync').disabled=true}
@@ -352,8 +410,8 @@ function renderSessions(){
   $('btnSyncStop').hidden=!busy;$('sessProg').hidden=!busy;$('sessNow').hidden=!busy;
   const host=$('sessList');host.replaceChildren();
   const all=(j.sessions||[]).filter(s=>sessFilter==='all'||String(s.type)===sessFilter);
-  if(!all.length)host.append(h('p','note',(j.sessions||[]).length?'No sessions of this kind yet.':(busy?'Your sessions will appear here when the sync finishes.':'No sessions yet. Click Sync now.')));
-  all.slice(0,sessShown).forEach(s=>{const row=h('div','item sess');const tx=h('div','itx');
+  if(!all.length)host.append(h('p','note',(j.sessions||[]).length?(sessTotal(j)>(j.sessions||[]).length?'None of this kind in the sessions loaded so far. Press Show more to look further back.':'No sessions of this kind yet.'):(busy?'Your sessions will appear here when the sync finishes.':'No sessions yet. Click Sync now.')));
+  all.forEach(s=>{const row=h('div','item sess');const tx=h('div','itx');
     const top=h('span','row');top.append(h('span','when',localWhen(s.start)),h('span','kind '+(KIND[s.type]||''),s.session||'Session'));
     tx.append(top,h('b',null,s.track),h('span','sub2',s.car));
     const line=h('span','sub2');line.append(document.createTextNode(s.laps+' lap'+(s.laps===1?'':'s')+' · best '),h('b','num',fmtT(s.best)));
@@ -367,7 +425,9 @@ function renderSessions(){
       if(what&&s.review)b.setAttribute('aria-label','Review '+what+' again');
       b.addEventListener('click',()=>startJob('review',{event:s.event,session_type:s.type,track_id:s.track_id,car_id:s.car_id}));acts.append(b)}
     row.append(tx,acts);host.append(row)});
-  $('sessMoreRow').hidden=all.length<=sessShown;
+  const loaded=(j.sessions||[]).length,total=sessTotal(j);
+  $('sessMoreRow').hidden=loaded>=total;
+  $('sessCount').textContent=total?'Showing '+loaded+' of '+total:'';
 }
 async function openSessions(){current={view:'sessions',dir:null};show('vSessions');markNav();
   await loadSessions();if(current.view==='sessions')renderSessions()}
@@ -393,8 +453,8 @@ async function startSync(auto){
   setMsg('sessMsg','');lastJob={state:'running',kind:'sync',id:r.id,frac:0};renderSync(lastJob);poll()}
 $('btnSync').addEventListener('click',()=>startSync(false));
 $('btnSyncStop').addEventListener('click',async()=>{try{await post('sync-stop')}catch(e){}setMsg('sessMsg','Pausing...')});
-$('sessMore').addEventListener('click',()=>{sessShown+=120;renderSessions()});
-document.querySelectorAll('#sessFilter [data-f]').forEach(b=>b.addEventListener('click',()=>{sessFilter=b.dataset.f;sessShown=60;
+$('sessMore').addEventListener('click',moreSessions);
+document.querySelectorAll('#sessFilter [data-f]').forEach(b=>b.addEventListener('click',()=>{sessFilter=b.dataset.f;
   document.querySelectorAll('#sessFilter [data-f]').forEach(x=>{x.setAttribute('aria-checked',String(x===b));x.tabIndex=x===b?0:-1});renderSessions()}));
 document.querySelectorAll('#sessFilter [data-f]').forEach(x=>{const on=x.dataset.f===sessFilter;x.setAttribute('aria-checked',String(on));x.tabIndex=on?0:-1});
 setInterval(()=>{if(!(lastJob&&lastJob.state==='running'))renderStrip(sessData&&sessData.summary,lastJob)},60000);
@@ -420,7 +480,7 @@ async function loadPrepare(render){let j;try{j=await api('prepare')}catch(e){con
   if(!j.ok){setMsg('schMsg',j.error,'bad');return null}
   prepData=j;if(render!==false)renderPrepare();return j}
 function schBusy(b){$('btnSchDl').disabled=b;$('btnSchLoad').disabled=b}
-function renderPrepare(){const j=prepData;if(!j)return;const sc=j.schedule;
+function renderPrepare(){const j=prepData;if(!j)return;$('prepJoin').hidden=!notMember(j);const sc=j.schedule;
   const pill=$('schPill');
   if(!sc){pill.textContent='Not loaded';pill.className='pill no';
     $('schNote').textContent='Load iRacing\'s official season schedule to see what your series are racing. Debrief reads the PDF on this PC and never shares it.'}
@@ -830,7 +890,7 @@ function weeklyText(j){
   if(inc.length)t+=' That includes '+inc.join(' and ')+'.';
   if(mx>n)t+=' At most '+mx+'.';
   return t}
-function renderWeekly(){const j=weeklyInfo;const t=weeklyText(j);$('weeklyNote').textContent=t;$('fbWeekly').title=t;
+function renderWeekly(){const j=weeklyInfo;teamJoinPanel();const t=weeklyText(j);$('weeklyNote').textContent=t;$('fbWeekly').title=t;
   const rows=weeklyRows(j);const can=!!(j&&j.ok&&j.available&&j.schedule&&j.token!==false&&rows.length);
   $('btnWeekly').disabled=!can;$('fbWeekly').disabled=!can;
   const pill=$('weeklyPill');pill.hidden=!rows.length;pill.textContent=rows.length+' series';pill.className='pill'+(can?' ok':'');
@@ -947,7 +1007,7 @@ $('resDelete').addEventListener('click',async()=>{const b=$('resDelete');const d
 /* ---------- settings */
 function setMsg(id,t,cls){const e=$(id);e.textContent=t||'';e.className='msg'+(cls?' '+cls:'')}
 function fillSettings(v){
-  tokenSaved=!!v.token_saved;
+  tokenSaved=!!v.token_saved;reviewGate();
   firstName=typeof v.first_name==='string'&&v.first_name?v.first_name:null;installed=!!v.installed;greet();
   $('aboutVersion').textContent='Debrief '+(v.version||'');
   $('aboutText').textContent=(installed?'Installed app. ':'Running from source. ')+'Your settings, the Garage 61 data Debrief has saved, and its log (debrief.log) are in this folder:';
@@ -998,30 +1058,42 @@ $('discordClear').addEventListener('click',async()=>{const b=$('discordClear');
   let r;try{r=await post('settings',{clear_discord:true})}catch(e){connectionLost();return}
   if(!r.ok){setMsg('discordMsg',r.error,'bad');return}
   b.dataset.armed='';b.textContent='Remove';fillSettings(r.settings);setMsg('discordMsg','Removed.','ok')});
-let teamSlug='midfield-menace';
+let teamSlug=null;   // 2.6: from /api/brand (Midfield Menace), or settings.toml's team_slug override
 async function loadSettings(){try{fillSettings(await api('settings'))}catch(e){connectionLost()}}
+// Settings > Team is a read-only status: Midfield Menace, member or not. The override is under Advanced.
+let teamMember='unknown',teamName=null;
+function teamJoinPanel(){const isBrand=!teamSlug||String(teamSlug).toLowerCase()===String(brand.team_slug).toLowerCase();
+  $('teamJoin').hidden=!(notMember(weeklyInfo)||(teamMember==='not_member'&&isBrand))}
 async function loadTeams(fetchIt){let j;try{j=await api('teams'+(fetchIt?'?fetch=1':''))}catch(e){connectionLost();return}
   if(!j.ok){setMsg('teamSetMsg',j.error,'bad');return}
-  teamSlug=j.team_slug||teamSlug;const sel=$('teamSel');sel.replaceChildren();
-  const teams=j.teams;const have=Array.isArray(teams);
-  if(have){teams.forEach(t=>{const o=h('option',null,t.name);o.value=t.slug;sel.append(o)});
-    if(!teams.some(t=>t.slug===teamSlug)){const o=h('option',null,teamSlug+' (not on your account)');o.value=teamSlug;sel.prepend(o)}
-    sel.value=teamSlug}
-  const cur=have&&teams.find(t=>t.slug===teamSlug);
-  $('teamStatus').textContent=cur?cur.name:teamSlug;$('teamStatus').className='pill'+(cur?' ok':'');
-  $('teamSelWrap').hidden=!have||!teams.length;$('teamSave').hidden=!have||!teams.length;
-  $('btnTeams').hidden=have||!j.token;
-  if(!j.token)setMsg('teamSetMsg','Save your Garage 61 token first to pick a team.');
-  else if(!have)setMsg('teamSetMsg','Your team list isn\'t saved on this PC yet. Loading it uses 1 Garage 61 request.');
-  else if(!teams.length)setMsg('teamSetMsg','Garage 61 doesn\'t list any teams for your account.');
+  teamSlug=j.team_slug||teamSlug||brand.team_slug;
+  const teams=Array.isArray(j.teams)?j.teams.filter(t=>t&&typeof t.slug==='string'):null;
+  const cur=teams&&teams.find(t=>t.slug.toLowerCase()===String(teamSlug).toLowerCase());
+  teamMember=typeof j.membership==='string'?j.membership:(teams?(cur?'member':'not_member'):'unknown');
+  const isBrand=String(teamSlug).toLowerCase()===String(brand.team_slug).toLowerCase();
+  const name=(j.team&&typeof j.team.name==='string'&&j.team.name&&j.team.name.toLowerCase()!==String(teamSlug).toLowerCase()&&j.team.name)||(cur&&cur.name)||(isBrand?brand.team_name:teamSlug);
+  teamName=name;$('teamTitle').textContent=name;teamJoinPanel();
+  const state=teamMember==='member'?'member':teamMember==='not_member'?'not on the team yet (join on Garage 61)':'not checked yet';
+  $('teamLine').textContent='Team: '+name+' — '+state;
+  const st=$('teamStatus');st.textContent=teamMember==='member'?'Member':teamMember==='not_member'?'Not on the team yet':name;
+  st.className='pill'+(teamMember==='member'?' ok':teamMember==='not_member'?' no':'');
+  const jn=$('teamJoinNote');jn.hidden=teamMember!=='not_member'||!isBrand;jn.textContent=brand.join_text;
+  if(document.activeElement!==$('teamSlugIn'))$('teamSlugIn').value=teamSlug||'';
+  const dl=$('dlTeams');dl.replaceChildren(...(teams||[]).map(t=>{const o=h('option');o.value=t.slug;o.label=t.name;return o}));
+  $('teamReset').hidden=isBrand;
+  $('btnTeams').hidden=!j.token;$('btnTeams').textContent=teams?'Check again':'Check my teams';
+  if(!j.token)setMsg('teamSetMsg','Save your Garage 61 token first.');
   else if(fetchIt)setMsg('teamSetMsg','Teams loaded ('+(j.requests||0)+' Garage 61 request'+(j.requests===1?'':'s')+').','ok');
+  else if(!teams)setMsg('teamSetMsg','Checking uses 1 Garage 61 request.');
   else setMsg('teamSetMsg','');
 }
 $('btnTeams').addEventListener('click',()=>{setMsg('teamSetMsg','Loading...');loadTeams(true)});
-$('fTeam').addEventListener('submit',async e=>{e.preventDefault();const v=$('teamSel').value;if(!v)return;setMsg('teamSetMsg','Saving...');let r;
+async function saveTeam(v){setMsg('teamSetMsg','Saving...');let r;
   try{r=await post('settings',{team_slug:v})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('teamSetMsg',r.error,'bad');return}
-  fillSettings(r.settings);await loadTeams(false);setMsg('teamSetMsg','Saved. Refresh the Team hub to see the new team.','ok')});
+  fillSettings(r.settings);await loadTeams(false);setMsg('teamSetMsg','Saved. Refresh the Team hub to see the new team.','ok')}
+$('fTeam').addEventListener('submit',e=>{e.preventDefault();const v=$('teamSlugIn').value.trim().toLowerCase();if(!v){$('teamSlugIn').focus();return}saveTeam(v)});
+$('teamReset').addEventListener('click',()=>saveTeam(brand.team_slug));
 $('fIracing').addEventListener('submit',async e=>{e.preventDefault();
   const id=$('irId').value.trim(),sec=$('irSecret').value.trim();
   if(!id&&!sec){setMsg('irMsg','Paste a client ID or secret first.','bad');return}
@@ -1033,14 +1105,16 @@ $('irClear').addEventListener('click',async()=>{const b=$('irClear');
   let r;try{r=await post('settings',{clear_iracing:true})}catch(e){connectionLost();return}
   if(!r.ok){setMsg('irMsg',r.error,'bad');return}
   b.dataset.armed='';b.textContent='Remove';fillSettings(r.settings);setMsg('irMsg','Removed.','ok')});
+// 2.6: one "Save and check" button: saves a pasted token, then checks the connection (an empty box just
+// checks the saved token)
 $('fToken').addEventListener('submit',async e=>{e.preventDefault();
   const inp=$('tok');const v=inp.value.trim();
-  if(!v){setMsg('tokMsg','Paste your token in the box first.','bad');inp.focus();return}
-  setMsg('tokMsg','Saving...');let r;
+  if(!v){if(tokenSaved){startCheck();return}setMsg('tokMsg','Paste your token in the box first.','bad');inp.focus();return}
+  setMsg('tokMsg','Saving...');setMsg('chkMsg','');let r;
   try{r=await post('settings',{token:v})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('tokMsg',r.error,'bad');return}
-  inp.value='';fillSettings(r.settings);await loadReviews();loadTeams(false);
-  setMsg('tokMsg','Saved. Check connection to make sure it works.','ok');
+  inp.value='';checkOk=false;fillSettings(r.settings);await loadReviews();loadTeams(false);
+  setMsg('tokMsg','Saved.','ok');startCheck();
 });
 $('fGuideToken').addEventListener('submit',async e=>{e.preventDefault();
   const inp=$('gTok');const v=inp.value.trim();
@@ -1092,14 +1166,14 @@ $('fUpdate').addEventListener('submit',async e=>{e.preventDefault();setMsg('updM
 
 /* ---------- start */
 (async function init(){
-  await loadSettings();
-  const groups=await loadReviews();
-  await loadSessions();
+  // 2.6: everything the first screen needs, loaded side by side
+  const [,,groups]=await Promise.all([loadSettings(),loadBrand(),loadReviews(),loadSessions()]);
   let s=null;try{s=await api('status')}catch(e){}
   if(s&&s.state==='running'){lastJob=s;if(s.kind==='sync'){renderSync(s);if(groups.length)openLibrary();else welcome()}
     else if(s.kind!=='check'){resetJobView(s.kind);openJob()}poll();return}
   // (if the user already clicked something while the lists loaded, stay there)
   if(current.view==null){if(groups.length)openLibrary();else welcome()}
+  reviewGate();
   if(tokenSaved)startSync(true);   // catch up with Garage 61 every time Debrief opens
   checkUpdate('auto');
 })();

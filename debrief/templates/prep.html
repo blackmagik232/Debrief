@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Debrief Prep</title>
+<title>Midfield Menace · Prep</title>
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="connect-src 'none'; object-src 'none'; base-uri 'none'">
 <script>try{const t=localStorage.getItem('debrief-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
@@ -134,6 +134,7 @@ select:focus-visible,button:focus-visible,[tabindex]:focus-visible,a:focus-visib
 #overlay{cursor:crosshair;touch-action:pan-y}
 .empty{border:1px dashed var(--axis);border-radius:6px;padding:var(--s4);color:var(--ink2);font-size:var(--t-sm);display:grid;gap:4px;background:var(--band)}
 .empty b{color:var(--ink)}
+.joinpanel{border-style:solid;border-left:4px solid var(--a);justify-items:start}
 
 /* best possible lap */
 .pbhead{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s6);align-items:baseline}
@@ -295,6 +296,7 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 
 <section id="matesec">
   <div class="sechead"><span class="eyebrow">Teammates</span><h2>Teammates' best laps here</h2><p class="lede" id="matelede"></p></div>
+  <div class="empty joinpanel" id="prepJoin" hidden><b id="prepJoinTitle"></b><span id="prepJoinText"></span><a id="prepJoinLink" target="_blank" rel="noreferrer" href="https://garage61.net">Open Garage 61</a></div>
   <div class="panel"><div class="tablewrap"><table id="mates"></table></div></div>
 </section>
 
@@ -311,6 +313,7 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 <script>
 (function(){
 const D=(window.PREP&&typeof window.PREP==='object')?window.PREP:{};
+const BRAND=(D&&D.brand&&typeof D.brand==='object')?D.brand:{};const TEAM_NAME=(typeof BRAND.team_name==='string'&&BRAND.team_name.trim())||'Midfield Menace';
 const $=id=>document.getElementById(id);const NS='http://www.w3.org/2000/svg';
 function el(t,a,x){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(x!=null)e.textContent=x;return e}
 function h(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
@@ -341,7 +344,7 @@ function keyTips(host,label,items){if(!host||!items.length)return;host.setAttrib
 
 const H=D.history||null,raced=!!(D.raced&&H);
 const tn=D.track_short||D.track||'this track',car=D.car||'this car';
-document.title='Prep: '+tn+' · '+car;
+document.title=TEAM_NAME+' · Prep · '+tn+' · '+car;
 $('title').textContent=tn+' · '+car;
 const sub=$('sub');[D.track,car].filter(Boolean).forEach(x=>sub.append(h('span',null,x)));
 $('reqchip').textContent=plural(ok(D.requests)?D.requests:0,'Garage 61 request');
@@ -456,7 +459,13 @@ let redraw=null;
     tb.append(body);const tw=h('div','tablewrap');tw.append(tb);p.append(tw);(t.notes||[]).forEach(n=>p.append(h('p','note',n)));host.append(p)})})();
 
 // teammates
-(function(){const T=D.teammates||{};const t=$('mates');
+// 2.6: not on the team on Garage 61 -> a join panel instead of an empty teammates table (your own sections still show)
+const NOT_MEMBER=D.membership==='not_member'||(D.teammates&&D.teammates.membership==='not_member');
+if(NOT_MEMBER){$('prepJoin').hidden=false;$('prepJoinTitle').textContent=BRAND.join_title||('Join '+TEAM_NAME+' on Garage 61');
+  $('prepJoinText').textContent=BRAND.join_text||('Teammates\u2019 laps need you on the '+TEAM_NAME+' team on Garage 61. Ask a teammate to invite you, then build this page again.');
+  if(/^https:\/\//.test(BRAND.team_url||''))$('prepJoinLink').href=BRAND.team_url;
+  const tw=$('mates').closest('.panel');if(tw)tw.hidden=true;$('matelede').textContent=''}
+(function(){if(NOT_MEMBER)return;const T=D.teammates||{};const t=$('mates');
   $('matelede').textContent=T.error?T.error:(mates.length?'Each teammate’s best lap here on Garage 61'+(raced?', against your best reviewed lap ('+fmt(H.best)+').':'.'):'No teammate laps at this track in this car on Garage 61 yet.')+(T.skipped?' '+plural(T.skipped,'partial lap')+' left out.':'');
   if(!mates.length){t.parentNode.parentNode.classList.add('hidden');return}
   t.style.minWidth='560px';t.innerHTML='<thead><tr><th>Driver</th><th class="n">Best lap</th>'+(raced?'<th class="n">vs your best</th>':'')+'<th>Set on</th><th class="n">iRating</th></tr></thead>';
@@ -471,4 +480,8 @@ addEventListener('scroll',hideTip,{passive:true});
 let rt=0,lastW=innerWidth;addEventListener('resize',()=>{if(innerWidth===lastW)return;lastW=innerWidth;clearTimeout(rt);rt=setTimeout(()=>{if(redraw)redraw()},120)});
 })();
 </script>
+<script>/* 2.6: Ctrl+R / Ctrl+, inside the page do what they do in the Debrief window (only when shown inside it) */
+addEventListener('keydown',function(e){if(parent===window||!(e.ctrlKey||e.metaKey)||e.altKey)return;var k=String(e.key).toLowerCase();
+  var m=k==='r'&&!e.shiftKey?'review':(k===','||e.code==='Comma')?'settings':null;if(!m)return;e.preventDefault();
+  try{parent.postMessage({type:'debrief-key',key:m},'*')}catch(_){}});</script>
 </body></html>

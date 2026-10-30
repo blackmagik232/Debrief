@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Debrief Library</title>
+<title>Midfield Menace · Library</title>
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="connect-src 'none'; object-src 'none'; base-uri 'none'">
 <script>try{const t=localStorage.getItem('debrief-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
@@ -631,6 +631,7 @@ if(current)select(current);else pbTable();
 
 // ================================================================ Season tab
 const EX=(window.EXTRA&&typeof window.EXTRA==='object')?window.EXTRA:{};
+{const B=(EX.brand&&typeof EX.brand==='object')?EX.brand:{};const tn=(typeof B.team_name==='string'&&B.team_name.trim())||'Midfield Menace';document.title=tn+' · Library'}
 const SEAS=(EX.season&&Array.isArray(EX.season.seasons))?EX.season.seasons:[];
 const seasonOf=r=>(r.season&&r.season.name)||'Unknown season';
 const intFmt=v=>ok(v)?String(Math.round(v)):'–';
@@ -823,4 +824,8 @@ let rt=0,lastW=innerWidth;addEventListener('resize',()=>{if(innerWidth===lastW)r
 })();
 
 </script>
+<script>/* 2.6: Ctrl+R / Ctrl+, inside the page do what they do in the Debrief window (only when shown inside it) */
+addEventListener('keydown',function(e){if(parent===window||!(e.ctrlKey||e.metaKey)||e.altKey)return;var k=String(e.key).toLowerCase();
+  var m=k==='r'&&!e.shiftKey?'review':(k===','||e.code==='Comma')?'settings':null;if(!m)return;e.preventDefault();
+  try{parent.postMessage({type:'debrief-key',key:m},'*')}catch(_){}});</script>
 </body></html>

@@ -967,6 +967,7 @@ def test_window_settings_team_cards():
         try:
             pg.click(".navbtn[data-nav=settings]")
             pg.wait_for_function("() => document.getElementById('cardsPill').textContent === 'Off'", timeout=10000)
+            pg.click("#pExtras > summary")   # 2.6: track cards sit under "Team and extras"
             pg.fill("#cardsFolder", str(TMP / "missing"))
             pg.click("#fCards button[type=submit]")
             pg.wait_for_function("() => document.getElementById('cardsMsg').classList.contains('bad')", timeout=5000)

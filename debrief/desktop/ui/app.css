@@ -262,3 +262,25 @@ dialog .dlgbody{display:grid;gap:14px}
 .row.between{justify-content:space-between}
 .shareimg{display:block;width:100%;height:auto;max-height:46vh;object-fit:contain;border:1px solid var(--grid);border-radius:4px;background:var(--band)}
 #discordCount.over{color:var(--lose)}
+
+/* ---------- 2.6: banners stay until dismissed; Library / Season / Skills as one page with tabs; the
+   "Team and extras" disclosure; the join panel; the pinned last-race card; neutral (info) check lines */
+.banner{display:flex;align-items:flex-start;gap:10px;padding-right:8px}
+.banner>span{flex:1;min-width:0}
+.bannerx{flex:none;width:24px;height:24px;margin:-2px 0 0;border:0;border-radius:4px;background:none;color:var(--muted);cursor:pointer;font:inherit;font-size:16px;line-height:24px;text-align:center}
+.bannerx::before{content:"\00d7"}
+.bannerx:hover,.bannerx:focus-visible{background:var(--band);color:var(--fg)}
+.navgroup{display:grid;gap:2px}
+.navtabs{display:flex;gap:2px;padding-left:14px}
+.navbtn.sub{font-size:13px;padding:4px 10px;border-left:0;border-bottom:2px solid transparent;border-radius:4px 4px 0 0;color:var(--fg2)}
+.navbtn.sub.active{border-bottom-color:var(--me);color:var(--fg);background:var(--band)}
+.navgroup.on>.navbtn:not(.sub){background:var(--band);border-left-color:var(--me)}
+details.xtras>summary .note{margin-left:auto}
+details.xtras[open]{gap:16px}
+.callout.join{border-left-color:var(--me)}
+.results li.info{color:var(--fg2)}
+.lastrace{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:10px 14px;border-bottom:1px solid var(--grid);background:var(--panel)}
+.lastrace[hidden]{display:none}
+.lastrace .lrtx{display:grid;gap:2px;min-width:0;flex:1}
+.lastrace .lrtx b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#btnReview[aria-disabled="true"]{opacity:.55;cursor:not-allowed}

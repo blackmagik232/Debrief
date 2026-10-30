@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Debrief</title>
+<title>Debrief · Midfield Menace</title>
 <link rel="icon" type="image/png" href="static/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -14,9 +14,9 @@
 <aside class="side" id="side" aria-label="Debrief">
   <div class="brand">
     <img src="static/icon.png" alt="" width="34" height="34">
-    <div><div class="name">Debrief</div><div class="eyebrow">Garage 61 race reviews</div></div>
+    <div><div class="name">Debrief</div><div class="eyebrow" id="brandTeam">Midfield Menace</div></div>
   </div>
-  <button id="btnReview" class="btn primary big" type="button">
+  <button id="btnReview" class="btn primary big" type="button" title="Review last race (Ctrl+R)" aria-keyshortcuts="Control+R">
     <span class="lbl">Review last race</span>
     <span class="minibar" aria-hidden="true"><i></i></span>
   </button>
@@ -26,17 +26,21 @@
   </button>
   <button type="button" id="updStrip" class="updstrip" hidden><b id="updText">Update available</b><span>Update now</span></button>
   <nav class="nav">
-    <button type="button" class="navbtn" data-nav="sessions">Sessions</button>
-    <button type="button" class="navbtn" data-nav="library">Library</button>
-    <button type="button" class="navbtn" data-nav="season">Season</button>
-    <button type="button" class="navbtn" data-nav="skills">Skills</button>
+    <button type="button" class="navbtn" data-nav="sessions" title="Every session Garage 61 has for you">All sessions</button>
+    <div class="navgroup" id="libGroup">
+      <button type="button" class="navbtn" data-nav="library">Library</button>
+      <div class="navtabs" aria-label="Library tabs">
+        <button type="button" class="navbtn sub" data-nav="season" title="Library: Season">Season</button>
+        <button type="button" class="navbtn sub" data-nav="skills" title="Library: Skills">Skills</button>
+      </div>
+    </div>
     <button type="button" class="navbtn" data-nav="goals">Goals</button>
     <button type="button" class="navbtn" data-nav="prep">Prepare</button>
     <button type="button" class="navbtn" data-nav="team">Team</button>
-    <button type="button" class="navbtn" data-nav="settings">Settings</button>
+    <button type="button" class="navbtn" data-nav="settings" title="Settings (Ctrl+,)" aria-keyshortcuts="Control+Comma">Settings</button>
   </nav>
-  <div class="revhead"><span class="eyebrow">Past reviews</span><span class="eyebrow" id="revcount"></span></div>
-  <nav id="revlist" class="revlist" aria-label="Past reviews"></nav>
+  <div class="revhead"><span class="eyebrow">Saved reviews</span><span class="eyebrow" id="revcount"></span></div>
+  <nav id="revlist" class="revlist" aria-label="Saved reviews"></nav>
   <div class="sidefoot">
     <div class="seg" role="radiogroup" aria-label="Theme">
       <button type="button" role="radio" data-theme-set="auto">Auto</button>
@@ -47,7 +51,7 @@
 </aside>
 
 <main id="main">
-  <div id="banner" class="banner" hidden role="alert"></div>
+  <div id="banner" class="banner" hidden role="alert"><span id="bannerText"></span><button type="button" class="bannerx" id="bannerClose" aria-label="Dismiss" title="Dismiss"></button></div>
 
   <section id="vFrame" class="view frameview" hidden>
     <div class="framebar" id="frameBar" hidden>
@@ -62,6 +66,11 @@
         <span class="minibar fbbar" id="fbBar" hidden aria-hidden="true"><i></i></span>
       </span>
     </div>
+    <div class="lastrace" id="lastRace" hidden>
+      <span class="eyebrow">Last race</span>
+      <span class="lrtx"><b id="lrWhat"></b><span class="note" id="lrWhen"></span></span>
+      <button type="button" class="btn primary" id="lrOpen">Open last race</button>
+    </div>
     <iframe id="frame" title="Review" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads"></iframe>
   </section>
 
@@ -71,8 +80,8 @@
       <h1 id="welcomeTitle">Welcome.</h1>
       <p class="lede" id="welcomeText">No reviews yet. When your race has uploaded to Garage 61, click Review last race.</p>
       <div class="row" id="welcomeActions">
-        <button type="button" class="btn primary" data-act="review">Review last race</button>
-        <button type="button" class="btn" data-nav="settings">Settings</button>
+        <button type="button" class="btn primary" data-act="review" title="Review last race (Ctrl+R)">Review last race</button>
+        <button type="button" class="btn" data-nav="settings" title="Settings (Ctrl+,)">Settings</button>
       </div>
 
       <ol class="guide" id="guide" hidden aria-label="Getting started">
@@ -80,7 +89,7 @@
           <span class="gnum" aria-hidden="true">1</span>
           <div class="gbody">
             <h3>Get a free Garage 61 account</h3>
-            <p class="note">Sign up at <a href="https://garage61.net" target="_blank" rel="noreferrer">garage61.net</a> and connect your iRacing account there. To compare laps with your teammates, ask to join the <b>Midfield Menace</b> team on Garage 61.</p>
+            <p class="note">Sign up at <a href="https://garage61.net" target="_blank" rel="noreferrer">garage61.net</a> and connect your iRacing account there. To compare laps with your teammates, ask a teammate to invite you to the <b class="brandName">Midfield Menace</b> team on Garage 61.</p>
           </div>
         </li>
         <li class="gstep" id="gs2">
@@ -88,14 +97,15 @@
           <div class="gbody">
             <h3>Ask for your personal token</h3>
             <p class="note">Go to <a href="https://garage61.net/developer" target="_blank" rel="noreferrer">garage61.net/developer</a> and request a personal API token. It's free for personal, non-commercial use. Garage 61 looks at each request by hand, so it can take a little while to arrive.</p>
+            <p class="note"><b>Waiting for Garage 61's email? Close Debrief. These steps will be here when you come back.</b></p>
           </div>
         </li>
         <li class="gstep" id="gs3">
           <span class="gnum" aria-hidden="true">3</span>
           <form class="gbody" id="fGuideToken" autocomplete="off">
-            <h3>Paste your token here</h3>
+            <h3>Paste your personal API token here</h3>
             <p class="note">It's saved on this PC only, and Debrief never shows it again. Debrief then checks the connection (about six Garage 61 requests).</p>
-            <label class="field" for="gTok"><span>Your Garage 61 token</span>
+            <label class="field" for="gTok"><span>Your Garage 61 personal API token</span>
               <input id="gTok" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste here">
             </label>
             <div class="row"><button type="submit" class="btn primary" id="gTokSave">Save and check</button><span class="msg" id="gTokMsg" role="status"></span></div>
@@ -126,6 +136,7 @@
         <p id="jobErrMsg"></p>
         <div class="row">
           <button type="button" class="btn primary" data-act="retry">Try again</button>
+          <button type="button" class="btn" data-nav="sessions">Open Sessions</button>
           <button type="button" class="btn" data-nav="settings">Settings</button>
         </div>
       </div>
@@ -140,18 +151,18 @@
   <section id="vSessions" class="view pad" hidden>
     <div class="col">
       <span class="eyebrow">Your Garage 61 history</span>
-      <h1>Sessions</h1>
-      <p class="lede">Every race, qualifying and practice session you've driven, kept up to date from Garage 61. Pick one to review it.</p>
+      <h1>All sessions</h1>
+      <p class="lede">Every race, qualifying and practice session you've driven, kept up to date from Garage 61. Pick one to review it. Reviews you've already made are under Saved reviews in the sidebar.</p>
       <div class="panel">
         <div class="phead"><h3 id="sessSyncTitle">Sync</h3><span class="pill" id="sessSyncPill"></span></div>
         <p class="note" id="sessSyncNote"></p>
         <ul class="warnlist" id="sessWarn" hidden></ul>
         <div class="progress small" id="sessProg" hidden><div class="bar" id="sessBar"><i></i></div></div>
         <p class="now" id="sessNow" hidden></p>
-        <div class="row"><button type="button" class="btn primary" id="btnSync">Sync now</button><button type="button" class="btn" id="btnSyncStop" hidden>Pause</button><span class="msg" id="sessMsg" role="status"></span></div>
+        <div class="row"><button type="button" class="btn primary" id="btnSync">Sync now</button><button type="button" class="btn" id="btnSyncStop" hidden>Pause sync (carries on next time)</button><span class="msg" id="sessMsg" role="status"></span></div>
       </div>
       <div class="panel">
-        <div class="phead"><h3>Sessions</h3>
+        <div class="phead"><h3>Sessions</h3><span class="note" id="sessCount"></span>
           <div class="seg" role="radiogroup" aria-label="Show" id="sessFilter">
             <button type="button" role="radio" data-f="all" aria-checked="true">All</button>
             <button type="button" role="radio" data-f="3">Races</button>
@@ -170,6 +181,11 @@
       <span class="eyebrow">Get ready</span>
       <h1>Prepare</h1>
       <p class="lede">What your series are racing this week and next, your history at each track, and a short track card for the things telemetry can't see.</p>
+      <div class="callout join" id="prepJoin" hidden>
+        <h3 class="joinTitle">Join Midfield Menace on Garage 61</h3>
+        <p class="joinText"></p>
+        <div class="row"><a class="btn primary joinLink" href="https://garage61.net" target="_blank" rel="noreferrer">Open Garage 61</a></div>
+      </div>
       <div class="panel" id="schPanel">
         <div class="phead"><h3>Season schedule</h3><span class="pill" id="schPill">Not loaded</span></div>
         <p class="note" id="schNote">Debrief reads iRacing's official season schedule PDF on this PC. It's never shared anywhere.</p>
@@ -259,8 +275,13 @@
   <section id="vTeam" class="view pad" hidden>
     <div class="col">
       <span class="eyebrow">Team hub</span>
-      <h1 id="teamTitle">Team</h1>
+      <h1 id="teamTitle">Midfield Menace</h1>
       <p class="lede">Leaderboards for the tracks and cars you race, who owns each corner, and how you stack up against each teammate.</p>
+      <div class="callout join" id="teamJoin" hidden>
+        <h3 class="joinTitle">Join Midfield Menace on Garage 61</h3>
+        <p class="joinText"></p>
+        <div class="row"><a class="btn primary joinLink" href="https://garage61.net" target="_blank" rel="noreferrer">Open Garage 61</a></div>
+      </div>
       <div class="panel">
         <div class="phead"><h3>Get the latest from Garage 61</h3></div>
         <p class="note">Looks at your six most recent tracks and cars. A first refresh uses up to about 60 Garage 61 requests (less if you've raced fewer combinations); refreshing again within ten minutes uses none. Debrief shows the exact number afterwards.</p>
@@ -283,20 +304,14 @@
 
       <form class="panel" id="fToken" autocomplete="off">
         <div class="phead"><h3>Garage 61 token</h3><span class="pill" id="tokStatus">Checking...</span></div>
-        <p class="note">Find your token at <a href="https://garage61.net/developer" target="_blank" rel="noreferrer">garage61.net/developer</a> under your developer app. It's saved in settings.toml on this PC and Debrief never shows it again.</p>
-        <label class="field" for="tok"><span>Paste your token</span>
+        <p class="note">Go to <a href="https://garage61.net/developer" target="_blank" rel="noreferrer">garage61.net/developer</a> and request a personal API token, then paste it here. It's saved in settings.toml on this PC and Debrief never shows it again. Save and check also tests the connection (about six Garage 61 requests); with the box empty it just checks the saved token.</p>
+        <label class="field" for="tok"><span>Your Garage 61 personal API token</span>
           <input id="tok" name="tok" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste here">
         </label>
-        <div class="row"><button type="submit" class="btn primary">Save token</button><span class="msg" id="tokMsg" role="status"></span></div>
-      </form>
-
-      <div class="panel" id="pCheck">
-        <div class="phead"><h3>Connection</h3></div>
-        <p class="note">Checks the token and what your account can see. It uses about six Garage 61 requests.</p>
-        <div class="row"><button type="button" class="btn" id="btnCheck">Check connection</button><span class="msg" id="chkMsg" role="status"></span></div>
+        <div class="row"><button type="submit" class="btn primary" id="btnCheck">Save and check</button><span class="msg" id="tokMsg" role="status"></span><span class="msg" id="chkMsg" role="status"></span></div>
         <div class="progress small" id="chkProg" hidden><div class="bar" id="chkBar"><i></i></div></div>
         <ul class="results" id="chkOut" hidden></ul>
-      </div>
+      </form>
 
       <form class="panel" id="fOpts">
         <div class="phead"><h3>Review options</h3></div>
@@ -320,11 +335,27 @@
         <div class="row"><button type="submit" class="btn">Save sync options</button><span class="msg" id="syncOptMsg" role="status"></span></div>
       </form>
 
-      <form class="panel" id="fTeam">
+      <form class="panel" id="fUpdate">
+        <div class="phead"><h3>Updates</h3><span class="pill" id="updPill">–</span></div>
+        <p class="note" id="updNote">Debrief checks GitHub for a newer version once a day. Updating downloads the installer, checks it arrived intact, installs it and reopens Debrief. Your settings, reviews and history are kept.</p>
+        <label class="check" for="updAuto"><input id="updAuto" type="checkbox"><span>Check for updates when Debrief opens</span></label>
+        <div class="row"><button type="button" class="btn" id="btnUpdCheck">Check now</button><button type="button" class="btn primary" id="btnUpdNow" hidden>Update now</button><button type="submit" class="btn ghost">Save</button><span class="msg" id="updMsg" role="status"></span></div>
+      </form>
+
+      <details class="panel xtras" id="pExtras">
+        <summary><h3>Team and extras</h3><span class="note">Team, track cards, Discord, library folder</span></summary>
+      <form class="panel" id="fTeam" autocomplete="off">
         <div class="phead"><h3>Team</h3><span class="pill" id="teamStatus"></span></div>
-        <p class="note">The Garage 61 team the Team hub and Prep pages compare you with.</p>
-        <label class="field" for="teamSel" id="teamSelWrap" hidden><span>Your team</span><select id="teamSel"></select></label>
-        <div class="row"><button type="submit" class="btn" id="teamSave" hidden>Save team</button><button type="button" class="btn" id="btnTeams" hidden>Load my teams</button><span class="msg" id="teamSetMsg" role="status"></span></div>
+        <p class="note" id="teamLine">Team: Midfield Menace</p>
+        <p class="note" id="teamJoinNote" hidden></p>
+        <div class="row"><button type="button" class="btn" id="btnTeams" hidden>Check my teams</button><span class="msg" id="teamSetMsg" role="status"></span></div>
+        <details class="sub" id="teamAdv">
+          <summary>Advanced: use a different Garage 61 team</summary>
+          <p class="note">Debrief is set up for <span class="brandName">Midfield Menace</span>. Only change this if you know you want another team's Garage 61 short name (from its web address).</p>
+          <label class="field" for="teamSlugIn"><span>Garage 61 team short name</span><input id="teamSlugIn" type="text" maxlength="80" spellcheck="false" autocomplete="off" list="dlTeams"></label>
+          <datalist id="dlTeams"></datalist>
+          <div class="row"><button type="submit" class="btn" id="teamSave">Save team</button><button type="button" class="btn ghost" id="teamReset" hidden>Use Midfield Menace</button></div>
+        </details>
       </form>
 
       <form class="panel" id="fCards" autocomplete="off">
@@ -338,7 +369,7 @@
 
       <form class="panel" id="fDiscord" autocomplete="off">
         <div class="phead"><h3>Discord</h3><span class="pill" id="discordPill">Off</span></div>
-        <p class="note">Post a review's share card to your team's Discord channel. In Discord: channel settings &gt; Integrations &gt; Webhooks &gt; Copy Webhook URL, then paste it here. It's saved in settings.toml on this PC and Debrief never shows it again.</p>
+        <p class="note">Post a review's share card to the <span class="brandName">Midfield Menace</span> Discord channel. In Discord: channel settings &gt; Integrations &gt; Webhooks &gt; Copy Webhook URL, then paste it here. It's saved in settings.toml on this PC and Debrief never shows it again.</p>
         <p class="note"><b>Debrief only posts when you press Post and confirm. It never posts on its own.</b></p>
         <label class="field wide" for="discordHook"><span>Webhook address</span>
           <input id="discordHook" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste here">
@@ -347,7 +378,15 @@
         <p class="note" id="discordWhere" hidden></p>
       </form>
 
-      <details class="panel" id="pIracing">
+      <div class="panel">
+        <div class="phead"><h3>Library folder</h3></div>
+        <p class="mono path" id="libPath">...</p>
+        <div class="row"><button type="button" class="btn" id="btnFolder">Open folder</button><span class="msg" id="folderMsg" role="status"></span></div>
+      </div>
+
+      </details>
+
+      <details class="panel" id="pIracing" hidden>
         <summary><h3>iRacing (optional)</h3></summary>
         <p class="note">iRacing's own data (official finishing positions, iRating and safety rating changes) needs API credentials that iRacing issues on request to individual developers. You don't need them: you can type a race result into any review. If iRacing gives you a client ID and secret, paste them here and Debrief will use them once that feature is switched on. They're saved in settings.toml on this PC and never shown again.</p>
         <form class="gridf" id="fIracing" autocomplete="off">
@@ -358,18 +397,6 @@
         </form>
       </details>
 
-      <div class="panel">
-        <div class="phead"><h3>Library folder</h3></div>
-        <p class="mono path" id="libPath">...</p>
-        <div class="row"><button type="button" class="btn" id="btnFolder">Open folder</button><span class="msg" id="folderMsg" role="status"></span></div>
-      </div>
-
-      <form class="panel" id="fUpdate">
-        <div class="phead"><h3>Updates</h3><span class="pill" id="updPill">–</span></div>
-        <p class="note" id="updNote">Debrief checks GitHub for a newer version once a day. Updating downloads the installer, checks it arrived intact, installs it and reopens Debrief. Your settings, reviews and history are kept.</p>
-        <label class="check" for="updAuto"><input id="updAuto" type="checkbox"><span>Check for updates when Debrief opens</span></label>
-        <div class="row"><button type="button" class="btn" id="btnUpdCheck">Check now</button><button type="button" class="btn primary" id="btnUpdNow" hidden>Update now</button><button type="submit" class="btn ghost">Save</button><span class="msg" id="updMsg" role="status"></span></div>
-      </form>
 
       <div class="panel" id="pAbout">
         <div class="phead"><h3>About</h3><span class="pill" id="aboutVersion">Debrief</span></div>

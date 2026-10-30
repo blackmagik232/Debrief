@@ -138,8 +138,10 @@ def test_static_review_never_posts_anything_itself():
     for w in ("fetch(", "XMLHttpRequest", "sendBeacon", "WebSocket", "EventSource"):
         assert w not in s, w
     blk = _review25(s)
-    # the only postMessage calls are the two replies in the responder, both to the parent
-    assert s.count("postMessage(") == 2 == blk.count("window.parent.postMessage("), s.count("postMessage(")
+    # the only postMessage calls are the two replies in the responder, both to the parent, plus (2.6) the
+    # keyboard forwarder, which sends the parent nothing but a fixed shortcut name
+    assert s.count("postMessage(") == 3 and blk.count("window.parent.postMessage(") == 2, s.count("postMessage(")
+    assert s.count("parent.postMessage({type:'debrief-key',key:m},'*')") == 1
     assert "window.parent===window||e.source!==window.parent)return" in blk
     assert "m.type!=='debrief:share-request'" in blk and "type:'debrief:share-card'" in blk
     assert "Post to Discord" not in s          # the Post button lives in the app's frame bar (25-D)

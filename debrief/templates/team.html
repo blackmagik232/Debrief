@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Team hub</title>
+<title>Midfield Menace · Team hub</title>
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="connect-src 'none'; object-src 'none'; base-uri 'none'">
 <script>try{const t=localStorage.getItem('debrief-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
@@ -240,6 +240,8 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 .team .rec b{font-family:var(--mono);font-size:var(--t-xl);font-weight:600;font-variant-numeric:tabular-nums}
 .team .rec b.better{color:var(--good)} .team .rec b.worse{color:var(--bad)}
 .team .empty{display:grid;gap:8px;justify-items:start}
+.joinpanel{border-style:solid;border-left:4px solid var(--a)}
+.joinpanel b{font-size:var(--t-md)}
 /* 2.5: this week's boards, season head-to-heads, who to learn from (design tokens only) */
 .team .wkhead{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s4);align-items:end;justify-content:space-between}
 .team .wkhead select{min-width:0;max-width:100%}
@@ -272,7 +274,7 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 <header>
   <div class="chiprow"><span class="chip team" id="chipTeam">Team</span><span class="chip" id="chipCombos"></span><span id="when"></span></div>
   <span class="eyebrow">Team hub</span>
-  <h1 id="title">Team hub</h1>
+  <h1 id="title">Midfield Menace</h1>
   <p class="lede" id="lede">How you stack up against your teammates on the tracks and cars you race.</p>
   <div class="stats" id="totals"></div>
 </header>
@@ -280,6 +282,10 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 <nav class="jump" id="jump" aria-label="Sections">
   <a href="#weekly" hidden>This week</a><a href="#season" hidden>Season</a><a href="#boards">Leaderboards</a><a href="#kings">Corner kings</a><a href="#learn" hidden>Who to learn from</a><a href="#h2h">Head-to-heads</a>
 </nav>
+
+<section id="join" hidden>
+  <div class="empty joinpanel"><b id="joinTitle">Join Midfield Menace on Garage 61</b><span id="joinText"></span><a id="joinLink" target="_blank" rel="noreferrer" href="https://garage61.net">Open Garage 61</a></div>
+</section>
 
 <section id="weekly" hidden>
   <div class="sechead"><span class="eyebrow" id="wkSeason">This week</span><h2>This week's team leaderboards</h2>
@@ -360,6 +366,18 @@ function keyTips(host,label,items){if(!host||!items.length)return;host.setAttrib
 
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
+// 2.6: the team name always comes from the data (Garage 61's name, else brand.py), never the bare slug
+const BRAND=(D&&D.brand&&typeof D.brand==='object')?D.brand:{};
+const BRAND_NAME=(typeof BRAND.team_name==='string'&&BRAND.team_name.trim())||'Midfield Menace';
+const TEAM=(D&&D.team&&typeof D.team==='object')?D.team:{};
+const teamName=(typeof TEAM.name==='string'&&TEAM.name.trim()&&TEAM.name.trim().toLowerCase()!==String(TEAM.slug||'').toLowerCase()&&TEAM.name.trim())||BRAND_NAME;
+$('chipTeam').textContent=teamName;$('title').textContent=teamName;document.title=teamName+' · Team hub';
+// not on the team on Garage 61: a join panel instead of empty boards (your own times still show where there are any)
+const NOT_MEMBER=!!D&&(D.membership==='not_member'||(D.weekly&&typeof D.weekly==='object'&&D.weekly.membership==='not_member'));
+if(NOT_MEMBER){$('join').hidden=false;$('joinTitle').textContent=BRAND.join_title||('Join '+teamName+' on Garage 61');
+  $('joinText').textContent=BRAND.join_text||('Team comparisons need you on the '+teamName+' team on Garage 61. Ask a teammate to invite you, then press Refresh.');
+  if(/^https:\/\//.test(BRAND.team_url||''))$('joinLink').href=BRAND.team_url}
+
 if(!D||!Array.isArray(D.combos)){
   // 2.5: a team.json with only the weekly boards still shows them (the 2.5 script below draws those)
   ['boards','kings','h2h'].forEach(id=>{$(id).hidden=true;const a=document.querySelector('#jump a[href="#'+id+'"]');if(a)a.hidden=true});
@@ -374,10 +392,7 @@ const names={};
 combos.forEach(c=>c.board.forEach(r=>{names[r.key]=r.name;if(r.key===meKey)colours[r.key]='var(--a)';else if(!(r.key in colours))colours[r.key]=PAL[Math.min(ci++,PAL.length-1)]}));
 const col=k=>colours[k]||'var(--muted)';
 
-// ---------- header
-const teamName=(D.team&&D.team.name)||'Team';
-$('chipTeam').textContent=teamName;$('title').textContent=teamName;
-document.title=teamName+' · Team hub';
+// ---------- header (team name: set above)
 $('chipCombos').textContent=plural(combos.length,'track and car','tracks and cars');
 if(D.generated_at){const w=new Date(D.generated_at);if(isFinite(w))$('when').textContent='Updated '+MON[w.getMonth()]+' '+w.getDate()+', '+w.getFullYear()+' '+String(w.getHours()).padStart(2,'0')+':'+String(w.getMinutes()).padStart(2,'0')}
 const mates=new Set();combos.forEach(c=>c.board.forEach(r=>{if(r.key!==meKey)mates.add(r.key)}));
@@ -643,4 +658,16 @@ safe('who to learn from',()=>{const LC=(Array.isArray(D.combos)?D.combos:[]).fil
 })();
 </script>
 
+<script>
+// 2.6: not on the team -> the purely comparative sections (corner kings, head-to-heads, who to learn from,
+// season head-to-heads) would be empty, so they step aside for the join panel; your own leaderboard times stay
+(function(){const D=window.TEAM;if(!D||typeof D!=='object')return;
+  if(!(D.membership==='not_member'||(D.weekly&&typeof D.weekly==='object'&&D.weekly.membership==='not_member')))return;
+  ['kings','h2h','learn','season'].forEach(id=>{const s=document.getElementById(id);if(s)s.hidden=true;
+    const a=document.querySelector('#jump a[href="#'+id+'"]');if(a)a.hidden=true})})();
+</script>
+<script>/* 2.6: Ctrl+R / Ctrl+, inside the page do what they do in the Debrief window (only when shown inside it) */
+addEventListener('keydown',function(e){if(parent===window||!(e.ctrlKey||e.metaKey)||e.altKey)return;var k=String(e.key).toLowerCase();
+  var m=k==='r'&&!e.shiftKey?'review':(k===','||e.code==='Comma')?'settings':null;if(!m)return;e.preventDefault();
+  try{parent.postMessage({type:'debrief-key',key:m},'*')}catch(_){}});</script>
 </body></html>

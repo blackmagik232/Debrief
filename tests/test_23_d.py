@@ -310,8 +310,10 @@ def test_feature_modules_spec_and_ci():
     for n in NEW:
         assert f'"debrief.{n}"' in must, n
     ci = (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8").replace("python tests/ci_run.py tests/", "python tests/")
+    sys.path.insert(0, str(ROOT / "tests"))
+    from run_all import ci_runs              # each file has its own step, or run_all.py runs them all
     for x in "abcd":
-        assert f"run: python tests/test_23_{x}.py" in ci, x
+        assert ci_runs(ci, f"test_23_{x}.py"), x
     assert tuple(int(x) for x in debrief.__version__.split(".")) >= (2, 3, 0)
 
 

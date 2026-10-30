@@ -317,7 +317,9 @@ def test_h1_ci_workflow_split_and_signing():
         assert not any("gh release" in str(st.get("run", "")) for st in jobs["windows"]["steps"])
     assert "DEBRIEF_SIGNING_KEY" in wf and "sign_release.py" in wf and ".exe.sig" in wf
     assert "pyinstaller==" in wf and "pip install --upgrade pip" not in wf
-    assert "tests/test_fix_c.py" in wf
+    sys.path.insert(0, str(ROOT / "tests"))
+    from run_all import ci_runs              # each file has its own step, or run_all.py runs them all
+    assert ci_runs(wf, "test_fix_c.py")
 
 
 # ================================================================ M1: library pages sandboxed

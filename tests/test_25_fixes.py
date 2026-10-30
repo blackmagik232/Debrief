@@ -437,8 +437,13 @@ def test_ci_runs_this_file_after_the_shell_tests():
     yml = (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
     steps = _steps(yml)
     names = [n for n, _ in steps]
-    i = names.index("Test shell (2.5)")
-    assert "python tests/ci_run.py tests/test_25_fixes.py" in steps[i + 1][1], steps[i + 1]
+    if "Test shell (2.5)" in names:                  # one step per file
+        i = names.index("Test shell (2.5)")
+        assert "python tests/ci_run.py tests/test_25_fixes.py" in steps[i + 1][1], steps[i + 1]
+        return
+    sys.path.insert(0, str(ROOT / "tests"))
+    from run_all import ci_runs              # each file has its own step, or run_all.py runs them all
+    assert ci_runs(yml, "test_25_fixes.py") and ci_runs(yml, "test_25_d.py")
 
 
 # ================================================================ L7: Post isn't live the moment the dialog opens

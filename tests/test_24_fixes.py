@@ -631,8 +631,11 @@ def test_r2_date_near_year_9999_does_not_crash():
 # ================================================================ CI
 def test_ci_runs_this_file():
     yml = (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8").replace("python tests/ci_run.py tests/", "python tests/")
-    assert "python tests/test_24_fixes.py" in yml
-    assert yml.index("tests/test_24_d.py") < yml.index("tests/test_24_fixes.py") < yml.index("Build with PyInstaller")
+    sys.path.insert(0, str(ROOT / "tests"))
+    from run_all import ci_runs              # each file has its own step, or run_all.py runs them all
+    assert ci_runs(yml, "test_24_fixes.py") and ci_runs(yml, "test_24_d.py")
+    if "tests/test_24_fixes.py" in yml:          # still one step per file: after the 2.4 shell tests
+        assert yml.index("tests/test_24_d.py") < yml.index("tests/test_24_fixes.py") < yml.index("Build with PyInstaller")
 
 
 if __name__ == "__main__":

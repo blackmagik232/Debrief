@@ -246,17 +246,21 @@ def _grid(rows, cols, cell='<c t="s"><v>0</v></c>'):
                                                      for r in range(1, rows + 1)) + "</sheetData></worksheet>").encode()
 
 
-def _measure(fn):
-    tracemalloc.start()
+def _measure(fn, trace=True):
+    """(result or exception, seconds, peak bytes). trace=False skips tracemalloc (peak is None) where only the
+    result matters: tracing every allocation makes a big sheet several times slower to read."""
+    if trace:
+        tracemalloc.start()
     t = time.perf_counter()
     try:
         try:
             out = fn()
         except Exception as e:  # noqa: BLE001
             out = e
-        return out, time.perf_counter() - t, tracemalloc.get_traced_memory()[1]
+        return out, time.perf_counter() - t, tracemalloc.get_traced_memory()[1] if trace else None
     finally:
-        tracemalloc.stop()
+        if trace:
+            tracemalloc.stop()
 
 
 def test_h3_review_repro_is_refused_fast_and_small():
@@ -289,7 +293,7 @@ def test_h3_cell_budget_across_sheets():
     assert peak < 100e6, peak
     # a first sheet that is itself over a budget is still refused with a plain message
     big = [("S0", "xl/worksheets/sheet0.xml", _grid(2000, 160))]   # 320k cells looked at
-    out = _measure(lambda: xlsx.read(_book(big, sst)))[0]
+    out = _measure(lambda: xlsx.read(_book(big, sst)), trace=False)[0]
     assert isinstance(out, xlsx.XlsxError) and str(out).endswith("."), out
     # two of them (160k cells) are fine
     book = xlsx.read(_book(parts[:2], sst))
@@ -298,7 +302,7 @@ def test_h3_cell_budget_across_sheets():
     one = (f"<worksheet {NS}><sheetData><row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c></row>"
            f"<row r=\"2000\"><c r=\"AN2000\" t=\"s\"><v>0</v></c></row></sheetData></worksheet>").encode()
     parts = [(f"S{i}", f"xl/worksheets/sheet{i}.xml", one) for i in range(3)]
-    out = _measure(lambda: xlsx.read(_book(parts, sst)))[0]
+    out = _measure(lambda: xlsx.read(_book(parts, sst)), trace=False)[0]
     assert not isinstance(out, Exception) and len(out["sheets"]) == 2, out
 
 
@@ -311,7 +315,7 @@ def test_h3_text_budget_and_string_cap():
     assert len(row[0]) == xlsx.MAX_STR and len(row[1]) == xlsx.MAX_STR
     # 2,000 x 40 cells of a 200-character string = 16 M characters: over the text budget
     sst = f'<sst {NS}><si><t>{"Q" * 200}</t></si></sst>'
-    out = _measure(lambda: xlsx.read(_book([("S", "xl/worksheets/sheet1.xml", _grid(2000, 40))], sst)))[0]
+    out = _measure(lambda: xlsx.read(_book([("S", "xl/worksheets/sheet1.xml", _grid(2000, 40))], sst)), trace=False)[0]
     assert isinstance(out, xlsx.XlsxError) and "more in it" in str(out), out
 
 

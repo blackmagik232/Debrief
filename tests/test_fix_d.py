@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from debrief import engine, report  # noqa: E402
+from pw_settle import settle  # noqa: E402
 
 UI = ROOT / "debrief" / "desktop" / "ui"
 TPL = ROOT / "debrief" / "templates"
@@ -170,7 +171,7 @@ def _open(path, scheme="light", width=1280, init=None, wait=500):
     if init:
         pg.add_init_script(init)
     pg.goto(Path(path).resolve().as_uri() if not str(path).startswith("http") else path)
-    pg.wait_for_timeout(wait)
+    settle(pg, cap_ms=max(1500, 3 * wait))     # loaded, painted and quiet (was a fixed `wait` ms)
     return pg, ctx, errs
 
 
@@ -599,7 +600,7 @@ def _app(api, width=1280):
     pg.route("http://debrief.test/**", handle)
     pg.route("**/fonts.googleapis.com/**", lambda r: r.abort())
     pg.goto(base_url)
-    pg.wait_for_timeout(500)
+    settle(pg)
     return pg, ctx, errs, posts
 
 

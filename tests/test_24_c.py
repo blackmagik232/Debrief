@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from debrief import report  # noqa: E402
+from pw_settle import settle  # noqa: E402
 
 TPL = ROOT / "debrief" / "templates"
 FX = Path(__file__).resolve().parent / "fixtures_24_c"
@@ -89,7 +90,7 @@ def _open(path, scheme="light", width=1280, init=None, wait=450):
     if init:
         pg.add_init_script(init)
     pg.goto(Path(path).resolve().as_uri())
-    pg.wait_for_timeout(wait)
+    settle(pg, cap_ms=max(1500, 3 * wait))     # loaded, painted and quiet (was a fixed `wait` ms)
     return pg, ctx, errs
 
 

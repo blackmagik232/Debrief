@@ -30,17 +30,57 @@ def g(d: dict, *names, default=None):
 PEDALS = ("Brake", "Throttle")
 
 
-def parse_csv(text: str) -> dict:
-    """One lap of Garage 61 telemetry -> arrays.
+_NUM_COLS = ("Speed", "LapDistPct", "Lat", "Lon", "Brake", "Throttle", "Gear", "LatAccel", "LongAccel",
+             "SteeringWheelAngle", "RPM")
+_BOOL_COLS = ("ABSActive",)
+_BLANK_ROW = __import__("re").compile(r"\n[^\S\n]*(?:,[^\S\n]*)*(?:\n|\Z)")   # a row of only commas/spaces
 
-    Blank, garbled, NaN or infinite Speed / LapDistPct cells drop that sample (a 0.0 there would look
-    like a start/finish crossing or a stop). Other channels: a bad cell is filled from its neighbours.
-    A channel the export doesn't have is zero-filled and listed in raw["_missing"], so the analysis
-    can leave out the numbers that depend on it instead of reporting zeros.
-    Raises ValueError for anything that isn't usable telemetry (no header, no rows, no Speed column)."""
+
+def _csv_fast(text: str):
+    """The common case in C (np.loadtxt): a plain comma-separated export with no quotes, no blank or ragged
+    rows and every needed cell a number. Returns (cols, n_rows, {name: float array or bool array}) or None
+    for anything else, which the tolerant parser then reads exactly as before. NaN/inf cells parse here too
+    and are cleaned up the same way afterwards."""
+    if '"' in text or "\0" in text:
+        return None
+    t = text.replace("\r\n", "\n")
+    if "\r" in t:
+        return None
+    first, _, body_text = t.partition("\n")
+    head = [h.strip().lstrip("\ufeff") for h in first.split(",")]
+    cols = {h: i for i, h in enumerate(head)}
+    if "Speed" not in cols or "LapDistPct" not in cols or len(cols) != len(head) or not body_text:
+        return None
+    # a blank or all-empty row is dropped by the tolerant parser: leave those files to it. (Short or long rows
+    # are fine here: both parsers read each cell by its position, and a needed cell that isn't there makes
+    # loadtxt fail, so the tolerant parser takes the file.)
+    if _BLANK_ROW.search("\n" + body_text):
+        return None
+    n_rows = body_text.count("\n") + 1
+    num = sorted({cols[n] for n in _NUM_COLS if n in cols})
+    out = {}
+    a = np.loadtxt(io.StringIO(body_text), delimiter=",", usecols=num, dtype=float, comments=None, ndmin=2)
+    if a.shape != (n_rows, len(num)):
+        return None
+    pos = {c: k for k, c in enumerate(num)}
+    for n in _NUM_COLS:
+        if n in cols:
+            out[n] = np.ascontiguousarray(a[:, pos[cols[n]]])
+    for n in _BOOL_COLS:
+        if n in cols:
+            b = np.loadtxt(io.StringIO(body_text), delimiter=",", usecols=[cols[n]], dtype=str, comments=None,
+                           ndmin=1)
+            if b.shape != (n_rows,):
+                return None
+            out[n] = np.where(np.char.lower(np.char.strip(b)) == "true", 1.0, 0.0)
+    return cols, n_rows, out
+
+
+def _csv_tolerant(text: str):
+    """The 2.2+ parser (csv module, any quoting, blank / ragged / garbled rows). Same return as _csv_fast;
+    raises ValueError for anything that isn't usable telemetry."""
     import csv
-    text = (text or "").lstrip("\ufeff").replace("\u00ef\u00bb\u00bf", "")
-    reader = list(csv.reader(io.StringIO(text.strip())))
+    reader = list(csv.reader(io.StringIO(text)))
     if not reader or not reader[0]:
         raise ValueError("telemetry CSV is empty")
     head = [h.strip().lstrip("\ufeff") for h in reader[0]]
@@ -52,35 +92,67 @@ def parse_csv(text: str) -> dict:
     rows = [r for r in reader[1:] if r and any(c.strip() for c in r)]
     if not rows:
         raise ValueError("telemetry CSV has a header but no samples")
-    missing = []
     width = len(head)
     if any(len(r) != width for r in rows):   # short or long rows: pad/trim so columns line up
         rows = [(r + [""] * width)[:width] for r in rows]
     columns = list(zip(*rows))   # one pass to transpose, instead of one pass per column
-
-    def col(name, conv=float, default=0.0):
+    out = {}
+    for name in _NUM_COLS + _BOOL_COLS:
         if name not in cols:
-            missing.append(name)
-            return np.full(len(rows), default, dtype=float)
+            continue
         i = cols[name]
         cells = columns[i] if i < len(columns) else [""] * len(rows)
-        if conv is bool:
-            return np.array([1.0 if v.strip().lower() == "true" else 0.0 for v in cells])
-        try:  # fast path: numpy parses the whole column at once
-            out = np.array(cells, dtype=float)
+        if name in _BOOL_COLS:
+            out[name] = np.array([1.0 if v.strip().lower() == "true" else 0.0 for v in cells])
+            continue
+        try:  # numpy parses the whole column at once
+            a = np.array(cells, dtype=float)
         except ValueError:
-            out = np.empty(len(rows))
+            a = np.empty(len(rows))
             for k, v in enumerate(cells):
                 try:
-                    out[k] = float(v)
+                    a[k] = float(v)
                 except ValueError:
-                    out[k] = np.nan
-        out[~np.isfinite(out)] = np.nan
+                    a[k] = np.nan
+        out[name] = a
+    return cols, len(rows), out
+
+
+def parse_csv(text: str, _fast: bool = True) -> dict:
+    """One lap of Garage 61 telemetry -> arrays.
+
+    Blank, garbled, NaN or infinite Speed / LapDistPct cells drop that sample (a 0.0 there would look
+    like a start/finish crossing or a stop). Other channels: a bad cell is filled from its neighbours.
+    A channel the export doesn't have is zero-filled and listed in raw["_missing"], so the analysis
+    can leave out the numbers that depend on it instead of reporting zeros.
+    Raises ValueError for anything that isn't usable telemetry (no header, no rows, no Speed column).
+
+    2.6: a clean export is read by numpy in one go (_csv_fast, ~4x quicker); anything unusual, or any
+    error there, goes through the tolerant csv-module parser, with identical results (tests/test_26_b.py)."""
+    text = (text or "").lstrip("\ufeff").replace("\u00ef\u00bb\u00bf", "").strip()
+    parsed = None
+    if _fast:
+        try:
+            parsed = _csv_fast(text)
+        except Exception:  # noqa: BLE001  (anything odd: the tolerant parser decides)
+            parsed = None
+    if parsed is None:
+        parsed = _csv_tolerant(text)
+    _cols, n, arrays = parsed
+    missing = []
+
+    def col(name, default=0.0):
+        if name not in arrays:
+            missing.append(name)
+            return np.full(n, default, dtype=float)
+        out = arrays[name]
+        if name not in _BOOL_COLS:
+            out[~np.isfinite(out)] = np.nan
         return out
 
     raw = {
         "v": col("Speed"), "p": col("LapDistPct"), "lat": col("Lat", default=np.nan), "lon": col("Lon", default=np.nan),
-        "b": col("Brake"), "th": col("Throttle"), "gear": col("Gear"), "abs": col("ABSActive", bool),
+        "b": col("Brake"), "th": col("Throttle"), "gear": col("Gear"), "abs": col("ABSActive"),
         "la": col("LatAccel"), "lo": col("LongAccel"), "st": col("SteeringWheelAngle"), "rpm": col("RPM"),
     }
     ok = np.isfinite(raw["v"]) & np.isfinite(raw["p"])

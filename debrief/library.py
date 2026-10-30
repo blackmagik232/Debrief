@@ -274,7 +274,11 @@ def clean_best(d: dict):
 
 
 def _row(p: Path) -> dict | None:
-    d = json.loads(p.read_text(encoding="utf-8"))
+    """The library row for one review.json (parsed here; list_reviews uses the row index instead)."""
+    return _row_from(json.loads(p.read_text(encoding="utf-8")), p)
+
+
+def _row_from(d, p: Path) -> dict | None:
     if not isinstance(d, dict):
         return None
     m = d.get("meta") or {}
@@ -400,15 +404,41 @@ def _pb_info(best: float, previous: list) -> dict:
 
 
 def _apply_pbs(rows: list) -> None:
-    """Fill row["pb"] = PB status at the time of that race (only earlier races count)."""
+    """Fill row["pb"] = PB status at the time of that race (only earlier races count).
+
+    Same result as calling _pb_info(best, grp[:i]) for each race of a combo, but worked out in one pass
+    (running count + running quickest), with each row's timestamp parsed once: O(n) per combo, not O(n²)."""
+    ts = {id(x): _ts(x) for x in rows}
     done = set()
     for r in rows:
         if id(r) in done:
             continue
-        grp = sorted([x for x in rows if same_combo(x, r)], key=lambda x: (_ts(x), x["dir"]))
-        for i, x in enumerate(grp):
+        grp = sorted([x for x in rows if same_combo(x, r)], key=lambda x: (ts[id(x)], x["dir"]))
+        n_prev, pb = 0, None          # earlier clean rows with a best, and the quickest of them (first on ties)
+        for x in grp:
             done.add(id(x))
-            x["pb"] = _pb_info(x["best"] if x.get("best_clean", True) else None, grp[:i])
+            best = x["best"] if x.get("best_clean", True) else None
+            x["pb"] = _pb_from(best, n_prev, pb)
+            if _num(x.get("best")) is not None and x.get("best_clean", True):
+                if pb is None or (x["best"], ts[id(x)]) < (pb[0]["best"], pb[1]):
+                    pb = (x, ts[id(x)])
+                n_prev += 1
+
+
+def _pb_from(best, n_prev: int, pb) -> dict:
+    """_pb_info from a running count of earlier clean rows and the quickest one so far ((row, ts) or None)."""
+    if best is None:
+        return {"first_time": False, "is_pb": False, "best_clean": False,
+                "previous_best": round(pb[0]["best"], 3) if pb else None,
+                "previous_date": pb[0].get("date") if pb else None,
+                "delta": None, "races_at_combo": n_prev + 1}
+    if pb is None:
+        return {"first_time": True, "is_pb": False, "previous_best": None, "previous_date": None,
+                "delta": None, "races_at_combo": 1}
+    p = pb[0]
+    delta = round(best - p["best"], 3)
+    return {"first_time": False, "is_pb": best < p["best"] - PB_EPS, "previous_best": round(p["best"], 3),
+            "previous_date": p.get("date") or None, "delta": delta, "races_at_combo": n_prev + 1}
 
 
 def _unify_combo_keys(rows: list) -> None:
@@ -442,7 +472,7 @@ def _data_as_row(data: dict) -> dict:
             "date": local_day(m.get("started_at")), "event_id": str(m.get("event_id") or "")}
 
 
-def pb_for(folder, data: dict, exclude_dir: str | None = None) -> dict:
+def pb_for(folder, data: dict, exclude_dir: str | None = None, rows: list | None = None) -> dict:
     """Personal-best status of a freshly analysed review against the library.
 
     Returns {"first_time", "is_pb", "previous_best", "previous_date", "delta", "races_at_combo"}.
@@ -455,11 +485,13 @@ def pb_for(folder, data: dict, exclude_dir: str | None = None) -> dict:
       * a race whose best isn't clean (see clean_best) is never a PB or a first-time benchmark:
         {"is_pb": False, "first_time": False, "best_clean": False, "delta": None, ...}; earlier
         races with unclean bests don't count as the previous best either
+    rows: library rows already in hand (list_reviews output, with or without PBs); None reads them (from the
+    row index, so this is cheap even on a big library).
     """
     me = _data_as_row(data)
     t_me = _ts(me) if me["started_at"] else None
     prev = []
-    for r in list_reviews(folder, _pbs=False):
+    for r in (rows if rows is not None else list_reviews(folder, _pbs=False)):
         if exclude_dir and r["dir"] == exclude_dir:
             continue
         if me["event_id"] and r.get("event_id") == me["event_id"]:
@@ -519,19 +551,133 @@ def season_summary(rows: list) -> dict:
     return {"seasons": out}
 
 
-def list_reviews(folder, _pbs: bool = True) -> list[dict]:
-    """All reviews in the library folder as row dicts, newest first. Unreadable files are skipped."""
-    rows = []
-    base = Path(folder) / "reviews"
+# ---------------------------------------------------------------- row index (2.6)
+# <library>/.rows.json keeps each review's library row (and the small summary the window's review list
+# shows) next to the review.json size and mtime it was worked out from, so a scan reads one small file and
+# stats the reviews instead of parsing every ~300 KB review.json. An entry is used only while review.json
+# and result.json still have the same mtime_ns and size; anything else (a new, changed or deleted review, a
+# missing or damaged index, another Debrief version or time zone) is worked out again and the index is
+# rewritten atomically. Losing the index only costs one slow scan.
+INDEX_FILE = ".rows.json"
+INDEX_VERSION = 1
+_INDEX_LOCK = __import__("threading").Lock()
+
+
+def _index_header() -> dict:
+    import time
+    from . import __version__
+    # rows hold the race date in the PC's time zone (local_day), so a time-zone change redoes them
+    return {"v": INDEX_VERSION, "app": __version__,
+            "tz": f"{time.timezone}|{time.altzone}|{time.daylight}|{'/'.join(time.tzname)}"}
+
+
+def _stat_key(p: Path) -> list | None:
+    try:
+        st = p.stat()
+    except OSError:
+        return None
+    return [st.st_mtime_ns, st.st_size]
+
+
+def _summary_from(d, p: Path) -> dict | None:
+    """What the window's review list and team.library_combos read from a review, raw (formatted by them)."""
+    if not isinstance(d, dict):
+        return None
+    m = d.get("meta", {})
+    if not isinstance(m, dict):
+        return None
+    ids = d.get("combo_ids") if isinstance(d.get("combo_ids"), dict) else {}
+    laps = d.get("laps", [])
+    return {"track": m.get("track"), "car": m.get("car"), "started_at": m.get("started_at"),
+            "session": m.get("session"), "best_t": (d.get("best") or {}).get("t"),
+            "n_laps": len(laps) if hasattr(laps, "__len__") else None,
+            "track_id": ids.get("track_id"), "car_id": ids.get("car_id"), "clean_best": clean_best(d)}
+
+
+def _load_index(folder: Path) -> dict:
+    try:
+        d = json.loads((folder / INDEX_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(d, dict) or d.get("header") != _index_header() or not isinstance(d.get("reviews"), dict):
+        return {}
+    return d["reviews"]
+
+
+def _scan(folder) -> list:
+    """[(review dir name, entry)] for every reviews/*/review.json, in folder order. entry = {"m", "s", "r",
+    "row", "sum"}: review.json's mtime_ns and size, result.json's [mtime_ns, size] (or None), the library row
+    and the summary (None when the review can't be read). Rows come back as fresh objects every call."""
+    folder = Path(folder)
+    base = folder / "reviews"
     if not base.is_dir():
-        return rows
-    for p in sorted(base.glob("*/review.json")):
-        try:
-            r = _row(p)
-        except Exception:
-            r = None
-        if r:
-            rows.append(r)
+        return []
+    with _INDEX_LOCK:   # one thread works a changed library out; the others then find it ready
+        old = _load_index(folder)
+        out, new, dirty = [], {}, False
+        for p in sorted(base.glob("*/review.json")):
+            name = p.parent.name
+            key = _stat_key(p)         # stat before reading: a review saved meanwhile is redone next scan
+            if key is None:
+                continue
+            rkey = _stat_key(p.parent / "result.json")
+            e = old.get(name)
+            if not (isinstance(e, dict) and [e.get("m"), e.get("s")] == key and e.get("r") == rkey
+                    and "row" in e and "sum" in e):
+                try:
+                    text = p.read_text(encoding="utf-8")
+                except OSError:        # locked for a moment (antivirus, OneDrive): skip, don't remember
+                    continue
+                try:
+                    d = json.loads(text)
+                except ValueError:
+                    d = None
+                try:
+                    row = _row_from(d, p) if d is not None else None
+                except Exception:  # noqa: BLE001  (an odd review is skipped, as before)
+                    row = None
+                try:
+                    summ = _summary_from(d, p)
+                except Exception:  # noqa: BLE001
+                    summ = None
+                e = {"m": key[0], "s": key[1], "r": rkey, "row": row, "sum": summ}
+                dirty = True
+            new[name] = e
+            out.append((name, e))
+        if dirty or set(new) != set(old):
+            try:
+                fsutil.atomic_write_text(folder / INDEX_FILE, json.dumps(
+                    {"header": _index_header(), "reviews": new}, separators=(",", ":")), tries=3)
+            except (OSError, ValueError, TypeError):
+                pass   # a read-only or locked library: the rows are still right, just not remembered
+            # entries just worked out are the same objects as in `new`: hand out copies, so callers that
+            # change rows (PBs, combo keys) never touch what a later scan in this call might reuse
+            out = [(n, json.loads(json.dumps(e))) for n, e in out]
+    return out
+
+
+def scan_key(folder) -> tuple:
+    """A cheap fingerprint of the library's reviews (names, sizes, mtimes of review.json and result.json):
+    equal fingerprints mean list_reviews would return the same rows. Reads no review."""
+    base = Path(folder) / "reviews"
+    out = []
+    if base.is_dir():
+        for p in sorted(base.glob("*/review.json")):
+            out.append((p.parent.name, tuple(_stat_key(p) or ()), tuple(_stat_key(p.parent / "result.json") or ())))
+    return (str(folder), tuple(out))
+
+
+def review_summaries(folder) -> list[dict]:
+    """[{"dir", "track", "car", "started_at", "session", "best_t", "n_laps", "track_id", "car_id",
+    "clean_best"}] for every readable review, raw values from review.json (meta, combo_ids, best.t, len(laps),
+    clean_best()), folder order. From the row index: no review.json is parsed unless it changed."""
+    return [dict(e["sum"], dir=n) for n, e in _scan(folder) if isinstance(e.get("sum"), dict)]
+
+
+def list_reviews(folder, _pbs: bool = True) -> list[dict]:
+    """All reviews in the library folder as row dicts, newest first. Unreadable files are skipped.
+    Rows come from the row index (.rows.json), worked out again only for reviews that changed."""
+    rows = [e["row"] for _, e in _scan(folder) if e.get("row")]
     _unify_combo_keys(rows)
     if _pbs:
         _apply_pbs(rows)
@@ -556,13 +702,14 @@ def _atomic_write(path: Path, text: str) -> None:
         raise
 
 
-def rebuild(folder) -> Path:
-    """Write <folder>/index.html: race rows + goals progress + season summary, all embedded."""
+def rebuild(folder, rows: list | None = None) -> Path:
+    """Write <folder>/index.html: race rows + goals progress + season summary, all embedded.
+    rows: list_reviews(folder) output already in hand (with PBs); None reads them (cheap: row index)."""
     from datetime import datetime, timezone
     from . import goals
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
-    rows = list_reviews(folder)
+    rows = list_reviews(folder) if rows is None else rows
     try:
         gp = goals.progress(folder, rows=rows)
     except Exception:  # a damaged goals.json must never stop the library page

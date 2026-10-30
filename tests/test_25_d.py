@@ -791,7 +791,7 @@ def test_review_job_never_posts_to_discord():
 
 # ================================================================ layout, modules, version, build lists
 def test_layout_version_modules_and_spec():
-    assert report.LAYOUT == "2.5.0"
+    assert report.LAYOUT == "2.6.0"
     assert debrief.__version__ == "2.5.0"
     for n in NEW:
         assert n in desktop.FEATURE_MODULES, n
@@ -810,7 +810,7 @@ def test_layout_version_modules_and_spec():
     (out / "review.json").write_text(json.dumps({"meta": {"track": "T", "car": "C"}, "laps": [{"n": 1, "t": 90.0, "clean": True}],
                                                  "corners": [], "best": {"n": 1, "t": 90.0}}), encoding="utf-8")
     (lib / ".layout").write_text("2.4.0", encoding="utf-8")
-    assert report.refresh_all(lib) == 1 and (lib / ".layout").read_text(encoding="utf-8").strip() == "2.5.0"
+    assert report.refresh_all(lib) == 1 and (lib / ".layout").read_text(encoding="utf-8").strip() == "2.6.0"
 
 
 def test_selftest_with_stand_ins():

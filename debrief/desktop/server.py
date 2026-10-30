@@ -291,15 +291,28 @@ def _pos_int(v, what):
     return n
 
 
+SETTINGS_WRITE_ERROR = "Debrief couldn't save your settings. Is %LOCALAPPDATA%\\Debrief read-only or full?"
+NO_TOKEN_SAVED = "Save your Garage 61 token first."
+FINISH_SETUP = "Finish setup first: paste your Garage 61 token on the welcome screen."
+
+
 def friendly(e: BaseException) -> str:
     if isinstance(e, Garage61Error):
         m = str(e)
         if m.startswith("No Garage 61 token"):
             return "No Garage 61 token saved yet. Open Settings and paste your token."
         m = m.replace("Check settings.toml, or create", "Paste it again in Settings, or create")
+        m = m.replace("Open settings.toml and paste", "Open Settings and paste")
         return m if m.startswith("Garage 61") else f"Garage 61: {m}"
     if isinstance(e, SystemExit):
-        return str(e.code) if e.code not in (None, 0) else "Stopped."
+        m = str(e.code) if e.code not in (None, 0) else "Stopped."
+        if "settings.toml" in m or "Setup.bat" in m:   # app.load_settings speaks to the from-source setup
+            app.say(f"Settings problem: {m}")
+            if "typo" in m:
+                return ("Debrief couldn't read your saved settings (details in debrief.log). "
+                        "Open Settings and save them again.")
+            return "Debrief's settings are missing. Close Debrief and open it again to see the welcome screen."
+        return m
     return f"Something unexpected went wrong. Details were saved to debrief.log in {app.data_folder_label()}."
 
 
@@ -362,6 +375,11 @@ class Jobs:
     def _background_alive(self):
         with self.lock:
             return [t for t in self.background.values() if t.is_alive()]
+
+    def background_running(self, name: str) -> bool:
+        with self.lock:
+            t = self.background.get(name)
+            return bool(t is not None and t.is_alive())
 
     def wait_background(self, timeout: float) -> bool:
         """Wait for housekeeping to finish. True if none is running now."""
@@ -488,7 +506,13 @@ class Jobs:
                                      force_old=bool(params.get("force_old")))
                 result = {"page": _lib_rel(cfg, res["page"]), "requests": int(res.get("requests") or 0)}
             else:
-                result = {"lines": app.cmd_check(cfg, progress=cb)}
+                lines = app.cmd_check(cfg, progress=cb)
+                result = {"lines": lines}
+                if hasattr(lines, "rows"):   # 2.6: [{"text", "level": "info"|"ok"}] for the window's check list
+                    try:
+                        result["rows"] = [r for r in lines.rows() if isinstance(r, dict)]
+                    except Exception:  # noqa: BLE001  (the plain lines still show)
+                        app.say("ERROR reading the connection check rows:\n" + traceback.format_exc())
         except Garage61Error as e:
             app.say(f"ERROR Garage 61: {e}")
             error = friendly(e)
@@ -587,32 +611,37 @@ def _lib_rel(cfg, page) -> str:
 
 # ---------------------------------------------------------------- review list
 class ReviewIndex:
+    """The window's review list. Summaries come from the library's row index (library.review_summaries), so
+    only reviews that changed since the last look are read."""
     def __init__(self):
-        self.cache = {}
         self.lock = threading.Lock()
 
     @staticmethod
     def _summary(p: Path) -> dict:
         d = json.loads(p.read_text(encoding="utf-8"))
-        m = d.get("meta", {})
-        best = (d.get("best") or {}).get("t")
-        return {"dir": p.parent.name, "track": m.get("track") or "Unknown track", "car": m.get("car") or "Unknown car",
-                "started_at": m.get("started_at") or "", "date": library.local_day(m.get("started_at")) or p.parent.name[:10],
-                "session": m.get("session") or "", "best": app.fmt_t(best) if best else "",
-                "laps": len(d.get("laps", []))}
+        s = library._summary_from(d, p)
+        if s is None:
+            raise ValueError("not a review")
+        return ReviewIndex._format(dict(s, dir=p.parent.name))
+
+    @staticmethod
+    def _format(s: dict) -> dict:
+        if s.get("n_laps") is None:
+            raise ValueError("no laps list")
+        best = s.get("best_t")
+        return {"dir": s["dir"], "track": s.get("track") or "Unknown track", "car": s.get("car") or "Unknown car",
+                "started_at": s.get("started_at") or "",
+                "date": library.local_day(s.get("started_at")) or s["dir"][:10],
+                "session": s.get("session") or "", "best": app.fmt_t(best) if best else "",
+                "laps": s["n_laps"]}
 
     def list(self, folder: Path) -> list:
         items = []
         with self.lock:
-            for p in (folder / "reviews").glob("*/review.json"):
+            for s in library.review_summaries(folder):
                 try:
-                    mt = p.stat().st_mtime
-                    hit = self.cache.get(p)
-                    if not hit or hit[0] != mt:
-                        hit = (mt, self._summary(p))
-                        self.cache[p] = hit
-                    items.append(hit[1])
-                except Exception:  # noqa: BLE001  (a half-written or old review: skip it)
+                    items.append(self._format(s))
+                except Exception:  # noqa: BLE001  (an old or odd review: skip it)
                     continue
         items.sort(key=lambda r: (r["started_at"], r["dir"]), reverse=True)
         groups, order = {}, []
@@ -627,15 +656,15 @@ class ReviewIndex:
 
 
 class RowsCache:
-    """library.list_reviews rows, re-read only when a review.json changes (the Skills bar asks on every open)."""
+    """library.list_reviews rows, worked out again only when a review.json or result.json changes (the Skills
+    bar asks on every open). library.scan_key only stats the files."""
     def __init__(self):
         self.key, self.val = None, []
         self.lock = threading.Lock()
 
     def rows(self, folder: Path) -> list:
-        ps = list((Path(folder) / "reviews").glob("*/review.json"))
         try:
-            key = (str(folder), len(ps), max((p.stat().st_mtime_ns for p in ps), default=0))
+            key = library.scan_key(folder)
         except OSError:
             key = None
         with self.lock:
@@ -972,6 +1001,14 @@ class Handler(BaseHTTPRequestHandler):
         obj = json.loads(raw.decode("utf-8"))
         return obj if isinstance(obj, dict) else {}
 
+    def _token_saved(self) -> bool:
+        """A Garage 61 token is saved (settings readable and the token isn't empty or the example's)."""
+        try:
+            tok = str(app.load_settings().get("token") or "").strip()
+        except SystemExit:
+            return False
+        return bool(tok) and not tok.startswith("PASTE")
+
     def _library_folder(self) -> Path | None:
         try:
             return Path(app.load_settings()["library_folder"])
@@ -1017,7 +1054,7 @@ class Handler(BaseHTTPRequestHandler):
         if r.startswith("lib/"):
             return self._lib(r[len("lib/"):])
         if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/pages", "api/sessions", "api/prepare",
-                 "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly"):
+                 "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -1112,8 +1149,9 @@ class Handler(BaseHTTPRequestHandler):
             used = api.requests_made
         out = None if teams is None else [{"slug": str(t.get("slug")), "name": str(t.get("name") or t.get("slug"))}
                                          for t in teams if isinstance(t, dict) and t.get("slug")]
+        from .. import brand
         return self._json({"ok": True, "teams": out, "team_slug": cfg["team_slug"], "requests": used,
-                           "token": api is not None})
+                           "token": api is not None, "membership": brand.membership(teams)})
 
     def _get_goals(self, q):
         cfg = self._cfg()
@@ -1151,27 +1189,87 @@ class Handler(BaseHTTPRequestHandler):
         results = self._module("results")
         return self._json({"ok": True, "review": d.name, "result": results.load(d)})
 
+    SESSIONS_LIMIT = 60      # default page size of /api/sessions
+    SESSIONS_MAX = 5000
+
     def _get_sessions(self, q):
-        """Your synced sessions (races, qualifying, practice), newest first. Never a request."""
+        """Your synced sessions (races, qualifying, practice), newest first. Never a request.
+
+        Paging: ?offset=&limit= (limit defaults to 60). Without either the whole list comes back, as before
+        2.6 (a window from 2.5 shows it all); "total" is always the full count, "offset"/"limit" what this
+        page used and "more" whether there are sessions after it. sessions.json is read once."""
         cfg = self._cfg()
         api = self._cache_api(cfg)
+        paged = "offset" in q or "limit" in q
+        offset = self._page_int(q.get("offset"), 0, "offset") if paged else 0
+        limit = self._page_int(q.get("limit"), self.SESSIONS_LIMIT, "limit") if paged else None
+        if limit is not None:
+            limit = max(1, min(limit, self.SESSIONS_MAX))
         if api is None:
-            return self._json({"ok": True, "token": False, "summary": None, "sessions": []})
+            return self._json({"ok": True, "token": False, "summary": None, "sessions": [], "total": 0,
+                               "offset": offset, "limit": limit, "more": False})
         from .. import sync
         store = sync.Store.for_api(api)
-        dirs = sorted((p.parent.name for p in (Path(cfg["library_folder"]) / "reviews").glob("*/review.json")),
-                      reverse=True)
+        raw = sync._read_json(store.root / "sessions.json", {})
+        raw = raw if isinstance(raw, dict) else {}
+        all_s = [s for s in (raw.get("sessions") or []) if isinstance(s, dict)]
+        summary = self._sync_summary(store, raw)
+        total = len(all_s)
+        page = all_s[offset:offset + limit] if limit is not None else all_s[offset:]
+        # review folders end with the event's last 6 characters (+ _practice / _qualifying). Every ending a
+        # session could look for ("_" + 1..6 characters + suffix) maps to the newest folder with it, so each
+        # session is one dict lookup (the same answer as checking every folder name with endswith)
+        by_end = {}
+        for d in sorted((p.parent.name for p in (Path(cfg["library_folder"]) / "reviews").glob("*/review.json")),
+                        reverse=True):
+            for suf in ("", "_practice", "_qualifying"):
+                if not d.endswith(suf):
+                    continue
+                for k in range(1, 7):
+                    end = d[-(len(suf) + k + 1):]
+                    if len(end) == len(suf) + k + 1 and end.startswith("_"):
+                        by_end.setdefault(end, d)
         rows = []
-        for s in store.sessions():
+        for s in page:
             ev = str(s.get("event") or "")
             name = None
-            if ev:  # review folders end with the event's last 6 characters (+ _practice / _qualifying)
+            if ev:
                 end = "_" + ev[-6:].lower() + {1: "_practice", 2: "_qualifying"}.get(s.get("type"), "")
-                name = next((d for d in dirs if d.endswith(end)), None)
+                name = by_end.get(end)
             rows.append({k: s.get(k) for k in ("key", "event", "track_id", "car_id", "track", "car", "type", "session",
                                                  "start", "laps", "clean_laps", "best", "best_clean")} | {"review": name})
-        return self._json({"ok": True, "token": True, "summary": store.summary(), "sessions": rows,
-                           "sync_on_open": cfg.get("sync_on_open", True)})
+        return self._json({"ok": True, "token": True, "summary": summary, "sessions": rows,
+                           "sync_on_open": cfg.get("sync_on_open", True), "total": total, "offset": offset,
+                           "limit": limit, "more": offset + len(rows) < total})
+
+    @staticmethod
+    def _page_int(v, default, what) -> int:
+        if v is None or v == "":
+            return default
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            raise ValueError(f"Bad {what}.")
+        if n < 0:
+            raise ValueError(f"Bad {what}.")
+        return n
+
+    @staticmethod
+    def _sync_summary(store, raw: dict) -> dict:
+        """store.summary(), from the sessions.json already read (same keys; one read, not two)."""
+        if not hasattr(store, "state"):
+            return store.summary()
+        st = store.state()
+        return {"synced": bool(st.get("first_complete")), "last_sync": st.get("last_success"),
+                "laps": int(raw.get("laps") or 0), "sessions": len(raw.get("sessions") or []),
+                "combos": len(st.get("combos") or {}), "telemetry_left": int(st.get("telemetry_left") or 0),
+                "last_requests": st.get("last_requests"), "stopped": bool(st.get("stopped")),
+                "warnings": list(st.get("last_warnings") or [])}
+
+    def _get_brand(self, q):
+        """Team identity for the window (Midfield Menace names and links). Constants only: no settings, no secrets."""
+        from .. import brand
+        return self._json({"ok": True, **brand.as_dict()})
 
     def _synced_sessions(self, api):
         if api is None:
@@ -1332,7 +1430,10 @@ class Handler(BaseHTTPRequestHandler):
             gf = lib / "goals.json"   # goals saved elsewhere (or a rebuild that failed) show up too
             if gf.exists():
                 newest = max(newest, gf.stat().st_mtime)
-            if not idx.exists() or idx.stat().st_mtime < newest:
+            # while the saved-review refresh rewrites every review.json, each one looks newer than the page:
+            # show the page as it is (refresh_all rebuilds it once at the end) unless there isn't one yet
+            refreshing = self.server.jobs.background_running("refresh")
+            if not idx.exists() or (idx.stat().st_mtime < newest and not refreshing):
                 try:
                     library.rebuild(lib)
                 except Exception:  # noqa: BLE001
@@ -1343,7 +1444,7 @@ class Handler(BaseHTTPRequestHandler):
             p.relative_to(root)
         except (ValueError, OSError):
             return self._nf()
-        if p.suffix.lower() not in LIB_TYPES or not p.is_file():
+        if p.suffix.lower() not in LIB_TYPES or not p.is_file() or p.name == library.INDEX_FILE:
             return self._nf()
         self._file(p, lib=True)
 
@@ -1375,6 +1476,8 @@ class Handler(BaseHTTPRequestHandler):
                 params = clean_review_params(body)
             except ValueError as e:
                 return self._json({"ok": False, "error": str(e)}, 400)
+            if not self._token_saved():
+                return self._json({"ok": False, "error": FINISH_SETUP, "setup": True}, 400)
             return self._json(self.server.jobs.start("review", params))
         if r == "api/sync":
             return self._post_sync(body)
@@ -1404,7 +1507,8 @@ class Handler(BaseHTTPRequestHandler):
             except SystemExit as e:
                 return self._json({"ok": False, "error": friendly(e)}, 400)
             except OSError as e:
-                return self._json({"ok": False, "error": f"Couldn't write settings.toml ({e.strerror})."}, 500)
+                app.say(f"ERROR saving settings: {type(e).__name__}: {e}")   # the detail goes to the log only
+                return self._json({"ok": False, "error": SETTINGS_WRITE_ERROR}, 500)
             what = [w + " updated" for w, k in (("token", "token"), ("Discord webhook", "discord_webhook")) if body.get(k)]
             if body.get("clear_discord") is True:
                 what.append("Discord webhook removed")
@@ -1416,7 +1520,7 @@ class Handler(BaseHTTPRequestHandler):
         if r == "api/open-folder":
             lib = self._library_folder()
             if lib is None:
-                return self._json({"ok": False, "error": "Set up settings.toml first."}, 400)
+                return self._json({"ok": False, "error": NO_TOKEN_SAVED}, 400)
             lib.mkdir(parents=True, exist_ok=True)
             try:
                 import os

@@ -433,6 +433,7 @@ td.d b{color:var(--ink);font-weight:600}
 .tlkey svg{vertical-align:-2px;margin-right:5px}
 .tlkey .sw{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-2px;margin-right:5px}
 #rcTimeline svg g.kf rect.cell{stroke:var(--ink);stroke-width:2px}
+#rlTimeline svg g.rlsel circle:last-child{stroke:var(--ink);stroke-width:3px}
 .fuelrows{display:grid;gap:6px;font-size:var(--t-md)}
 .fuelrows b{font-family:var(--mono);font-weight:600}
 .fuelrows .src{color:var(--muted);font-size:var(--t-sm)}
@@ -468,6 +469,16 @@ h2,h3,.sechead{break-after:avoid}
 svg,canvas,img{max-width:100%!important;height:auto}
 a{color:inherit!important;text-decoration:none!important}
 #dgcard{display:none!important}
+#jump,#jumpPanel,.rlhint,details.deep>summary small,details.deep>summary::before,.fixmore>summary,#compare .lede,#scanHint{display:none!important}
+details>summary{list-style:none}
+details>summary::-webkit-details-marker{display:none}
+.fix,.rlgrid>.panel,#rlStories>.panel{break-inside:avoid}
+.coach,.fixes{display:block!important}
+table{max-width:100%!important;width:100%!important}
+th,td{white-space:normal!important;overflow-wrap:break-word;max-width:none!important;overflow:visible!important;text-overflow:clip!important}
+.fix{margin-bottom:12px}
+.subhead,details.deep>summary{display:block!important;break-after:avoid}
+#rlTimeline g.kf>:first-child,#rlTimeline g.rlsel circle:last-child{stroke-width:1.5px}
 }
 </style>
 </head><body>
@@ -557,7 +568,7 @@ a{color:inherit!important;text-decoration:none!important}
   </div>
   <div id="rlStories"></div>
   <details class="panel" id="rlGapsWrap" hidden><summary><b>Gaps lap by lap</b></summary><div class="tablewrap" id="rlGaps"></div></details>
-  <details class="panel"><summary><b>Every moment</b></summary><div id="rlRows"></div></details>
+  <details class="panel" id="rlMoments"><summary><b>Every moment</b></summary><div id="rlRows"></div></details>
 </section>
 
 <section id="rlPace" hidden>
@@ -794,9 +805,9 @@ function kbChart(host,label){if(!host||host._kb)return;host._kb=true;host.tabInd
   host.setAttribute('aria-label',label+'. Use the arrow keys to step through it'+(host.dataset.act?' and Enter to open one':'')+'.');
   let cur=-1;const items=()=>[...host.querySelectorAll('*')].filter(n=>n._tip&&n.isConnected);
   const mark=(list,i)=>{list.forEach(n=>n.classList&&n.classList.remove('kf'));const n=list[i];if(!n)return;n.classList.add('kf');
-    const lines=n._tip.f().filter(Boolean);showTip(n._tip.title,lines,n,null);if(srLive)srLive.textContent=n._tip.title+'. '+lines.join('. ');
+    if(n._onKb)n._onKb();else{const lines=n._tip.f().filter(Boolean);showTip(n._tip.title,lines,n,null);if(srLive)srLive.textContent=n._tip.title+'. '+lines.join('. ')}
     if(n.scrollIntoView&&host.scrollWidth>host.clientWidth)n.scrollIntoView({block:'nearest',inline:'nearest'})};
-  host.addEventListener('keydown',e=>{const list=items();if(!list.length)return;let i=list.indexOf(list[cur])>=0?cur:-1;
+  host.addEventListener('keydown',e=>{const list=items();if(!list.length)return;let i=list.indexOf(list[cur])>=0?cur:-1;if(i<0&&host._kbFrom)i=list.indexOf(host._kbFrom());
     if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();i=i<0?0:Math.max(0,Math.min(list.length-1,i+(e.key==='ArrowRight'?1:-1)))}
     else if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();const n=list[i];
       if(n&&n._rc){const [r,c]=n._rc;const dr=e.key==='ArrowDown'?1:-1;let best=-1,bd=1e9;list.forEach((m,k)=>{if(m._rc&&m._rc[0]===r+dr){const d=Math.abs(m._rc[1]-c);if(d<bd){bd=d;best=k}}});if(best>=0)i=best}
@@ -1717,7 +1728,11 @@ safe('depth',()=>{const X=isObj(D.depth)?D.depth:null;if(!X)return;const host=$(
   block('Your comparison lap',null,[isObj(X.ref_match)&&X.ref_match.sentence]);
   if(host.children.length)$('depth').hidden=false},'depth');
 
-$('btnPdf').addEventListener('click',()=>{const d=$('deep');if(d)d.open=true;setTimeout(()=>window.print(),250)});
+// Save as PDF: the numbers, the race log and the extra corners are on paper too, with no way to unfold them there.
+// Anything else prints if you opened it. Folds go back to how they were after the print dialog closes.
+let pdfOpened=[];function pdfOpen(){['deep','rlGapsWrap','rlMoments','fixMore'].forEach(id=>{const d=$(id);if(d&&!d.hidden&&!d.open){pdfOpened.push(d);if(id==='deep')openDeep();else d.open=true}})}
+$('btnPdf').addEventListener('click',()=>{pdfOpen();setTimeout(()=>window.print(),250)});
+window.addEventListener('beforeprint',pdfOpen);window.addEventListener('afterprint',()=>{pdfOpened.forEach(d=>{d.open=false});pdfOpened=[]});
 // ---------- 2.8: the race, from a replay scan (D.racecap). Everything is textContent; without a scan the page is as before.
 const RCP=isObj(D.racecap)?D.racecap:null;
 safe('your race',()=>{const int=(v,lo,hi)=>typeof v==='number'&&Number.isInteger(v)&&v>=lo&&v<=hi;const R=RCP;if(!R){$('scanHint').hidden=!(/race/i.test(String(M.session||'race')));return}
@@ -1736,29 +1751,32 @@ safe('your race',()=>{const int=(v,lo,hi)=>typeof v==='number'&&Number.isInteger
   const STATE={start:'Opening lap',pit:'Pit lap',incident:'Incident',fight:'Racing another car',close:'Close to another car',traffic:'Traffic (a car on another lap)',clear:'Clear air',unknown:'Not known'};
   const V2=num(R.version)&&R.version>=2;if(!V2)$('rlLede').dataset.old='1';
   const pos=laps.filter(x=>num(x.pos));
-  const detail=n=>{const host=$('rlLapDetail');host.replaceChildren();const r=laps.find(x=>x.lap===n);if(!r)return;
+  let tlSel=null;const tlMarks={};
+  const detail=n=>{const host=$('rlLapDetail');host.replaceChildren();const r=laps.find(x=>x.lap===n);if(!r)return;if(tlSel)tlSel.classList.remove('rlsel');tlSel=tlMarks[n]||null;if(tlSel)tlSel.classList.add('rlsel');
     const head=h('p');head.append(h('b',null,'Lap '+n),document.createTextNode((num(r.pos)?' · P'+r.pos:'')+(num(r.t)?' · '+fmt(r.t):'')+' · '+(STATE[r.state]||'')));host.append(head);
     const g=[];if(num(r.gap_ahead)&&r.gap_ahead<60)g.push(r.gap_ahead.toFixed(1)+' s behind '+String(r.ahead));if(num(r.gap_behind)&&r.gap_behind<60)g.push(r.gap_behind.toFixed(1)+' s ahead of '+String(r.behind));
     if(g.length)host.append(h('p','note','At the line: '+g.join(', ')+'.'));
     const ms=moments[n]||[];if(ms.length){const ul=h('ul');ms.forEach(m=>ul.append(h('li',null,m.text)));host.append(ul)}
     if(int(r.review_lap,1,5000)&&TR['me'+r.review_lap]){const b=h('button',null,'Open in Compare (your lap '+r.review_lap+')');b.type='button';b.onclick=()=>openLap(r.review_lap);host.append(b)}};
   if(pos.length>1){$('raceTl').hidden=false;$('jumpTl').hidden=false;$('rlTlSub').textContent='lower on the chart is further back · on the road'+(R.official?', finish official':'');
-    const host=$('rlTimeline');const W=Math.max(320,host.clientWidth||900),H=210,ml=34,mr=12,top=16,bot=26;
+    const host=$('rlTimeline');const W=Math.max(320,host.clientWidth||900),H=210,ml=34,mr=16,top=16,bot=26;
     const L0=pos[0].lap,L1=pos[pos.length-1].lap,hi=Math.max(...pos.map(x=>x.pos)),lo=Math.min(...pos.map(x=>x.pos));
     const X=l=>ml+(W-ml-mr)*(l-L0)/Math.max(1,L1-L0),Y=v=>top+(H-top-bot)*(v-lo)/Math.max(1,hi-lo);
-    const svg=el('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',height:H,role:'group','aria-label':'Position by lap: P'+pos[0].pos+' on lap '+L0+' to P'+pos[pos.length-1].pos+' on lap '+L1+'. Choose a lap for details.'});
+    const say='Position by lap: P'+pos[0].pos+' on lap '+L0+' to P'+pos[pos.length-1].pos+' on lap '+L1;const svg=el('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',height:H,role:'img','aria-label':say});
     ticks(lo,hi,4).filter(v=>Number.isInteger(v)).forEach(v=>{svg.append(el('line',{x1:ml,x2:W-mr,y1:Y(v),y2:Y(v),stroke:'var(--line)'}),el('text',{x:ml-6,y:Y(v)+4,'text-anchor':'end',fill:'var(--ink2)','font-size':12},'P'+v))});
     laps.filter(x=>x.state==='pit').forEach(x=>{const w=Math.max(6,(W-ml-mr)/Math.max(1,L1-L0)*0.8);svg.append(el('rect',{x:X(x.lap)-w/2,y:top-6,width:w,height:H-top-bot+12,fill:COL.pit,'fill-opacity':.14}))});
     svg.append(el('polyline',{points:pos.map(x=>X(x.lap).toFixed(1)+','+Y(x.pos).toFixed(1)).join(' '),fill:'none',stroke:'var(--a)','stroke-width':2,'stroke-linejoin':'round'}));
     pos.forEach(x=>{const ms=moments[x.lap]||[];const made=ms.filter(m=>m.kind==='made').length,lost=ms.filter(m=>m.kind==='lost').length,inc=ms.some(m=>m.kind==='incident');
       const fill=inc?COL.incident:made>lost?COL.made:lost>made?COL.lost:'var(--panel)';
-      const g=el('g',{tabindex:0,role:'button','aria-label':'Lap '+x.lap+', P'+x.pos+(ms.length?', '+ms.length+' moments':''),style:'cursor:pointer'});
+      const g=el('g',{style:'cursor:pointer'});tlMarks[x.lap]=g;
       g.append(el('circle',{cx:X(x.lap),cy:Y(x.pos),r:12,fill:'transparent'}),el('circle',{cx:X(x.lap),cy:Y(x.pos),r:ms.length?5.5:3.5,fill,stroke:'var(--a)','stroke-width':1.5}));
-      g.addEventListener('click',()=>detail(x.lap));g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();detail(x.lap)}});svg.append(g);
-      if(x.lap===L0||x.lap===L1||x.lap%5===0)svg.append(el('text',{x:X(x.lap),y:H-8,'text-anchor':'middle',fill:'var(--ink2)','font-size':12},'L'+x.lap))});
-    host.append(svg);
+      tipNode(g,'Lap '+x.lap+', P'+x.pos,[]);g._onKb=()=>detail(x.lap);g.addEventListener('click',()=>detail(x.lap));svg.append(g)});
+    // lap labels: the first and last always, every fifth lap only where it has room (L20 and L21 sat on top of each other on a phone)
+    const lapW=n=>String(n).length*7+15;let lastX=-1e9;pos.forEach(x=>{const px=X(x.lap);if(x.lap!==L0&&x.lap!==L1&&(x.lap%5!==0||px-lastX<lapW(x.lap)||X(L1)-px<lapW(L1)))return;
+      svg.append(el('text',{x:px,y:H-8,'text-anchor':'middle',fill:'var(--ink2)','font-size':12},'L'+x.lap));lastX=px});
+    host.append(svg);host.dataset.act='1';host._kbFrom=()=>tlSel;kbChart(host,say+'. Left and right move between laps and show each lap below the chart');
     [['More passes made',COL.made],['More passes lost',COL.lost],['Incident',COL.incident],['Pit lap',COL.pit]].forEach(([t,c])=>{const s=h('span');const i=h('i');i.style.background=c;s.append(i,document.createTextNode(t));$('rlKey').append(s)});
-    $('rlLapDetail').append(h('p','note','Choose a lap on the chart to see what happened on it.'))}
+    $('rlLapDetail').append(h('p','note rlhint','Choose a lap on the chart to see what happened on it.'))}
   // racecraft
   $('racelog').hidden=false;$('jumpRaceLog').hidden=false;
   $('rlLede').textContent='From a replay scan of race '+String(R.subsession||'')+'. '+(R.official?'The finish is from the official results.':'Positions are the order on the road, not official results.')+' Positions are overall, across every class. Passes and fights cover the cars near yours, because iRacing only gives live data for cars near the replay camera. Lap numbers here are race laps.'+(V2?'':' This was linked with an older version: scan or link it again for corrected positions.');

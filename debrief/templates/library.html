@@ -316,6 +316,8 @@ a{color:inherit!important;text-decoration:none!important}
 .lib .goal .gnums span{font-size:var(--t-xs);color:var(--muted)}
 .lib .goal .gnums b{font-family:var(--mono);font-size:var(--t-lg);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 /* 2.8: racecraft, over time, digest */
+.skfocus{margin:var(--s2,8px) 0 0;font-weight:600}
+.craftsum{margin:0 0 var(--s3,12px);padding-left:20px}
 .lib .craftstats{margin-bottom:var(--s3)}
 .lib .craftstats .stat .ctx{white-space:normal;overflow:visible}
 .lib .craftgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:var(--s3);margin-bottom:var(--s3)}
@@ -870,7 +872,7 @@ function renderSkills(){const tiles=$('sktiles'),pan=$('skpanel');tiles.replaceC
   const races=(Array.isArray(P.races)?P.races:[]).filter(r=>r&&ok(r.loss_pm)&&dparts(r.date));
   const hd=h('div','phead');const t=h('h3',null,lab+': time lost per race');t.append(h('span','u','‰ of the lap, lower is better'));hd.append(t);
   const tr=P.trend;const tw=trendWord(tr);
-  hd.append(h('p','note',plural(races.length,'race')+'. '+(tw==='Not enough races yet'?'A trend needs races over at least two weeks.':tw+(ok(tr.change_pm)?' ('+(tr.change_pm<0?'−':'+')+Math.abs(tr.change_pm).toFixed(1)+' ‰ over '+plural(tr.days,'day')+')':'')+'.'+(tw==='Steady'?' Improving or Slipping only shows when the change is clearly bigger than your usual race-to-race spread (usually 5 or more races).':''))+' ‰ is thousandths of your lap time: 1 ‰ on a 90 s lap is 0.09 s.'));pan.append(hd);
+  hd.append(h('p','note',plural(races.length,'race')+'. '+(tw==='Not enough races yet'?'A trend needs '+(SKP.params&&ok(SKP.params.trend_min_races)?SKP.params.trend_min_races:4)+' races over at least two weeks.':tw+(ok(tr.change_pm)?' ('+(tr.change_pm<0?'−':'+')+Math.abs(tr.change_pm).toFixed(1)+' ‰ over '+plural(tr.days,'day')+')':'')+'.'+(tw==='Steady'?' Improving or Slipping only shows when the change is clearly bigger than your usual race-to-race spread (usually 5 or more races).':''))+' ‰ is thousandths of your lap time: 1 ‰ on a 90 s lap is 0.09 s.'));pan.append(hd);
   const tg=h('div','sktoggles');const mk=(key,txt)=>{const b=h('button',null,txt);b.type='button';b.setAttribute('aria-pressed',String(skSel[key]));b.onclick=()=>{skSel[key]=!skSel[key];renderSkills()};tg.append(b)};
   const W=(Array.isArray(P.weekly)?P.weekly:[]).filter(w=>w&&ok(w.loss_pm)&&isoWeekDay(w.week));const S=(Array.isArray(P.seasons)?P.seasons:[]).filter(x=>x&&ok(x.loss_pm));
   if(W.length)mk('weekly','Weekly median');if(S.length)mk('season','Season median');if(tg.children.length){tg.prepend(h('span',null,'Show'));pan.append(tg)}
@@ -887,6 +889,8 @@ function renderSkills(){const tiles=$('sktiles'),pan=$('skpanel');tiles.replaceC
   const lg=h('div','legend');series.forEach(se=>{const sp=h('span');const i=h('i','k');i.style.borderColor=se.color;sp.append(i,document.createTextNode(se.name));lg.append(sp)});pan.append(lg);
   const c=h('div','chart');pan.append(c);
   skRedraw=()=>c.replaceChildren(lineChart(arr,series,{label:lab+' time lost per race',minSpan:1,zero:true,tick:v=>v.toFixed(v<10?1:0),width:c.clientWidth}));skRedraw();
+  const wkRow=wk&&g.key==='all'&&ok(SKP.weakest.median_loss_pm)?(SK_PH.find(x=>x[0]===wk)||[])[1]:null;
+  if(wkRow){const nw=Math.min(5,(g.phases[wk].races||[]).length);pan.append(h('p','skfocus','Where your time goes lately: '+wkRow.toLowerCase()+', about '+SKP.weakest.median_loss_pm.toFixed(1)+' ‰ of the lap over your last '+plural(nw,'race')+'.'))}
   pan.append(h('p','note','Scores are worked out again from the saved time lost each time the library refreshes: 100 means your typical laps matched your better laps in that part of the corner. This is not absolute pace and not a comparison with other drivers.'));
   if(SKP&&typeof SKP.exit_note==='string'&&SKP.exit_note)pan.append(h('p','note skexitnote',SKP.exit_note))}
 
@@ -911,6 +915,7 @@ function renderCraft(){const host=$('craft');host.replaceChildren();const C=SKP&
   $('craftlede').textContent=C&&C.note?C.note:'Passes only count cars near the replay camera, so the real number can be higher. Positions are on the road, not official results.';
   if(!C||!C.enough){const e=h('div','empty');e.append(h('b',null,'Scan more races'),h('span',null,'You have '+plural(n,'scanned race')+'. This needs '+need+' so one odd race can\u2019t set the picture. Open a review and press Scan this race with the replay loaded in iRacing.'+(C&&C.waiting?' '+plural(C.waiting,'older scan')+' will count after the library next refreshes.':'')));host.append(e);return}
   const signed=v=>ok(v)?(v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(1):'–';
+  if(Array.isArray(C.summary)&&C.summary.length){const ul=h('ul','craftsum');C.summary.filter(x=>typeof x==='string').forEach(x=>ul.append(h('li',null,x)));host.append(ul)}
   const stats=h('div','stats craftstats');const L1=C.lap1||{},PS=C.passes||{},RC=C.recovery||{};
   [['Lap 1',signed(L1.avg),ok(L1.avg)?'Places a race on average. Gained in '+L1.gained+', lost in '+L1.lost+', same in '+L1.same:'No lap 1 positions'],
    ['Passes made',String(PS.made||0),'On track, after lap 1, over '+plural(n,'race')],
@@ -931,7 +936,7 @@ function renderCraft(){const host=$('craft');host.replaceChildren();const C=SKP&
   grid.append(rp);host.append(grid);
   const tp=h('div','panel crafttable');tp.append(h('h3',null,'Scanned races'));const tb=h('table');const hr=h('tr');[['Date',''],['Track',''],['Start','n'],['End','n'],['Lap 1','n'],['Made','n'],['Suffered','n'],['Stuck','n'],['Incidents','n']].forEach(([x,cl])=>hr.append(h('th',cl||null,x)));const hd=h('thead');hd.append(hr);tb.append(hd);const bd=h('tbody');
   (Array.isArray(C.races)?C.races:[]).forEach(r=>{const tr=h('tr');const td=h('td');const a=h('a',null,fmtDate(r.date));if(/^reviews\//.test(String(r.path||'')))a.href=r.path;td.append(a);
-    const P=v=>ok(v)?'P'+v:'–';tr.append(td,h('td',null,r.track||''),h('td','n',P(r.grid)),h('td','n',P(r.finish)+(ok(r.finish)&&!r.official?' on the road':'')),h('td','n',ok(r.lap1)?(r.lap1>0?'+':r.lap1<0?'−':'')+Math.abs(r.lap1):'–'),h('td','n',String(r.made)),h('td','n',String(r.lost)),h('td','n',String(r.stuck)),h('td','n',String(r.incidents)));bd.append(tr)});
+    const P=v=>ok(v)?'P'+v:'–';tr.append(td,h('td',null,r.track||''),h('td','n',P(r.grid)),h('td','n',(ok(r.class_finish)&&r.class_finish!==r.finish?'P'+r.class_finish+' in class, ':'')+P(r.finish)+(ok(r.class_finish)&&r.class_finish!==r.finish?' overall':'')+(ok(r.finish)&&!r.official?' on the road':'')),h('td','n',ok(r.lap1)?(r.lap1>0?'+':r.lap1<0?'−':'')+Math.abs(r.lap1):'–'),h('td','n',String(r.made)),h('td','n',String(r.lost)),h('td','n',String(r.stuck)),h('td','n',String(r.incidents)));bd.append(tr)});
   tb.append(bd);const w=h('div','tablewrap');w.append(tb);tp.append(w);host.append(tp);
   if(C.multiclass)host.append(h('p','note',plural(C.multiclass,'race')+' had more than one car class, so some of those passes are faster or slower classes going by.'))}
 

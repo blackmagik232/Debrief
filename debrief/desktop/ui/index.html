@@ -213,6 +213,12 @@
         <div class="row"><button type="button" class="btn primary" id="btnSeriesSave">Show my schedule</button><button type="button" class="btn ghost" id="btnPickSkip">Skip for now</button><span class="msg" id="pickMsg" role="status"></span></div>
       </div>
       <div id="mySeries" class="gridf"></div>
+      <div class="panel" id="planPanel" hidden>
+        <div class="phead"><h3>Season plan</h3><span class="pill" id="planPill"></span></div>
+        <p class="note" id="planNote"></p>
+        <ul class="warnlist" id="planNotes" hidden></ul>
+        <div id="planWeeks" class="gridf"></div>
+      </div>
       <div class="panel" id="intelPanel">
         <div class="phead"><h3>Import a Track Intel sheet</h3><span class="pill" id="intelPill" hidden></span></div>
         <p class="note">Bring your team's spreadsheet of track notes (.xlsx or .csv) into your track cards. Debrief reads it on this PC, shows you what would change, and changes nothing until you press Import.</p>

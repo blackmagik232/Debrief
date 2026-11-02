@@ -133,7 +133,7 @@ def find_race(folder, event_id, track, started_at, lookup, subsession=None, log=
 
 
 def find_me(cars, name):
-    """The driver's car in the scan: the exact name, else one car with the same family name and first letter."""
+    """The driver's car in the scan: the exact name, else the one car with the same family name and first letter."""
     hits = [c for c in cars if same_name(c.get("name"), name)]
     if len(hits) == 1:
         return hits[0]
@@ -141,8 +141,6 @@ def find_me(cars, name):
     if len(parts) < 2:
         return None
     last = [c for c in cars if clean_name(c.get("name")).lower().split()[-1:] == parts[-1:]]
-    if len(last) == 1:
-        return last[0]
     near = [c for c in last if clean_name(c.get("name")).lower()[:1] == parts[0][:1]]
     return near[0] if len(near) == 1 else None
 
@@ -344,7 +342,7 @@ def rival_laps(race_dir: Path, me_number, limit: int = MAX_RIVALS) -> list:
         pedals = bool(tr.get("throttle") and tr.get("brake"))
         how = "from Garage 61" if tr.get("source") == "garage61" else "read from the replay"
         lap = {"id": f"racecap:{tr.get('car')}:{tr.get('mode')}", "lapTime": float(tr["lap_time"]), "clean": True,
-               "driver_name": clean_name(tr.get("name")) or f"#{tr.get('car')}", "_main": False,
+               "driver_name": clean_name(tr.get("name")) or f"#{tr.get('car')}", "_main": False, "_rival": True,
                "_role": f"Rival in this race, {how}" + ("" if pedals else " (no pedal data)")}
         out.append((lap, text))
     return out
@@ -410,7 +408,12 @@ def link_review(folder, review_dir, cfg_folder, api, subsession=None, log=None) 
     from . import results
     d = Path(review_dir)
     data = json.loads((d / "review.json").read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("That review's data file is damaged.")
     meta = data.get("meta") or {}
+    from .library import session_kind
+    if session_kind(meta.get("session")) != "race":
+        raise ValueError("The RaceCap link is for race reviews. RaceCap's scan covers the race, not practice or qualifying.")
     found, why = prepare(cfg_folder, meta.get("event_id"), meta.get("track"), meta.get("started_at"), meta.get("driver"), api,
                          subsession=subsession, log=log)
     if found is None:

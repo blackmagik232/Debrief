@@ -842,7 +842,7 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
             raise
         say(f"  Comparison laps failed: {e}")   # 2.7.1 (M3): the review goes on with what it has
     refs = [r for r in refs if g(r, "id") in ref_tel]
-    rc_found = _racecap_race(cfg, api, event_id, track_name, laps, my_name)
+    rc_found = _racecap_race(cfg, api, event_id, track_name, laps, my_name) if chosen_kind in (3, None) else None
     if rc_found:
         try:
             from . import racecap_link

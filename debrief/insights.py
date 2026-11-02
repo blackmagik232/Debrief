@@ -248,7 +248,7 @@ def build(data: dict) -> dict:
     best = data.get("best") if isinstance(data.get("best"), dict) else {}
     median = _f(data.get("median"))
     con = data.get("consistency") if isinstance(data.get("consistency"), dict) else {}
-    refs = [r for r in data.get("refs") or [] if isinstance(r, dict)]
+    refs = [r for r in data.get("refs") or [] if isinstance(r, dict) and not r.get("rival")]
     main_ref = next((r for r in refs if r.get("main")), refs[0] if refs else None)
     k = _scale(median)
     min_gain = MIN_GAIN * k

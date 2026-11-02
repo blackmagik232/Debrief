@@ -2149,6 +2149,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": False, "error": str(e)}, 400)
         except OSError:
             return self._json({"ok": False, "error": "Couldn't read that review."}, 400)
+        if not isinstance(review, dict):
+            return self._json({"ok": False, "error": "That review's data file is damaged."}, 400)
         me = results_csv.pick(parsed, (review.get("meta") or {}).get("driver"))
         return self._json({"ok": True, "matched": me, "drivers": parsed["drivers"], "multiclass": parsed["multiclass"]})
 
@@ -2171,9 +2173,14 @@ class Handler(BaseHTTPRequestHandler):
         cfg = self._cfg()
         d = self._review_dir(cfg, q.get("review"))
         from .. import markers
-        text = markers.edl(json.loads((d / "review.json").read_text(encoding="utf-8")))
-        return self._json({"ok": True, "edl": text, "name": re.sub(r"[^\w.-]+", "_", d.name)[:80] + "_markers.edl",
-                           "exact": markers.items(json.loads((d / "review.json").read_text(encoding="utf-8")))[1]})
+        data = json.loads((d / "review.json").read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("That review's data file is damaged.")
+        rows, exact = markers.items(data)
+        if not rows:
+            raise ValueError("This review has no moments to mark yet.")
+        return self._json({"ok": True, "edl": markers.edl(data), "name": re.sub(r"[^\w.-]+", "_", d.name)[:80] + "_markers.edl",
+                           "exact": exact})
 
     def _post_result(self, body):
         cfg = self._cfg()

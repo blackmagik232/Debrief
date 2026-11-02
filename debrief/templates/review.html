@@ -662,7 +662,7 @@ const HAS_TEL=!!TR[bestKey];
 const N=HAS_TEL?TR[bestKey].tt.length:0;
 const lapBy={};D.laps.forEach(l=>lapBy[l.n]=l);
 const myKeys=Object.keys(TR).filter(k=>k.startsWith('me')).sort((a,b)=>+a.slice(2)-+b.slice(2));
-const refs=D.refs.filter(r=>!HAS_TEL||TR[r.key]);const mainRef=refs.find(r=>r.main)||refs[0]||null;
+const refs=D.refs.filter(r=>!HAS_TEL||TR[r.key]);const mainRef=refs.find(r=>r.main)||refs.find(r=>!r.rival)||null;
 const failed=[];
 function safe(name,fn,hostId){try{return fn()}catch(e){
   try{console.error('Debrief: the "'+name+'" part of this review could not be drawn:',e)}catch(_){}
@@ -805,7 +805,7 @@ const state={a:bestKey,b:mainRef?mainRef.key:(pickMedianLap()||myKeys.find(k=>k!
 const selA=$('selA'),selB=$('selB');
 function lapOpt(k,prefix){const n=+k.slice(2);const l=lapBy[n];const o=document.createElement('option');o.value=k;o.textContent=(prefix||'Lap ')+n+'  ·  '+fmt(TR[k].t)+(k===bestKey?'  · best':l&&!l.clean?'  · off-pace':'');return o}
 myKeys.forEach(k=>selA.append(lapOpt(k)));
-if(refs.length){const g=document.createElement('optgroup');g.label='Comparison laps';refs.forEach(r=>{const o=document.createElement('option');o.value=r.key;o.textContent=r.name+'  ·  '+fmt(r.t);g.append(o)});selB.append(g)}
+if(refs.length){const g=document.createElement('optgroup');g.label='Comparison laps';refs.forEach(r=>{const o=document.createElement('option');o.value=r.key;o.textContent=r.name+'  ·  '+fmt(r.t)+(r.rival?'  ·  rival'+(TR[r.key]&&TR[r.key].no_pedals?', no pedal data':''):'');g.append(o)});selB.append(g)}
 {const g=document.createElement('optgroup');g.label='Your laps';myKeys.forEach(k=>g.append(lapOpt(k)));selB.append(g)}
 const presets=[];
 if(mainRef)presets.push(['Best vs '+firstName(mainRef.name),bestKey,mainRef.key]);
@@ -944,7 +944,7 @@ function renderTele(){const host=$('overlay');host.replaceChildren();if(!HAS_TEL
       g.append(el('polyline',{points:xy.map(([x,y])=>x.toFixed(1)+','+y.toFixed(1)).join(' '),fill:'none',stroke:'var(--ink)','stroke-width':1.5,'stroke-linejoin':'round'}));
       s.append(g)}
     else{const line=(arr,col,w)=>{const pts=[];for(let i=i0;i<=i1;i++)pts.push(X(i*STEP).toFixed(1)+','+Y(arr[i]).toFixed(1));g.append(el('polyline',{points:pts.join(' '),fill:'none',stroke:col,'stroke-width':w,'stroke-linejoin':'round'}))};
-      line(B[p.key],'var(--b)',1.75);line(A[p.key],'var(--a)',1.75);s.append(g)}});
+      const ped=p.key==='th'||p.key==='b';if(!(ped&&B.no_pedals))line(B[p.key],'var(--b)',1.75);if(!(ped&&A.no_pedals))line(A[p.key],'var(--a)',1.75);s.append(g)}});
   // distance axis
   const st=niceStep(state.x1-state.x0,8);for(let d=Math.ceil(state.x0/st)*st;d<=state.x1+1e-6;d+=st){const x=X(d);if(x<ml-1||x>W-mr+1)continue;s.append(el('line',{x1:x,x2:x,y1:plotBot,y2:plotBot+4,stroke:'var(--axis)'}));s.append(T(x,plotBot+16,st>=500?(d/1000).toFixed(1)+' km':Math.round(d).toLocaleString()+' m',{'text-anchor':'middle'}))}
   cross=el('line',{y1:plotTop,y2:plotBot,stroke:'var(--ink)','stroke-width':1,visibility:'hidden','pointer-events':'none'});s.append(cross);
@@ -970,8 +970,8 @@ function setHover(i,fromKey){state.hover=i;if(i==null||!TR[state.a]||!TR[state.b
   const A=TR[state.a],B=TR[state.b];const g=A.tt[i]-B.tt[i];ro.replaceChildren();ro.hidden=false;
   ro.append(h('div','ro-h',Math.round(i*STEP).toLocaleString()+' m · A '+(g>0?'behind':g<0?'ahead':'level')+' by '+ab(g,2)+' s so far'));
   const row=(k,a,b,head)=>{const r=h('div','ro-row');const ka=h(head?'span':'b',null,head?null:a),kb=h('span','ro-ref',head?null:b);if(head){ka.append(h('i','k a'),document.createTextNode(a));kb.append(h('i','k b'),document.createTextNode(b))}r.append(h('span','ro-k',k),ka,kb);ro.append(r)};
-  row('','A','B',true);row('Speed',A.v[i]+' mph',B.v[i]+' mph');row('Throttle',A.th[i]+'%',B.th[i]+'%');row('Brake',A.b[i]+'%',B.b[i]+'%');row('Gear',String(A.g[i]),String(B.g[i]));
-  if(fromKey&&srLive)srLive.textContent=Math.round(i*STEP)+' metres. A '+A.v[i]+' mph, B '+B.v[i]+' mph. Throttle '+A.th[i]+' and '+B.th[i]+' percent. Brake '+A.b[i]+' and '+B.b[i]+' percent.';
+  row('','A','B',true);row('Speed',A.v[i]+' mph',B.v[i]+' mph');const pv=(T_,k)=>T_.no_pedals?'no data':T_[k][i]+'%';row('Throttle',pv(A,'th'),pv(B,'th'));row('Brake',pv(A,'b'),pv(B,'b'));row('Gear',String(A.g[i]),String(B.g[i]));
+  if(fromKey&&srLive)srLive.textContent=Math.round(i*STEP)+' metres. A '+A.v[i]+' mph, B '+B.v[i]+' mph. Throttle '+pv(A,'th')+' and '+pv(B,'th')+'. Brake '+pv(A,'b')+' and '+pv(B,'b')+'.';
   if(fromKey&&teleGeom){const r=teleGeom.svg.getBoundingClientRect();px=r.left+teleGeom.X(i*STEP)*r.width/teleGeom.W;py=r.top+60}place(ro)}
 function zoom(a,b){state.x0=a;state.x1=b;renderTele();renderMap()}
 function renderCompare(){[...$('presets').querySelectorAll('button')].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.a===state.a&&b.dataset.b===state.b)));
@@ -1586,12 +1586,12 @@ safe('practice and qualifying',()=>{if(!SR)return;const quali=SR.kind==='qualify
 safe('race log',()=>{const R=isObj(D.racecap)?D.racecap:null;if(!R)return;
   const list=k=>Array.isArray(R[k])?R[k].filter(isObj):[];
   $('racelog').hidden=false;$('jumpRaceLog').hidden=false;
-  $('rlLede').textContent='From your RaceCap replay scan of race '+String(R.subsession||'')+'. The whole field was scanned; '+(R.official?'the finish is from the official results.':'positions are the order on the road, not official results.')+(M.multiclass?' Positions here are overall, across classes.':'');
+  $('rlLede').textContent='From your RaceCap replay scan of race '+String(R.subsession||'')+'. The whole field was scanned; '+(R.official?'the finish is from the official results.':'positions are the order on the road, not official results.')+' Positions here are overall, across every class in the race.';
   const chips=$('rlChips');const chip=t=>chips.append(h('span','chip',t));
   if(R.start_type)chip(R.start_type==='rolling'?'Rolling start':'Standing start');
   if(R.grid)chip('Started P'+R.grid);if(R.pos_after_lap1)chip('P'+R.pos_after_lap1+' after lap 1');
   if(R.finish)chip('Finished P'+R.finish+(R.official?'':' on the road'));
-  const made=list('passes').filter(p=>p.made).length,lost=list('passes').length-made;chip(made+' passes made');chip(lost+' suffered');
+  const onT=list('passes').filter(p=>p.how==='on track'),made=onT.filter(p=>p.made).length,lost=onT.length-made;chip(made+' on-track passes made');chip(lost+' suffered');
   if(R.ended)chip(String(R.ended));
   const so=$('rlStories');list('stories').forEach(s=>{const p=h('div','panel');p.append(h('h3',null,String(s.title||'')));const ul=h('ul','rcsum');
     (Array.isArray(s.beats)?s.beats:[]).filter(isObj).forEach(b=>ul.append(h('li',null,(b.lap?'Lap '+b.lap+': ':'')+String(b.text||''))));p.append(ul);so.append(p)});

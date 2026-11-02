@@ -847,11 +847,15 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
         ref_out.append({"id": lid, "name": name, "t": float(lt), "R": RR,
                         "rating": g(rl, "driver_rating", "driverRating"),
                         "corners": {c["id"]: corner_metrics(RR, c) for c in corners},
-                        "style": lap_style(RR), "role": rl.get("_role", ""), "main": bool(rl.get("_main"))})
+                        "style": lap_style(RR), "role": rl.get("_role", ""), "main": bool(rl.get("_main")),
+                        "rival": bool(rl.get("_rival")), "no_pedals": pedals_missing(RR)})
 
-    ref_out.sort(key=lambda r: 0 if r["main"] else 1)
-    if ref_out and not any(r["main"] for r in ref_out):
-        ref_out[0]["main"] = True   # the main comparison was left out: the next one takes its place
+    # 2.7.5: a RaceCap rival may be in another class and may have no pedals, so it is only ever there to look at
+    # in Compare and the splits: it never becomes the main comparison and never feeds coaching or time to find.
+    coach_refs = sorted((r for r in ref_out if not r["rival"]), key=lambda r: 0 if r["main"] else 1)
+    ref_out = coach_refs + [r for r in ref_out if r["rival"]]
+    if coach_refs and not any(r["main"] for r in coach_refs):
+        coach_refs[0]["main"] = True   # the main comparison was left out: the next one takes its place
 
     # corner summaries + coaching
     clean_ns = {x["n"] for x in clean}
@@ -890,9 +894,9 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
                                 "r_needed": round(pattern_r_needed(n), 3), "method": "spearman",
                                 "p25": pct(xs, 25), "p75": pct(xs, 75), "median": float(np.median(xs))})
         drivers.sort(key=lambda z: -abs(z["r"]))
-        coach = coaching_text(c, summ, drivers[:2], ref_out, iqr)
+        coach = coaching_text(c, summ, drivers[:2], coach_refs, iqr)
         ref_gap = None
-        main = next((r for r in ref_out if r.get("main")), ref_out[0] if ref_out else None)
+        main = next((r for r in coach_refs if r.get("main")), coach_refs[0] if coach_refs else None)
         if main and main["corners"].get(c["id"]):
             ref_gap = pct(cts, 25) - main["corners"][c["id"]]["t"]  # your better laps vs their lap
         corner_out.append({**c, "median_t": med, "typical_t": cmed, "best_t": rows[best_n]["t"], "best_lap": best_n,
@@ -900,7 +904,7 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
                            "drivers": drivers[:3], "coaching": coach,
                            "per_lap": {str(n): {k: (round(v, 3) if isinstance(v, float) else v) for k, v in m.items()}
                                        for n, m in rows.items()},
-                           "refs": {r["name"]: r["corners"].get(c["id"]) for r in ref_out}})
+                           "refs": {r["name"]: r["corners"].get(c["id"]) for r in coach_refs}})
     ranked = sorted(corner_out, key=lambda c: -c["avail"])
     for i, c in enumerate(ranked):
         c["rank"] = i + 1
@@ -937,7 +941,7 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
         return [{"la": float(k[0]), "lo": float(k[1]), "n": n} for k, n in b.items()]
 
     span = (max(nums) - min(nums)) if nums else 0
-    findings = build_findings(laps, best, median, unclean_all, slow, excluded, sl, span, optimal, ranked, ref_out,
+    findings = build_findings(laps, best, median, unclean_all, slow, excluded, sl, span, optimal, ranked, coach_refs,
                               clean_n=len(clean), pit=pit, slow_cut=slow_cut, excluded_laps=excluded_laps)
     if traffic:
         findings.insert(1, "Multi-class race: lap(s) " + ", ".join(f"{t['n']} (~{t['lost']:.2f}s around {t['at_m']:.0f} m)" for t in traffic) +
@@ -947,7 +951,7 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
         findings.insert(1, f"Lap(s) {where} lost time in one short stretch that your other laps didn't: possibly "
                            "traffic (a lapped or slower car), possibly a mistake. They stay in your off-pace and "
                            "consistency numbers; check them in Compare laps.")
-    plan = build_plan(ranked, sl, span, slow, ref_out, unclean=unclean_all)
+    plan = build_plan(ranked, sl, span, slow, coach_refs, unclean=unclean_all)
 
     segments = build_segments(corner_out, laps, ref_out, L, eligible_ns=[x["n"] for x in pace])
     no_corners = None
@@ -982,14 +986,15 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
         "corners": corner_out, "heat": heat,
         "style": {str(k): v for k, v in style.items()}, "style_trend": style_trend,
         "channels_missing": missing, "channels": channels,
-        "gg_best": gg(best["R"]), "gg_ref": gg(ref_out[0]["R"]) if ref_out else None,
+        "gg_best": gg(best["R"]), "gg_ref": gg(coach_refs[0]["R"]) if coach_refs else None,
         "map": ([[round(float(a), 6), round(float(b), 6)] for a, b in zip(best["R"]["lat"][::2], best["R"]["lon"][::2])]
                 if np.any(np.abs(best["R"]["lat"]) > 1e-6) else []),
         "traces": {**{f"me{x['n']}": {**trace(x["R"]), "t": x["t"], "label": f"Your lap {x['n']}"} for x in laps},
-                   **{f"ref{i}": {**trace(r["R"]), "t": r["t"], "label": r["name"], "role": r["role"]}
+                   **{f"ref{i}": {**trace(r["R"]), "t": r["t"], "label": r["name"], "role": r["role"],
+                       **({"no_pedals": True} if r["no_pedals"] else {})}
                       for i, r in enumerate(ref_out)}},
         "refs": [{"key": f"ref{i}", "name": r["name"], "t": r["t"], "rating": r["rating"], "role": r["role"],
-                  "main": r["main"], "style": r["style"]} for i, r in enumerate(ref_out)],
+                  "main": r["main"], "style": r["style"], **({"rival": True} if r["rival"] else {})} for i, r in enumerate(ref_out)],
         "counts": {"analysed": len(laps), "clean": len(clean), "unclean": unclean_all, "slow": slow, "excluded": excluded,
                    "excluded_laps": excluded_laps, "pit": pit,
                    "traffic": [t["n"] for t in traffic], "traffic_detail": traffic, "multiclass": multiclass,
@@ -1004,7 +1009,7 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
     # v2 extras (stint, technique, consistency, best vs worst, race context); guarded inside
     try:
         analysis_plus.extend(data, laps=laps, clean=clean, best=best, corners=corner_out, per=per,
-                             refs=ref_out, raw_laps=my_laps, log=log, pace=pace, slow_cut=slow_cut, L=L)
+                             refs=coach_refs, raw_laps=my_laps, log=log, pace=pace, slow_cut=slow_cut, L=L)
     except Exception as e:  # belt and braces: extras must never cost the user the review
         if log:
             log(f"  Skipped the extra analysis ({type(e).__name__}: {e}).")

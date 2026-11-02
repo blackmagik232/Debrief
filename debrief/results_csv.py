@@ -30,7 +30,7 @@ def same_name(a, b) -> bool:
 def _int(v):
     try:
         return int(float(str(v).strip()))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
 
 

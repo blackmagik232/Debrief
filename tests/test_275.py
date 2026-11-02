@@ -38,6 +38,7 @@ def test_csv_positions_are_in_class_and_fields_validate():
 
 
 def test_csv_refuses_other_files():
+    assert rc._int("1e999") is None
     for bad in ("a,b\n1,2\n", HEAD):
         try:
             rc.parse(bad)
@@ -115,7 +116,8 @@ def test_find_needs_garage61_to_agree_or_a_typed_id():
     assert found is None and "not this track" in why
     found, why = rl.prepare(lib, "EV1", "Test Track", "", "Nobody Here", Api())
     assert found is None and "Couldn't find" in why
-    assert rl.prepare(lib, "EV1", "Test Track", "", "Swazi Williams", Api())[0]   # same family name, one car
+    assert rl.prepare(lib, "EV1", "Test Track", "", "Swazi Williams", Api())[0]   # same family name and first letter
+    assert rl.prepare(lib, "EV1", "Test Track", "", "Bob Williams", Api())[0] is None
 
 
 def test_no_folder_does_nothing():
@@ -152,9 +154,15 @@ def test_rival_lap_goes_through_the_real_analysis_and_page_data():
     tr = {"car": "9", "name": "R Ival4", "mode": "clean", "source": "iracing", "lap_time": float(laps[2].get("lapTime") or laps[2].get("lap_time")) - 0.2,
           "dist": [float(r["LapDistPct"]) for r in rows], "speed": [float(r["Speed"]) * 3.6 for r in rows], "gear": [float(r.get("Gear") or 3) for r in rows],
           "rpm": [float(r.get("RPM") or 5000) for r in rows], "steer": [0.0 for _ in rows], "throttle": None, "brake": None}
-    lap = {"id": "racecap:9:clean", "lapTime": tr["lap_time"], "clean": True, "driver_name": "R Ival", "_main": False, "_role": "Rival"}
+    lap = {"id": "racecap:9:clean", "lapTime": tr["lap_time"], "clean": True, "driver_name": "R Ival", "_main": False, "_rival": True, "_role": "Rival"}
     d = engine.analyze(meta, laps, tel, [lap], {lap["id"]: rl.trace_csv(tr)}, log=lambda m: None)
-    assert [r["name"] for r in d["refs"]] == ["R Ival"]
+    assert [r["name"] for r in d["refs"]] == ["R Ival"] and not d["refs"][0]["main"] and d["refs"][0]["rival"]
+    assert d["traces"]["ref0"]["no_pedals"]
+    base = engine.analyze(meta, laps, tel, [], {}, log=lambda m: None)
+    assert all(c.get("ref_gap") is None for c in d["corners"]) and d["median"] == base["median"]
+    from debrief import insights
+    a, b = insights.build(d), insights.build(base)
+    assert a["time_to_find"] == b["time_to_find"] and "R Ival" not in json.dumps(a)
     out = TMP / "rival"
     out.mkdir()
     report.write(out, d)

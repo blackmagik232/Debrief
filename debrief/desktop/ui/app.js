@@ -1006,11 +1006,11 @@ $('fbRaceCap').addEventListener('click',()=>{$('linkSub').value='';setMsg('linkM
 $('linkClose').addEventListener('click',()=>closeDlg($('dlgLink')));
 $('fLink').addEventListener('submit',async e=>{e.preventDefault();const dir=current.dir;if(!dir)return;setMsg('linkMsg','Looking...');$('linkGo').disabled=true;let r;
   try{r=await post('racecap-link',{review:dir,subsession:$('linkSub').value.trim()})}catch(err){connectionLost();return}finally{$('linkGo').disabled=false}
-  if(!r.ok){setMsg('linkMsg',r.error,'bad');return}closeDlg($('dlgLink'));reloadFrame();banner('Linked to RaceCap race '+r.subsession+'.')});
+  if(!r.ok){setMsg('linkMsg',r.error,'bad');return}closeDlg($('dlgLink'));reloadFrame();banner('Linked to RaceCap race '+r.subsession+' as '+r.name+'. If that isn\'t you, the race ID is wrong.',false,9000)});
 $('fbMarkers').addEventListener('click',async()=>{const dir=current.dir;if(!dir)return;let j;try{j=await api('markers?review='+encodeURIComponent(dir))}catch(e){banner('Couldn\'t make the marker file.',true);return}
   if(!j.ok){banner(j.error||'Couldn\'t make the marker file.',true);return}
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([j.edl],{type:'text/plain'}));a.download=j.name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-  banner(j.exact?'Markers saved to Downloads. In Resolve, put the green flag at the timeline\'s start.':'Markers saved to Downloads. They come from lap times, so they\'re close, not exact. Link RaceCap for exact moments.',false,9000)});
+  banner(j.exact?'Markers saved to Downloads, for a 60 fps timeline. In Resolve, put the green flag at the timeline\'s start.':'Markers saved to Downloads, for a 60 fps timeline. They come from lap times, so they\'re close, not exact. Link RaceCap for exact moments.',false,9000)});
 const HELP={tour:[['Review your race','Press Review last race. Debrief pulls your newest race from Garage 61 and writes the review.'],
   ['Start at the top','What to work on comes first: the corners worth the most time. Every number behind it is further down.'],
   ['Compare two laps','Pick any two laps, or a comparison lap, and see where the time went on the track map and traces.'],

@@ -332,7 +332,7 @@ def _row_from(d, p: Path) -> dict | None:
             c["rank"] = i + 1
     corners.sort(key=lambda c: c["rank"])
     top = corners[0] if corners else None
-    refs = [r for r in (d.get("refs") or []) if isinstance(r, dict) and _num(r.get("t"))]
+    refs = [r for r in (d.get("refs") or []) if isinstance(r, dict) and _num(r.get("t")) and not r.get("rival")]
     main = next((r for r in refs if r.get("main")), refs[0] if refs else None)
     counts = d.get("counts") or {}
     track = str(m.get("track") or "Unknown track")

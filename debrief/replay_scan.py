@@ -969,7 +969,7 @@ def find_for_event(library_folder, event_id) -> Path | None:
     return None
 
 
-def laps_agree(review_laps, car, within=1.0, share=0.6) -> bool:
+def laps_agree(review_laps, car, within=0.6, share=0.7) -> bool:
     """Without Garage 61's word, the race must show itself: most of the review's laps appear in the scan at about that time."""
     left = sorted(float(v) for v in (car.get("lap_times") or {}).values() if isinstance(v, (int, float)))
     if not review_laps or not left:
@@ -1058,6 +1058,9 @@ def for_review(library_folder, review_dir, api=None, progress=None, should_stop=
     car = racecap_link.find_me(result["cars"], meta.get("driver"))
     if car is None:
         raise SystemExit("The scan finished but couldn't place you in the race.")
+    if laps and not car.get("lap_times"):
+        raise SystemExit("The scan didn't reach the end of the race, so nothing was saved and your review is unchanged. "
+                         "Keep iRacing open with the replay loaded, leave it alone, and try again.")
     if confirmed is None and not laps_agree(laps, car):
         raise SystemExit(f"Your lap times in the loaded replay (race {sub}) don't match this review, so it looks like a different race. "
                          "Nothing was saved. Load this race's replay and try again.")

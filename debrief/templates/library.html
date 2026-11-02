@@ -215,6 +215,29 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 .scrollhint{display:none}
 </style>
 
+<style media="all">
+/* Save as PDF (the browser's print path): light colours, no controls, nothing hover-only, charts kept whole */
+@media print{
+:root{--bg:#fff!important;--panel:#fff!important;--ink:#111!important;--ink2:#333!important;--muted:#555!important;--line:#ccc!important;--axis:#999!important;--band:#f4f4f4!important;--track:#e4e4e4!important;--hi:#eef3fb!important;--a:#1f6cc4!important;--b:#b8461a!important;--mid:#bbb!important;--pb:#6250d6!important;--pbbg:#ece9fb!important;--warn:#7a5000!important;--good:#0a7a2f!important;--bad:#b02a2a!important;--bt:#b8461a!important;--on-a:#fff!important;--h1:#e6effb!important;--h7:#0d366b!important;--shadow:none!important;color-scheme:light}
+@page{margin:12mm}
+/* tall grids overlap across a page break when printed */
+.wrap,.tabpane,body>section,.wrap>section,.tabpane>section,section,.fbody{display:block!important}
+section,.fspark{margin-bottom:16px}
+.tabpane[hidden],section[hidden]{display:none!important}
+.hidden{display:none!important}
+html,body{background:#fff!important;color:#111!important}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-shadow:none!important;animation:none!important;transition:none!important}
+nav,dialog,#tip,#readout,#toast,#srLive,.controls,.progctl .controls,button:not(.sktile),select,input,details:not([open]){display:none!important}
+.jump,header,.panel,.tablewrap,.chart{position:static!important}
+.tablewrap,.chart{overflow:visible!important}
+.chart{height:auto!important;min-height:0!important;max-height:none!important;display:block!important}
+.panel,.stat,.sktile,figure,svg,tr{break-inside:avoid}
+h2,h3,.sechead{break-after:avoid}
+svg,canvas,img{max-width:100%!important;height:auto}
+a{color:inherit!important;text-decoration:none!important}
+#dgcard{display:none!important}
+}
+</style>
 </head><body>
 <style>
 .lib .stat .ctx{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -292,6 +315,13 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 .lib .goal .gnums div{display:grid;min-width:0}
 .lib .goal .gnums span{font-size:var(--t-xs);color:var(--muted)}
 .lib .goal .gnums b{font-family:var(--mono);font-size:var(--t-lg);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* 2.8: racecraft, over time, digest */
+.lib .craftstats{margin-bottom:var(--s3)}
+.lib .craftstats .stat .ctx{white-space:normal;overflow:visible}
+.lib .craftgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:var(--s3);margin-bottom:var(--s3)}
+.lib .craftgrid h3,.lib .crafttable h3{margin:0 0 var(--s2)}
+.lib .dgtext{margin:0 0 var(--s3);white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--body);font-size:var(--t-sm);line-height:1.55;color:var(--ink)}
+#otsec[hidden]{display:none}
 /* 2.3: skills tab */
 .lib .sktiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:var(--s3)}
 @media (max-width:520px){.lib .sktiles{grid-template-columns:repeat(2,minmax(0,1fr))}.lib .sktile .sc{font-size:24px}}
@@ -385,6 +415,10 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
     <div class="sechead"><span class="eyebrow">Consistency</span><h2>Consistency score over time</h2></div>
     <div class="panel" id="conspanel"></div>
   </section>
+  <section id="dgsec">
+    <div class="sechead"><span class="eyebrow">Discord</span><h2>Weekly digest draft</h2><p class="lede" id="dglede"></p></div>
+    <div class="panel"><pre class="dgtext" id="dgtext"></pre><p class="note" id="dgnote">This is only a draft. Nothing goes to Discord unless you open the preview in the Debrief window, read it and press Post.</p></div>
+  </section>
 </div>
 
 <div class="tabpane" id="tab-skills" hidden>
@@ -395,6 +429,15 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
     </div>
     <div class="sktiles" id="sktiles" role="group" aria-label="Pick a corner phase"></div>
     <div class="panel" id="skpanel"></div>
+  </section>
+  <section id="otsec" hidden>
+    <div class="sechead"><span class="eyebrow">Over time</span><h2>The rest of your driving, race by race</h2><p class="lede">Your own numbers, oldest race on the left. The word only changes when the change is clearly bigger than your usual race-to-race spread, usually after 5 or more races.</p></div>
+    <div class="sktiles" id="ottiles" role="group" aria-label="Pick a number to chart"></div>
+    <div class="panel" id="otpanel"></div>
+  </section>
+  <section id="craftsec">
+    <div class="sechead"><span class="eyebrow">Racecraft</span><h2>How your races go, from your replay scans</h2><p class="lede" id="craftlede"></p></div>
+    <div id="craft"></div>
   </section>
 </div>
 
@@ -847,6 +890,74 @@ function renderSkills(){const tiles=$('sktiles'),pan=$('skpanel');tiles.replaceC
   pan.append(h('p','note','Scores are worked out again from the saved time lost each time the library refreshes: 100 means your typical laps matched your better laps in that part of the corner. This is not absolute pace and not a comparison with other drivers.'));
   if(SKP&&typeof SKP.exit_note==='string'&&SKP.exit_note)pan.append(h('p','note skexitnote',SKP.exit_note))}
 
+// ================================================================ Over time (EXTRA.skills.over_time)
+const OT=SKP&&Array.isArray(SKP.over_time)?SKP.over_time.filter(m=>m&&Array.isArray(m.races)&&m.races.length>=2):[];
+let otSel=null,otRedraw=null;
+function otVal(m,v){if(!ok(v))return '–';const t=Number.isInteger(v)?String(Math.abs(v)):Math.abs(v).toFixed(1);const sign=v<0?'−':(m.key==='clean'||m.key==='consistency'||m.key==='incidents'?'':'+');return sign+t+(m.unit==='%'?'%':'')}
+function renderOver(){const sec=$('otsec');otRedraw=null;if(!OT.length){sec.hidden=true;return}sec.hidden=false;
+  const tiles=$('ottiles'),pan=$('otpanel');tiles.replaceChildren();pan.replaceChildren();
+  const cur=OT.find(m=>m.key===otSel)||OT[0];otSel=cur.key;
+  OT.forEach(m=>{const b=h('button','sktile');b.type='button';b.setAttribute('aria-pressed',String(m===cur));const tw=trendWord(m.trend);
+    b.append(h('span','nm',m.name),h('span','sc',otVal(m,m.latest)),h('span','bs','Latest race'),h('span','tr '+(tw==='Improving'?'improving':tw==='Slipping'?'slipping':''),tw));
+    b.setAttribute('aria-label',m.name+': latest '+otVal(m,m.latest)+'. '+tw+'.');b.onclick=()=>{otSel=m.key;renderOver()};tiles.append(b)});
+  const arr=cur.races.filter(r=>r&&ok(r.value)&&dparts(r.date)).map(r=>({date:r.date,started_at:'',v:r.value,track:r.track}));if(!arr.length)return;
+  const c=h('div','chart');pan.append(h('h3',null,cur.name+(cur.lower_better?', lower is better':', higher is better')),c);
+  const series=[{key:'v',name:cur.name,color:'var(--a)',fmt:v=>otVal(cur,v),endLabel:v=>otVal(cur,v)}];
+  otRedraw=()=>c.replaceChildren(lineChart(arr,series,{label:cur.name+' per race',minSpan:1,tick:v=>String(Math.round(v*10)/10),width:c.clientWidth}));otRedraw()}
+
+// ================================================================ Racecraft (EXTRA.skills.racecraft)
+function renderCraft(){const host=$('craft');host.replaceChildren();const C=SKP&&SKP.racecraft&&typeof SKP.racecraft==='object'?SKP.racecraft:null;
+  const n=C&&ok(C.n)?C.n:0,need=C&&ok(C.min)?C.min:3;
+  $('craftlede').textContent=C&&C.note?C.note:'Passes only count cars near the replay camera, so the real number can be higher. Positions are on the road, not official results.';
+  if(!C||!C.enough){const e=h('div','empty');e.append(h('b',null,'Scan more races'),h('span',null,'You have '+plural(n,'scanned race')+'. This needs '+need+' so one odd race can\u2019t set the picture. Open a review and press Scan this race with the replay loaded in iRacing.'+(C&&C.waiting?' '+plural(C.waiting,'older scan')+' will count after the library next refreshes.':'')));host.append(e);return}
+  const signed=v=>ok(v)?(v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(1):'–';
+  const stats=h('div','stats craftstats');const L1=C.lap1||{},PS=C.passes||{},RC=C.recovery||{};
+  [['Lap 1',signed(L1.avg),ok(L1.avg)?'Places a race on average. Gained in '+L1.gained+', lost in '+L1.lost+', same in '+L1.same:'No lap 1 positions'],
+   ['Passes made',String(PS.made||0),'On track, after lap 1, over '+plural(n,'race')],
+   ['Passes suffered',String(PS.lost||0),'On track, after lap 1, over '+plural(n,'race')],
+   ['Passes that stuck',ok(PS.stick_pct)?PS.stick_pct+'%':'–',ok(PS.stick_pct)?PS.stuck+' of '+PS.made+' weren\u2019t swapped back within 20 s':'No passes seen yet']
+  ].forEach(([l,v,c])=>{const k=h('div','stat');k.append(h('span','lab',l),h('span','v',v),h('span','ctx',c));k.lastChild.title=c;stats.append(k)});host.append(stats);
+  const grid=h('div','craftgrid');
+  const cp=h('div','panel');cp.append(h('h3',null,'Best passing corners'));const CS=Array.isArray(C.corners)?C.corners:[];
+  if(CS.length){const tb=h('table');const hd=h('thead');const hr=h('tr');[['Track',''],['Corner',''],['Made','n'],['Suffered','n']].forEach(([x,cl])=>hr.append(h('th',cl||null,x)));hd.append(hr);tb.append(hd);const bd=h('tbody');
+    CS.forEach(c=>{const tr=h('tr');tr.append(h('td',null,c.track||''),h('td',null,c.corner||''),h('td','n',String(c.made)),h('td','n',String(c.lost)));bd.append(tr)});tb.append(bd);const w=h('div','tablewrap');w.append(tb);cp.append(w)}
+  else cp.append(h('p','note','No corner has 2 or more passes yet.'));grid.append(cp);
+  const rp=h('div','panel');rp.append(h('h3',null,'After an incident'));
+  if(!RC.incidents)rp.append(h('p','note','No incidents in your scanned races.'));
+  else{const said=[plural(RC.incidents,'incident')+' across '+plural(n,'race')+'.'];if(RC.no_loss)said.push(plural(RC.no_loss,'incident')+' cost no places by the next lap or two.');
+    if(RC.cost_places){said.push(plural(RC.cost_places,'incident')+' cost places'+(ok(RC.places)?', typically '+plural(RC.places,'place'):'')+'. You got them back after '+RC.back+' of those'+(ok(RC.laps_back)?', typically within '+plural(RC.laps_back,'lap'):'')+'.')}
+    if(RC.ended)said.push(plural(RC.ended,'incident')+' ended your race.');said.forEach(x=>rp.append(h('p',null,x)));rp.append(h('p','note','Places can also change through pit stops and retirements, so this shows what happened, not only your driving.'))}
+  const PT=C.pits||{};if(PT.stops){rp.append(h('h3',null,'Pit stops'));rp.append(h('p',null,plural(PT.stops,'stop')+(ok(PT.seconds)?', typically '+PT.seconds.toFixed(1)+' s':'')+(ok(PT.places)?', typically '+(PT.places>0?'losing '+plural(PT.places,'place'):PT.places<0?'gaining '+plural(-PT.places,'place'):'no change in place'):'')+'.'))}
+  grid.append(rp);host.append(grid);
+  const tp=h('div','panel crafttable');tp.append(h('h3',null,'Scanned races'));const tb=h('table');const hr=h('tr');[['Date',''],['Track',''],['Start','n'],['End','n'],['Lap 1','n'],['Made','n'],['Suffered','n'],['Stuck','n'],['Incidents','n']].forEach(([x,cl])=>hr.append(h('th',cl||null,x)));const hd=h('thead');hd.append(hr);tb.append(hd);const bd=h('tbody');
+  (Array.isArray(C.races)?C.races:[]).forEach(r=>{const tr=h('tr');const td=h('td');const a=h('a',null,fmtDate(r.date));if(/^reviews\//.test(String(r.path||'')))a.href=r.path;td.append(a);
+    const P=v=>ok(v)?'P'+v:'–';tr.append(td,h('td',null,r.track||''),h('td','n',P(r.grid)),h('td','n',P(r.finish)+(ok(r.finish)&&!r.official?' on the road':'')),h('td','n',ok(r.lap1)?(r.lap1>0?'+':r.lap1<0?'−':'')+Math.abs(r.lap1):'–'),h('td','n',String(r.made)),h('td','n',String(r.lost)),h('td','n',String(r.stuck)),h('td','n',String(r.incidents)));bd.append(tr)});
+  tb.append(bd);const w=h('div','tablewrap');w.append(tb);tp.append(w);host.append(tp);
+  if(C.multiclass)host.append(h('p','note',plural(C.multiclass,'race')+' had more than one car class, so some of those passes are faster or slower classes going by.'))}
+
+// ================================================================ Weekly digest draft (EXTRA.digest). Text only, plus a picture on request
+const DG=EX.digest&&typeof EX.digest==='object'?EX.digest:null;
+(function(){const has=DG&&ok(DG.races)&&DG.races>0&&typeof DG.text==='string'&&DG.text;
+  $('dglede').textContent=has?'Your last 7 days, as a message you can read and change before anything is sent.':'No race reviews in the last 7 days, so there is nothing to post this week.';
+  if(has)$('dgtext').textContent=DG.text;else{$('dgtext').hidden=true;$('dgnote').hidden=true}})();
+function drawDigest(){const W=1200,H=630,cv=document.createElement('canvas');cv.width=W;cv.height=H;const x=cv.getContext('2d');
+  const C={bg:'#0e1114',ink:'#eceff2',ink2:'#b8bfc7',muted:'#8b949d',a:'#3987e5',b:'#d95926'};const BOD='"IBM Plex Sans","Segoe UI",system-ui,sans-serif',DISP='"Barlow Condensed","Arial Narrow",sans-serif';
+  x.fillStyle=C.bg;x.fillRect(0,0,W,H);x.fillStyle=C.a;x.fillRect(0,0,W,8);x.fillStyle=C.b;x.fillRect(W-260,0,260,8);
+  x.fillStyle=C.muted;x.font='400 20px '+BOD;x.fillText('WEEKLY DIGEST',64,72);
+  x.fillStyle=C.ink;x.font='700 72px '+DISP;x.fillText(plural(DG.races,'race')+' this week',60,146);
+  const clip=(t,max)=>{let s=String(t);if(x.measureText(s).width<=max)return s;while(s&&x.measureText(s+'...').width>max)s=s.slice(0,-1);return s+'...'};
+  x.font='400 24px '+BOD;x.fillStyle=C.ink2;const L=Array.isArray(DG.lines)?DG.lines:[];L.slice(0,9).forEach((t,i)=>x.fillText(clip(String(t).replace(/^- /,''),W-128),64,204+i*38));
+  if(L.length>9){x.fillStyle=C.muted;x.fillText('...and '+(L.length-9)+' more',64,204+9*38)}
+  x.fillStyle=C.muted;x.font='400 18px '+BOD;x.textAlign='right';x.fillText(String(EX.brand&&(EX.brand.name||EX.brand.team_name)||'Debrief')+' · Debrief',W-64,H-36);x.textAlign='left';return cv}
+// Same reply as a review page's share card. It only answers its parent, only this message; the window shows its own
+// preview and only its Post button sends anything. This page can't reach the network (connect-src 'none').
+window.addEventListener('message',e=>{if(window.parent===window||e.source!==window.parent)return;const m=e.data;
+  if(!m||typeof m!=='object'||m.type!=='debrief:share-request')return;const id=m.id;if(!((typeof id==='string'&&id.length<=128)||ok(id)))return;
+  const fail=t=>window.parent.postMessage({type:'debrief:share-card',id,error:t},'*');
+  if(!DG||!DG.races||!DG.text)return fail('There is no digest to post this week.');let png=null;try{png=drawDigest().toDataURL('image/png')}catch(_){png=null}
+  if(typeof png!=='string'||!png.startsWith('data:image/png;base64,'))return fail('Couldn\u2019t make the digest picture in this window.');
+  window.parent.postMessage({type:'debrief:share-card',id,png,text:DG.text.slice(0,2000)},'*')});
+
 // ================================================================ tabs (#overview, #season, #skills, #goals)
 const TABS=['overview','season','skills','goals'];let curTab=null;
 const tabOf=hs=>{const t=String(hs==null?'':hs).split('&')[0];return TABS.includes(t)?t:'overview'};
@@ -854,7 +965,7 @@ function showTab(name){name=tabOf(name);
   TABS.forEach(t=>{$('tab-'+t).hidden=t!==name});
   document.querySelectorAll('.tabs a').forEach(a=>{if(a.dataset.tab===name)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
   const changed=curTab!==null&&curTab!==name;curTab=name;hideTip();
-  if(name==='season')renderSeason();else if(name==='goals')renderGoals();else if(name==='skills')renderSkills();else if(redraw)redraw();
+  if(name==='season')renderSeason();else if(name==='goals')renderGoals();else if(name==='skills'){renderSkills();renderOver();renderCraft()}else if(redraw)redraw();
   if(changed)window.scrollTo(0,0)}
 // "#season" from a tab link drops the "&incprac" flag: keepHash puts it back (a fragment change, never a reload)
 function keepHash(){const t=curTab||'overview',has=hashParts().includes('incprac');if(!INC&&!has)return;
@@ -882,7 +993,7 @@ function rerender(){R=INC?ALL:ALL.filter(isRace);regroup();renderHeader();
 keepHash();
 
 addEventListener('scroll',hideTip,{passive:true});
-let rt=0,lastW=innerWidth;addEventListener('resize',()=>{if(innerWidth===lastW)return;lastW=innerWidth;clearTimeout(rt);rt=setTimeout(()=>{if(curTab==='season'&&seasonRedraw)seasonRedraw();else if(curTab==='skills'&&skRedraw)skRedraw();else if(redraw)redraw()},120)});
+let rt=0,lastW=innerWidth;addEventListener('resize',()=>{if(innerWidth===lastW)return;lastW=innerWidth;clearTimeout(rt);rt=setTimeout(()=>{if(curTab==='season'&&seasonRedraw)seasonRedraw();else if(curTab==='skills'&&(skRedraw||otRedraw)){if(skRedraw)skRedraw();if(otRedraw)otRedraw()}else if(redraw)redraw()},120)});
 })();
 
 </script>

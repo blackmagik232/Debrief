@@ -10,6 +10,8 @@
 Request budget (spec 3.7): Discord post = 1 Discord request per confirmed post (plus one retry only when
 Discord answers 429 with Retry-After <= 10 s); Discord check = 1 Discord request per click; 0 Garage 61.
 
+    digest(rows, today=None) -> dict the weekly digest DRAFT from library rows: text only, it sends nothing
+
 Nothing in this module runs on import, on a timer or from a job: it only acts when server.py calls it
 after the driver presses Post (or Check) in Settings / the preview dialog. The webhook address is a
 secret (anyone with it can post to the channel): it is never logged, and every error message is
@@ -257,3 +259,78 @@ def post(url: str, png: bytes, content: str, session=None, sleep=time.sleep) -> 
             mid = None
     _log.info("Posted to Discord (webhook %s)", "…" + _parts(url)[0][-4:])
     return {"ok": True, "id": mid}
+
+
+# ---------------------------------------------------------------- weekly digest draft (2.8)
+DIGEST_DAYS = 7
+DIGEST_MAX_LINES = 12
+
+
+def _lap(t) -> str:
+    m = int(t // 60)
+    return f"{m}:{t - m * 60:06.3f}"
+
+
+def _short_day(d) -> str:
+    return f"{d.strftime('%b')} {d.day}"
+
+
+def _digest_line(r) -> str:
+    bits = [f"{r.get('track_short') or r.get('track') or 'Unknown track'}, {r.get('car') or 'unknown car'}"]
+    if isinstance(r.get("best"), (int, float)) and r.get("best_clean", True):
+        bits.append(f"best {_lap(r['best'])}")
+    res = r.get("result") if isinstance(r.get("result"), dict) else {}
+    rc = r.get("racecap") if isinstance(r.get("racecap"), dict) else {}
+    if res.get("finish_pos"):
+        bits.append(f"P{int(res['finish_pos'])}" + (f" from P{int(res['start_pos'])}" if res.get("start_pos") else ""))
+    elif rc.get("finish"):
+        bits.append(f"P{rc['finish']}" + ("" if rc.get("official") else " on the road"))
+    if isinstance(r.get("pb"), dict) and r["pb"].get("is_pb"):
+        bits.append("new PB")
+    return "- " + ": ".join(bits[:2]) + (", " + ", ".join(bits[2:]) if len(bits) > 2 else "")
+
+
+def digest(rows, today=None) -> dict:
+    """The last 7 days of race reviews as a message to read and edit. THIS ONLY MAKES TEXT. Posting stays with the
+    window's preview dialog and its Post button (server.py's api/discord-post), so a timer or a page can't post it.
+    Practice, qualifying and test data are left out. {"races": 0, "text": ""} when there's nothing this week."""
+    from datetime import date, timedelta
+    from . import library
+    end = today or date.today()
+    start = end - timedelta(days=DIGEST_DAYS - 1)
+    week = [r for r in rows or [] if isinstance(r, dict) and library.is_race(r) and not r.get("test_data")
+            and start.isoformat() <= str(r.get("date") or "") <= end.isoformat()]
+    week.sort(key=lambda r: (str(r.get("date")), str(r.get("started_at"))))
+    out = {"races": len(week), "from": start.isoformat(), "to": end.isoformat(), "text": "", "lines": [],
+           "pbs": sum(1 for r in week if isinstance(r.get("pb"), dict) and r["pb"].get("is_pb"))}
+    if not week:
+        return out
+    who = next((str(r["driver"]) for r in reversed(week) if r.get("driver")), "")
+    n = len(week)
+    head = (who + ": " if who else "") + f"{n} race{'' if n == 1 else 's'} from {_short_day(start)} to {_short_day(end)}"
+    lines = [_digest_line(r) for r in week]
+    out["lines"] = lines
+    tail = []
+    if out["pbs"]:
+        tail.append(f"New personal bests: {out['pbs']}.")
+    ir = [r["irating"] for r in week if isinstance(r.get("irating"), int)]
+    if len(ir) >= 2 and ir[0] != ir[-1]:
+        tail.append(f"iRating {ir[0]} to {ir[-1]}.")
+    from . import profile
+    scanned, _ = profile.scanned_rows(week)
+    if scanned:
+        made = sum(r["racecap"]["made"] for r in scanned)
+        lost = sum(r["racecap"]["lost"] for r in scanned)
+        c = len(scanned)
+        tail.append(f"Replay scan of {c} race{'' if c == 1 else 's'}: {made} on-track passes made, {lost} suffered "
+                    "(only cars near the replay camera).")
+    # always a whole message: fewer race lines rather than a sentence cut off at Discord's limit
+    keep = min(len(lines), DIGEST_MAX_LINES)
+    while True:
+        more = [f"...and {len(lines) - keep} more"] if keep < len(lines) else []
+        text = clean_content("\n".join([head] + lines[:keep] + more + tail))
+        if len(text) <= MAX_CONTENT or keep == 0:
+            break
+        keep -= 1
+    out["text"] = text[:MAX_CONTENT]
+    return out

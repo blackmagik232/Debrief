@@ -458,6 +458,48 @@ def practice_plan(hist, weak, latest, tech, goal, mates) -> list:
     return drills[:5]
 
 
+# ---------------------------------------------------------------- pre-race brief
+BRIEF_CORNERS = 3
+BRIEF_RIVALS = 5
+
+
+def brief(rows: list, track: str, car: str, hist: dict | None, weak: list) -> dict | None:
+    """What your saved reviews say about this track, for the card at the top of the page. Saved data only: this
+    never touches Garage 61. rows = race rows. Anything with no data is left out; None when nothing is known."""
+    from . import profile
+    here = [r for r in rows if library._norm(r.get("track")) == library._norm(track)]
+    pace = None
+    if hist:
+        pace = {"races": hist["races"], "best": hist["best"], "best_date": hist["best_date"],
+                "typical": hist.get("median_lap"), "last_date": hist["last_date"], "other_car": None}
+    elif here:      # never here in this car: your laps in another car are still worth knowing, and labelled
+        clean = [r for r in here if r.get("best_clean", True)]
+        if clean:
+            b = min(clean, key=lambda r: r["best"])
+            meds = [r["median"] for r in here if r.get("car") == b.get("car") and _num(r.get("median")) is not None]
+            pace = {"races": sum(1 for r in here if r.get("car") == b.get("car")), "best": b["best"], "best_date": b["date"],
+                    "typical": round(st.median(meds), 3) if meds else None, "other_car": b.get("car"),
+                    "last_date": max(r["date"] for r in here if r.get("car") == b.get("car"))}
+    repeat = [{"id": w.get("label") or w["id"], "top3": w["top3"], "races": w["races"], "avg_avail": w["avg_avail"]}
+              for w in weak if w.get("in_latest") and w["top3"] >= 2 and w["avg_avail"] > 0.02][:BRIEF_CORNERS]
+    scanned, _ = profile.scanned_rows(here)
+    who = {}
+    for r in scanned:
+        for x in r["racecap"].get("rivals") or []:
+            a = who.setdefault(x["name"].casefold(), {"name": x["name"], "races": 0, "seconds": 0.0, "fights": 0, "made": 0, "lost": 0})
+            a["races"] += 1
+            for k in ("seconds", "fights", "made", "lost"):
+                a[k] += x.get(k) or 0
+    rivals = [a for a in who.values() if a["seconds"] >= 15 or a["made"] + a["lost"] >= 2]
+    rivals.sort(key=lambda a: (-a["races"], -a["seconds"], -(a["made"] + a["lost"]), a["name"]))
+    for a in rivals:
+        a["seconds"] = round(a["seconds"], 1)
+    if not (pace or repeat or rivals):
+        return None
+    return {"pace": pace, "corners": repeat, "rivals": rivals[:BRIEF_RIVALS], "scans": len(scanned),
+            "note": profile.RACECRAFT_NOTE if rivals else None}
+
+
 # ---------------------------------------------------------------- build / write
 def build(api, folder, track_id: int, car_id: int, team_slug: str | None, log=print,
           track: str | None = None, car: str | None = None, include_practice: bool = False) -> dict:
@@ -525,7 +567,7 @@ def build(api, folder, track_id: int, car_id: int, team_slug: str | None, log=pr
     return {"version": 1, "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "track": track, "car": car, "track_short": library.short_track_name(track),
             "track_id": track_id, "car_id": car_id, "raced": bool(mine), "history": hist,
-            "weak": weak[:6], "technique": tech,
+            "brief": brief(rows, track, car, hist, weak), "weak": weak[:6], "technique": tech,
             "technique_date": library.local_day((tech_src or {}).get("meta", {}).get("started_at")) if tech_src else None,
             "latest": ({"date": newest[0]["date"], "path": newest[0]["path"], "L": newest[0].get("L")}
                        if newest else None),

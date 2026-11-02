@@ -517,6 +517,12 @@ td.d b{color:var(--ink);font-weight:600}
   <div class="stats" id="rlPaceStats"></div>
 </section>
 
+<section id="depth" hidden>
+  <div class="sechead"><h2>How your laps link together</h2>
+  <p class="lede">Patterns from your own clean laps, shown only when the numbers are strong enough. They show what went together, not proof that one thing caused another.</p></div>
+  <div id="depthBody" style="display:grid;gap:var(--s4)"></div>
+</section>
+
 <details class="deep" id="deep" open>
 <summary>All the numbers <small>every chart and table; click to open or fold them</small></summary>
 
@@ -1611,6 +1617,17 @@ safe('practice and qualifying',()=>{if(!SR)return;const quali=SR.kind==='qualify
   $('session').hidden=false;
   // practice and qualifying: the race-story section becomes a session story
   $('raceTitle').textContent='Session story';const rl=document.querySelector('#jump a[href="#race"]');if(rl)rl.textContent='Session story'},'session');
+
+safe('depth',()=>{const X=isObj(D.depth)?D.depth:null;if(!X)return;const host=$('depthBody');const say=v=>typeof v==='string'&&v;
+  const block=(title,note,lines)=>{const ls=lines.filter(say);if(!ls.length)return;const p=h('div','panel');p.append(h('h3',null,title));ls.forEach(l=>p.append(h('p',null,l)));if(note)p.append(h('p','note',note));host.append(p)};
+  const list=k=>Array.isArray(X[k])?X[k].filter(isObj):[];
+  block('Things that went together in a corner','Linked over your clean laps, with the trend through the race taken out. A link is not proof that one caused the next.',list('chains').map(c=>c.sentence));
+  const third=c=>{const t=c.thirds_s;return Array.isArray(t)&&t.length===3&&t.every(num)?c.sentence+' Along the way: first third '+t[0].toFixed(2)+' s, middle '+t[1].toFixed(2)+' s, last '+t[2].toFixed(2)+' s.':c.sentence};
+  block('What a slower exit went with on the next straight','Measured from where exit speed is read to your earliest clean brake point for the next corner.',list('costs').map(third));
+  block('The same mistake in earlier races','A mistake here is a lap that lost clearly more than your normal spread in one corner. Your opening lap and possible traffic laps are not counted.',list('same_mistakes').map(c=>c.sentence));
+  block('Compared with earlier races','Similar means track and air temperature within 8 C and about the same wetness. Other races are left out.',[isObj(X.baseline)&&X.baseline.sentence]);
+  block('Your comparison lap',null,[isObj(X.ref_match)&&X.ref_match.sentence]);
+  if(host.children.length)$('depth').hidden=false},'depth');
 
 // ---------- 2.8: the race, from a replay scan (D.racecap). Everything is textContent; without a scan the page is as before.
 const RCP=isObj(D.racecap)?D.racecap:null;

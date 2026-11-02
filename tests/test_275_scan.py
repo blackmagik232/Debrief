@@ -74,7 +74,7 @@ def test_scan_adds_the_race_log_and_changes_no_numbers():
     rc = after["racecap"]
     assert rc["start_type"] == "rolling" and rc["passes"] and rc["name"] == "J Williams" and rc["traffic_check"]
     assert after["laps"][0]["t"] == before["laps"][0]["t"] and after["median"] == before["median"] and after["meta"]["start_type"] == "rolling"
-    assert sim.speed == 0 and (sim.session_num, round(sim.t)) == (start[0], round(start[1]))      # the replay goes back
+    assert sim.speed == 0 and sim.calls[-1] == ("seek", start[0], start[1])      # the replay goes back
     folder = rs.find_for_event(lib, "EV1")
     assert folder and rl.read_scan(folder)["subsession"] == 89056204 and rs.find_for_event(lib, "NOPE") is None
 

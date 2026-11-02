@@ -22,6 +22,7 @@ the mix, not the driver.
 from __future__ import annotations
 
 import json
+import shutil
 import math
 import re
 from pathlib import Path
@@ -396,15 +397,52 @@ def session_kind(s) -> str:
 
 def row_session(label, dir_name: str = ""):
     """The session a library row shows. Reviews saved 2.1.0-2.7.0 with practice included carry the generic
-    "Session" (or nothing); their folder name still says _practice / _qualifying when that's what they were
-    (review_dir's suffix), so those stay out of race numbers. Any other label is kept as it is."""
-    if str(label or "").strip().lower() in ("", "session"):
-        n = str(dir_name or "").lower()
-        if n.endswith("_practice"):
-            return "Practice"
-        if n.endswith("_qualifying"):
-            return "Qualifying"
+    "Session" and may hold practice, qualifying and race laps together (their folder suffix came from the
+    first lap, so a _practice folder can hold the race). They count as a race: over-counting a practice-only
+    one is the lesser harm than hiding a race. dir_name is kept for callers; it no longer changes the label."""
     return label
+
+
+def review_path(folder, laps, track_name, car_name, suffix: str = "") -> Path:
+    """review_dir's folder without creating it."""
+    start = min((g(l, "start_time", "startTime", default="") or "") for l in laps)
+    day = local_day(start) or "undated"
+    ev = str(g(laps[0], "event", default="event"))[-6:].lower()
+    return Path(folder) / "reviews" / (f"{day}_{slugify(track_name)}_{slugify(car_name)}_{ev}" + (f"_{suffix}" if suffix else ""))
+
+
+def retire_legacy_mixed(race_dir, log=None) -> list:
+    """Before a race review is written to race_dir: an older review of the same event saved as "Session" in a
+    _practice / _qualifying folder (2.1.0-2.7.0 with practice included) is the same race reviewed together
+    with its practice laps. If race_dir doesn't exist yet the old folder is renamed to it (keeping a typed-in
+    result.json); otherwise the old folder is moved to .backup/replaced/, so the race is never listed twice.
+    Returns the folders moved."""
+    race_dir = Path(race_dir)
+    moved = []
+    for suf in ("_practice", "_qualifying"):
+        old = race_dir.with_name(race_dir.name + suf)
+        try:
+            meta = json.loads((old / "review.json").read_text(encoding="utf-8")).get("meta") or {}
+        except Exception:  # noqa: BLE001  (missing or unreadable: not ours to touch)
+            continue
+        if str(meta.get("session") or "").strip().lower() not in ("", "session"):
+            continue
+        try:
+            if not race_dir.exists():
+                old.rename(race_dir)
+            else:
+                dest = race_dir.parent.parent / ".backup" / "replaced" / old.name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                if dest.exists():
+                    shutil.rmtree(dest, ignore_errors=True)
+                shutil.move(str(old), str(dest))
+            moved.append(old.name)
+            if log:
+                log(f"  Replaced an older review of this event that mixed practice and race laps ({old.name}).")
+        except OSError as e:
+            if log:
+                log(f"  Couldn't tidy the older mixed review {old.name}: {e}")
+    return moved
 
 
 def is_race(row) -> bool:

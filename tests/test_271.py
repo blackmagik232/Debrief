@@ -93,7 +93,7 @@ def test_session_and_heat_reviews_count_for_pbs_trends_and_season_after_a_re_ren
     """A 2.6-style library (layout 2.6.0) with reviews labelled Session / Heat / Feature / None / Open Practice /
     Lone Qualify, re-rendered by refresh_all: the race-like ones count for PBs, season, goals and the skills
     profile; only the practice and qualifying ones are left out. A "Session" review whose folder says
-    _practice (saved 2.1-2.7.0 with practice included) stays out."""
+    _practice (saved 2.1-2.7.0 with practice included) counts as a race too: it may hold the race."""
     f, made = _fixture_lib()
     (f / ".layout").write_text("2.6.0", encoding="utf-8")
     labels = ["Session", "Heat", "Feature", None, "Open Practice", "Lone Qualify", "Session", "Race", "Race"]
@@ -108,23 +108,23 @@ def test_session_and_heat_reviews_count_for_pbs_trends_and_season_after_a_re_ren
     assert (f / ".layout").read_text(encoding="utf-8") == report.LAYOUT
     rows = library.list_reviews(f)
     by = {r["dir"]: r for r in rows}
-    assert by[prac.name]["session"] == "Practice" and not library.is_race(by[prac.name])
-    excluded = {made[4], made[5], prac.name}
+    assert library.is_race(by[prac.name])   # 2.7.0 second verifier: a mixed review can hold the race
+    excluded = {made[4], made[5]}
     for d in made:
         assert library.is_race(by[d]) is (d not in excluded), (d, by[d]["session"])
     races = library.race_rows(rows)
-    assert len(races) == len(made) - 2
+    assert len(races) == len(made) - 2 + 1   # + the mixed _practice "Session" review
     # season summary and the skills profile see the Session / Heat / Feature reviews
     ss = library.season_summary(rows)
-    assert sum(s["races"] for s in ss["seasons"]) == len(made) - 2, ss
+    assert sum(s["races"] for s in ss["seasons"]) == len(races), ss
     pr = profile.build(rows)
-    assert pr["n_practice_skipped"] == 3, pr
+    assert pr["n_practice_skipped"] == 2, pr
     # personal bests: a "Session" review that is the quickest at its combo is a PB
     pbs = [r for r in rows if (r.get("pb") or {}).get("is_pb")]
     assert any(r["session"] in ("Session", "Heat", "Feature", None) for r in pbs), [(r["dir"], r["session"]) for r in pbs]
     # the library page carries those rows as races (isRace in the page: tested above)
     html = (f / "index.html").read_text(encoding="utf-8")
-    assert '"session":"Heat"' in html and '"session":"Practice"' in html
+    assert '"session":"Heat"' in html and '"session":"Open Practice"' in html
 
 
 class _MixedApi:

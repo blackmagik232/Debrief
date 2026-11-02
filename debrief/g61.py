@@ -75,7 +75,8 @@ def no_network(url: str = "") -> bool:
 
 
 _OFFLINE_WORDS = ("refused", "getaddrinfo", "name or service not known", "no such host", "nodename",
-                  "failed to resolve", "temporary failure in name resolution", "network is unreachable")
+                  "failed to resolve", "temporary failure in name resolution", "unreachable", "no route to host",
+                  "10051", "10065")
 
 
 def _chain(e):

@@ -200,7 +200,7 @@ addEventListener('message',e=>{const f=$('frame');if(!f||e.source!==f.contentWin
 $('frame').addEventListener('load',()=>themeFrame(getTheme()));
 function framePlace(path,title){
   if(!path.startsWith(BASE))return;
-  const rest=path.slice(BASE.length);const rel=rest.split('#')[0].split('?')[0];const hash=(rest.split('#')[1]||'');
+  const rest=path.slice(BASE.length);const rel=rest.split('#')[0].split('?')[0];const hash=(rest.split('#')[1]||'').split('&')[0];
   const m=rel.match(/^lib\/reviews\/([^/]+)\/index\.html$/);
   if(m){const dir=decodeURIComponent(m[1]);const changed=current.dir!==dir;current={view:'review',dir};if(changed)loadResult(dir)}
   else if(rel==='lib/index.html'||rel==='lib/'){const was=current.view;current={view:hash==='season'?'season':hash==='skills'?'skills':'library',dir:null};

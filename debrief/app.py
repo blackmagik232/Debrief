@@ -242,6 +242,11 @@ def _home_patterns() -> list:
     return pats
 
 
+# user names that are also everyday racing words: masking them would wreck the log, and they identify no one
+_COMMON_NAMES = {"race", "racer", "user", "admin", "owner", "home", "spa", "max", "lap", "fast", "speed", "team",
+                 "test", "guest", "driver", "sim", "pc", "gamer", "monza", "lime", "rock"}
+
+
 def _user_names() -> list:
     """The Windows user name and the last segment of the home folder (3+ characters), for the backstop."""
     import re as _re
@@ -249,7 +254,7 @@ def _user_names() -> list:
     for v in [os.environ.get("USERNAME"), os.environ.get("USER")] + \
              [(_re.split(r"[\\/]+", h.rstrip("\\/")) or [""])[-1] for h in _home_forms()]:
         v = (v or "").strip()
-        if len(v) >= 3 and not _re.match(r"^[A-Za-z]:$", v):
+        if len(v) >= 4 and v.lower() not in _COMMON_NAMES and not _re.match(r"^[A-Za-z]:$", v):
             names.add(v)
     return sorted(names, key=len, reverse=True)
 
@@ -274,11 +279,12 @@ def _token_shapes():
             (_re.compile(r"(?i)(authorization[\"']?\s*[:=]\s*[\"']?(?:basic|bearer|token|digest)?\s*)" + val), r"\1…"),
             (_re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}"), r"\1…"),
             # token=..., access_token=..., "api_key": "...", password: ...  (no word boundary needed)
-            (_re.compile(r"(?i)((?:token|secret|key|auth|password|passwd)[\"']?\s*[:=]\s*[\"']?)" + val), r"\1…"),
+            (_re.compile(r"(?i)((?<![a-z])(?:[a-z]+_)?(?:token|secret|key|apikey|auth|password|passwd)[\"']?\s*[:=]\s*[\"']?)" + val),
+             r"\1…"),
             # "token <long value with a digit>" (a library's own error message quoting it)
             (_re.compile(r"(?i)((?:token|secret|password)\s+)(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]{16,}"), r"\1…"),
             (_re.compile(r"(?i)(discord(?:app)?\.com/api/webhooks/\d+/)[A-Za-z0-9_-]+"), r"\1…"),
-            (_re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "[email]"),
+            (_re.compile(r"[A-Za-z0-9._%+-]+@(?!\d+x\.)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"), "[email]"),
         ]
     return _TOKEN_SHAPES
 
@@ -694,11 +700,15 @@ def _one_session(laps):
     kinds = {session_type(l) for l in laps}
     if len(kinds) <= 1:
         return laps, next(iter(kinds), None)
-    if 3 in kinds:
-        pick = 3
+    timed = lambda k: sum(1 for l in laps if session_type(l) == k and (lap_time(l) or 0) > 0)
+    if 3 in kinds and timed(3) >= 2:
+        pick = 3   # the race, when it has laps enough to review (a lap-1 crash falls back below)
     else:
-        dated = [l for l in laps if lap_start_dt(l)]
-        pick = session_type(max(dated, key=lap_start_dt)) if dated else session_type(laps[-1])
+        # the newest session with at least 2 timed laps (a race cut short on lap 1 is skipped); when none has
+        # two, the newest session anyway
+        enough = [l for l in laps if timed(session_type(l)) >= 2] or laps
+        dated = [l for l in enough if lap_start_dt(l)]
+        pick = session_type(max(dated, key=lap_start_dt)) if dated else session_type(enough[-1])
     return [l for l in laps if session_type(l) == pick], pick
 
 
@@ -860,6 +870,8 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     data["meta"]["requests"] = api.requests_made
     step("Saving the review and updating the library...", 0.95)
     # a practice or qualifying review of the same event gets its own folder, next to the race's
+    if chosen_kind in (3, None) and hasattr(library, "retire_legacy_mixed"):
+        library.retire_legacy_mixed(library.review_path(cfg["library_folder"], laps, track_name, car_name), log=say)
     out_dir = library.review_dir(cfg["library_folder"], laps, track_name, car_name,
                                  suffix={1: "practice", 2: "qualifying"}.get(
                                      chosen_kind, ""))

@@ -732,6 +732,25 @@ def _stepper(progress):
     return step
 
 
+def _racecap_race(cfg, api, event_id, track_name, laps, my_name):
+    """The race folder in RaceCap's library for this review, or None. Only with a folder in Settings; never fatal."""
+    folder = str(cfg.get("racecap_library") or "").strip()
+    if not folder:
+        return None
+    try:
+        from . import racecap_link
+        starts = [dt for dt in (lap_start_dt(l) for l in laps) if dt]
+        found, why = racecap_link.prepare(folder, event_id, track_name, min(starts).isoformat() if starts else "", my_name,
+                                          api, log=say)
+        if found is None:
+            say(f"  RaceCap link: {why}")
+        return found
+    except Exception:  # noqa: BLE001
+        import traceback
+        say("  Couldn't check RaceCap:\n" + traceback.format_exc())
+        return None
+
+
 def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=None, track_id=None, car_id=None):
     """Review your newest race, or (from the Sessions page) one synced session: event_id plus its
     session_kind (1 practice, 2 qualifying, 3 race) and track/car, so no search is needed."""
@@ -823,6 +842,16 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
             raise
         say(f"  Comparison laps failed: {e}")   # 2.7.1 (M3): the review goes on with what it has
     refs = [r for r in refs if g(r, "id") in ref_tel]
+    rc_found = _racecap_race(cfg, api, event_id, track_name, laps, my_name)
+    if rc_found:
+        try:
+            from . import racecap_link
+            for lap, text in racecap_link.rival_laps(rc_found["dir"], rc_found["car"].get("number")):
+                refs.append(lap)
+                ref_tel[lap["id"]] = text
+        except Exception:  # noqa: BLE001  (RaceCap is optional: its laps are never worth losing the review over)
+            import traceback
+            say("  Couldn't read RaceCap's rival laps:\n" + traceback.format_exc())
     step(f"  {len(refs)} comparison lap(s) with telemetry." if refs else
          "  No comparison laps (follow a few drivers in this car on Garage 61 to get some).", 0.8)
     step("Checking which teammates and followed drivers were on track...", 0.82)
@@ -867,6 +896,13 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
         say("  The engine couldn't place a lap on the track (broken speed channel?):\n" + traceback.format_exc())
         raise SystemExit(BROKEN_SPEED_MSG)
     data["on_track"] = others
+    if rc_found:
+        try:
+            from . import racecap_link
+            racecap_link.attach(data, rc_found)
+        except Exception:  # noqa: BLE001
+            import traceback
+            say("  Couldn't add RaceCap's race log:\n" + traceback.format_exc())
     data["meta"]["requests"] = api.requests_made
     step("Saving the review and updating the library...", 0.95)
     # a practice or qualifying review of the same event gets its own folder, next to the race's

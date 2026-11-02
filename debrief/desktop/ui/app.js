@@ -157,13 +157,14 @@ function welcome(){
   show('vWelcome');markNav()}
 
 /* ---------- the bar above pages in the frame */
-let pages={team:null,prep:[]},resultFor={dir:null,result:null};
+let pages={team:null,prep:[]},resultFor={dir:null,result:null},racecapOn=false;
 function frameBar(){
   const v=current.view,bar=$('frameBar');
   const want=v==='review'||v==='prepPage'||v==='teamPage'||v==='skills';
   bar.hidden=!want;if(!want)return;
   $('fbResult').hidden=v!=='review';$('fbPrep').hidden=v!=='prepPage';$('fbTeam').hidden=v!=='teamPage';$('fbWeekly').hidden=v!=='teamPage';
   $('fbDiscord').hidden=v!=='review'||!discordSaved;
+  $('fbMarkers').hidden=v!=='review';$('fbRaceCap').hidden=v!=='review'||!racecapOn;
   const pill=$('fbPill');pill.hidden=true;$('fbBar').hidden=true;
   if(v==='skills'){const p=profileInfo,rf=p&&p.refreshing;
     $('fbText').textContent=!p?'Driver profile':
@@ -980,8 +981,53 @@ function openResult(){const dir=current.dir;if(!dir)return;const r=(resultFor.di
   RES_FIELDS.forEach(k=>{$('r_'+k).value=r[k]!=null?String(r[k]):''});
   $('incRows').replaceChildren(...(Array.isArray(r.incident_laps)?r.incident_laps.slice(0,30):[]).map(incRow));incState();
   $('resTitle').textContent=resultFor.result?'Edit race result':'Add race result';$('resDelete').hidden=!resultFor.result;
-  $('resDelete').dataset.armed='';$('resDelete').textContent='Delete result';setMsg('resMsg','');
+  $('resDelete').dataset.armed='';$('resDelete').textContent='Delete result';setMsg('resMsg','');setMsg('resCsvMsg','');$('resCsvWho').hidden=true;
   const d=$('dlgResult');if(d.showModal)d.showModal();else d.setAttribute('open','');$('r_finish_pos').focus()}
+/* ---------- 2.7.5: fill the result form from iRacing's results file; nothing is saved until Save */
+function fillFromCsv(d){RES_FIELDS.filter(k=>k!=='notes').forEach(k=>{if(d.fields[k]!=null)$('r_'+k).value=String(d.fields[k])});
+  setMsg('resCsvMsg','Filled in for '+d.name+(d.class?' ('+d.class+')':'')+'. Check it, then press Save result.','ok')}
+$('resCsv').addEventListener('change',async()=>{const f=$('resCsv').files[0];$('resCsv').value='';const dir=current.dir;if(!f||!dir)return;
+  if(f.size>2*1024*1024){setMsg('resCsvMsg','That file is too big for a results CSV.','bad');return}
+  setMsg('resCsvMsg','Reading '+f.name+'...');let r;
+  try{r=await fetch(BASE+'api/result-csv?review='+encodeURIComponent(dir),{method:'POST',headers:{'X-Debrief':'1','Content-Type':'application/octet-stream'},body:f}).then(x=>x.json())}
+  catch(e){setMsg('resCsvMsg','Couldn\'t send the file.','bad');return}
+  if(!r||!r.ok){setMsg('resCsvMsg',(r&&r.error)||'Couldn\'t read that file.','bad');return}
+  const who=$('resCsvWho');if(r.matched){who.hidden=true;fillFromCsv(r.matched);return}
+  const first=h('option',null,'Which one is you?');first.value='';who.replaceChildren(first,...r.drivers.map((d,i)=>{const o=h('option',null,d.name+(d.car?' #'+d.car:''));o.value=String(i);return o}));
+  who._drivers=r.drivers;who.hidden=false;setMsg('resCsvMsg','Your name wasn\'t found exactly. Pick yourself.')});
+$('resCsvWho').addEventListener('change',()=>{const w=$('resCsvWho');if(w.value!=='')fillFromCsv(w._drivers[+w.value])});
+/* ---------- 2.7.5: RaceCap link, Resolve markers, help */
+$('fRaceCap').addEventListener('submit',async e=>{e.preventDefault();setMsg('rcapMsg','Saving...');let r;
+  try{r=await post('settings',{racecap_library:$('rcapFolder').value.trim()})}catch(err){connectionLost();return}
+  if(!r.ok){setMsg('rcapMsg',r.error,'bad');return}fillSettings(r.settings);frameBar();setMsg('rcapMsg','Saved.','ok')});
+function openDlg(d){if(d.showModal)d.showModal();else d.setAttribute('open','')}
+function closeDlg(d){if(d.close)d.close();else d.removeAttribute('open')}
+$('fbRaceCap').addEventListener('click',()=>{$('linkSub').value='';setMsg('linkMsg','');openDlg($('dlgLink'));$('linkSub').focus()});
+$('linkClose').addEventListener('click',()=>closeDlg($('dlgLink')));
+$('fLink').addEventListener('submit',async e=>{e.preventDefault();const dir=current.dir;if(!dir)return;setMsg('linkMsg','Looking...');$('linkGo').disabled=true;let r;
+  try{r=await post('racecap-link',{review:dir,subsession:$('linkSub').value.trim()})}catch(err){connectionLost();return}finally{$('linkGo').disabled=false}
+  if(!r.ok){setMsg('linkMsg',r.error,'bad');return}closeDlg($('dlgLink'));reloadFrame();banner('Linked to RaceCap race '+r.subsession+'.')});
+$('fbMarkers').addEventListener('click',async()=>{const dir=current.dir;if(!dir)return;let j;try{j=await api('markers?review='+encodeURIComponent(dir))}catch(e){banner('Couldn\'t make the marker file.',true);return}
+  if(!j.ok){banner(j.error||'Couldn\'t make the marker file.',true);return}
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([j.edl],{type:'text/plain'}));a.download=j.name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+  banner(j.exact?'Markers saved to Downloads. In Resolve, put the green flag at the timeline\'s start.':'Markers saved to Downloads. They come from lap times, so they\'re close, not exact. Link RaceCap for exact moments.',false,9000)});
+const HELP={tour:[['Review your race','Press Review last race. Debrief pulls your newest race from Garage 61 and writes the review.'],
+  ['Start at the top','What to work on comes first: the corners worth the most time. Every number behind it is further down.'],
+  ['Compare two laps','Pick any two laps, or a comparison lap, and see where the time went on the track map and traces.'],
+  ['Add the result','On a review, Add race result takes the iRacing results file, so there is little or nothing to type.'],
+  ['Prepare and look back','Prepare gets you ready for the next track. Library, Season and Skills show how you are trending.']],
+ words:[['Clean lap','A full lap Garage 61 didn\'t flag: no incident and not a pit lap.'],['Typical lap','The middle of your clean laps. Half were quicker, half slower.'],
+  ['Comparison lap','A lap by a teammate, a followed driver or, with RaceCap, a rival, that yours are measured against.'],['Best sectors added up','Your best time through each part of the track, added together. A guide, not a lap you must be able to drive.'],
+  ['Brake point','Where on the track you first brake.'],['Apex','The slowest point of a corner, near the inside.'],['Coasting','Time with neither pedal pressed.'],['Stint','A run of laps between pit stops.'],
+  ['Possibly traffic','A lap lost time in one short stretch your other laps didn\'t. It could be another car or a mistake.'],['Race log','Passes, fights, incidents and pit stops from a RaceCap replay scan.'],
+  ['On the road','The order the cars crossed the line in the replay. The iRacing results are the official order.'],['Rolling or standing start','Whether the field was moving at the green flag.'],
+  ['Resolve markers','A file DaVinci Resolve imports to mark your race\'s moments on a timeline.']],
+ keys:[['Ctrl+R','Review last race'],['Ctrl+,','Settings'],['Tab','Move to the next button or chart'],['Arrow keys','Move along a chart that has focus'],['Esc','Close a window like this one']]};
+function showHelp(k){const b=$('helpBody');b.replaceChildren(...(k==='tour'?[h('p','note','A quick look at how Debrief works.')]:[]),...HELP[k].map(([t,d])=>{const p=h('p');p.append(h('b',null,t+': '),document.createTextNode(d));return p}));
+  document.querySelectorAll('[data-help]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.help===k?'true':'false'))}
+function openHelp(k){showHelp(k);openDlg($('dlgHelp'))}
+$('btnHelp').addEventListener('click',()=>openHelp('tour'));$('helpClose').addEventListener('click',()=>closeDlg($('dlgHelp')));
+document.querySelectorAll('[data-help]').forEach(x=>x.addEventListener('click',()=>showHelp(x.dataset.help)));
 function closeResult(){const d=$('dlgResult');if(d.close)d.close();else d.removeAttribute('open')}
 $('fbResult').addEventListener('click',openResult);
 $('resClose').addEventListener('click',closeResult);
@@ -1020,6 +1066,9 @@ function fillSettings(v){
   const st=$('tokStatus');st.textContent=v.token_saved?'Token saved (ends in '+v.token_hint+')':(unread?'Saved token can\'t be opened':'No token saved yet');
   st.className='pill '+(v.token_saved?'ok':'no');
   $('refs').value=String(v.max_reference_laps);$('prac').checked=!!v.include_practice;
+  if(v.token_saved&&!fillSettings.toured){fillSettings.toured=true;let seen=true;try{seen=localStorage.getItem('debrief.tourSeen')==='1';if(!seen)localStorage.setItem('debrief.tourSeen','1')}catch(e){}if(!seen)banner('New here? Press Help in the sidebar for a quick tour and what the words mean.',false,9000)}
+  racecapOn=!!v.racecap_library;$('rcapPill').textContent=racecapOn?'On':'Off';$('rcapPill').className='pill'+(racecapOn?' ok':'');
+  if(document.activeElement!==$('rcapFolder'))$('rcapFolder').value=v.racecap_library||'';
   if(document.activeElement!==$('salut'))$('salut').value=typeof v.salutation==='string'?v.salutation:'';
   $('syncOpen').checked=v.sync_on_open!==false;$('updAuto').checked=v.check_updates!==false;$('syncTel').checked=v.sync_telemetry!=='none';
   $('libPath').textContent=v.library_folder||'Not set yet. It will be Documents\\Debrief Reviews once settings are saved.';

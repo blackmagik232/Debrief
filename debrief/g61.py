@@ -418,6 +418,16 @@ class Garage61:
     def me(self):
         return self._cached("me", lambda: self._get("me"), max_age_s=86400)
 
+    def event_for_subsession(self, subsession):
+        """Garage 61's event id for this exact iRacing race, or None (2.7.5, the RaceCap link)."""
+        doc = self._get("/events", {"platform": "iracing", "platformEvent": str(subsession)})
+        items = doc.get("items") if isinstance(doc, dict) else None
+        for e in items or []:
+            if isinstance(e, dict) and str(e.get("platformEvent") or "") == str(subsession) \
+                    and str(e.get("platform") or "").lower() == "iracing":
+                return e.get("id")
+        return None
+
     def teams(self, refresh=False):
         """Your Garage 61 teams, cached for a day; refresh=True asks again (1 request), e.g. right after
         you join a team."""

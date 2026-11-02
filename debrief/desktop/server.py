@@ -1154,7 +1154,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"groups": self.server.reviews.list(lib), "folder": str(lib)})
         if r.startswith("lib/"):
             return self._lib(r[len("lib/"):])
-        if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/pages", "api/sessions", "api/prepare",
+        if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/markers", "api/pages", "api/sessions", "api/prepare",
                  "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand",
                  "api/diagnostics"):
             if self.headers.get("X-Debrief") != "1":
@@ -1676,6 +1676,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._post_schedule_upload()
         if r == "api/intel-upload":
             return self._post_intel_upload()
+        if r == "api/result-csv":
+            return self._post_result_csv()
         if r == "api/discord-stage":
             return self._post_discord_stage()
         try:  # read the body first (even for ping/bye) so a kept-alive connection stays in step
@@ -1709,7 +1711,7 @@ class Handler(BaseHTTPRequestHandler):
         if r == "api/update":
             return self._json(self.server.jobs.start("update"))
         if r in ("api/prep", "api/team", "api/goals", "api/result", "api/series", "api/notes", "api/schedule",
-                 "api/strategy", "api/intel-preview", "api/intel-import", "api/weekly", "api/discord-post",
+                 "api/strategy", "api/racecap-link", "api/intel-preview", "api/intel-import", "api/weekly", "api/discord-post",
                  "api/discord-check"):
             try:
                 return getattr(self, "_post_" + r[4:].replace("-", "_"))(body)
@@ -2126,6 +2128,52 @@ class Handler(BaseHTTPRequestHandler):
                 _rebuild_library(cfg)
             return self._json({"ok": True, "deleted": deleted})
         raise ValueError("Bad request.")
+
+    MAX_RESULT_CSV = 2 * 1024 * 1024
+
+    def _post_result_csv(self):
+        """iRacing's results CSV as the raw body, ?review=<folder>. Nothing is saved: the form is filled in and the
+        person presses Save."""
+        cl = (self.headers.get("Content-Length") or "").strip()
+        if not cl.isdigit() or self.headers.get("Transfer-Encoding") or int(cl) > self.MAX_RESULT_CSV:
+            self.close_connection = True
+            return self._json({"ok": False, "error": "That file is too big for a results CSV."}, 400)
+        data = self.rfile.read(int(cl))
+        from .. import results_csv
+        try:
+            q = parse_qs(urlsplit(self.path).query)
+            d = self._review_dir(self._cfg(), (q.get("review") or [""])[0])
+            parsed = results_csv.parse(data)
+            review = json.loads((d / "review.json").read_text(encoding="utf-8"))
+        except ValueError as e:
+            return self._json({"ok": False, "error": str(e)}, 400)
+        except OSError:
+            return self._json({"ok": False, "error": "Couldn't read that review."}, 400)
+        me = results_csv.pick(parsed, (review.get("meta") or {}).get("driver"))
+        return self._json({"ok": True, "matched": me, "drivers": parsed["drivers"], "multiclass": parsed["multiclass"]})
+
+    def _post_racecap_link(self, body):
+        cfg = self._cfg()
+        d = self._review_dir(cfg, body.get("review"))
+        folder = str(cfg.get("racecap_library") or "").strip()
+        if not folder:
+            raise ValueError("Pick RaceCap's folder in Settings first.")
+        sub = str(body.get("subsession") or "").strip()
+        if sub and not re.fullmatch(r"\d{1,12}", sub):
+            raise ValueError("A race ID is a number, like 89132385.")
+        if self.server.jobs.running:
+            raise ValueError("Wait for " + self.server.jobs.snapshot().get("title", "the current job").lower() + " to finish first.")
+        from .. import racecap_link
+        api = None if sub else app.make_api(cfg)
+        return self._json({"ok": True, **racecap_link.link_review(cfg["library_folder"], d, folder, api, subsession=sub or None, log=app.say)})
+
+    def _get_markers(self, q):
+        cfg = self._cfg()
+        d = self._review_dir(cfg, q.get("review"))
+        from .. import markers
+        text = markers.edl(json.loads((d / "review.json").read_text(encoding="utf-8")))
+        return self._json({"ok": True, "edl": text, "name": re.sub(r"[^\w.-]+", "_", d.name)[:80] + "_markers.edl",
+                           "exact": markers.items(json.loads((d / "review.json").read_text(encoding="utf-8")))[1]})
 
     def _post_result(self, body):
         cfg = self._cfg()

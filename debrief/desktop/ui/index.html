@@ -37,6 +37,7 @@
     <button type="button" class="navbtn" data-nav="prep">Prepare</button>
     <button type="button" class="navbtn" data-nav="team">Team</button>
     <button type="button" class="navbtn" data-nav="settings" title="Settings (Ctrl+,)" aria-keyshortcuts="Control+Comma">Settings</button>
+    <button type="button" class="navbtn" id="btnHelp">Help</button>
   </nav>
   <div class="revhead"><span class="eyebrow">Saved reviews</span><span class="eyebrow" id="revcount"></span></div>
   <nav id="revlist" class="revlist" aria-label="Saved reviews"></nav>
@@ -58,6 +59,8 @@
       <span class="row">
         <span class="pill" id="fbPill" hidden></span>
         <button type="button" class="btn" id="fbResult" hidden>Add race result</button>
+        <button type="button" class="btn" id="fbMarkers" hidden title="A marker file for DaVinci Resolve">Resolve markers</button>
+        <button type="button" class="btn" id="fbRaceCap" hidden title="Add the race log from RaceCap's replay scan">Link RaceCap</button>
         <button type="button" class="btn" id="fbDiscord" hidden>Post to Discord</button>
         <button type="button" class="btn" id="fbPrep" hidden>Pick another track</button>
         <button type="button" class="btn" id="fbWeekly" hidden>Refresh this week</button>
@@ -360,6 +363,13 @@
         </details>
       </form>
 
+      <form class="panel" id="fRaceCap" autocomplete="off">
+        <div class="phead"><h3>RaceCap link</h3><span class="pill" id="rcapPill">Off</span></div>
+        <p class="note">Only if you also use RaceCap. Debrief reads the race folders RaceCap saved (never its passwords or keys) and adds a race log and rival laps to reviews. Leave it empty if you don't use RaceCap.</p>
+        <label class="field wide" for="rcapFolder"><span>RaceCap's library folder</span><input id="rcapFolder" type="text" maxlength="400" spellcheck="false" placeholder="The folder RaceCap shows under Tools > Library"></label>
+        <div class="row"><button type="submit" class="btn">Save</button><span class="msg" id="rcapMsg" role="status"></span></div>
+      </form>
+
       <form class="panel" id="fCards" autocomplete="off">
         <div class="phead"><h3>Team track cards</h3><span class="pill" id="cardsPill">Off</span></div>
         <p class="note">Pick a folder your team already shares (OneDrive, Google Drive, Dropbox...). Debrief shows your teammates' track cards from it, and if you switch sharing on it saves your own cards there too. It only ever writes your own file. Nothing goes through the internet except your sync app.</p>
@@ -417,6 +427,7 @@
   <form id="fResult" method="dialog" autocomplete="off">
     <div class="phead"><h3 id="resTitle">Race result</h3><button type="button" class="btn ghost" id="resClose" aria-label="Close">Close</button></div>
     <p class="note">From the iRacing results page. Only the finishing position is needed; leave the rest blank if you like.</p>
+    <div class="row"><label class="btn" for="resCsv">Load iRacing results file</label><input id="resCsv" type="file" accept=".csv,text/csv" hidden><select id="resCsvWho" aria-label="Which driver is you" hidden></select><span class="msg" id="resCsvMsg" role="status"></span></div>
     <div class="grid3">
       <label class="field" for="r_finish_pos"><span>Finished</span><input id="r_finish_pos" name="finish_pos" type="number" min="1" max="200" required></label>
       <label class="field" for="r_start_pos"><span>Started</span><input id="r_start_pos" name="start_pos" type="number" min="1" max="200"></label>
@@ -444,6 +455,19 @@
     <label class="field wide" for="r_notes"><span>Notes</span><textarea id="r_notes" name="notes" maxlength="500" rows="3" placeholder="Anything worth remembering about this race"></textarea></label>
     <div class="row"><button type="submit" class="btn primary" id="resSave">Save result</button><button type="button" class="btn" id="resDelete" hidden>Delete result</button><span class="msg" id="resMsg" role="status"></span></div>
   </form>
+</dialog>
+<dialog id="dlgLink" aria-labelledby="linkTitle">
+  <form id="fLink" method="dialog" autocomplete="off">
+    <div class="phead"><h3 id="linkTitle">Link RaceCap</h3><button type="button" class="btn ghost" id="linkClose">Close</button></div>
+    <p class="note">Debrief asks Garage 61 which RaceCap race this is. If it can't tell, type the race ID (the number at the start of the race's folder in RaceCap).</p>
+    <label class="field" for="linkSub"><span>Race ID (optional)</span><input id="linkSub" type="text" inputmode="numeric" maxlength="12"></label>
+    <div class="row"><button type="submit" class="btn primary" id="linkGo">Link</button><span class="msg" id="linkMsg" role="status"></span></div>
+  </form>
+</dialog>
+<dialog id="dlgHelp" aria-labelledby="helpTitle">
+  <div class="phead"><h3 id="helpTitle">Help</h3><button type="button" class="btn ghost" id="helpClose">Close</button></div>
+  <div class="row" role="group" aria-label="Help pages"><button type="button" class="btn" data-help="tour">Tour</button><button type="button" class="btn" data-help="words">What the words mean</button><button type="button" class="btn" data-help="keys">Keyboard keys</button></div>
+  <div id="helpBody"></div>
 </dialog>
 <dialog id="dlgCard" aria-labelledby="cardTitle">
   <form id="fCard" method="dialog" autocomplete="off">

@@ -4,6 +4,8 @@
 
 Reviews your iRacing races from Garage 61 and keeps a library of every review, in its own window.
 
+**New in 2.7.5:** load iRacing's results file instead of typing a result; a Resolve marker file for any review; Help (tour, what the words mean, keys). If you also use RaceCap, point Settings > RaceCap link at its library folder: reviews gain a race log (passes, fights, incidents, pit stops, position by lap), race stories, a traffic check and rival laps. Debrief only reads RaceCap's race folders, never its settings or keys, and everything works the same without it.
+
 ## For Midfield Menace drivers: install
 
 You need Windows 10 or 11. Microsoft Edge is used for the Debrief window (it comes with Windows).

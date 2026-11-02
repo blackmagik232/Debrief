@@ -363,6 +363,8 @@ def public_view() -> dict:
         # 2.4 team track cards (a folder path is not a secret)
         "team_cards_folder": str(raw.get("team_cards_folder") or "").strip()[:MAX_FOLDER] or None,
         "team_cards_folder_ok": False,
+        # 2.7.5 RaceCap link: the library folder RaceCap uses. Only its Races folder is ever read.
+        "racecap_library": str(raw.get("racecap_library") or "").strip()[:MAX_FOLDER] or None,
         "share_my_cards": raw.get("share_my_cards") is True,
         # 2.5 Discord webhook: saved or not, and the end of the webhook id. Never the address or its token.
         "discord_saved": False,
@@ -592,6 +594,15 @@ def save(updates: dict) -> dict:
         if not _CRED_OK.match(v):
             raise ValueError(f"That iRacing {label} doesn't look right. Paste it again without spaces.")
         clean[k] = v
+    if "racecap_library" in updates:
+        v = str(updates["racecap_library"] or "").strip()
+        if len(v) > MAX_FOLDER or re.search(r"[\x00-\x1f\x7f]", v):
+            raise ValueError("That folder path doesn't look right.")
+        if v:
+            from .. import racecap_link
+            if racecap_link.races_root(v) is None:
+                raise ValueError("That folder has no Races folder from RaceCap. Pick the folder RaceCap shows under Tools > Library.")
+        clean["racecap_library"] = v
     if "team_cards_folder" in updates:
         clean["team_cards_folder"] = clean_team_folder(updates["team_cards_folder"])
     if "share_my_cards" in updates:

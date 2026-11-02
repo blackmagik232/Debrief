@@ -479,6 +479,7 @@ a{color:inherit!important;text-decoration:none!important}
     <div class="chiprow" id="ctxChips" hidden></div>
     <div class="tools" id="tools">
       <button type="button" id="btnShare" title="Save a 1200 × 630 picture of this race to share (always a dark image)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 17l-5-5-6 6"/></svg>Share card</button>
+      <button type="button" id="btnPdf" title="Print this review or save it as a PDF">Save as PDF</button>
       <button type="button" id="btnLapsCsv" title="Download every lap as a spreadsheet file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Laps CSV</button>
       <button type="button" id="btnCornersCsv" title="Download every corner on every lap as a spreadsheet file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Corners CSV</button>
     </div>
@@ -490,7 +491,7 @@ a{color:inherit!important;text-decoration:none!important}
 <nav class="jump" id="jump" aria-label="Sections">
   <div class="jumplinks" id="jumpLinks"><a href="#raceTl" id="jumpTl" hidden>Your race</a><a href="#summary">Summary</a><a href="#coach">What to work on</a><a href="#session">Runs</a><a href="#race">Race story</a><a href="#racecraft">Race craft</a><a href="#racelog" id="jumpRaceLog" hidden>Racecraft</a><a href="#rlPace" id="jumpPace" hidden>Pace</a></div>
   <div class="jumpmenu"><button type="button" id="jumpMore" aria-expanded="false" aria-controls="jumpPanel">All the numbers <span aria-hidden="true">▾</span></button>
-    <div class="jumppanel" id="jumpPanel"><a href="#deep">Start of the numbers</a><a href="#compare">Compare laps</a><a href="#possible">Best sectors</a><a href="#corners">Corners</a><a href="#technique">Technique</a><a href="#bestworst">Best vs worst</a><a href="#pace">Pace</a><a href="#consistency">Consistency</a><a href="#stint">Stint</a><a href="#habits">Driving style</a><a href="#plan">Practice plan</a></div></div>
+    <div class="jumppanel" id="jumpPanel"><a href="#deep">Start of the numbers</a><a href="#compare">Compare laps</a><a href="#depth">Deeper coaching</a><a href="#possible">Best sectors</a><a href="#corners">Corners</a><a href="#technique">Technique</a><a href="#bestworst">Best vs worst</a><a href="#pace">Pace</a><a href="#consistency">Consistency</a><a href="#stint">Stint</a><a href="#habits">Driving style</a><a href="#plan">Practice plan</a></div></div>
 </nav>
 
 <section id="raceTl" hidden aria-label="Your race">
@@ -1715,6 +1716,7 @@ safe('depth',()=>{const X=isObj(D.depth)?D.depth:null;if(!X)return;const host=$(
   block('Your comparison lap',null,[isObj(X.ref_match)&&X.ref_match.sentence]);
   if(host.children.length)$('depth').hidden=false},'depth');
 
+$('btnPdf').addEventListener('click',()=>{const d=$('deep');if(d)d.open=true;setTimeout(()=>window.print(),250)});
 // ---------- 2.8: the race, from a replay scan (D.racecap). Everything is textContent; without a scan the page is as before.
 const RCP=isObj(D.racecap)?D.racecap:null;
 safe('your race',()=>{const int=(v,lo,hi)=>typeof v==='number'&&Number.isInteger(v)&&v>=lo&&v<=hi;const R=RCP;if(!R){$('scanHint').hidden=!(/race/i.test(String(M.session||'race')));return}

@@ -197,7 +197,7 @@ function frameBar(){
   const want=v==='review'||v==='prepPage'||v==='teamPage'||v==='skills'||v==='sample'||v==='goalCharts';
   bar.hidden=!want;if(!want)return;
   $('fbResult').hidden=v!=='review';$('fbPrep').hidden=v!=='prepPage';$('fbTeam').hidden=v!=='teamPage';$('fbWeekly').hidden=v!=='teamPage';
-  $('fbDiscord').hidden=v!=='review'||!discordSaved;
+  $('fbDiscord').hidden=(v!=='review'&&v!=='season')||!discordSaved;
   $('fbMarkers').hidden=v!=='review';$('fbRaceCap').hidden=v!=='review'||!racecapOn;$('fbScan').hidden=v!=='review';
   $('fbSampleBack').hidden=v!=='sample';$('fbGoals').hidden=v!=='goalCharts';
   const pill=$('fbPill');pill.hidden=true;$('fbBar').hidden=true;
@@ -961,11 +961,11 @@ $('btnWeekly').addEventListener('click',startWeekly);$('fbWeekly').addEventListe
    window stages it on the server (no network), shows it, and posts only when you press Post in the dialog. */
 let discordSaved=false,discordHint=null,share=null,staged=null;
 function shareId(){const a=new Uint8Array(12);crypto.getRandomValues(a);return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('')}
-function requestShare(){if(current.view!=='review'||!discordSaved||share)return;
+function requestShare(){if((current.view!=='review'&&current.view!=='season')||!discordSaved||share)return;
   const w=$('frame').contentWindow;if(!w)return;
-  const id=shareId();share={id,dir:current.dir};$('fbDiscord').disabled=true;
+  const id=shareId();share={id,dir:current.dir,view:current.view};$('fbDiscord').disabled=true;
   share.t=setTimeout(()=>{if(share&&share.id===id){share=null;$('fbDiscord').disabled=false;
-    banner('This review didn\'t send its share card. Reload it and try again.',true)}},10000);
+    banner('This page didn\'t send its picture. Reload it and try again.',true)}},10000);
   // '*': the review page is sandboxed (origin "null"); the request carries nothing but a random id
   try{w.postMessage({type:'debrief:share-request',id},'*')}catch(e){clearTimeout(share.t);share=null;$('fbDiscord').disabled=false}}
 $('fbDiscord').addEventListener('click',requestShare);
@@ -973,8 +973,8 @@ $('fbDiscord').addEventListener('click',requestShare);
 addEventListener('message',e=>{const f=$('frame');if(!f||e.source!==f.contentWindow)return;const m=e.data;
   if(!m||typeof m!=='object'||m.type!=='debrief:share-card'||!share||m.id!==share.id)return;
   const s=share;share=null;clearTimeout(s.t);$('fbDiscord').disabled=false;
-  if(current.view!=='review'||current.dir!==s.dir)return;
-  if(m.error!=null&&m.png==null){banner('Couldn\'t make the share card.',true);return}   // the page couldn't draw it: stage nothing
+  if(current.view!==s.view||current.dir!==s.dir)return;
+  if(m.error!=null&&m.png==null){banner(s.view==='season'&&typeof m.error==='string'?m.error.slice(0,200):'Couldn\'t make the share card.',true);return}   // the page couldn't draw it: stage nothing
   if(typeof m.png!=='string'||!m.png.startsWith('data:image/png;base64,')||m.png.length>6e6){banner('The share card couldn\'t be made. Reload the review and try again.',true);return}
   stageCard(m.png,typeof m.text==='string'?m.text:'')});
 function pngBlob(url){const b=atob(url.slice(url.indexOf(',')+1));const a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return new Blob([a],{type:'image/png'})}

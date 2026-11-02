@@ -470,6 +470,14 @@ def fmt_t(s):
 
 
 # ---------------------------------------------------------------- comparison laps
+def _depth_context(laps):
+    try:
+        from . import depth
+        return depth.context_of(laps)
+    except Exception:  # noqa: BLE001  (comparison laps still work on pace alone)
+        return None
+
+
 def pick_refs(api: Garage61, car, track, my_best: float, my_slug: str, limit: int, me=None):
     """Comparison laps from teammates and followed drivers only (all the API allows). me: your laps' conditions
     and session type (depth.context_of), which the main comparison is matched on when given."""
@@ -840,7 +848,7 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     step("Looking for comparison laps from your teammates and followed drivers...", 0.72)
     refs, ref_tel = [], {}
     try:
-        refs = pick_refs(api, _id(car), _id(track), my_best, slug, cfg["max_reference_laps"])
+        refs = pick_refs(api, _id(car), _id(track), my_best, slug, cfg["max_reference_laps"], me=_depth_context(with_tel))
         for r in refs:
             csv = api.lap_csv(g(r, "id"))
             if csv:

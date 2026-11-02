@@ -149,7 +149,7 @@ def new_page(b, scheme="light"):
 # ================================================================ M1 (C): sandboxed frame + bridge
 def test_iframe_is_sandboxed_exactly_like_the_server_header():
     html = (UI / "index.html").read_text(encoding="utf-8")
-    want = '<iframe id="frame" title="Review" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads"></iframe>'
+    want = '<iframe id="frame" title="Review" sandbox="allow-scripts allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads"></iframe>'
     assert want in html
     assert "allow-same-origin" not in html
     assert f'sandbox="{S.FRAME_SANDBOX}"' in html

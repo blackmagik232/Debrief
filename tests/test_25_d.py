@@ -841,7 +841,7 @@ def test_window_security_model_unchanged():
     for bad in ("eval(", "new Function", "innerHTML", "insertAdjacentHTML", "outerHTML", "document.write"):
         assert bad not in src, bad
     assert f'sandbox="{S.FRAME_SANDBOX}"' in html and "allow-same-origin" not in S.FRAME_SANDBOX
-    assert S.FRAME_SANDBOX == "allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads"
+    assert S.FRAME_SANDBOX == "allow-scripts allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads"
     assert S.LIB_CSP.startswith("sandbox allow-scripts ") and "connect-src 'none'" in S.LIB_CSP
     # the share reply is only taken from our own frame, for the id we sent
     i = src.index("'debrief:share-card'")

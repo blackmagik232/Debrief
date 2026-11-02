@@ -79,10 +79,10 @@ _FIRST_STYLE = re.compile(r"<(?:style|link)\b", re.I)
 # opaque origin: their scripts work, but they can't call the API, read the window or change settings.
 # connect-src 'none' matches the policy in the templates' own <meta> tag: library pages never use the network
 # (their data is inline), so a planted page can't send anything anywhere either.
-LIB_CSP = ("sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads; "
+LIB_CSP = ("sandbox allow-scripts allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads; "
            "connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'")
 # The iframe that shows library pages (ui/index.html) must carry the same flags:
-FRAME_SANDBOX = "allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads"
+FRAME_SANDBOX = "allow-scripts allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads"
 # Added to every library page as it is served: tells the window which page is showing (the window can't
 # look inside a sandboxed page), applies the theme it sends, and opens outside links in the browser.
 FRAME_BRIDGE = ("<script>/* debrief-frame-bridge */(function(){if(parent===window)return;"

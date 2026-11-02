@@ -897,7 +897,8 @@ class RealSim:
     def read(self):
         self.ir.freeze_var_buffer_latest()
         try:
-            return {"session_num": self._get("ReplaySessionNum"), "session_time": self._get("ReplaySessionTime")}
+            return {"session_num": self._get("ReplaySessionNum"), "session_time": self._get("ReplaySessionTime"),
+                    "cam_car_idx": self._get("CamCarIdx"), "cam_group": self._get("CamGroupNumber"), "cam_num": self._get("CamCameraNumber")}
         finally:
             self.ir.unfreeze_var_buffer_latest()
 
@@ -919,6 +920,30 @@ class RealSim:
     def focus(self, car_number):
         """Point the replay camera at this car: iRacing only gives live track data for cars near the camera."""
         self.ir.cam_switch_num(str(car_number), int(self._get("CamGroupNumber") or 1), 0)
+
+    def read_lap(self, car_idx):
+        """One car during a lap read (rival_read): lap share, steering, revs and gear for every car; speed only while the
+        camera is on it. iRacing gives no pedals for other cars in a replay, so none are read."""
+        self.ir.freeze_var_buffer_latest()
+        try:
+            g = self._get
+
+            def one(key):
+                v = g(key)
+                try:
+                    return v[car_idx] if v is not None else None
+                except (IndexError, TypeError):
+                    return None
+            cam = g("CamCarIdx")
+            return {"session_num": g("ReplaySessionNum"), "session_time": g("ReplaySessionTime"), "cam_car_idx": cam,
+                    "pct": one("CarIdxLapDistPct"), "steer": one("CarIdxSteer"), "rpm": one("CarIdxRPM"), "gear": one("CarIdxGear"),
+                    "speed": g("Speed") if cam == car_idx else None}
+        finally:
+            self.ir.unfreeze_var_buffer_latest()
+
+    def cam_car(self, car_number, group, camera=0):
+        """camera 0 lets iRacing pick inside the group; a number asks for that exact camera."""
+        self.ir.cam_switch_num(str(car_number), int(group), int(camera or 0))
 
     def seek(self, session_num, t):
         self.ir.replay_search_session_time(int(session_num), int(round(t * 1000)))

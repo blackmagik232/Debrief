@@ -60,6 +60,7 @@
         <button type="button" class="btn" id="fbResult" hidden>Add race result</button>
         <button type="button" class="btn" id="fbMarkers" hidden title="A marker file for DaVinci Resolve">Resolve markers</button>
         <button type="button" class="btn" id="fbScan" hidden title="Add the race log by scanning this race's replay in iRacing">Scan this race</button>
+        <button type="button" class="btn" id="fbRival" hidden title="Add a nearby driver's lap to Compare by reading it from this race's replay">Read a rival's lap</button>
         <button type="button" class="btn" id="fbRaceCap" hidden title="Add the race log from RaceCap's replay scan">Link RaceCap</button>
         <button type="button" class="btn" id="fbDiscord" hidden>Post to Discord</button>
         <button type="button" class="btn" id="fbPrep" hidden>Pick another track</button>
@@ -474,6 +475,15 @@
     <p class="note">Load this race's replay in iRacing first. Debrief fast-forwards through the race once, usually a few minutes, and records nothing. It adds a race log of every pass, fight, incident and pit stop to this review.</p>
     <p class="note">No OBS or recording is needed. Just leave iRacing alone until it finishes. Your replay goes back to where it was.</p>
     <div class="row"><button type="submit" class="btn primary" id="scanGo">Start scan</button><span class="msg" id="scanMsg" role="status"></span></div>
+  </form>
+</dialog>
+<dialog id="dlgRival" aria-labelledby="rivalTitle">
+  <form id="fRival" method="dialog" autocomplete="off">
+    <div class="phead"><h3 id="rivalTitle">Read a rival's lap</h3><button type="button" class="btn ghost" id="rivalClose">Close</button></div>
+    <p class="note">Load this race's replay in iRacing first. Debrief watches this driver's fastest clean lap at normal speed with the camera on them, so it takes about one lap, and records nothing.</p>
+    <p class="note">The lap is added to Compare as a rival, to look at only. iRacing gives no pedals for other cars, so it has speed, gear and steering but no throttle or brake, and it never changes your coaching or time to find. Your replay and camera go back to where they were, paused.</p>
+    <label class="field wide" for="rivalCar"><span>Driver</span><select id="rivalCar"></select></label>
+    <div class="row"><button type="submit" class="btn primary" id="rivalGo" disabled>Read the lap</button><span class="msg" id="rivalMsg" role="status"></span></div>
   </form>
 </dialog>
 <dialog id="dlgHelp" aria-labelledby="helpTitle">

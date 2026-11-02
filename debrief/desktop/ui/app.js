@@ -198,7 +198,7 @@ function frameBar(){
   bar.hidden=!want;if(!want)return;
   $('fbResult').hidden=v!=='review';$('fbPrep').hidden=v!=='prepPage';$('fbTeam').hidden=v!=='teamPage';$('fbWeekly').hidden=v!=='teamPage';
   $('fbDiscord').hidden=(v!=='review'&&v!=='season')||!discordSaved;
-  $('fbMarkers').hidden=v!=='review';$('fbRaceCap').hidden=v!=='review'||!racecapOn;$('fbScan').hidden=v!=='review';
+  $('fbMarkers').hidden=v!=='review';$('fbRaceCap').hidden=v!=='review'||!racecapOn;$('fbScan').hidden=v!=='review';$('fbRival').hidden=v!=='review';
   $('fbSampleBack').hidden=v!=='sample';$('fbGoals').hidden=v!=='goalCharts';
   const pill=$('fbPill');pill.hidden=true;$('fbBar').hidden=true;
   if(v==='sample'){$('fbText').textContent='This is a made-up race, not your laps. Your own reviews will look like this.';
@@ -300,8 +300,8 @@ async function loadReviews(){
 }
 
 /* ---------- jobs: review / prep / team share the progress screen; check stays in Settings */
-const TITLES0={scan:'Scanning the replay',weekly:'Updating this week\'s team leaderboards',update:'Updating Debrief',sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
-const STOPPED={scan:'The scan stopped',weekly:'The leaderboard refresh stopped',update:'The update stopped',review:'The review stopped',prep:'The prep page stopped',team:'The team refresh stopped'};
+const TITLES0={scan:'Scanning the replay',rival:'Reading a rival\'s lap',weekly:'Updating this week\'s team leaderboards',update:'Updating Debrief',sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
+const STOPPED={scan:'The scan stopped',rival:'Reading the lap stopped',weekly:'The leaderboard refresh stopped',update:'The update stopped',review:'The review stopped',prep:'The prep page stopped',team:'The team refresh stopped'};
 const TITLES=Object.assign({},TITLES0);   // the review title can change per job; TITLES0 keeps the defaults
 let handled=new Set(),polling=false,lastJob=null,lastStart=null;
 async function startJob(kind,body){
@@ -309,7 +309,7 @@ async function startJob(kind,body){
     if(lastJob.kind===kind&&kind!=='check')openJob();
     else banner('Debrief is busy: '+(lastJob.title||TITLES[lastJob.kind]||'a job').toLowerCase()+'. Wait for it to finish.',true);
     return false}
-  let r;try{r=await post(kind==='scan'?'replay-scan':kind,body)}catch(e){connectionLost();return false}
+  let r;try{r=await post(kind==='scan'?'replay-scan':kind==='rival'?'rival-read':kind,body)}catch(e){connectionLost();return false}
   if(!r.ok){banner(r.error||'Could not start.',true);return false}
   if(lastJob&&lastJob.kind==='sync'&&lastJob.state==='running')banner('History sync paused for this. It carries on next time.');
   lastStart={kind,body};lastJob={state:'running',kind,id:r.id};
@@ -336,7 +336,7 @@ const noCounts=t=>String(t==null?'':t).replace(/\s*\((?:no |about |up to )?\d*\s
 const countLine=t=>/^\s*Garage 61 requests\b/i.test(String(t));
 function resetJobView(kind){
   if(kind==='review'&&!(lastJob&&lastJob.title))TITLES.review=TITLES0.review;   // a plain "Review last race" never keeps an earlier job's title
-  $('jobStop').hidden=kind!=='scan';$('jobStop').disabled=false;
+  $('jobStop').hidden=kind!=='scan'&&kind!=='rival';$('jobStop').disabled=false;
   $('jobTitle').textContent=TITLES[kind]||'Working';$('jobErrTitle').textContent=STOPPED[kind]||'It stopped';
   $('jobEyebrow').textContent='Working';$('jobErr').hidden=true;$('jobSteps').replaceChildren();
   $('jobNow').textContent='Starting...';setBar(0);$('jobBar').parentElement.className='progress';
@@ -364,7 +364,7 @@ function render(s){
   if(s.kind==='update'&&s.state==='done'&&!handled.has(s.id)){handled.add(s.id);
     setBar(1);$('jobEyebrow').textContent='Installing';$('jobNow').textContent='Debrief is closing to install the update. It reopens on its own in about a minute; you can close this window.';
     lost=true;return}
-  if(s.kind==='review'||s.kind==='scan'||s.kind==='prep'||s.kind==='team'||s.kind==='weekly'||s.kind==='update'){
+  if(s.kind==='review'||s.kind==='scan'||s.kind==='rival'||s.kind==='prep'||s.kind==='team'||s.kind==='weekly'||s.kind==='update'){
     if(s.kind==='review'&&s.state==='running')TITLES.review=s.title||TITLES0.review;
     setBar(s.frac||0);$('jobNow').textContent=s.state==='error'?'Stopped.':noCounts(s.message);
     if($('jobTitle').textContent!==TITLES[s.kind]&&s.state==='running')resetJobView(s.kind);
@@ -380,6 +380,7 @@ function render(s){
       $('jobEyebrow').textContent='Done';$('jobBar').parentElement.className='progress done';
       const stay=current.view==='job';  // only jump to the result if the person is still watching
       if(s.kind==='scan'){loadReviews().then(()=>{if(s.result&&s.result.review){if(stay)openReview(s.result.review);else reloadFrame();banner('Race log added from the replay'+(s.result.confirmed?'.':'. Garage 61 couldn\'t confirm it\'s the same race, so check the names look right.'),false,9000)}})}
+      else if(s.kind==='rival'){if(s.result&&s.result.review){if(stay)openReview(s.result.review);else reloadFrame();banner((s.result.name||'The rival')+'\'s lap '+s.result.lap+' is in Compare, as a rival with no pedal data.',false,9000)}}
       else if(s.kind==='review')loadReviews().then(()=>{if(s.result&&s.result.review){if(stay)openReview(s.result.review);banner('Review ready.')}});
       else loadPages().then(()=>{const team=s.kind==='team'||s.kind==='weekly';
         if(s.result&&s.result.page){if(stay)openPage(s.result.page,team?'teamPage':'prepPage');
@@ -1066,6 +1067,14 @@ function closeDlg(d){if(d.close)d.close();else d.removeAttribute('open')}
 $('fbScan').addEventListener('click',()=>{setMsg('scanMsg','');openDlg($('dlgScan'))});
 $('scanClose').addEventListener('click',()=>closeDlg($('dlgScan')));
 $('fScan').addEventListener('submit',async e=>{e.preventDefault();const dir=current.dir;if(!dir)return;closeDlg($('dlgScan'));startJob('scan',{review:dir})});
+$('fbRival').addEventListener('click',async()=>{const dir=current.dir;if(!dir)return;const sel=$('rivalCar');sel.replaceChildren();$('rivalGo').disabled=true;setMsg('rivalMsg','Looking in the saved scan...');openDlg($('dlgRival'));
+  let r;try{r=await post('rival-choices',{review:dir})}catch(e){connectionLost();return}
+  if(!r.ok){setMsg('rivalMsg',r.error||'Could not read the saved scan.','bad');return}
+  const cars=r.cars||[];cars.forEach(c=>{const m=Math.floor(c.lap_time/60),sec=(c.lap_time-m*60).toFixed(3).padStart(6,'0');const why=c.seconds>=60?', fought '+Math.round(c.seconds/60)+' min':c.seconds>0?', fought '+c.seconds+' s':'';
+    const o=h('option',null,'#'+c.car+' '+c.name+why+', lap '+c.lap+' in '+m+':'+sec+(c.read?' (already read)':''));o.value=c.car;sel.append(o)});
+  $('rivalGo').disabled=!cars.length;setMsg('rivalMsg',cars.length?'':'No nearby driver has a clean lap to read in this race.')});
+$('rivalClose').addEventListener('click',()=>closeDlg($('dlgRival')));
+$('fRival').addEventListener('submit',e=>{e.preventDefault();const dir=current.dir,car=$('rivalCar').value;if(!dir||!car)return;closeDlg($('dlgRival'));startJob('rival',{review:dir,car})});
 $('jobStop').addEventListener('click',async()=>{$('jobStop').disabled=true;$('jobNow').textContent='Stopping and putting the replay back...';try{await post('replay-scan-stop')}catch(e){}});
 $('fbRaceCap').addEventListener('click',()=>{$('linkSub').value='';setMsg('linkMsg','');openDlg($('dlgLink'));$('linkSub').focus()});
 $('linkClose').addEventListener('click',()=>closeDlg($('dlgLink')));

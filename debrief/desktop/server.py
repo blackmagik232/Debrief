@@ -479,7 +479,7 @@ def sample_page() -> bytes:
 JOB_TITLES = {"review": "Reviewing your last race", "check": "Checking the connection",
               "prep": "Building your track prep page", "team": "Updating the team hub",
               "sync": "Syncing your Garage 61 history", "schedule": "Loading the iRacing season schedule",
-              "scan": "Scanning the replay", "update": "Updating Debrief", "weekly": "Updating this week's team leaderboards"}
+              "scan": "Scanning the replay", "rival": "Reading a rival's lap", "update": "Updating Debrief", "weekly": "Updating this week's team leaderboards"}
 BACKGROUND_TITLES = {"refresh": "Updating your saved reviews to the new page layout"}
 
 
@@ -602,7 +602,7 @@ class Jobs:
             jid = self.seq
             if kind == "sync":
                 self.stop_sync.clear()
-            if kind == "scan":
+            if kind in ("scan", "rival"):
                 self.stop_scan.clear()
             self.thread = threading.Thread(target=self._run, args=(kind, jid, dict(params or {})), daemon=True,
                                            name=f"job-{kind}")
@@ -619,7 +619,7 @@ class Jobs:
                 msg = str(msg)
                 self.st["message"] = msg.strip()
                 # per-lap telemetry ticks update the message only; real steps go in the list
-                if not msg.startswith(("Telemetry for lap ", "Telemetry for session ", "Scanning replay: ")):
+                if not msg.startswith(("Telemetry for lap ", "Telemetry for session ", "Scanning replay: ", "Reading the lap: ")):
                     self.st["steps"].append(msg.strip())
                     del self.st["steps"][:-60]
         return cb
@@ -644,6 +644,14 @@ class Jobs:
                     api = None
                 result = replay_scan.for_review(cfg["library_folder"], params["review_path"], api=api, progress=cb,
                                                 should_stop=self.stop_scan.is_set)
+            elif kind == "rival":
+                from .. import rival_read
+                try:
+                    api = app.make_api(cfg)
+                except (SystemExit, Exception):  # noqa: BLE001  (reading a lap never needs Garage 61)
+                    api = None
+                result = rival_read.read_for_review(cfg["library_folder"], params["review_path"], params["car"], api=api, progress=cb,
+                                                    should_stop=self.stop_scan.is_set)
             elif kind == "sync":
                 result = {"sync": app.cmd_sync(cfg, progress=cb, should_stop=self.stop_sync.is_set)}
             elif kind == "prep":
@@ -1120,7 +1128,7 @@ class DebriefServer(ThreadingHTTPServer):
             idle = now - self.last_ping
             if idle > self.timeout_s and self.jobs.kind == "sync":
                 self.jobs.pause_sync(10.0)   # a sync never keeps Debrief open: it resumes next time
-            if idle > self.timeout_s and self.jobs.kind == "scan":
+            if idle > self.timeout_s and self.jobs.kind in ("scan", "rival"):
                 self.jobs.stop_scan.set()    # a closed window never leaves the replay fast-forwarding
             if idle > self.timeout_s and not self.jobs.busy:
                 app.say(f"Window closed (no heartbeat for {idle:.0f}s). Stopping.")
@@ -1850,9 +1858,26 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": False, "error": str(e)}, 400)
             return self._json(self.server.jobs.start("scan", {"review_path": str(d)}))
         if r == "api/replay-scan-stop":
-            if self.server.jobs.kind == "scan":
+            if self.server.jobs.kind in ("scan", "rival"):
                 self.server.jobs.stop_scan.set()
             return self._json({"ok": True})
+        if r == "api/rival-choices":
+            from .. import rival_read
+            try:
+                d = self._review_dir(self._cfg(), body.get("review"))
+                return self._json({"ok": True, **rival_read.choices(self._cfg()["library_folder"], d)})
+            except ValueError as e:
+                return self._json({"ok": False, "error": str(e)}, 400)
+            except SystemExit as e:
+                return self._json({"ok": False, "error": str(e.code)})
+        if r == "api/rival-read":
+            try:
+                d = self._review_dir(self._cfg(), body.get("review"))
+            except ValueError as e:
+                return self._json({"ok": False, "error": str(e)}, 400)
+            if not isinstance(body.get("car"), str) or not body["car"]:
+                return self._json({"ok": False, "error": "Choose a driver first."}, 400)
+            return self._json(self.server.jobs.start("rival", {"review_path": str(d), "car": body["car"]}))
         if r == "api/sync":
             return self._post_sync(body)
         if r == "api/sync-stop":

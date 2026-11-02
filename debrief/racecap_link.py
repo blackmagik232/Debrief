@@ -384,16 +384,23 @@ def rival_laps(race_dir: Path, me_number, limit: int = MAX_RIVALS) -> list:
             best[str(tr.get("car"))] = (rank, tr)
     out = []
     for _rank, tr in sorted(best.values(), key=lambda x: x[1]["lap_time"])[:limit]:
-        text = trace_csv(tr)
-        if text is None:
-            continue
-        pedals = bool(tr.get("throttle") and tr.get("brake"))
-        how = "from Garage 61" if tr.get("source") == "garage61" else "read from the replay"
-        lap = {"id": f"racecap:{tr.get('car')}:{tr.get('mode')}", "lapTime": float(tr["lap_time"]), "clean": True,
-               "driver_name": clean_name(tr.get("name")) or f"#{tr.get('car')}", "_main": False, "_rival": True,
-               "_role": f"Rival in this race, {how}" + ("" if pedals else " (no pedal data)")}
-        out.append((lap, text))
+        made = rival_lap(tr)
+        if made is not None:
+            out.append(made)
     return out
+
+
+def rival_lap(tr: dict):
+    """One saved trace as (lap dict for engine.analyze refs, telemetry CSV text), or None when it can't be used."""
+    text = trace_csv(tr)
+    if text is None:
+        return None
+    pedals = bool(tr.get("throttle") and tr.get("brake"))
+    how = "from Garage 61" if tr.get("source") == "garage61" else "read from the replay"
+    lap = {"id": f"racecap:{tr.get('car')}:{tr.get('mode')}", "lapTime": float(tr["lap_time"]), "clean": True,
+           "driver_name": clean_name(tr.get("name")) or f"#{tr.get('car')}", "_main": False, "_rival": True,
+           "_role": f"Rival in this race, {how}" + ("" if pedals else " (no pedal data)")}
+    return lap, text
 
 
 def trace_csv(tr: dict) -> str | None:

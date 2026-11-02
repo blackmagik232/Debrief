@@ -439,7 +439,8 @@ def _verdict(rc, rows, pace, scan) -> str:
     if grid and fin:
         bits.append(f"P{grid} to P{fin}" + where)
     elif fin:
-        bits.append(f"Finished P{fin}" + where)
+        cf = rc.get("class_finish")
+        bits.append(f"Finished P{cf} in class, P{fin}" + where if cf else f"Finished P{fin}" + where)
     total = sum(p.get("seconds") or 0 for p in rc.get("pits") or [])
     laps = scan.get("laps")
     done = max((r["lap"] for r in rows), default=None)

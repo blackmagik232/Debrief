@@ -212,8 +212,9 @@ function frameBar(){
       $('fbBar').hidden=false;$('fbBar').firstElementChild.style.width=Math.round(100*rf.done/rf.total)+'%'}
     return}
   if(v==='review'){const r=resultFor.dir===current.dir?resultFor.result:null;
-    $('fbText').textContent=r?'Race result saved':'Add your finishing position, incidents and iRating to this race.';
-    $('fbResult').textContent=r?'Edit race result':'Add race result';
+    const sc=resultFor.dir===current.dir?resultFor.scan:null;const place=sc?(ok(sc.class_finish)?'P'+sc.class_finish+' in class, P'+sc.finish+' overall':'P'+sc.finish+' overall'):'';
+    $('fbText').textContent=r?'Race result saved':sc?'From your replay scan: '+place+', on the road. Load the iRacing results for the official result, incidents and iRating.':'Scan this race for your finish and race log, or add the iRacing results.';
+    $('fbResult').textContent=r?'Edit race result':sc?'Add official result':'Add race result';
     if(r&&ok(r.finish_pos)){pill.hidden=false;pill.className='pill ok';pill.textContent='P'+r.finish_pos+(ok(r.field_size)?' of '+r.field_size:'')}}
   if(v==='season')$('fbText').textContent='Post this week\'s digest after checking the preview. Nothing posts until you press Post.';
   if(v==='prepPage')$('fbText').textContent='Track prep page';
@@ -1034,12 +1035,14 @@ function incValues(){const out=[];for(const r of $('incRows').children){const la
 async function loadResult(dir){resultFor={dir,result:null};frameBar();
   let j;try{j=await api('result?review='+encodeURIComponent(dir))}catch(e){return}
   if(resultFor.dir!==dir)return;
-  resultFor={dir,result:j.ok?j.result||null:null};frameBar()}
+  resultFor={dir,result:j.ok?j.result||null:null,scan:j.ok?j.scan||null:null};frameBar()}
 function openResult(){const dir=current.dir;if(!dir)return;const r=(resultFor.dir===dir&&resultFor.result)||{};
   RES_FIELDS.forEach(k=>{$('r_'+k).value=r[k]!=null?String(r[k]):''});
+  const sc0=resultFor.dir===dir&&!resultFor.result?resultFor.scan:null;
+  if(sc0){$('r_finish_pos').value=String(ok(sc0.class_finish)?sc0.class_finish:sc0.finish);const size=ok(sc0.class_size)?sc0.class_size:sc0.cars;if(ok(size))$('r_field_size').value=String(size)}
   $('incRows').replaceChildren(...(Array.isArray(r.incident_laps)?r.incident_laps.slice(0,30):[]).map(incRow));incState();
   $('resTitle').textContent=resultFor.result?'Edit race result':'Add race result';$('resDelete').hidden=!resultFor.result;
-  $('resDelete').dataset.armed='';$('resDelete').textContent='Delete result';setMsg('resMsg','');setMsg('resCsvMsg','');$('resCsvWho').hidden=true;
+  $('resDelete').dataset.armed='';$('resDelete').textContent='Delete result';setMsg('resMsg','');setMsg('resCsvMsg',resultFor.dir===dir&&!resultFor.result&&resultFor.scan?'Finish filled in from your replay scan, on the road. The results file replaces it with the official one.':'');$('resCsvWho').hidden=true;
   const d=$('dlgResult');if(d.showModal)d.showModal();else d.setAttribute('open','');$('r_finish_pos').focus()}
 /* ---------- 2.7.5: fill the result form from iRacing's results file; nothing is saved until Save */
 function fillFromCsv(d){RES_FIELDS.filter(k=>k!=='notes').forEach(k=>{if(d.fields[k]!=null)$('r_'+k).value=String(d.fields[k])});

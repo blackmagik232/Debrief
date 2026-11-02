@@ -250,7 +250,10 @@ def build(scan: dict, me_car: dict, subsession, official: dict | None = None, co
         if isinstance(st, int):
             grid = st
     start_type = scan.get("start_type") if scan.get("start_type") in ("standing", "rolling") else None
-    out = {"version": 2, "subsession": str(subsession), "track": scan.get("track"), "number": me, "name": _who(me_car),
+    cls = me_car.get("car_class")
+    same_class = sorted((c.get("finish") for c in scan.get("cars") or [] if isinstance(c, dict) and cls is not None and c.get("car_class") == cls and isinstance(c.get("finish"), int)))
+    class_finish = same_class.index(me_car.get("finish")) + 1 if me_car.get("finish") in same_class else None
+    out = {"version": 2, "class_finish": class_finish, "class_size": len(same_class) or None, "car_class_name": me_car.get("car"), "subsession": str(subsession), "track": scan.get("track"), "number": me, "name": _who(me_car),
            "green": green, "start_type": start_type, "grid": grid, "finish": finish, "official": is_official, "cars": len(scan.get("cars") or []),
            "ended": (me_car.get("ended") or {}).get("how"), "pos_after_lap1": next((x["pos"] for x in positions if x["lap"] == 1), None),
            "positions": positions, "passes": mine, "fights": fights, "incidents": incidents, "pits": pits,

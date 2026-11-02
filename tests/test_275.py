@@ -104,6 +104,20 @@ def test_clear_air_compare_stops_at_a_long_stop():
                               {1: "clear", 2: "clear", 3: "fight", 4: "fight"})["C1"]["kind"] == "racecraft"
 
 
+def test_scan_finish_within_class_when_class_is_known():
+    s = scan()
+    for c, k in zip(s["cars"], (1, 2, 2)):
+        c["car_class"] = k
+    r = rl.build(s, s["cars"][1], 555, None, None, {"laps": []})
+    assert r["class_finish"] == 1 and r["class_size"] == 2 and r["finish"] == 2
+    no = rl.build(scan(), scan()["cars"][1], 555, None, None, {"laps": []})
+    assert no["class_finish"] is None and "in class" not in no["verdict"]
+    for c in s["cars"]:
+        c["grid"] = None
+    r = rl.build(s, s["cars"][1], 555, None, None, {"laps": []})
+    assert "Finished P1 in class, P2 overall" in r["verdict"]
+
+
 def test_official_results_win_over_the_road():
     s = scan()
     r = rl.build(s, s["cars"][1], 555, {"finish": ["7", "1"], "start": {"7": 4}})

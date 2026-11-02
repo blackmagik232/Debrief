@@ -1415,7 +1415,14 @@ class Handler(BaseHTTPRequestHandler):
         cfg = self._cfg()
         d = self._review_dir(cfg, q.get("review"))
         results = self._module("results")
-        return self._json({"ok": True, "review": d.name, "result": results.load(d)})
+        scan = None
+        try:     # what a replay scan says, for the bar and the form: never official, never saved by itself
+            rc = json.loads((d / "review.json").read_text(encoding="utf-8")).get("racecap") or {}
+            if isinstance(rc.get("finish"), int) and (rc.get("version") or 0) >= 2:
+                scan = {k: rc.get(k) for k in ("finish", "class_finish", "class_size", "cars", "official")}
+        except (OSError, ValueError, AttributeError):
+            pass
+        return self._json({"ok": True, "review": d.name, "result": results.load(d), "scan": scan})
 
     SESSIONS_LIMIT = 60      # default page size of /api/sessions
     SESSIONS_MAX = 5000

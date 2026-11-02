@@ -115,6 +115,9 @@ def candidates(scan, me_car, median=None, done=()) -> list:
         if n not in fought and not (gap is not None and gap <= NEAR_PLACES and same_class):
             continue
         lap = pick_lap(scan, c, median)
+        # with no class data, a much faster car not raced is probably another class
+        if lap is not None and cls is None and n not in fought and median and lap["time"] < 0.96 * median:
+            continue
         if lap is None:
             continue
         rows.append({"car": n, "name": racecap_link._who(c), "lap": lap["lap"], "lap_time": round(lap["time"], 3),
@@ -453,5 +456,8 @@ def read_for_review(library_folder, review_dir, car, api=None, progress=None, sh
             else:
                 replay_scan._write_atomic(path, before)
         raise SystemExit(f"The lap couldn't be saved ({type(e).__name__}). Your review is unchanged.") from None
-    library.rebuild(library_folder)
+    try:
+        library.rebuild(library_folder)
+    except Exception:  # noqa: BLE001  (the lap is saved; the library page catches up next time)
+        pass
     return {"review": d.name, "car": number, "name": entry["ref"]["name"], "lap": lap["lap"], "lap_time": lap["time"]}

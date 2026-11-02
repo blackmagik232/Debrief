@@ -379,8 +379,8 @@ function render(s){
     if(s.state==='done'&&!handled.has(s.id)){handled.add(s.id);
       $('jobEyebrow').textContent='Done';$('jobBar').parentElement.className='progress done';
       const stay=current.view==='job';  // only jump to the result if the person is still watching
-      if(s.kind==='scan'){loadReviews().then(()=>{if(s.result&&s.result.review){if(stay)openReview(s.result.review);else reloadFrame();banner('Race log added from the replay'+(s.result.confirmed?'.':'. Garage 61 couldn\'t confirm it\'s the same race, so check the names look right.'),false,9000)}})}
-      else if(s.kind==='rival'){if(s.result&&s.result.review){if(stay)openReview(s.result.review);else reloadFrame();banner((s.result.name||'The rival')+'\'s lap '+s.result.lap+' is in Compare, as a rival with no pedal data.',false,9000)}}
+      if(s.kind==='scan'){loadReviews().then(()=>{if(s.result&&s.result.review){if(stay)openReview(s.result.review);reloadFrame();banner('Race log added from the replay'+(s.result.confirmed?'.':'. Garage 61 couldn\'t confirm it\'s the same race, so check the names look right.'),false,9000)}})}
+      else if(s.kind==='rival'){if(s.result&&s.result.review){if(stay)openReview(s.result.review);reloadFrame();banner((s.result.name||'The rival')+'\'s lap '+s.result.lap+' is in Compare, as a rival with no pedal data.',false,9000)}}
       else if(s.kind==='review')loadReviews().then(()=>{if(s.result&&s.result.review){if(stay)openReview(s.result.review);banner('Review ready.')}});
       else loadPages().then(()=>{const team=s.kind==='team'||s.kind==='weekly';
         if(s.result&&s.result.page){if(stay)openPage(s.result.page,team?'teamPage':'prepPage');

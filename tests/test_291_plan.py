@@ -356,6 +356,12 @@ def test_prep_page_shows_the_brief_in_a_browser():
     assert not errs, errs
 
 
+def test_review_fixes_day_and_rain_word():
+    from debrief import prepare, series
+    assert prepare._local_day("2026-11-02") == "2026-11-02"
+    assert series.week_facts({"conditions": "Rain chance Slight, Rolling start"})["rain"] == "Rain chance slight"
+
+
 if __name__ == "__main__":
     failed = 0
     tests = [(k, v) for k, v in list(globals().items()) if k.startswith("test_") and callable(v)]

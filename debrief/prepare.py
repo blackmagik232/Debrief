@@ -129,9 +129,10 @@ def _pace(rows, sessions, wet: set) -> dict | None:
     """Best and typical lap from reviews and synced sessions in one set of cars. Rows are one track. Wet races are
     kept apart: they'd drag the typical lap, and the driver may want them on a rain-possible week. Typical comes
     from reviews only (a synced session has no median). None when no lap counts."""
+    wet_days = {str(r.get("date") or "")[:10] for r in rows if r.get("dir") in wet}
     cands = [{"t": r["best"], "date": r.get("date"), "car": r.get("car"), "wet": r.get("dir") in wet}
              for r in rows if r.get("best_clean", True) and isinstance(r.get("best"), (int, float))]
-    cands += [{"t": s["best_clean"], "date": str(s.get("start") or "")[:10], "car": s.get("car"), "wet": False}
+    cands += [{"t": s["best_clean"], "date": str(s.get("start") or "")[:10], "car": s.get("car"), "wet": str(s.get("start") or "")[:10] in wet_days}
               for s in sessions if isinstance(s.get("best_clean"), (int, float)) and s["best_clean"] > 0]
     if cands:
         floor = 0.6 * st.median(c["t"] for c in cands)     # a "best" can be a partial lap
@@ -142,10 +143,22 @@ def _pace(rows, sessions, wet: set) -> dict | None:
     b = min(dry or cands, key=lambda c: c["t"])
     races = [r for r in rows if library.is_race(r) and library._norm(r.get("car")) == library._norm(b["car"])]
     meds = [r["median"] for r in races if r.get("dir") not in wet and isinstance(r.get("median"), (int, float))]
-    wet_rows = [r for r in rows if library.is_race(r) and r.get("dir") in wet and r.get("best_clean", True)]
+    wet_rows = [r for r in rows if library.is_race(r) and r.get("dir") in wet and r.get("best_clean", True)
+                and library._norm(r.get("car")) == library._norm(b["car"])]
     return {"best": round(b["t"], 3), "best_date": b["date"], "car": b["car"], "best_wet": b["wet"],
             "typical": round(st.median(meds), 3) if meds else None, "typical_races": len(meds),
             "wet_races": len(wet_rows), "wet_best": min((r["best"] for r in wet_rows), default=None)}
+
+
+def _local_day(v) -> str:
+    """A timestamp's date on this PC's calendar: a race on the evening of the 2nd is in UTC already the 3rd."""
+    from datetime import datetime
+    text = str(v or "")
+    try:
+        d = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return (d.astimezone() if d.tzinfo else d).date().isoformat()
+    except ValueError:
+        return text[:10]
 
 
 def _past_at(rows, sessions, track, cars, m, wet) -> dict:
@@ -163,7 +176,7 @@ def _past_at(rows, sessions, track, cars, m, wet) -> dict:
     if pace:
         pace["other_car"] = other
     use = (here + sess_here) if other else (in_car + sess_car)
-    last = max((str(x.get("started_at") or x.get("start") or x.get("date") or "")[:10] for x in use), default=None)
+    last = max((_local_day(x.get("started_at") or x.get("start") or x.get("date")) for x in use), default=None)
     src = next((x for x in in_car + sess_car if x.get("track_id") is not None and x.get("car_id") is not None), {})
     return {"status": status, "races": races, "sessions": visits, "pace": pace, "last": last or None,
             "track_id": src.get("track_id"), "car_id": src.get("car_id")}
@@ -253,7 +266,9 @@ def plan(library_folder, sched, mine: dict, sessions: list, matcher=None, today:
             past = _past_at(rows, sessions, w["track"], cars, m, wet)
             if past["status"] == "new" and (not driven or not (rows or sessions)):
                 past["status"] = "no_history"
-            tid, cid = _ids_from_lists(None, w["track"], cars, m)
+            # a new track: the car you actually drive, not the first one the series lists
+            mine_first = [c for c in cars if any(m.car(x, c) for x in list(rows) + list(sessions))]
+            tid, cid = _ids_from_lists(None, w["track"], mine_first + [c for c in cars if c not in mine_first], m)
             tid, cid = past.pop("track_id") or tid, past.pop("car_id") or cid
             no = w.get("season_week", w["week"])
             row = {"series_id": ser["id"], "series": ser["name"], "track": w["track"], "week": w["week"],

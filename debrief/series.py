@@ -164,10 +164,13 @@ def week_facts(week: dict | None) -> dict:
     text = str((week or {}).get("conditions") or "")
     rain = None
     m = re.search(r"\brain chance\s+(\d+)\s*%", text, re.I)
+    word = re.search(r"\brain chance\s+([A-Za-z]+)", text, re.I)
     if re.search(r"\brain possible\b", text, re.I):
         rain = "Rain possible"
     elif m and int(m.group(1)) > 0:
         rain = f"Rain chance {int(m.group(1))}%"
+    elif word and word.group(1).lower() not in ("none", "no", "zero"):
+        rain = f"Rain chance {word.group(1).lower()}"
     elif m or re.search(r"\brain chance none\b|\ball dry events\b", text, re.I):
         rain = "No rain"
     start = next((w for w in ("Rolling", "Standing") if re.search(rf"\b{w} start\b", text, re.I)), None)

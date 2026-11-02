@@ -822,6 +822,15 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
     if dropped and log:
         log(f"  Ignored {len(dropped)} corner reading(s) with broken telemetry.")
 
+    # 2.9: when the main comparison lap was set in different conditions and another chosen lap wasn't, swap them
+    ref_match = None
+    try:
+        from . import depth
+        ref_match = depth.match_refs(refs, my_laps)
+    except Exception as e:  # noqa: BLE001  (only ever a note on the comparison)
+        if log:
+            log(f"  Skipped matching the comparison lap's conditions ({type(e).__name__}: {e}).")
+
     # reference laps (never a partial, pit or implausible lap)
     ref_out = []
     for rl in refs or []:
@@ -1006,6 +1015,8 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
         # 2.7: the scales the thresholds in this review were multiplied by (median lap / 90 s, L / 4 km)
         "scales": {"time": round(analysis_plus.time_scale(median), 3), "dist": round(analysis_plus.dist_scale(L), 3)},
     }
+    if ref_match:
+        data["ref_match"] = ref_match
     # v2 extras (stint, technique, consistency, best vs worst, race context); guarded inside
     try:
         analysis_plus.extend(data, laps=laps, clean=clean, best=best, corners=corner_out, per=per,

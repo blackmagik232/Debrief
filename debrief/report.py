@@ -28,7 +28,8 @@ EXTRAS = (("brake_spread", "technique_plus", "spread_for_review"),
 # 2.4: worked out only when the key is absent (the engine writes both for new reviews, from raw laps that an
 # old review.json doesn't keep). Same guard as EXTRAS; they also run before insights.build.
 IF_ABSENT = (("strategy", "strategy", "block_from_review"),
-             ("racecraft", "racecraft", "build"))
+             ("racecraft", "racecraft", "build"),
+             ("depth", "depth", "for_review"))
 
 
 def _extras(data: dict, log=None) -> None:

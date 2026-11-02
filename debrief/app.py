@@ -470,8 +470,9 @@ def fmt_t(s):
 
 
 # ---------------------------------------------------------------- comparison laps
-def pick_refs(api: Garage61, car, track, my_best: float, my_slug: str, limit: int):
-    """Comparison laps from teammates and followed drivers only (all the API allows)."""
+def pick_refs(api: Garage61, car, track, my_best: float, my_slug: str, limit: int, me=None):
+    """Comparison laps from teammates and followed drivers only (all the API allows). me: your laps' conditions
+    and session type (depth.context_of), which the main comparison is matched on when given."""
     if limit <= 0:
         return []
     teams = [g(t, "slug", "id") for t in api.teams() if g(t, "slug", "id")]
@@ -508,7 +509,8 @@ def pick_refs(api: Garage61, car, track, my_best: float, my_slug: str, limit: in
         chosen.append(c)
 
     quicker = [c for c in cands if lap_time(c) < my_best]
-    main = min(quicker, key=lambda c: abs(lap_time(c) - (my_best - 0.8))) if quicker else cands[0]
+    from . import depth   # lazy: only this lookup needs it
+    main = depth.pick_main(quicker, my_best, me, lap_time) if quicker else cands[0]
     add(main, "Main comparison", main=True)
     add(cands[0], "Fastest teammate or followed driver")
     add(min(cands, key=lambda c: abs(lap_time(c) - (my_best - 0.3))), "Close to your pace")

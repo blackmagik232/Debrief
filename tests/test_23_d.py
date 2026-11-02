@@ -485,8 +485,13 @@ def test_window_skills_nav_opens_library_skills():
             cur = pg.evaluate("() => [...document.querySelectorAll('[aria-current=page]')].map(b => b.dataset.nav)")
             assert cur == ["skills"], cur
             # the frame's own page reports where it is (bridge), and that keeps Skills selected
-            frame = next(f for f in pg.frames if "lib/index.html" in f.url)
-            assert frame.url.endswith("#skills"), frame.url
+            deadline = time.time() + 15
+            while True:   # the iframe's own URL updates a moment after its src attribute
+                frame = next((f for f in pg.frames if "lib/index.html" in f.url), None)
+                if (frame and frame.url.endswith("#skills")) or time.time() > deadline:
+                    break
+                pg.wait_for_timeout(100)
+            assert frame and frame.url.endswith("#skills"), frame and frame.url
             # with 23-C's library page (it has the Skills tab), the tab is what shows in the frame
             tab = frame.evaluate("() => { const t = document.getElementById('tab-skills'); return t ? !t.hidden : null }")
             assert tab in (True, None), tab

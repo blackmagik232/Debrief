@@ -181,10 +181,11 @@ def test_failing_skills_drops_only_skills():
     logs = []
     with modules(fail={"skills"}), tempfile.TemporaryDirectory() as td:
         d = old_review("Practice")
-        d["skills"] = {"stale": True}                      # an old value never survives a failed rebuild
+        d["skills"] = {"stale": True}                      # 2.7: a failed rebuild keeps the saved value
         report.write(td, d, log=logs.append)
         out = written(td)
-        assert "skills" not in out and "brake_spread" in out and "session_review" in out and "insights" in out
+        assert out["skills"] == {"stale": True}
+        assert "brake_spread" in out and "session_review" in out and "insights" in out
         assert (Path(td) / "index.html").is_file()
     assert any("skills" in m and "broke" in m for m in logs), logs
 

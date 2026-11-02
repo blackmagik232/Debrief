@@ -18,6 +18,7 @@ source-checkout-on-Windows case.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import tempfile
@@ -328,6 +329,48 @@ def _verification() -> tuple[str, str]:
     except Exception:  # noqa: BLE001  (never let the updater module keep Settings from opening)
         return "checksum", ("Updates are checked by SHA-256 checksum. Signed updates switch on once a signing "
                             "key is published.")
+
+
+# ---------------------------------------------------------------- the window's size (2.8)
+WINDOW_DEFAULT = (1400, 900)
+WINDOW_MIN = (640, 480)
+WINDOW_MAX = (7680, 4320)
+
+
+def _window_file() -> Path:
+    return Path(os.environ.get("DEBRIEF_CACHE_DIR") or Path(app.HERE) / ".cache") / "window.json"
+
+
+def clean_window_size(raw):
+    """(width, height) as whole numbers in a sensible range, or None. True/False and text don't count."""
+    if not isinstance(raw, dict):
+        return None
+    w, h = raw.get("width"), raw.get("height")
+    if type(w) not in (int, float) or type(h) not in (int, float):
+        return None
+    if not (WINDOW_MIN[0] <= w <= WINDOW_MAX[0] and WINDOW_MIN[1] <= h <= WINDOW_MAX[1]):
+        return None
+    return int(w), int(h)
+
+
+def save_window_size(raw) -> bool:
+    """Remember the window's size for the next launch. False if the size makes no sense or can't be saved."""
+    size = clean_window_size(raw)
+    if size is None:
+        return False
+    try:
+        fsutil.write_json(_window_file(), {"width": size[0], "height": size[1]}, mkdir=True)
+    except OSError:
+        return False
+    return True
+
+
+def window_size() -> tuple:
+    """The size the window was last left at, or the default if there is none or the file is damaged."""
+    try:
+        return clean_window_size(json.loads(_window_file().read_text(encoding="utf-8"))) or WINDOW_DEFAULT
+    except (OSError, ValueError):
+        return WINDOW_DEFAULT
 
 
 def public_view() -> dict:

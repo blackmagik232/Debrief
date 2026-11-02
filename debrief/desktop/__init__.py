@@ -169,13 +169,19 @@ def find_edge() -> str | None:
     return None
 
 
+def _saved_window_size() -> tuple:
+    from . import settings_io
+    return settings_io.window_size()
+
+
 def open_window(url: str) -> str:
     edge = find_edge()
     if edge:
         profile = app.HERE / ".edge-profile"
         profile.mkdir(exist_ok=True)
         flags = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW
-        subprocess.Popen([edge, f"--app={url}", "--window-size=1400,900", f"--user-data-dir={profile}",
+        w, h = _saved_window_size()
+        subprocess.Popen([edge, f"--app={url}", f"--window-size={w},{h}", f"--user-data-dir={profile}",
                           "--no-first-run", "--no-default-browser-check"],
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          close_fds=True, creationflags=flags)
@@ -259,6 +265,7 @@ def selftest() -> int:
         checks["api/status"] = get("api/status", b'"state"')
         checks["api/settings"] = get("api/settings", b'"version"')
         checks["api/profile"] = get("api/profile", b'"available"')   # the Skills page bar (2.3)
+        checks["sample"] = get("sample/index.html", b"debrief-sample-label")   # the first-run sample review (2.8)
         # the Prepare page's data builds (schedule, series and track cards) without settings or a schedule
         import tempfile
         from .. import prepare

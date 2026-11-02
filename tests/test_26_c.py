@@ -322,10 +322,10 @@ def test_window_opens_on_last_race_shortcuts_and_banners():
         assert pg.text_content("#lrWhat") == "Roval · GT4"
         nav = pg.evaluate("() => [...document.querySelectorAll('[aria-current=page]')].map(b => b.dataset.nav)")
         assert nav == ["library"], nav
-        # Season / Skills are tabs of the Library page; their deep links still work
+        # Season / Skills are parts of the Progress page; their deep links still work
         pg.click(".navbtn[data-nav=season]")
         pg.wait_for_function("() => document.getElementById('frame').src.endsWith('#season')")
-        assert pg.evaluate("() => document.getElementById('libGroup').classList.contains('on')")
+        assert pg.evaluate("() => document.querySelector('.navbtn[data-nav=season]').classList.contains('active')")
         pg.click(".navbtn[data-nav=library]")
         pg.wait_for_function("() => !document.getElementById('lastRace').hidden")
         pg.click("#lrOpen")
@@ -341,7 +341,7 @@ def test_window_opens_on_last_race_shortcuts_and_banners():
         # Ctrl+R = Review last race (and not a reload); the error banner stays until it's closed
         pg.evaluate("() => { window.__alive = 1 }")
         pg.keyboard.press("Control+r")
-        pg.wait_for_function("() => !document.getElementById('banner').hidden")
+        pg.wait_for_function("() => document.getElementById('bannerText').textContent === 'Garage 61 is busy.' && !document.getElementById('banner').hidden")
         assert pg.evaluate("() => window.__alive") == 1
         assert [c for c in calls if c[0] == "POST" and c[1] == "review"]
         assert pg.text_content("#bannerText") == "Garage 61 is busy."

@@ -151,7 +151,7 @@ dialog form{display:grid;gap:14px}
 /* ---------- history sync */
 .syncstrip{font:inherit;font-family:var(--mono);font-size:11.5px;color:var(--fg2);background:none;border:1px solid var(--grid);border-radius:5px;padding:6px 9px;display:grid;grid-template-columns:auto 1fr;gap:4px 8px;align-items:center;text-align:left;cursor:pointer}
 .syncstrip:hover{background:var(--band)}
-.syncstrip .dot{width:7px;height:7px;border-radius:50%;background:var(--good)}
+.syncstrip .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
 .syncstrip.busy .dot{background:var(--me);animation:syncpulse 1.2s ease-in-out infinite}
 .syncstrip.warn .dot{background:var(--warn)}
 .syncstrip .minibar{grid-column:1/-1;background:var(--grid)}
@@ -270,11 +270,6 @@ dialog .dlgbody{display:grid;gap:14px}
 .bannerx{flex:none;width:24px;height:24px;margin:-2px 0 0;border:0;border-radius:4px;background:none;color:var(--muted);cursor:pointer;font:inherit;font-size:16px;line-height:24px;text-align:center}
 .bannerx::before{content:"\00d7"}
 .bannerx:hover,.bannerx:focus-visible{background:var(--band);color:var(--fg)}
-.navgroup{display:grid;gap:2px}
-.navtabs{display:flex;gap:2px;padding-left:14px}
-.navbtn.sub{font-size:13px;padding:4px 10px;border-left:0;border-bottom:2px solid transparent;border-radius:4px 4px 0 0;color:var(--fg2)}
-.navbtn.sub.active{border-bottom-color:var(--me);color:var(--fg);background:var(--band)}
-.navgroup.on>.navbtn:not(.sub){background:var(--band);border-left-color:var(--me)}
 details.xtras>summary .note{margin-left:auto}
 details.xtras[open]{gap:16px}
 .callout.join{border-left-color:var(--me)}
@@ -284,3 +279,20 @@ details.xtras[open]{gap:16px}
 .lastrace .lrtx{display:grid;gap:2px;min-width:0;flex:1}
 .lastrace .lrtx b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #btnReview[aria-disabled="true"]{opacity:.55;cursor:not-allowed}
+
+/* 2.8: window polish */
+.pill:empty{display:none}
+.btn,.navbtn,.rev,.syncstrip,.updstrip,.seg button,.bannerx{transition:background-color .12s ease,border-color .12s ease,color .12s ease,filter .12s ease,transform .08s ease}
+.btn:hover:not(:disabled){background:var(--band)}
+.btn.primary:hover:not(:disabled){background:var(--me)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.navbtn:not(.active):hover,.rev:not(.active):hover{border-left-color:var(--axis)}
+.navbtn[aria-disabled="true"]{color:var(--muted);cursor:not-allowed}
+.navbtn[aria-disabled="true"]:hover{background:none;border-left-color:transparent}
+.view:not(.frameview){animation:viewin .16s ease-out}
+@keyframes viewin{from{opacity:0}to{opacity:1}}
+.loadbar{position:absolute;z-index:30;top:0;left:0;right:0;height:3px;background:var(--grid);overflow:visible;pointer-events:none}
+.loadbar i{display:block;height:100%;width:35%;background:var(--me);animation:loadslide 1.1s ease-in-out infinite}
+.loadbar span{position:absolute;top:8px;right:14px;font-family:var(--mono);font-size:11.5px;color:var(--fg2);background:var(--panel);border:1px solid var(--grid);border-radius:3px;padding:2px 8px}
+@keyframes loadslide{from{margin-left:-35%}to{margin-left:100%}}
+@media (prefers-reduced-motion:reduce){.btn,.navbtn,.rev,.syncstrip,.updstrip,.seg button,.bannerx{transition:none}.btn:active:not(:disabled){transform:none}.view:not(.frameview){animation:none}.loadbar i{animation:none;width:100%}}

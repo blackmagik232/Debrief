@@ -36,6 +36,17 @@ def test_year_long_tours_map_to_the_season_week_by_date():
     assert len(now) == 1 and now[0]["week"] != 7 and now[0]["start"] == d["weeks"][6]["start"]
 
 
+def test_every_series_racing_now_has_this_week_and_cars():
+    d = sched()
+    now = [x for x in d["series"] if any("2026-10-27" <= w["start"] < "2026-11-03" for w in x["weeks"])]
+    assert all(any(w.get("season_week") == 7 for w in x["weeks"]) for x in now)
+    dm = next(x for x in d["series"] if x["name"].startswith("Draft Master"))
+    assert s.week_cars(dm, dm["weeks"][1])[0].startswith("NASCAR") and s.week_cars(dm, {}) == []
+    assert not [x["name"] for x in d["series"] if "Fixed - Fixed" in x["name"]]
+    jr = next(x for x in d["series"] if x["name"].startswith("Jr Open Wheel"))
+    assert jr["setup"] != "open"
+
+
 def test_bundled_is_used_with_nothing_saved_and_warmups_only_look_back():
     assert s.load_current(date(2026, 11, 2))["season"]
     a = {"id": "a", "name": "A", "weeks": [{"week": 3, "start": "2026-10-01", "track": "Spa"}]}

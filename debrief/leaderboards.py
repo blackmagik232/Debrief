@@ -180,7 +180,7 @@ def ids_for(api, ser, w, matcher=None):
     if api is None:
         return None, [], {}
     m = matcher or prepare.matcher_for(api)
-    cars = ser.get("cars") or []
+    cars = schedule.week_cars(ser, w)
     tid, cid = prepare._ids_from_lists(api, w["track"], cars, m)
     names, ids = {}, []
     items = _car_items(api)

@@ -89,7 +89,7 @@ def warmups(ser, week, starred) -> list:
         if o.get("id") == ser.get("id") or o.get("name", "").replace(" - Fixed", "") == ser.get("name", "").replace(" - Fixed", ""):
             continue
         for w in o.get("weeks") or []:
-            if w.get("start") and w["start"] < week["start"] and schedule.same_track(w.get("track"), week.get("track")):
+            if w.get("start") and w["start"] < week["start"] and w.get("season_week", 1) and schedule.same_track(w.get("track"), week.get("track")):
                 out.append({"series": o.get("name"), "start": w["start"]})
     return sorted(out, key=lambda x: x["start"], reverse=True)[:3]
 
@@ -99,17 +99,18 @@ def _week_view(ser, wk_no, sessions, library_folder, api, matcher=None, cfg=None
     if w is None:
         return None
     m = matcher or matcher_for(api)
-    hist = history_at(sessions, w["track"], ser.get("cars") or [], m)
+    cars = schedule.week_cars(ser, w)
+    hist = history_at(sessions, w["track"], cars, m)
     tid, cid = hist["track_id"], hist["car_id"]
     if tid is None or cid is None:
-        lt, lc = _ids_from_lists(api, w["track"], ser.get("cars") or [], m)
+        lt, lc = _ids_from_lists(api, w["track"], cars, m)
         tid, cid = tid or lt, cid or lc
     card = notes.load(library_folder, w["track"])
-    return {"week": w["week"], "start": w["start"], "track": w["track"], "length": w.get("length"),
+    return {"week": w["week"], "start": w["start"], "track": w["track"], "length": w.get("length"), "cars": cars,
             "race_time": w.get("race_time"), "conditions": w.get("conditions"), "history": hist,
             "track_id": tid, "car_id": cid, "card": card, "has_notes": notes.has_notes(card),
             "shared_notes": _shared_count(cfg, w["track"], me_slug),
-            "strategy": _race_length(cfg, sched, w["track"], ser.get("cars") or [], w) if cfg else None}
+            "strategy": _race_length(cfg, sched, w["track"], cars, w) if cfg else None}
 
 
 def view(cfg: dict, api=None, sessions: list | None = None, today: date | None = None) -> dict:

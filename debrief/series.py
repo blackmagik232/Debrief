@@ -129,10 +129,11 @@ def suggest(sched, sessions: list, today: date | None = None, matcher=None) -> l
             continue
         cands = []
         for ser in sched.get("series") or []:
-            w = next((w for w in ser["weeks"] if w["week"] == wk), None)
+            w = next((w for w in ser["weeks"] if w.get("season_week", w["week"]) == wk), None)
             if w is None or not matcher.track(s, w["track"]):
                 continue
-            if ser["cars"] and not any(matcher.car(s, c) for c in ser["cars"]):
+            cars_now = schedule.week_cars(ser, w)
+            if cars_now and not any(matcher.car(s, c) for c in cars_now):
                 continue
             cands.append(ser)
         for ser in cands:

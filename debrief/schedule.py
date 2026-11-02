@@ -42,12 +42,12 @@ class ScheduleError(Exception):
 
 # ---------------------------------------------------------------- names and classes
 _CLASS_RULES = [  # (class, regex on the car name), most specific first
-    ("GTP", r"\bGTP\b|\bLMDh\b|\bHybrid V8\b|\bARX-06\b|\b963\b|\bV-Series\.R\b"),
+    ("GTP", r"\bGTP\b|\bLMDh\b|\bHybrid V8\b|\bARX-06\b|\b963\b|\b499P\b|\bValkyrie\b|\bV-Series\.R\b"),
     ("LMP2", r"\bLMP2\b|\bDallara P217\b|\bORECA 07\b"),
     ("LMP3", r"\bLMP3\b|\bLigier JS P320\b"),
     ("GTE", r"\bGTE\b|\bGTLM\b|\bRSR\b"),
     ("GT3", r"\bGT3\b(?! Cup)|\bGT3 R\b|\bEVO II\b|\bM4 GT3\b"),
-    ("Porsche Cup", r"\bGT3 Cup\b|\bCup \(992\)|\bPorsche 911 GT3 Cup\b"),
+    ("Porsche Cup", r"\bGT3 Cup\b|\bCup \(992|\bPorsche 911 GT3 Cup\b"),
     ("GT4", r"\bGT4\b"),
     ("TCR", r"\bTCR\b"),
     ("MX-5", r"\bMX-5\b"),
@@ -351,7 +351,29 @@ def _toc_titles(lines: list[str]) -> set:
 def _title_name(title: str) -> str:
     """'NASCAR iRacing Series - 2026 Season Fixed' -> 'NASCAR iRacing Series - Fixed'."""
     t = re.sub(r"\s*[-–]?\s*\b20\d\d\s+Season(?:\s*\d)?\b\s*[-–]?\s*", " - ", title)
-    return " ".join(t.split()).strip(" -–:|")
+    t = " ".join(t.split()).strip(" -–:|")
+    return re.sub(r"(\s-\s(?:Fixed|Open))\1+$", r"\1", t.replace(" - - ", " - "))
+
+
+def season_week_of(season_weeks: list, start: str):
+    """The season week whose seven days hold this date, or None. Some series start their weeks a day or two off."""
+    try:
+        d = date.fromisoformat(start)
+        for w in season_weeks:
+            a = date.fromisoformat(w["start"])
+            if 0 <= (d - a).days < 7:
+                return w["week"]
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def week_cars(ser: dict, week: dict | None) -> list:
+    """The cars for this week: series with 'See race week' name them week by week."""
+    text = (week or {}).get("cars_this_week")
+    if text:
+        return [c.strip() for c in re.split(r",\s*(?![^()]*\))", text) if c.strip()]
+    return [c for c in ser.get("cars") or [] if not str(c).lower().startswith("see race week")]
 
 
 def parse_lines(lines: list[str]) -> dict:
@@ -486,7 +508,7 @@ def parse_lines(lines: list[str]) -> dict:
         s.pop("_car_comma", None)
         rules = " ".join(s.pop("rules")).lower()
         name_l = s["name"].lower()
-        s["setup"] = "fixed" if ("fixed" in name_l or "fixed setup" in rules) else ("open" if "open setup" in rules or "open" in name_l.split() else None)
+        s["setup"] = "fixed" if ("fixed" in name_l or "fixed setup" in rules) else ("open" if "open setup" in rules or re.search(r"(?:^|\s-\s*)open$", name_l) else None)
         s["classes"] = sorted({c for c in (class_of(x) for x in s["cars"]) if c})
         s["multiclass"] = len(s["classes"]) >= 2
         base = slug(s["name"])
@@ -502,10 +524,9 @@ def parse_lines(lines: list[str]) -> dict:
     diag["weeks_without_length"] = sum(1 for s in out for w in s["weeks"] if not w.get("length"))
     diag["series_without_license"] = sum(1 for s in out if not s.get("license"))
     season_weeks = _season_weeks(out)
-    by_date = {w["start"]: w["week"] for w in season_weeks}
-    for s in out:         # a year-long tour's week 30 is still some week of this season, by date
+    for s in out:         # a year-long tour's week 30 is still some week of this season, by the week holding its date
         for w in s["weeks"]:
-            w["season_week"] = by_date.get(w["start"])
+            w["season_week"] = season_week_of(season_weeks, w["start"])
     return {"schema": SCHEMA, "season": season, "year": year, "quarter": quarter,
             "weeks": season_weeks, "series": out, "diagnostics": diag}
 
@@ -805,8 +826,8 @@ def series_at(sched, track_name, car_name, day: date) -> list:
         return []
     out = []
     for ser in sched.get("series") or []:
-        w = next((w for w in ser["weeks"] if w["week"] == wk), None)
-        if w and same_track(track_name, w["track"]) and any(same_car(car_name, c) for c in ser["cars"]):
+        w = next((w for w in ser["weeks"] if w.get("season_week", w["week"]) == wk), None)
+        if w and same_track(track_name, w["track"]) and any(same_car(car_name, c) for c in week_cars(ser, w)):
             out.append(ser)
     return out
 

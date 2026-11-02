@@ -4,7 +4,7 @@
 
 Reviews your iRacing races from Garage 61 and keeps a library of every review, in its own window.
 
-**New in 2.7.5:** Scan this race on any race review: with its replay loaded in iRacing, Debrief fast-forwards through it (recording nothing) and adds a race log of every pass, fight, incident and pit stop. Also: load iRacing's results file instead of typing a result; a Resolve marker file for any review; Help (tour, what the words mean, keys). If you also use RaceCap, point Settings > RaceCap link at its library folder: reviews gain a race log (passes, fights, incidents, pit stops, position by lap), race stories, a traffic check and rival laps. Debrief only reads RaceCap's race folders, never its settings or keys, and everything works the same without it.
+**New in 2.10:** a season plan and sharper pre-race brief on Prepare, and Read a rival's lap from a replay for Compare. Earlier: **New in 2.7.5:** Scan this race on any race review: with its replay loaded in iRacing, Debrief fast-forwards through it (recording nothing) and adds a race log of every pass, fight, incident and pit stop. Also: load iRacing's results file instead of typing a result; a Resolve marker file for any review; Help (tour, what the words mean, keys). If you also use RaceCap, point Settings > RaceCap link at its library folder: reviews gain a race log (passes, fights, incidents, pit stops, position by lap), race stories, a traffic check and rival laps. Debrief only reads RaceCap's race folders, never its settings or keys, and everything works the same without it.
 
 ## For Midfield Menace drivers: install
 

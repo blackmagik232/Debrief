@@ -56,7 +56,7 @@ excludes = ["tkinter", "_tkinter", "turtle", "turtledemo", "idlelib", "lib2to3",
             "test", "tests", "pytest", "_pytest", "playwright", "PIL", "matplotlib", "IPython",
             "setuptools", "pip", "debrief.desktop.make_icon",
             # optional extras requests/urllib3 can use when present; Debrief doesn't need them
-            "cryptography", "OpenSSL", "psutil", "yaml", "chardet"]
+            "cryptography", "OpenSSL", "psutil", "chardet"]
 
 # Version resource on Debrief.exe (File > Properties > Details). Unsigned exes without one are flagged by
 # antivirus more often.

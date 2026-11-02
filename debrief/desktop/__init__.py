@@ -224,6 +224,9 @@ def selftest() -> int:
         import requests  # noqa: F401
         import pypdf  # noqa: F401  (season schedule PDF reader)
         from .. import sync  # noqa: F401  (history sync)
+        if getattr(sys, "frozen", False):   # 2.7.6: the replay scan's iRacing connection really is in the build
+            import irsdk  # noqa: F401
+            import yaml  # noqa: F401
         checks["imports"] = True
         # every page's code must load, including the ones only imported by name (2.1.0 lost prep this way)
         import importlib

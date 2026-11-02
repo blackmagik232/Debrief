@@ -1014,6 +1014,8 @@ class DebriefServer(ThreadingHTTPServer):
             idle = now - self.last_ping
             if idle > self.timeout_s and self.jobs.kind == "sync":
                 self.jobs.pause_sync(10.0)   # a sync never keeps Debrief open: it resumes next time
+            if idle > self.timeout_s and self.jobs.kind == "scan":
+                self.jobs.stop_scan.set()    # a closed window never leaves the replay fast-forwarding
             if idle > self.timeout_s and not self.jobs.busy:
                 app.say(f"Window closed (no heartbeat for {idle:.0f}s). Stopping.")
                 self.stopping.set()

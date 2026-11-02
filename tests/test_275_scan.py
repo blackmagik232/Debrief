@@ -107,6 +107,36 @@ def test_stop_saves_nothing_and_puts_the_replay_back():
     assert rs.find_for_event(lib, "EV1") is None
 
 
+def test_interrupted_scan_keeps_the_good_log():
+    lib, d = review()
+    run(lib, d, api=Api("EV1"))
+    good = (d / "review.json").read_bytes()
+
+    class Frozen(Sim):
+        def advance(self, s):
+            super().advance(s)
+            self.t = min(self.t, 200.0)
+    clock = fk.FakeClock()
+    try:
+        rs.for_review(lib, d, api=Api("EV1"), sim=Frozen(clock), clock=clock)
+    except SystemExit as e:
+        assert "didn't reach the end" in str(e.code)
+    else:
+        raise AssertionError
+    assert (d / "review.json").read_bytes() == good
+
+
+def test_unconfirmed_race_must_match_lap_times():
+    lib, d = review()
+    data = json.loads((d / "review.json").read_text(encoding="utf-8"))
+    for l in data["laps"]:
+        l["t"] = 120.0
+    (d / "review.json").write_text(json.dumps(data), encoding="utf-8")
+    refused(lib, d, "different race")
+    assert rl.same_track("Charlotte Motor Speedway (Roval 2019)", "Charlotte Motor Speedway")
+    assert not rl.same_track("Road America", "Road Atlanta") and not rl.same_track("Circuit de Spa", "Circuit de Monaco")
+
+
 def test_no_iracing_says_what_to_do():
     class Off:
         def connect(self):

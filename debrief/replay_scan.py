@@ -116,12 +116,24 @@ def collect(sim, clock, info, race=None, speed=16, end=None, say=lambda text: No
     sim.set_speed(0)
     clock.sleep(0.3)
     was = (lambda r: (r["session_num"], r["session_time"]))(sim.read())      # where it sits once paused
+    def put_back():
+        try:
+            sim.set_speed(0)
+            if here["session_num"] is not None and here["session_time"] is not None:
+                sim.seek(here["session_num"], here["session_time"])
+        except Exception:  # noqa: BLE001
+            pass
+
     for attempt in (1, 2):
         sim.seek(num, 0.0)
-        if wait(settled, 30):
+        if wait(lambda: stop() or settled(), 30):
             break
     else:
+        put_back()
         raise ScanError("the replay did not move to the start of the race session")
+    if stop():
+        put_back()
+        raise ScanError("stopped by you")
     live = (None, None)
     try:
         sim.set_speed(speed)
@@ -957,6 +969,20 @@ def find_for_event(library_folder, event_id) -> Path | None:
     return None
 
 
+def laps_agree(review_laps, car, within=1.0, share=0.6) -> bool:
+    """Without Garage 61's word, the race must show itself: most of the review's laps appear in the scan at about that time."""
+    left = sorted(float(v) for v in (car.get("lap_times") or {}).values() if isinstance(v, (int, float)))
+    if not review_laps or not left:
+        return False
+    hit = 0
+    for t in sorted(review_laps):
+        m = min(left, key=lambda v: abs(v - t), default=None)
+        if m is not None and abs(m - t) <= within:
+            left.remove(m)
+            hit += 1
+    return hit >= share * len(review_laps)
+
+
 def for_review(library_folder, review_dir, api=None, progress=None, should_stop=None, sim=None, clock=None, speed=16) -> dict:
     """Scan the loaded replay for one saved review, after checking it is that race. Raises SystemExit with plain words."""
     from . import library, racecap_link, results
@@ -972,7 +998,9 @@ def for_review(library_folder, review_dir, api=None, progress=None, should_stop=
     if sim is None:
         try:
             sim = RealSim()
-        except Exception:  # noqa: BLE001  (no iRacing library, or not on Windows)
+        except ImportError:
+            raise SystemExit("This copy of Debrief is missing its iRacing connection. Reinstall the newest version.") from None
+        except Exception:  # noqa: BLE001  (not on Windows)
             raise SystemExit(OPEN_REPLAY) from None
     clock = clock or Clock()
     if not sim.connect():
@@ -1014,7 +1042,11 @@ def for_review(library_folder, review_dir, api=None, progress=None, should_stop=
             raw = collect(sim, clock, info, {}, speed, None, progress=tick, stop=stop)
             if stop() or any("stopped by you" in str(n) for n in raw.get("notes") or []):
                 raise SystemExit("Scan stopped. Nothing was saved.")
+            incomplete = [str(n) for n in raw.get("notes") or [] if "left the race session" in str(n) or "jumped backwards" in str(n)]
             result = analyse(raw, {})
+            if incomplete or result.get("chequered") is None or not result.get("laps"):
+                raise SystemExit("The scan didn't reach the end of the race, so nothing was saved and your review is unchanged. "
+                                 "Keep iRacing open with the replay loaded, leave it alone, and try again.")
         except ScanError as e:
             if should_stop and should_stop():
                 raise SystemExit("Scan stopped. Nothing was saved.") from None
@@ -1023,10 +1055,13 @@ def for_review(library_folder, review_dir, api=None, progress=None, should_stop=
         if hasattr(sim, "close"):
             sim.close()
     say(0.93, "Working out the race log...")
-    folder = save(library_folder, raw, result, meta.get("event_id"))
     car = racecap_link.find_me(result["cars"], meta.get("driver"))
     if car is None:
         raise SystemExit("The scan finished but couldn't place you in the race.")
+    if confirmed is None and not laps_agree(laps, car):
+        raise SystemExit(f"Your lap times in the loaded replay (race {sub}) don't match this review, so it looks like a different race. "
+                         "Nothing was saved. Load this race's replay and try again.")
+    folder = save(library_folder, raw, result, meta.get("event_id"))
     found = {"dir": folder, "subsession": str(sub), "scan": result, "car": car, "official": None}
     results._rerender(d, lambda x: racecap_link.attach(x, found))
     library.rebuild(library_folder)

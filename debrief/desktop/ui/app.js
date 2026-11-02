@@ -303,7 +303,7 @@ function render(s){
   if(s.kind==='update'&&s.state==='done'&&!handled.has(s.id)){handled.add(s.id);
     setBar(1);$('jobEyebrow').textContent='Installing';$('jobNow').textContent='Debrief is closing to install the update. It reopens on its own in about a minute; you can close this window.';
     lost=true;return}
-  if(s.kind==='review'||s.kind==='prep'||s.kind==='team'||s.kind==='weekly'||s.kind==='update'){
+  if(s.kind==='review'||s.kind==='scan'||s.kind==='prep'||s.kind==='team'||s.kind==='weekly'||s.kind==='update'){
     if(s.kind==='review'&&s.state==='running')TITLES.review=s.title||TITLES0.review;
     setBar(s.frac||0);$('jobNow').textContent=s.state==='error'?'Stopped.':(s.message||'');
     if($('jobTitle').textContent!==TITLES[s.kind]&&s.state==='running')resetJobView(s.kind);

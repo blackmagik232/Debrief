@@ -28,7 +28,7 @@ MAX_RIVALS = 3
 STUCK_S = 20.0           # a pass "stuck" when the same two cars don't swap back this soon
 SETBACK_PLACES = 3
 _RACE_DIR = re.compile(r"^(\d+)_(.+)$")
-_TOKEN_NOISE = {"the", "circuit", "raceway", "international", "speedway", "motorsport", "park", "gp", "grand", "prix"}
+_TOKEN_NOISE = {"the", "de", "of", "du", "la", "circuit", "raceway", "international", "speedway", "motorsport", "park", "gp", "grand", "prix"}
 
 
 # ---------------------------------------------------------------- finding the race
@@ -51,7 +51,11 @@ def _tokens(text) -> set:
 
 
 def same_track(a, b) -> bool:
-    return bool(_tokens(a) & _tokens(b))
+    """One name holds the other (a layout may be added), or at least half their words agree. Road America isn't Road Atlanta."""
+    x, y = _tokens(a), _tokens(b)
+    if not x or not y:
+        return False
+    return x <= y or y <= x or len(x & y) * 2 >= len(x | y)
 
 
 def race_dirs(root: Path) -> list:

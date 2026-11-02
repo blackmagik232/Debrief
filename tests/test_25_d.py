@@ -1039,10 +1039,9 @@ def test_window_team_view_weekly_estimate():
             pg.click(".navbtn[data-nav=team]")
             # 60 s: under a parallel run the team view can take over 30 s to appear (2.7, task 6b)
             pg.wait_for_function("() => !document.getElementById('vTeam').hidden", timeout=60000)
-            pg.wait_for_function("() => document.getElementById('weeklyNote').textContent.includes('About')", timeout=60000)
+            pg.wait_for_function("() => document.getElementById('weeklyNote').textContent.startsWith('This week')", timeout=60000)
             assert pg.evaluate("() => document.getElementById('weeklyNote').textContent") == (
-                "This week's leaderboards for your series. About 3 Garage 61 requests (1 per series, 2 if a lap needs "
-                "a second look).")
+                "This week's leaderboards for your series.")
             sk = pg.evaluate("() => [...document.querySelectorAll('#weeklySkipped li')].map(e => e.textContent)")
             assert sk[0] == "Not included:" and sk[1].startswith("IMSA Vintage Series: Load the track"), sk
             assert api.requests_made == 0

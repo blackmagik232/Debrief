@@ -357,8 +357,9 @@ def test_l3_me_request_is_counted_in_the_estimate():
 def test_l3_window_shows_the_past_weeks_and_the_ceiling():
     js = (ROOT / "debrief" / "desktop" / "ui" / "app.js").read_text(encoding="utf-8")
     fn = js[js.index("function weeklyText("):js.index("function renderWeekly(")]
-    for k in ("est_past", "est_me", "est_max", "for earlier weeks", "At most "):
-        assert k in fn, k
+    # 2.8: request counts moved to Settings > About, so the note no longer quotes an estimate
+    for k in ("est_past", "est_me", "est_max", "for earlier weeks", "At most ", "request"):
+        assert k not in fn, k
 
 
 # ================================================================ L4: correlational fallback text

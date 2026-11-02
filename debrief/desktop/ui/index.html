@@ -25,17 +25,13 @@
   </button>
   <button type="button" id="updStrip" class="updstrip" hidden><b id="updText">Update available</b><span>Update now</span></button>
   <nav class="nav">
-    <button type="button" class="navbtn" data-nav="sessions" title="Every session Garage 61 has for you">All sessions</button>
-    <div class="navgroup" id="libGroup">
-      <button type="button" class="navbtn" data-nav="library">Library</button>
-      <div class="navtabs" aria-label="Library tabs">
-        <button type="button" class="navbtn sub" data-nav="season" title="Library: Season">Season</button>
-        <button type="button" class="navbtn sub" data-nav="skills" title="Library: Skills">Skills</button>
-      </div>
-    </div>
-    <button type="button" class="navbtn" data-nav="goals">Goals</button>
-    <button type="button" class="navbtn" data-nav="prep">Prepare</button>
-    <button type="button" class="navbtn" data-nav="team">Team</button>
+    <button type="button" class="navbtn" data-nav="library" title="Progress (Ctrl+1)" aria-keyshortcuts="Control+1">Progress</button>
+    <button type="button" class="navbtn" data-nav="season" title="Season (Ctrl+2)" aria-keyshortcuts="Control+2">Season</button>
+    <button type="button" class="navbtn" data-nav="skills" title="Skills (Ctrl+3)" aria-keyshortcuts="Control+3">Skills</button>
+    <button type="button" class="navbtn" data-nav="goals" title="Goals (Ctrl+4)" aria-keyshortcuts="Control+4">Goals</button>
+    <button type="button" class="navbtn" data-nav="sessions" title="Every session Garage 61 has for you (Ctrl+5)" aria-keyshortcuts="Control+5">All sessions</button>
+    <button type="button" class="navbtn" data-nav="prep" title="Prepare (Ctrl+6)" aria-keyshortcuts="Control+6">Prepare</button>
+    <button type="button" class="navbtn" data-nav="team" title="Team (Ctrl+7)" aria-keyshortcuts="Control+7">Team</button>
     <button type="button" class="navbtn" data-nav="settings" title="Settings (Ctrl+,)" aria-keyshortcuts="Control+Comma">Settings</button>
     <button type="button" class="navbtn" id="btnHelp">Help</button>
   </nav>
@@ -51,6 +47,7 @@
 </aside>
 
 <main id="main">
+  <div id="loadBar" class="loadbar" role="status" hidden><i aria-hidden="true"></i><span id="loadText">Opening...</span></div>
   <div id="banner" class="banner" hidden role="alert"><span id="bannerText"></span><button type="button" class="bannerx" id="bannerClose" aria-label="Dismiss" title="Dismiss"></button></div>
 
   <section id="vFrame" class="view frameview" hidden>
@@ -58,6 +55,8 @@
       <span class="fbtext" id="fbText"></span>
       <span class="row">
         <span class="pill" id="fbPill" hidden></span>
+        <button type="button" class="btn" id="fbSampleBack" hidden>Back to setup</button>
+        <button type="button" class="btn" id="fbGoals" hidden>Edit goals</button>
         <button type="button" class="btn" id="fbResult" hidden>Add race result</button>
         <button type="button" class="btn" id="fbMarkers" hidden title="A marker file for DaVinci Resolve">Resolve markers</button>
         <button type="button" class="btn" id="fbScan" hidden title="Add the race log by scanning this race's replay in iRacing">Scan this race</button>
@@ -101,6 +100,8 @@
             <h3>Ask for your personal token</h3>
             <p class="note">Go to <a href="https://garage61.net/developer" target="_blank" rel="noreferrer">garage61.net/developer</a> and request a personal API token. It's free for personal, non-commercial use. Garage 61 looks at each request by hand, so it can take a little while to arrive.</p>
             <p class="note"><b>Waiting for Garage 61's email? Close Debrief. These steps will be here when you come back.</b></p>
+            <p class="note">Curious what you'll get? Have a look at a made-up race while you wait.</p>
+            <div class="row"><button type="button" class="btn" id="btnSample">See a sample review</button></div>
           </div>
         </li>
         <li class="gstep" id="gs3">
@@ -108,7 +109,7 @@
           <form class="gbody" id="fGuideToken" autocomplete="off">
             <h3>Paste your personal API token here</h3>
             <p class="note msg bad" id="gTokUnread" role="alert" hidden>Your saved Garage 61 token can't be opened on this Windows account. Paste it again.</p>
-            <p class="note">It's saved on this PC only, and Debrief never shows it again. Debrief then checks the connection (about six Garage 61 requests).</p>
+            <p class="note">It's saved on this PC only, and Debrief never shows it again. Debrief then checks the connection.</p>
             <label class="field" for="gTok"><span>Your Garage 61 personal API token</span>
               <input id="gTok" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste here">
             </label>
@@ -149,7 +150,7 @@
         <span class="eyebrow">Steps</span>
         <ol class="steps" id="jobSteps"></ol>
       </div>
-      <p class="note">Debrief paces its requests to Garage 61 (about one per second) and reuses laps it has already downloaded, so the first run takes a little while.</p>
+      <p class="note">Debrief goes gently on Garage 61 and reuses laps it has already downloaded, so the first run takes a little while.</p>
     </div>
   </section>
 
@@ -251,7 +252,7 @@
         <div class="phead"><h3>Prep pages you've built</h3></div>
         <div id="prepPages" class="list"></div>
       </div>
-      <p class="note">A prep page uses a handful of Garage 61 requests (teammates' best laps at that track and car). Debrief shows the exact number when it's done.</p>
+      <p class="note">A prep page brings in your teammates' best laps at that track and car from Garage 61.</p>
       </details>
     </div>
   </section>
@@ -262,7 +263,7 @@
       <h1>Goals</h1>
       <p class="lede">Set a target lap time for a track and car. Debrief tracks how close your reviewed races get.</p>
       <div class="panel">
-        <div class="phead"><h3>Your goals</h3><span class="msg" id="goalListMsg" role="status"></span></div>
+        <div class="phead"><h3>Your goals</h3><span class="msg" id="goalListMsg" role="status"></span><button type="button" class="btn" id="btnGoalCharts">See progress charts</button></div>
         <div id="goalList" class="list"></div>
       </div>
       <form class="panel" id="fGoal" autocomplete="off">
@@ -289,7 +290,7 @@
       </div>
       <div class="panel">
         <div class="phead"><h3>Get the latest from Garage 61</h3></div>
-        <p class="note">Looks at your six most recent tracks and cars. A first refresh uses up to about 60 Garage 61 requests (less if you've raced fewer combinations); refreshing again within ten minutes uses none. Debrief shows the exact number afterwards.</p>
+        <p class="note">Looks at your six most recent tracks and cars. Refreshing again within ten minutes just reuses what Debrief already has.</p>
         <div class="row"><button type="button" class="btn primary" data-act="team">Refresh team data</button><span class="msg" id="teamMsg" role="status"></span></div>
       </div>
       <div class="panel" id="weeklyPanel">
@@ -310,7 +311,7 @@
       <form class="panel" id="fToken" autocomplete="off">
         <div class="phead"><h3>Garage 61 token</h3><span class="pill" id="tokStatus">Checking...</span></div>
         <p class="note msg bad" id="tokUnread" role="alert" hidden>Your saved Garage 61 token can't be opened on this Windows account. Paste it again.</p>
-        <p class="note">Go to <a href="https://garage61.net/developer" target="_blank" rel="noreferrer">garage61.net/developer</a> and request a personal API token, then paste it here. It's saved on this PC and Debrief never shows it again. Save and check also tests the connection (about six Garage 61 requests); with the box empty it just checks the saved token.</p>
+        <p class="note">Go to <a href="https://garage61.net/developer" target="_blank" rel="noreferrer">garage61.net/developer</a> and request a personal API token, then paste it here. It's saved on this PC and Debrief never shows it again. Save and check also tests the connection; with the box empty it just checks the saved token.</p>
         <label class="field" for="tok"><span>Your Garage 61 personal API token</span>
           <input id="tok" name="tok" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste here">
         </label>
@@ -324,7 +325,7 @@
         <label class="field" for="refs"><span>Comparison laps</span>
           <select id="refs"><option value="0">None</option><option value="1">1</option><option value="2">2</option><option value="3">3 (most)</option></select>
         </label>
-        <p class="note">Laps from your teammates and drivers you follow on Garage 61. Each one adds a request or two.</p>
+        <p class="note">Laps from your teammates and drivers you follow on Garage 61.</p>
         <label class="check" for="prac"><input id="prac" type="checkbox"><span>Also review practice and qualifying sessions</span></label>
         <label class="field" for="salut"><span>How Debrief addresses you</span>
           <input id="salut" type="text" maxlength="20" autocomplete="off" spellcheck="false" placeholder="For example: Sir" aria-describedby="salutNote">
@@ -335,9 +336,9 @@
 
       <form class="panel" id="fSync">
         <div class="phead"><h3>History sync</h3></div>
-        <p class="note">Debrief keeps a copy of all your Garage 61 laps (races, qualifying and practice). The first sync downloads everything, paced at about one request a second, so it can take a while; you can keep using Debrief, and it carries on next time if you close it. After that, each sync only asks for new laps.</p>
+        <p class="note">Debrief keeps a copy of all your Garage 61 laps (races, qualifying and practice). The first sync downloads everything at a gentle pace, so it can take a while; you can keep using Debrief, and it carries on next time if you close it. After that, each sync only asks for new laps.</p>
         <label class="check" for="syncOpen"><input id="syncOpen" type="checkbox"><span>Sync each time Debrief opens</span></label>
-        <label class="check" for="syncTel"><input id="syncTel" type="checkbox"><span>Also save telemetry for my best lap of every session (one request per session, saved once)</span></label>
+        <label class="check" for="syncTel"><input id="syncTel" type="checkbox"><span>Also save telemetry for my best lap of every session (saved once)</span></label>
         <div class="row"><button type="submit" class="btn">Save sync options</button><span class="msg" id="syncOptMsg" role="status"></span></div>
       </form>
 
@@ -418,6 +419,7 @@
         <p class="note" id="aboutText"></p>
         <p class="mono path" id="dataPath"></p>
         <p class="note" id="secretsNote"></p>
+        <p class="note" id="aboutRequests">Garage 61 asks apps to go easy on it, so Debrief makes about one request a second and reuses what it already has. Checking your token uses about six requests, a review or prep page a handful, and a first team refresh up to about 60. <span id="aboutLastSync"></span></p>
         <p class="note">Need help with a problem? Copy diagnostics puts Debrief's version, what it has saved and the end of its log on the clipboard, with your user name, token, webhook and any e-mail addresses taken out. Paste it to whoever is helping.</p>
         <div class="row"><button type="button" class="btn" id="btnDiag">Copy diagnostics</button><span class="msg" id="diagMsg" role="status"></span></div>
       </div>

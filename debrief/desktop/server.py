@@ -30,11 +30,33 @@ from . import settings_io
 
 UI = Path(__file__).resolve().parent / "ui"
 ICON_PNG = Path(__file__).resolve().parent / "icon.png"
-FALLBACK_TOKENS = """:root{--bg:#f3f4f2;--panel:#fcfcfb;--fg:#0f1214;--fg2:#4b5257;--muted:#7c8388;--grid:#e3e5e1;--axis:#b9bdb8;--band:#eef0ec;
---me:#2a78d6;--ref:#eb6834;--lose:#d03b3b;--good:#0b7d0b;--warn:#a86a00;
---display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;--body:"IBM Plex Sans",system-ui,"Segoe UI",sans-serif;--mono:"JetBrains Mono",ui-monospace,Consolas,monospace}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0d0f10;--panel:#17191a;--fg:#eef0ee;--fg2:#c0c5c3;--muted:#8a9094;--grid:#272b2c;--axis:#3d4244;--band:#1c1f20;--me:#3987e5;--ref:#d95926;--lose:#e66767;--good:#2fbf4a;--warn:#efb43f;color-scheme:dark}}
-:root[data-theme="dark"]{--bg:#0d0f10;--panel:#17191a;--fg:#eef0ee;--fg2:#c0c5c3;--muted:#8a9094;--grid:#272b2c;--axis:#3d4244;--band:#1c1f20;--me:#3987e5;--ref:#d95926;--lose:#e66767;--good:#2fbf4a;--warn:#efb43f;color-scheme:dark}
+FALLBACK_TOKENS = """:root{
+  --bg:#f3f4f6; --panel:#ffffff; --ink:#161a1f; --ink2:#47505a; --muted:#68717b;
+  --line:#e3e6ea; --axis:#c4c9d0; --band:#f2f4f6; --track:#dfe3e8; --hi:#eef3fb;
+  --a:#1f6cc4; --b:#eb6834; --mid:#d6dade; --pb:#6250d6; --pbbg:#ece9fb;
+  --warn:#946000; --good:#0a7a2f; --bad:#c43c3c;
+  --bt:#b8461a; --on-a:#ffffff;
+  --h1:#e6effb; --h7:#0d366b;
+  --shadow:0 8px 28px rgba(20,26,34,.14);
+  --fg:var(--ink); --fg2:var(--ink2); --grid:var(--line); --me:var(--a); --ref:var(--b); --lose:var(--bad); --gain:var(--a);
+  --display:"Barlow Condensed","Arial Narrow","Roboto Condensed",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --t-xs:11.5px; --t-sm:13px; --t-md:15px; --t-lg:18px; --t-xl:24px; --t-2xl:38px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1114; --panel:#161a1e; --ink:#eceff2; --ink2:#b8bfc7; --muted:#8b949d;
+  --line:#262b31; --axis:#3b424a; --band:#1b2025; --track:#2b3138; --hi:#1b2430;
+  --a:#3987e5; --b:#d95926; --mid:#3b4047; --pb:#9085e9; --pbbg:#262240;
+  --warn:#e2a83a; --good:#3dbb63; --bad:#e66767; --bt:#e07a4f; --on-a:#0e1114;
+  --h1:#1a2430; --h7:#9ec5f4; --shadow:0 8px 28px rgba(0,0,0,.5); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1114; --panel:#161a1e; --ink:#eceff2; --ink2:#b8bfc7; --muted:#8b949d;
+  --line:#262b31; --axis:#3b424a; --band:#1b2025; --track:#2b3138; --hi:#1b2430;
+  --a:#3987e5; --b:#d95926; --mid:#3b4047; --pb:#9085e9; --pbbg:#262240;
+  --warn:#e2a83a; --good:#3dbb63; --bad:#e66767; --bt:#e07a4f; --on-a:#0e1114;
+  --h1:#1a2430; --h7:#9ec5f4; --shadow:0 8px 28px rgba(0,0,0,.5); color-scheme:dark}
 """
 LIB_TYPES = {".html", ".json", ".png", ".svg", ".css", ".js"}
 # Fixed types: never Windows' registry (mimetypes reads HKCR, where .js is often text/plain, and with
@@ -74,8 +96,19 @@ FRAME_BRIDGE = ("<script>/* debrief-frame-bridge */(function(){if(parent===windo
                 "document.addEventListener('click',function(e){var a=e.target&&e.target.closest&&"
                 "e.target.closest('a[href]');if(!a)return;var u;try{u=new URL(a.getAttribute('href'),"
                 "document.baseURI)}catch(x){return}if(u.origin!==P){a.target='_blank';a.rel='noreferrer'}},true);"
+                # 2.8: the sidebar owns Progress / Season / Skills / Goals, and these keys work inside the page too
+                "document.body&&document.body.classList.add('in-shell');"
+                "addEventListener('keydown',function(e){var k=String(e.key).toLowerCase(),m=null,t=e.target;"
+                "if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&/^[1-7]$/.test(k))m='page'+k;"
+                "else if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey&&(k==='j'||k==='k')&&"
+                "!(t&&t.closest&&t.closest('input,select,textarea,[contenteditable]')))m=k==='j'?'prev':'next';"
+                "if(!m)return;e.preventDefault();try{parent.postMessage({type:'debrief-key',key:m},P)}catch(x){}});"
                 "addEventListener('hashchange',say);if(document.readyState==='loading')"
                 "addEventListener('DOMContentLoaded',say);else say()})();</script>")
+# In the <head>, so the tabs are gone before the page first paints. Only when shown inside the window: a page
+# opened on its own keeps them. Pages can style on .in-shell (on <html> from here, on <body> from the bridge).
+FRAME_EARLY = ("<script>/* debrief-in-shell */if(parent!==window)document.documentElement.classList.add('in-shell')"
+               "</script><style>.in-shell .tabs{display:none!important}</style>")
 _INLINE_SCRIPT = re.compile(r"<script>(.*?)</script>", re.S)
 
 
@@ -94,6 +127,11 @@ def ui_csp(html: str) -> str:
 def with_bridge(html: bytes) -> bytes:
     tag = FRAME_BRIDGE.encode("utf-8")
     low = html.lower()
+    head = low.find(b"</head>")
+    if head >= 0:
+        early = FRAME_EARLY.encode("utf-8")
+        html = html[:head] + early + html[head:]
+        low = low[:head] + early.lower() + low[head:]
     i = low.rfind(b"</body>")
     return html[:i] + tag + html[i:] if i >= 0 else html + tag
 
@@ -367,6 +405,74 @@ def design_tokens() -> str:
     except (OSError, IndexError, ValueError):
         pass
     return FALLBACK_TOKENS
+
+
+# ---------------------------------------------------------------- the sample review (2.8)
+# A made-up race, drawn up here and never saved in the library, so someone waiting for their token can see
+# what a review looks like. It goes through the real analysis and the real page, so it always matches.
+SAMPLE_LABEL = ('<div id="debrief-sample-label" role="note" style="background:var(--warn);color:var(--panel);'
+                'font:600 14px/1.4 var(--body);padding:10px 16px;text-align:center">Sample review. '
+                "This is a made-up race on a made-up track, so you can see what a review looks like. "
+                "None of it is your driving.</div>")
+_SAMPLE_CORNERS = ((150, 18.0), (420, 24.0), (700, 15.0), (1000, 28.0), (1250, 20.0), (1550, 17.0),
+                   (1850, 26.0), (2150, 14.0), (2420, 22.0))
+_SAMPLE_LOCK = threading.Lock()
+_SAMPLE_PAGE = []
+
+
+def _sample_lap(np, rng, slow_at=None):
+    """One made-up lap of a 2.6 km circuit: Garage 61's telemetry columns and the lap time."""
+    length, vmax, width, hz = 2600.0, 55.0, 110.0, 30
+    grid = np.linspace(0, length, int(length) + 1)
+    speed = np.full_like(grid, vmax)
+    for at, apex in _SAMPLE_CORNERS:
+        low = apex + rng.normal(0, 0.6)
+        off = np.abs(grid - at)
+        off = np.minimum(off, length - off)
+        speed = np.minimum(speed, low + (vmax - low) * np.clip(off / width, 0, 1) ** 1.3)
+    if slow_at is not None:
+        speed[np.abs(grid - slow_at) < 80] *= 0.8
+    rows = ["Speed,LapDistPct,Brake,Throttle,Gear,ABSActive,LatAccel,LongAccel,SteeringWheelAngle,RPM,Lat,Lon"]
+    t, d, before = 0.0, 0.0, float(speed[-2])
+    while d < length:
+        v = float(np.interp(d, grid, speed))
+        acc = (v - before) * hz
+        brake = min(1.0, max(0.0, -acc / 12.0))
+        throttle = 1.0 if acc >= -0.5 and brake < 0.05 else 0.0
+        rows.append(f"{v:.3f},{d / length:.6f},{brake:.3f},{throttle},{3 if v < 35 else 5},False,0,{acc:.3f},0,6000,"
+                    f"{35.0 + d * 1e-6:.7f},-80.0")
+        before = v
+        d += v / hz
+        t += 1 / hz
+    return "\n".join(rows) + "\n", t
+
+
+def sample_page() -> bytes:
+    """The sample review's page, made once per run (a second or two the first time)."""
+    with _SAMPLE_LOCK:
+        if _SAMPLE_PAGE:
+            return _SAMPLE_PAGE[0]
+        import tempfile
+        import numpy as np
+        from .. import engine, report
+        rng = np.random.default_rng(61)
+        laps, tel = [], {}
+        for i in range(1, 13):
+            text, t = _sample_lap(np, rng, slow_at=1250 if i == 7 else None)
+            lid = f"sample{i}"
+            laps.append({"id": lid, "lapTime": round(t, 3), "lapNumber": i, "clean": i != 3,
+                         "_start": 1000.0 + i * (t + 2), "startTime": "2026-01-01T18:00:00Z"})
+            tel[lid] = text
+        meta = {"driver": "Sample Driver", "event_id": "sample", "track": "Sample Street Circuit",
+                "car": "Sample Car", "started_at": "2026-01-01T18:00:00Z", "session": "Race", "multiclass": False,
+                "salutation": "", "generated_at": "2026-01-01T19:00:00+00:00"}
+        data = engine.analyze(meta, laps, tel, [], {}, log=lambda m: None)
+        with tempfile.TemporaryDirectory() as td:
+            html = Path(report.write(Path(td), data)).read_bytes()
+        m = re.search(rb"<body\b[^>]*>", html)
+        at = m.end() if m else 0
+        _SAMPLE_PAGE.append(html[:at] + SAMPLE_LABEL.encode("utf-8") + html[at:])
+        return _SAMPLE_PAGE[0]
 
 
 # ---------------------------------------------------------------- background jobs
@@ -1168,6 +1274,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"groups": self.server.reviews.list(lib), "folder": str(lib)})
         if r.startswith("lib/"):
             return self._lib(r[len("lib/"):])
+        if r == "sample/index.html":
+            return self._sample()
         if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/markers", "api/pages", "api/sessions", "api/prepare",
                  "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand",
                  "api/diagnostics"):
@@ -1636,6 +1744,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, body, ctype, {"Content-Security-Policy": LIB_CSP})
         self._send(200, body, ctype)
 
+    def _sample(self):
+        try:
+            body = sample_page()
+        except Exception:  # noqa: BLE001  (only a look-ahead: it must never get in the way of setup)
+            app.say("ERROR making the sample review:\n" + traceback.format_exc())
+            body = (b"<!doctype html><html><head><title>Sample review</title></head><body><p>The sample review "
+                    b"couldn't be made on this PC. Your own reviews aren't affected.</p></body></html>")
+        body = with_bridge(with_fonts(body, self.server.secret))
+        return self._send(200, body, MIME[".html"], {"Content-Security-Policy": LIB_CSP})
+
     def _font(self, name: str):
         """static/fonts/<file>: the bundled stylesheet and woff2 files. Library pages run in a sandbox
         (an opaque origin), so for them these are cross-origin fetches: the stylesheet needs a resource
@@ -1706,6 +1824,8 @@ class Handler(BaseHTTPRequestHandler):
         if r == "api/bye":
             self.server.bye()
             return self._json({"ok": True})
+        if r == "api/window":
+            return self._json({"ok": settings_io.save_window_size(body)})
         if r == "api/review":
             try:
                 params = clean_review_params(body)

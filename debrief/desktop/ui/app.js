@@ -37,6 +37,13 @@ ping();
 try{const src='setInterval(function(){fetch('+JSON.stringify(PING)+',{method:"POST",headers:{"X-Debrief":"1"}}).catch(function(){})},5000)';
   new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})))}catch(e){setInterval(ping,5000)}
 document.addEventListener('visibilitychange',ping);
+// 2.8: the window's size, so it opens the same size next time (saved a moment after you stop resizing)
+let winSent=null,winPending=false;
+function saveWindowSize(keep){clearTimeout(saveWindowSize.t);winPending=false;const w=window.outerWidth,he=window.outerHeight;
+  if(!(w>0&&he>0)||winSent===w+'x'+he||document.fullscreenElement)return;winSent=w+'x'+he;
+  fetch(BASE+'api/window',{method:'POST',keepalive:!!keep,headers:{'X-Debrief':'1','Content-Type':'application/json'},body:JSON.stringify({width:w,height:he})}).catch(()=>{})}
+addEventListener('resize',()=>{winPending=true;clearTimeout(saveWindowSize.t);saveWindowSize.t=setTimeout(saveWindowSize,800)});
+addEventListener('pagehide',()=>{if(winPending)saveWindowSize(true)});
 addEventListener('pagehide',()=>{try{fetch(BASE+'api/bye',{method:'POST',headers:{'X-Debrief':'1'},keepalive:true})}catch(e){}});
 
 /* ---------- brand: the team name and join copy come from /api/brand (debrief/brand.py) */
@@ -81,22 +88,31 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.class
 new MutationObserver(()=>$('btnMenu').setAttribute('aria-expanded',String(document.body.classList.contains('navopen')))).observe(document.body,{attributes:true,attributeFilter:['class']});
 
 /* ---------- keyboard: Ctrl+R = Review last race (not a reload), Ctrl+, = Settings */
-function shortcut(k){if(k==='review'){startReview();return true}if(k==='settings'){openSettings();return true}return false}
+// 2.8: Ctrl+1 to Ctrl+7 open the pages, in sidebar order; J and K step through your reviews, older and newer
+const PAGE_KEYS=['library','season','skills','goals','sessions','prep','team'];
+const KEY_MSG=/^(review|settings|prev|next|page[1-7])$/;
+function shortcut(k){if(k==='review'){startReview();return true}if(k==='settings'){openSettings();return true}
+  if(document.querySelector('dialog[open]'))return false;
+  if(k==='prev'||k==='next'){stepReview(k);return true}
+  const m=/^page([1-7])$/.exec(k);if(m){goNav(PAGE_KEYS[+m[1]-1]);return true}
+  return false}
 document.addEventListener('keydown',e=>{if(!(e.ctrlKey||e.metaKey)||e.altKey)return;const k=e.key.toLowerCase();
   if(k==='r'&&!e.shiftKey){e.preventDefault();shortcut('review')}
-  else if(k===','||e.code==='Comma'){e.preventDefault();shortcut('settings')}});
+  else if(k===','||e.code==='Comma'){e.preventDefault();shortcut('settings')}
+  else if(!e.shiftKey&&/^[1-7]$/.test(k)){e.preventDefault();shortcut('page'+k)}});
+document.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;const k=e.key.toLowerCase();if(k!=='j'&&k!=='k')return;
+  if(e.target&&e.target.closest&&e.target.closest('input,select,textarea,[contenteditable]'))return;
+  if(shortcut(k==='j'?'prev':'next'))e.preventDefault()});
 
 /* ---------- views */
 const VIEWS=['vFrame','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam','vSessions'];
-const FRAME_VIEWS=['review','library','season','skills','prepPage','teamPage'];
-const NAV_OF={weekly:'team',sync:'sessions',sessions:'sessions',library:'library',season:'season',skills:'skills',goals:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings'};
+const FRAME_VIEWS=['review','library','season','skills','goalCharts','prepPage','teamPage','sample'];
+const NAV_OF={weekly:'team',sync:'sessions',sessions:'sessions',library:'library',season:'season',skills:'skills',goals:'goals',goalCharts:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings'};
 let current={view:null,dir:null};
 function show(view){VIEWS.forEach(v=>$(v).hidden=(v!==view));if(view!=='vFrame')document.title=appTitle()}
-const LIB_TABS=['library','season','skills'];
 function markNav(){
   const nav=NAV_OF[current.view]||null;
   document.querySelectorAll('.navbtn').forEach(b=>{const on=b.dataset.nav===nav;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
-  $('libGroup').classList.toggle('on',LIB_TABS.includes(nav));
   document.querySelectorAll('.rev').forEach(b=>{const on=current.view==='review'&&b.dataset.dir===current.dir;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
   document.body.classList.remove('navopen');
   frameBar();lastRaceCard();
@@ -106,14 +122,19 @@ function markNav(){
 let frameHref=null;
 const noQuery=u=>{const s=String(u||'');const i=s.indexOf('#');const a=i<0?s:s.slice(0,i),hs=i<0?'':s.slice(i);return a.split('?')[0]+hs};
 // a URL the frame isn't on yet, so setting src always loads the page again (the server ignores the query)
+// 2.8: a thin bar across the top while a page in the frame loads (a big review can take a few seconds)
+function loading(on,text){clearTimeout(loading.t);$('loadBar').hidden=!on;if(!on)return;
+  $('loadText').textContent=text||(current.view==='review'?'Opening this review...':current.view==='sample'?'Making the sample review...':'Opening...');
+  loading.t=setTimeout(()=>{$('loadBar').hidden=true},30000)}
+$('frame').addEventListener('load',()=>loading(false));
 function fresh(u){const i=u.indexOf('#');const a=i<0?u:u.slice(0,i),hs=i<0?'':u.slice(i);return a.split('?')[0]+'?r='+Date.now().toString(36)+hs}
-function openFrame(rel){const f=$('frame');const want=BASE+rel;const wantDoc=want.split('#')[0];
+function openFrame(rel,reload){const f=$('frame');const want=BASE+rel;const wantDoc=want.split('#')[0];
   const at=noQuery(frameHref||f.src);const atDoc=at.split('#')[0];
-  if(at===want){show('vFrame');return}
+  if(at===want&&!reload){show('vFrame');return}
   // same page, other #section: a hash-only change jumps there (the library page follows hashchange);
   // the same address again (or a page the frame left) loads fresh
-  if(atDoc===wantDoc&&want.includes('#'))f.src=want;
-  else f.src=fresh(want);
+  if(!reload&&atDoc===wantDoc&&want.includes('#'))f.src=f.src.split('#')[0].split('?')[0]===wantDoc?f.src.split('#')[0]+want.slice(wantDoc.length):want;
+  else{loading(true);f.src=fresh(want)}
   frameHref=want;
   // keep the current screen until a big review page has loaded, so there's no blank flash
   if($('vFrame').hidden){clearTimeout(openFrame.t);openFrame.t=setTimeout(()=>show('vFrame'),4000);
@@ -121,10 +142,17 @@ function openFrame(rel){const f=$('frame');const want=BASE+rel;const wantDoc=wan
 function openReview(dir){current={view:'review',dir};openFrame('lib/reviews/'+encodeURIComponent(dir)+'/index.html');markNav();loadResult(dir)}
 function openLibrary(){
   if(!libFolder){current={view:'welcome'};welcome();return}
-  current={view:'library',dir:null};openFrame('lib/index.html');markNav()}
+  current={view:'library',dir:null};openFrame('lib/index.html#overview');markNav()}
 // 2.6: the newest review, pinned above the Library page so the last race is always one click away
-function newestReview(){const all=[];groupsCache.forEach(g=>(g.reviews||[]).forEach(r=>all.push(Object.assign({track:g.track,car:g.car},r))));
-  all.sort((a,b)=>String(b.started_at||b.date||'').localeCompare(String(a.started_at||a.date||''))||String(b.dir).localeCompare(String(a.dir)));return all[0]||null}
+function reviewsByDate(){const all=[];groupsCache.forEach(g=>(g.reviews||[]).forEach(r=>all.push(Object.assign({track:g.track,car:g.car},r))));
+  all.sort((a,b)=>String(b.started_at||b.date||'').localeCompare(String(a.started_at||a.date||''))||String(b.dir).localeCompare(String(a.dir)));return all}
+function newestReview(){return reviewsByDate()[0]||null}
+// J = the race before this one, K = the race after it; from any other page either key opens the newest
+function stepReview(k){const all=reviewsByDate();if(!all.length)return;
+  const i=current.view==='review'?all.findIndex(r=>r.dir===current.dir):-1;
+  const to=i<0?0:(k==='prev'?i+1:i-1);
+  if(to<0||to>=all.length){banner(k==='prev'?'That\'s your oldest review.':'That\'s your newest review.');return}
+  openReview(all[to].dir);const b=document.querySelector('.rev.active');if(b&&b.scrollIntoView)b.scrollIntoView({block:'nearest'})}
 function lastRaceCard(){const box=$('lastRace');const r=current.view==='library'?newestReview():null;box.hidden=!r;if(!r)return;
   $('lrWhat').textContent=r.track+' · '+r.car;$('lrWhen').textContent=[r.session,fmtDate(r.date),r.best?'best '+r.best:''].filter(Boolean).join(' · ');
   $('lrOpen').onclick=()=>openReview(r.dir)}
@@ -135,6 +163,12 @@ function openSeason(){
 function openSkills(){
   if(!libFolder){current={view:'welcome'};welcome();return}
   current={view:'skills',dir:null};openFrame('lib/index.html#skills');markNav();loadProfile()}
+// the charts behind the Goals page live on the library page; the sidebar keeps Goals lit
+function openGoalCharts(){
+  if(!libFolder){current={view:'welcome'};welcome();return}
+  current={view:'goalCharts',dir:null};openFrame('lib/index.html#goals',true);markNav()}   // always fresh: goals may have just changed
+// a made-up race to look at while the token is on its way; never saved in the library
+function openSample(){current={view:'sample',dir:null};openFrame('sample/index.html');markNav()}
 function openPage(rel,view){current={view,dir:null,page:rel};openFrame('lib/'+rel.split('/').map(encodeURIComponent).join('/'));markNav();if(view==='teamPage')loadWeekly()}
 function openSettings(){current={view:'settings',dir:null};show('vSettings');markNav();loadSettings();loadTeams(false)}
 function openJob(){current={view:'job',dir:null};show('vJob');markNav()}
@@ -160,12 +194,16 @@ function welcome(){
 let pages={team:null,prep:[]},resultFor={dir:null,result:null},racecapOn=false;
 function frameBar(){
   const v=current.view,bar=$('frameBar');
-  const want=v==='review'||v==='prepPage'||v==='teamPage'||v==='skills';
+  const want=v==='review'||v==='prepPage'||v==='teamPage'||v==='skills'||v==='sample'||v==='goalCharts';
   bar.hidden=!want;if(!want)return;
   $('fbResult').hidden=v!=='review';$('fbPrep').hidden=v!=='prepPage';$('fbTeam').hidden=v!=='teamPage';$('fbWeekly').hidden=v!=='teamPage';
   $('fbDiscord').hidden=v!=='review'||!discordSaved;
   $('fbMarkers').hidden=v!=='review';$('fbRaceCap').hidden=v!=='review'||!racecapOn;$('fbScan').hidden=v!=='review';
+  $('fbSampleBack').hidden=v!=='sample';$('fbGoals').hidden=v!=='goalCharts';
   const pill=$('fbPill');pill.hidden=true;$('fbBar').hidden=true;
+  if(v==='sample'){$('fbText').textContent='This is a made-up race, not your laps. Your own reviews will look like this.';
+    pill.hidden=false;pill.className='pill no';pill.textContent='Sample';return}
+  if(v==='goalCharts'){$('fbText').textContent='How close your reviewed races get to your goals';return}
   if(v==='skills'){const p=profileInfo,rf=p&&p.refreshing;
     $('fbText').textContent=!p?'Driver profile':
       (p.n_races?'Driver profile · '+p.n_races+' race'+(p.n_races===1?'':'s')+' with skill scores'+(p.weakest&&PHASE[p.weakest.phase]?' · most time to find lately: '+PHASE[p.weakest.phase]:''):
@@ -195,27 +233,44 @@ async function loadPages(){try{const j=await api('pages');if(j.ok)pages=j}catch(
 // the page in the frame says where it is (and its title) through the bridge; trust only our own frame
 // (check e.source, not e.origin: a sandboxed page's origin is "null")
 addEventListener('message',e=>{const f=$('frame');if(!f||e.source!==f.contentWindow)return;const m=e.data;
-  if(m&&typeof m==='object'&&m.type==='debrief-key'&&(m.key==='review'||m.key==='settings')){shortcut(m.key);return}
+  if(m&&typeof m==='object'&&m.type==='debrief-key'&&KEY_MSG.test(String(m.key))){shortcut(m.key);return}
   if(!m||typeof m!=='object'||m.type!=='debrief-frame'||typeof m.href!=='string')return;
   frameHref=m.href;themeFrame(getTheme());framePlace(noQuery(m.href),typeof m.title==='string'?m.title:'')});
 $('frame').addEventListener('load',()=>themeFrame(getTheme()));
 function framePlace(path,title){
   if(!path.startsWith(BASE))return;
+  // a page finishing its load behind another page (Goals, Settings...) doesn't pull the window back to it
+  if(current.view!=null&&!FRAME_VIEWS.includes(current.view))return;
   const rest=path.slice(BASE.length);const rel=rest.split('#')[0].split('?')[0];const hash=(rest.split('#')[1]||'').split('&')[0];
   const m=rel.match(/^lib\/reviews\/([^/]+)\/index\.html$/);
   if(m){const dir=decodeURIComponent(m[1]);const changed=current.dir!==dir;current={view:'review',dir};if(changed)loadResult(dir)}
-  else if(rel==='lib/index.html'||rel==='lib/'){const was=current.view;current={view:hash==='season'?'season':hash==='skills'?'skills':'library',dir:null};
+  else if(rel==='lib/index.html'||rel==='lib/'){const was=current.view;current={view:hash==='season'?'season':hash==='skills'?'skills':hash==='goals'?'goalCharts':'library',dir:null};
     if(current.view==='skills'&&was!=='skills')loadProfile()}
   else if(/^lib\/prep\/[^/]+\.html$/.test(rel))current={view:'prepPage',dir:null,page:decodeURIComponent(rel.slice(4))};
+  else if(rel==='sample/index.html'){current={view:'sample',dir:null};title='Sample review'}
   else if(rel==='lib/team/index.html'){if(current.view!=='teamPage')loadWeekly();current={view:'teamPage',dir:null,page:'team/index.html'}}
   if(title)document.title=/(^Debrief Library$|· Library$)/.test(title)?appTitle():'Debrief · '+title;
   // (links that leave the app are opened in the normal browser by the bridge itself)
   markNav();
 }
 
+// 2.8: while setting up (no token and no saved reviews) the pages have nothing to show, so the sidebar
+// keeps you on the steps. Settings and Help stay open, and Review last race has its own gate.
+const onboarding=()=>!tokenSaved&&!groupsCache.some(g=>(g.reviews||[]).length);
+function navGate(){const off=onboarding();
+  document.querySelectorAll('.navbtn[data-nav]').forEach(b=>{if(b.dataset.nav==='settings')return;
+    if(b.dataset.t==null)b.dataset.t=b.title||'';
+    b.setAttribute('aria-disabled',String(off));b.title=off?'Finish the setup steps first.':b.dataset.t})}
+function goNav(name){
+  if(name!=='settings'&&onboarding()){current={view:'welcome'};welcome();banner('Finish the setup steps first, then the rest of Debrief opens up.');return}
+  ({sessions:openSessions,library:openLibrary,season:openSeason,skills:openSkills,goals:openGoals,prep:openPrep,team:openTeam,settings:openSettings})[name]()}
+$('btnSample').addEventListener('click',openSample);
+$('fbSampleBack').addEventListener('click',()=>{current={view:'welcome'};welcome()});
+$('btnGoalCharts').addEventListener('click',openGoalCharts);
+$('fbGoals').addEventListener('click',openGoals);
 document.addEventListener('click',e=>{
   const n=e.target.closest('[data-nav]');
-  if(n){({sessions:openSessions,library:openLibrary,season:openSeason,skills:openSkills,goals:openGoals,prep:openPrep,team:openTeam,settings:openSettings})[n.dataset.nav]();return}
+  if(n){goNav(n.dataset.nav);return}
   const a=e.target.closest('[data-act]');if(!a)return;
   if(a.dataset.act==='review')startReview();
   else if(a.dataset.act==='sync')startSync(false);
@@ -239,7 +294,7 @@ async function loadReviews(){
     box.append(ul);host.append(box)});
   if(!n)host.append(h('p','revempty',libFolder?'Your reviews will appear here.':'Finish setup on the welcome screen first.'));
   $('revcount').textContent=n?String(n):'';
-  markNav();return groupsCache;
+  navGate();markNav();return groupsCache;
 }
 
 /* ---------- jobs: review / prep / team share the progress screen; check stays in Settings */
@@ -269,10 +324,14 @@ async function startCheck(){
 }
 // 2.6: Review last race waits for a saved token (aria-disabled, so the tooltip still shows why)
 function reviewGate(){const b=$('btnReview');const off=!tokenSaved;b.setAttribute('aria-disabled',String(off));
-  b.title=off?'Finish step 3 first.':'Review last race (Ctrl+R)'}
+  b.title=off?'Finish step 3 first.':'Review last race (Ctrl+R)';if(off)$('syncStrip').hidden=true;navGate()}
 function startReview(){if(!tokenSaved){current={view:'welcome'};welcome();return}startJob('review')}
 $('btnReview').addEventListener('click',startReview);
 
+// 2.8: request counts live in Settings > About. The job's own lines are for the log too, so they keep
+// theirs and the window takes them out here.
+const noCounts=t=>String(t==null?'':t).replace(/\s*\((?:no |about |up to )?\d*\s*(?:Garage 61 )?requests?\)/gi,'');
+const countLine=t=>/^\s*Garage 61 requests\b/i.test(String(t));
 function resetJobView(kind){
   if(kind==='review'&&!(lastJob&&lastJob.title))TITLES.review=TITLES0.review;   // a plain "Review last race" never keeps an earlier job's title
   $('jobStop').hidden=kind!=='scan';$('jobStop').disabled=false;
@@ -305,10 +364,10 @@ function render(s){
     lost=true;return}
   if(s.kind==='review'||s.kind==='scan'||s.kind==='prep'||s.kind==='team'||s.kind==='weekly'||s.kind==='update'){
     if(s.kind==='review'&&s.state==='running')TITLES.review=s.title||TITLES0.review;
-    setBar(s.frac||0);$('jobNow').textContent=s.state==='error'?'Stopped.':(s.message||'');
+    setBar(s.frac||0);$('jobNow').textContent=s.state==='error'?'Stopped.':noCounts(s.message);
     if($('jobTitle').textContent!==TITLES[s.kind]&&s.state==='running')resetJobView(s.kind);
-    const ol=$('jobSteps');const steps=s.steps||[];
-    if(ol.children.length!==steps.length){ol.replaceChildren(...steps.map(t=>h('li',null,t)));ol.scrollTop=ol.scrollHeight}
+    const ol=$('jobSteps');const steps=(s.steps||[]).filter(t=>!countLine(t));
+    if(ol.children.length!==steps.length){ol.replaceChildren(...steps.map(t=>h('li',null,noCounts(t))));ol.scrollTop=ol.scrollHeight}
     if(s.state==='running')$('jobEyebrow').textContent='Working';
     if(s.state!=='running')$('jobStop').hidden=true;
     if(s.state==='error'&&!handled.has(s.id)){handled.add(s.id);
@@ -322,7 +381,7 @@ function render(s){
       else if(s.kind==='review')loadReviews().then(()=>{if(s.result&&s.result.review){if(stay)openReview(s.result.review);banner('Review ready.')}});
       else loadPages().then(()=>{const team=s.kind==='team'||s.kind==='weekly';
         if(s.result&&s.result.page){if(stay)openPage(s.result.page,team?'teamPage':'prepPage');
-        banner(s.kind==='weekly'?'This week\'s leaderboards updated'+(ok(s.result.requests)?' ('+s.result.requests+' Garage 61 request'+(s.result.requests===1?'':'s')+').':'.'):
+        banner(s.kind==='weekly'?'This week\'s leaderboards updated.':
           s.kind==='team'?'Team hub updated.':'Prep page ready.')}if(current.view==='prep')renderPrepPages();if(s.kind==='weekly')loadWeekly()});
     }
   }
@@ -385,6 +444,8 @@ function renderStrip(sum,job){const el=$('syncStrip');if(!tokenSaved){el.hidden=
   $('syncBar').style.width=busy?Math.round((job.frac||0)*100)+'%':'0'}
 const sessTotal=j=>j&&ok(j.total)?j.total:((j&&j.sessions)||[]).length;
 // first page again (after a sync, or opening the page); keeps as many rows as were already shown
+function aboutSync(){const n=sessData&&sessData.summary&&sessData.summary.last_requests;
+  $('aboutLastSync').textContent=ok(n)?'Your last history sync used '+n+' request'+(n===1?'':'s')+'.':''}
 async function loadSessions(){const n=Math.max(SESS_PAGE,sessData&&sessData.sessions?sessData.sessions.length:0);
   let j;try{j=await api('sessions?offset=0&limit='+n)}catch(e){connectionLost();return null}
   if(j&&j.ok){if(!Array.isArray(j.sessions))j.sessions=[];sessData=j}renderStrip(sessData&&sessData.summary,lastJob);return sessData}
@@ -404,10 +465,10 @@ function renderSessions(){
     const n=sum?sum.sessions:0;
     $('sessSyncTitle').textContent=busy?'Syncing...':(sum&&sum.synced?'Up to date':'Not synced yet');
     const pill=$('sessSyncPill');pill.textContent=syncLine(sum);pill.className='pill'+(sum&&sum.synced&&!sum.stopped?' ok':' no');
+    aboutSync();
     let note=sum&&sum.synced?n+' session'+(n===1?'':'s')+' and '+sum.laps+' laps from '+sum.combos+' track and car combination'+(sum.combos===1?'':'s')+'.':
-      'The first sync downloads your whole Garage 61 history, paced at about one request a second. You can keep using Debrief while it runs.';
+      'The first sync downloads your whole Garage 61 history at a gentle pace. You can keep using Debrief while it runs.';
     if(sum&&sum.telemetry_left)note+=' Telemetry still to download for '+sum.telemetry_left+' session'+(sum.telemetry_left===1?'':'s')+'.';
-    if(sum&&sum.synced&&ok(sum.last_requests))note+=' Last sync used '+sum.last_requests+' Garage 61 request'+(sum.last_requests===1?'':'s')+'.';
     if(j.sync_on_open)note+=' Debrief syncs each time it opens.';
     $('sessSyncNote').textContent=note}
   showWarnings('sessWarn',sum&&sum.warnings,'The last sync noted:');
@@ -438,7 +499,7 @@ async function openSessions(){current={view:'sessions',dir:null};show('vSessions
 function renderSync(s){
   renderStrip(sessData&&sessData.summary,s);
   if(current.view==='sessions'){$('btnSyncStop').hidden=s.state!=='running';$('sessProg').hidden=s.state!=='running';$('sessNow').hidden=s.state!=='running';
-    $('sessBar').firstElementChild.style.width=Math.round((s.frac||0)*100)+'%';$('sessNow').textContent=s.message||'';$('btnSync').disabled=s.state==='running';
+    $('sessBar').firstElementChild.style.width=Math.round((s.frac||0)*100)+'%';$('sessNow').textContent=noCounts(s.message);$('btnSync').disabled=s.state==='running';
     if(s.state==='running')$('sessSyncTitle').textContent='Syncing...'}
   if((s.state==='done'||s.state==='error')&&!handled.has(s.id)){handled.add(s.id);
     if(s.state==='error'){setMsg('sessMsg',s.error,'bad');if(current.view!=='sessions'&&s.error)banner('History sync stopped: '+s.error,true,9000)}
@@ -801,8 +862,8 @@ function renderPrep(j){
   const have=Array.isArray(j.tracks)&&Array.isArray(j.cars);
   $('prepSearch').hidden=!have;$('prepGoRow').hidden=!have;$('prepLoadRow').hidden=have||!j.token;
   $('prepListNote').textContent=!j.token?'Add your Garage 61 token in Settings to search every track and car.':
-    have?'Search Garage 61\'s '+j.tracks.length+' tracks and '+j.cars.length+' cars (saved on this PC, no requests).':
-    'Garage 61\'s track and car lists aren\'t saved on this PC yet. Loading them uses up to 2 requests, then they\'re reused for a week.';
+    have?'Search Garage 61\'s '+j.tracks.length+' tracks and '+j.cars.length+' cars (saved on this PC).':
+    'Garage 61\'s track and car lists aren\'t saved on this PC yet. Load them once and Debrief reuses them for a week.';
   if(have){fillList($('dlTracks'),j.tracks);fillList($('dlCars'),j.cars)}
 }
 function fillList(dl,items){if(dl.children.length===items.length)return;dl.replaceChildren(...items.map(x=>{const o=document.createElement('option');o.value=x.name;return o}))}
@@ -811,7 +872,7 @@ function renderPrepPages(){const list=(pages&&pages.prep)||[];$('prepPagesPanel'
     const b=h('button','btn','Open');b.type='button';b.addEventListener('click',()=>openPage(p.page,'prepPage'));row.append(tx,b);host.append(row)})}
 $('btnPrepLists').addEventListener('click',async()=>{setMsg('prepLoadMsg','Loading from Garage 61...');$('btnPrepLists').disabled=true;
   const j=await loadCombos(true);$('btnPrepLists').disabled=false;
-  if(j&&Array.isArray(j.tracks)){setMsg('prepLoadMsg','');renderPrep(j);banner('Track and car lists saved ('+(j.requests||0)+' Garage 61 request'+(j.requests===1?'':'s')+').')}});
+  if(j&&Array.isArray(j.tracks)){setMsg('prepLoadMsg','');renderPrep(j);banner('Track and car lists saved.')}});
 $('fPrepAny').addEventListener('submit',e=>{e.preventDefault();const j=combosCache;if(!j||!j.tracks)return;
   const find=(items,v)=>{v=v.trim().toLowerCase();return items.find(x=>x.name.toLowerCase()===v)};
   const t=find(j.tracks,$('prepTrack').value),c=find(j.cars,$('prepCar').value);
@@ -886,14 +947,7 @@ function weeklyText(j){
   if(!j.schedule)return 'Load the season schedule on the Prepare page and pick your series to see this week\'s team leaderboards.';
   if(j.token===false)return 'Add your Garage 61 token in Settings first.';
   if(!weeklyRows(j).length)return 'Pick your series on the Prepare page to see this week\'s team leaderboards.';
-  const p=j.plan,n=ok(p.est_total)?p.est_total:0;
-  let t='This week\'s leaderboards for your series. About '+n+' Garage 61 request'+(n===1?'':'s')+' (1 per series, 2 if a lap needs a second look).';
-  // 2.5 fixes L3: past-week fills and the one-off look-up of your Garage 61 name are part of the count
-  const past=ok(p.est_past)?p.est_past:0,me=ok(p.est_me)?p.est_me:0,mx=ok(p.est_max)?p.est_max:0;
-  const inc=[];if(past>0)inc.push(past+' for earlier weeks');if(me>0)inc.push('1 to look up your Garage 61 name');
-  if(inc.length)t+=' That includes '+inc.join(' and ')+'.';
-  if(mx>n)t+=' At most '+mx+'.';
-  return t}
+  return 'This week\'s leaderboards for your series.'}
 function renderWeekly(){const j=weeklyInfo;teamJoinPanel();const t=weeklyText(j);$('weeklyNote').textContent=t;$('fbWeekly').title=t;
   const rows=weeklyRows(j);const can=!!(j&&j.ok&&j.available&&j.schedule&&j.token!==false&&rows.length);
   $('btnWeekly').disabled=!can;$('fbWeekly').disabled=!can;
@@ -1022,14 +1076,14 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
   ['Start at the top','What to work on comes first: the corners worth the most time. Every number behind it is further down.'],
   ['Compare two laps','Pick any two laps, or a comparison lap, and see where the time went on the track map and traces.'],
   ['Add the result','On a review, Add race result takes the iRacing results file, so there is little or nothing to type.'],
-  ['Prepare and look back','Prepare gets you ready for the next track. Library, Season and Skills show how you are trending.']],
+  ['Prepare and look back','Prepare gets you ready for the next track. Progress, Season and Skills show how you are trending.']],
  words:[['Clean lap','A full lap Garage 61 didn\'t flag: no incident and not a pit lap.'],['Typical lap','The middle of your clean laps. Half were quicker, half slower.'],
   ['Comparison lap','A lap by a teammate, a followed driver or, with RaceCap, a rival, that yours are measured against.'],['Best sectors added up','Your best time through each part of the track, added together. A guide, not a lap you must be able to drive.'],
   ['Brake point','Where on the track you first brake.'],['Apex','The slowest point of a corner, near the inside.'],['Coasting','Time with neither pedal pressed.'],['Stint','A run of laps between pit stops.'],
   ['Possibly traffic','A lap lost time in one short stretch your other laps didn\'t. It could be another car or a mistake.'],['Race log','Passes, fights, incidents and pit stops from a replay scan. Press Scan this race on a review, or link a scan from RaceCap.'],
   ['On the road','The order the cars crossed the line in the replay. The iRacing results are the official order.'],['Rolling or standing start','Whether the field was moving at the green flag.'],
   ['Resolve markers','A file DaVinci Resolve imports to mark your race\'s moments on a timeline.']],
- keys:[['Ctrl+R','Review last race'],['Ctrl+,','Settings'],['Tab','Move to the next button or chart'],['Arrow keys','Move along a chart that has focus'],['Esc','Close a window like this one']]};
+ keys:[['Ctrl+R','Review last race'],['Ctrl+,','Settings'],['Ctrl+1 to Ctrl+7','Progress, Season, Skills, Goals, All sessions, Prepare, Team'],['J','The review before this one'],['K','The review after this one'],['Tab','Move to the next button or chart'],['Arrow keys','Move along a chart that has focus'],['Esc','Close a window like this one']]};
 function showHelp(k){const b=$('helpBody');b.replaceChildren(...(k==='tour'?[h('p','note','A quick look at how Debrief works.')]:[]),...HELP[k].map(([t,d])=>{const p=h('p');p.append(h('b',null,t+': '),document.createTextNode(d));return p}));
   document.querySelectorAll('[data-help]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.help===k?'true':'false'))}
 function openHelp(k){showHelp(k);openDlg($('dlgHelp'))}
@@ -1038,7 +1092,7 @@ document.querySelectorAll('[data-help]').forEach(x=>x.addEventListener('click',(
 function closeResult(){const d=$('dlgResult');if(d.close)d.close();else d.removeAttribute('open')}
 $('fbResult').addEventListener('click',openResult);
 $('resClose').addEventListener('click',closeResult);
-function reloadFrame(){const f=$('frame');const at=frameHref||f.src;if(at&&at.startsWith(BASE))f.src=fresh(noQuery(at))}
+function reloadFrame(){const f=$('frame');const at=frameHref||f.src;if(at&&at.startsWith(BASE)){loading(true);f.src=fresh(noQuery(at))}}
 $('fResult').addEventListener('submit',async e=>{e.preventDefault();const dir=current.dir;if(!dir)return;
   const fields={};RES_FIELDS.forEach(k=>{const v=$('r_'+k).value.trim();if(v!=='')fields[k]=RES_TEXT.includes(k)?v:Number(v)});
   try{const inc=incValues();if(inc.length)fields.incident_laps=inc}catch(err){setMsg('resMsg',err.message,'bad');return}
@@ -1144,8 +1198,7 @@ async function loadTeams(fetchIt){let j;try{j=await api('teams'+(fetchIt?'?fetch
   $('teamReset').hidden=isBrand;
   $('btnTeams').hidden=!j.token;$('btnTeams').textContent=teams?'Check again':'Check my teams';
   if(!j.token)setMsg('teamSetMsg','Save your Garage 61 token first.');
-  else if(fetchIt)setMsg('teamSetMsg','Teams loaded ('+(j.requests||0)+' Garage 61 request'+(j.requests===1?'':'s')+').','ok');
-  else if(!teams)setMsg('teamSetMsg','Checking uses 1 Garage 61 request.');
+  else if(fetchIt)setMsg('teamSetMsg','Teams loaded.','ok');
   else setMsg('teamSetMsg','');
 }
 $('btnTeams').addEventListener('click',()=>{setMsg('teamSetMsg','Loading...');loadTeams(true)});

@@ -74,6 +74,45 @@ def no_network(url: str = "") -> bool:
     return host not in _LOOPBACK
 
 
+_OFFLINE_WORDS = ("refused", "getaddrinfo", "name or service not known", "no such host", "nodename",
+                  "failed to resolve", "temporary failure in name resolution", "network is unreachable")
+
+
+def _chain(e):
+    """e and every exception it wraps (__cause__, __context__, args[0], urllib3's .reason), once each."""
+    seen, todo = set(), [e]
+    while todo:
+        cur = todo.pop(0)
+        if cur is None or id(cur) in seen or not isinstance(cur, BaseException):
+            continue
+        seen.add(id(cur))
+        yield cur
+        todo.extend([getattr(cur, "__cause__", None), getattr(cur, "__context__", None),
+                     getattr(cur, "reason", None)])
+        args = getattr(cur, "args", None) or ()
+        todo.extend(a for a in args if isinstance(a, BaseException))
+
+
+def _is_offline(e) -> bool:
+    """A requests error that means there is no network at all (2.7.1, M3): a name that won't resolve (Wi-Fi
+    off, DNS down) or a connection refused / unreachable network. Only these fail fast. A dropped connection
+    (RemoteDisconnected, "Connection aborted", ProtocolError), an SSL or proxy error, or a timeout means the
+    host or the path is there and may answer next time, so those keep the normal backoff."""
+    import socket
+    if _is_timeout(e):
+        return False
+    for cur in _chain(e):
+        name = type(cur).__name__
+        if isinstance(cur, (socket.gaierror, ConnectionRefusedError)) or name in ("NameResolutionError", "gaierror"):
+            return True
+        if name in ("RemoteDisconnected", "SSLError", "ProxyError", "ProtocolError"):
+            return False
+        msg = str(cur).lower()
+        if any(w in msg for w in _OFFLINE_WORDS) and "remotedisconnected" not in msg and "aborted" not in msg:
+            return True
+    return False
+
+
 def _is_timeout(e) -> bool:
     """A requests error that is a timeout (the host answered nothing in time), including a ConnectionError
     wrapping a timeout from urllib3 (ConnectTimeout, ReadTimeoutError)."""
@@ -234,11 +273,12 @@ class Garage61:
             try:
                 r = self.s.get(url, timeout=30)
             except requests.RequestException as e:
-                # 2.7 (M1): a connection or DNS failure means there's no network, so a 5/10/20/40 s backoff
-                # only makes "Review last race" sit on "Connecting..." for 75 s with Wi-Fi off. One quick
-                # retry (OFFLINE_RETRY_S) and then the plain offline message. Timeouts and other errors keep
-                # the backoff: the host may answer the next time.
-                if isinstance(e, requests.ConnectionError) and not _is_timeout(e):
+                # 2.7 (M1): a DNS failure or a refused connection means there's no network, so a 5/10/20/40 s
+                # backoff only makes "Review last race" sit on "Connecting..." for 75 s with Wi-Fi off. One
+                # quick retry (OFFLINE_RETRY_S) and then the plain offline message. 2.7.1 (M3): only those
+                # shapes (_is_offline); a dropped connection, an SSL / proxy error and a timeout keep the
+                # backoff: the host may answer the next time.
+                if isinstance(e, requests.ConnectionError) and _is_offline(e):
                     down += 1
                     if down >= 2 or last:
                         self.log(f"  Garage 61 unreachable for {where}: {type(e).__name__}: {e}")

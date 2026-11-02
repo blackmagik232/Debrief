@@ -217,6 +217,74 @@ def test_timeouts_and_5xx_keep_the_backoff():
         srv.shutdown()
 
 
+def test_dropped_connection_keeps_the_backoff():
+    """2.7.1 (M3): RemoteDisconnected / "Connection aborted" / ProtocolError, an SSL error and a proxy error
+    are not "no network": they keep the 5-attempt backoff (BACKOFF_BASE=0 here, so no real waits)."""
+    import http.client
+    from urllib3.exceptions import ProtocolError
+    for make in (lambda: requests.ConnectionError(ProtocolError("Connection aborted.", http.client.RemoteDisconnected(
+                     "Remote end closed connection without response"))),
+                 lambda: requests.exceptions.SSLError("EOF occurred in violation of protocol"),
+                 lambda: requests.exceptions.ProxyError("Cannot connect to proxy.")):
+        waits, calls = [], []
+        c = _client("http://localhost:9/api/v1/", backoff_base=0)
+        c._sleep = lambda s: waits.append(s)
+
+        class S:
+            def get(self, url, timeout=30):
+                calls.append(url)
+                raise make()
+        c.s = S()
+        try:
+            c.me()
+            raise AssertionError("no error")
+        except Garage61Error as e:
+            assert str(e) == g61.MSG_OFFLINE and e.status is None
+        assert len(calls) == 5 and waits == [0, 0, 0, 0], (make(), len(calls), waits)
+    # and one dropped connection followed by an answer just works
+    calls = []
+
+    class S2:
+        def get(self, url, timeout=30):
+            calls.append(url)
+            if len(calls) == 1:
+                raise requests.ConnectionError(ProtocolError("Connection aborted.", http.client.RemoteDisconnected("x")))
+
+            class R:
+                status_code = 200
+                headers = {}
+                text = "{}"
+                content = b"{}"
+
+                def json(self):
+                    return {"slug": "me"}
+            return R()
+    c = _client("http://localhost:9/api/v1/", backoff_base=0)
+    c._sleep = lambda s: None
+    c.s = S2()
+    assert c._get("me") == {"slug": "me"} and len(calls) == 2
+
+
+def test_is_offline_helper():
+    """Only name-resolution and connection-refused shapes count as "no network" (fail fast)."""
+    import http.client
+    import socket
+    from urllib3.exceptions import MaxRetryError, NewConnectionError, ProtocolError
+    assert g61._is_offline(requests.ConnectionError("[Errno 11001] getaddrinfo failed"))
+    assert g61._is_offline(requests.ConnectionError("Name or service not known"))
+    assert g61._is_offline(requests.ConnectionError(MaxRetryError(None, "/me", NewConnectionError(
+        None, "Failed to establish a new connection: [Errno 111] Connection refused"))))
+    e = requests.ConnectionError("wrapped")
+    e.__cause__ = socket.gaierror(11001, "getaddrinfo failed")
+    assert g61._is_offline(e)
+    assert g61._is_offline(requests.ConnectionError(ConnectionRefusedError(10061, "actively refused")))
+    assert not g61._is_offline(requests.ConnectionError(ProtocolError("Connection aborted.",
+                                                                      http.client.RemoteDisconnected("x"))))
+    assert not g61._is_offline(requests.exceptions.SSLError("bad handshake"))
+    assert not g61._is_offline(requests.exceptions.ProxyError("Cannot connect to proxy. Connection refused"))
+    assert not g61._is_offline(requests.ConnectTimeout("connect timed out"))
+
+
 def test_is_timeout_helper():
     assert g61._is_timeout(requests.Timeout("x"))
     assert g61._is_timeout(requests.ConnectTimeout("x"))
@@ -332,8 +400,76 @@ def test_three_failures_with_nothing_downloaded_is_a_plain_error_with_a_next_ste
     assert "try the review again" in exit_msg and "Check connection" in exit_msg
 
 
-def test_token_rejected_or_offline_still_stops_the_review_at_once():
-    for err in (Garage61Error(g61.MSG_TOKEN, status=401), Garage61Error(g61.MSG_OFFLINE)):
+def test_offline_mid_review_counts_toward_the_breaker():
+    """2.7.1 (M3): "can't reach Garage 61" during the telemetry downloads no longer ends the review at once:
+    it counts toward TEL_FAIL_RUN, and a review that already has telemetry finishes with what it has."""
+    off = Garage61Error(g61.MSG_OFFLINE)
+    api = _ReviewApi(n=8, fail={"L3": off, "L4": off, "L5": off, "L6": off, "L7": off})
+    page, lines, exit_msg = _review(api)
+    assert exit_msg is None and page and page.exists(), (exit_msg, lines)
+    assert api.calls == ["L0", "L1", "L2", "L3", "L4", "L5"], api.calls
+    assert any(app.TEL_GIVING_UP in l for l in lines), lines
+    # one dropped download in the middle: every lap is still asked for
+    api = _ReviewApi(n=6, fail={"L1": off})
+    page, lines, exit_msg = _review(api)
+    assert exit_msg is None and page, (exit_msg, lines)
+    assert api.calls == [f"L{i}" for i in range(6)], api.calls
+    # offline with nothing downloaded at all: the plain offline message, after TEL_FAIL_RUN tries
+    api = _ReviewApi(n=6, fail={f"L{i}": off for i in range(6)})
+    real_make, real_say = app.make_api, app.say
+    app.make_api = lambda c: api
+    app.say = QUIET
+    try:
+        try:
+            app.cmd_review(_cfg(), "EV1", open_after=False, session_kind=3, track_id=468, car_id=190)
+            raise AssertionError("no error")
+        except Garage61Error as e:
+            assert str(e) == g61.MSG_OFFLINE
+    finally:
+        app.make_api, app.say = real_make, real_say
+    assert api.calls == ["L0", "L1", "L2"], api.calls
+
+
+def test_sync_tries_a_combo_once_more_after_going_offline():
+    """2.7.1 (M3): a sync that loses the connection on one track/car asks for it once more; a second loss
+    gives up with the plain offline error, keeping the checkpoints of the combos already done."""
+    import test_sync as ts
+    fake = ts.FakeG61()
+    srv, base = ts.serve(fake)
+    try:
+        for fails, expect_ok in ((1, True), (2, False)):
+            api = ts.client(base, _newdir())
+            real = api.laps_page
+            state = {"n": 0, "combos": []}
+
+            def flaky(**kw):
+                combo = (kw.get("tracks"), kw.get("cars"))
+                if combo not in state["combos"]:
+                    state["combos"].append(combo)
+                # the second track/car loses the connection `fails` times on its first page
+                if len(state["combos"]) == 2 and kw.get("offset", 0) == 0 and state["n"] < fails:
+                    state["n"] += 1
+                    raise Garage61Error(g61.MSG_OFFLINE)
+                return real(**kw)
+            api.laps_page = flaky
+            logs = []
+            try:
+                r = sync.run(api, log=logs.append, now=ts.NOW, telemetry="none")
+                assert expect_ok, r
+                assert r["laps"] == fake.n and not r["stopped"], r
+                assert any("trying it once more" in l for l in logs), logs
+            except Garage61Error as e:
+                assert not expect_ok and str(e) == g61.MSG_OFFLINE, e
+                st = sync.Store.for_api(api).state()
+                done = [k for k, v in (st.get("combos") or {}).items() if v.get("done")]
+                assert len(done) == 1, st.get("combos")   # the first combo's checkpoint was kept
+            assert state["n"] == fails
+    finally:
+        srv.shutdown()
+
+
+def test_token_rejected_still_stops_the_review_at_once():
+    for err in (Garage61Error(g61.MSG_TOKEN, status=401),):
         api = _ReviewApi(n=6, fail={"L0": err})
         real_make, real_say = app.make_api, app.say
         app.make_api = lambda c, api=api: api
@@ -451,12 +587,18 @@ def test_only_the_two_newest_backup_sets_are_kept():
 def test_backup_set_is_completed_not_redone():
     lib = _lib_with_reviews(2)
     assert report.backup_reviews(lib, "2.6.0", log=QUIET) == 2
-    (lib / report.BACKUP_DIR / "2.6.0" / "2026-10-10_roval_gt4_0" / "review.json").write_text("{\"kept\":1}", encoding="utf-8")
+    good = lib / report.BACKUP_DIR / "2.6.0" / "2026-10-11_roval_gt4_1" / "review.json"
+    good_bytes, good_mtime = good.read_bytes(), good.stat().st_mtime_ns
     d = lib / "reviews" / "2026-10-12_roval_gt4_new"
     d.mkdir()
     (d / "review.json").write_text("{\"laps\": []}", encoding="utf-8")
-    assert report.backup_reviews(lib, "2.6.0", log=QUIET) == 1    # only the new one
-    assert json.loads((lib / report.BACKUP_DIR / "2.6.0" / "2026-10-10_roval_gt4_0" / "review.json").read_text()) == {"kept": 1}
+    assert report.backup_reviews(lib, "2.6.0", log=QUIET) == 1    # only the new one: good copies are kept
+    assert good.read_bytes() == good_bytes and good.stat().st_mtime_ns == good_mtime
+    # 2.7.1 (L1): a copy that doesn't match its review (wrong size, written after it) is made again
+    bad = lib / report.BACKUP_DIR / "2.6.0" / "2026-10-10_roval_gt4_0" / "review.json"
+    bad.write_text("{\"kept\":1}", encoding="utf-8")
+    assert report.backup_reviews(lib, "2.6.0", log=QUIET) == 1
+    assert bad.read_bytes() == (lib / "reviews" / "2026-10-10_roval_gt4_0" / "review.json").read_bytes()
 
 
 def test_version_names_are_made_safe_for_folders():

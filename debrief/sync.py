@@ -614,7 +614,15 @@ def run(api, log=print, progress=None, should_stop=None, telemetry: str = "best"
             after = EPOCH if after_dt is None else _iso(after_dt)
             # an explicit age (days) as well, so no default age limit on Garage 61's side trims the history
             age = max(1, (now - _parse(after)).days + 2)
-            got, complete = _fetch_combo(api, t, c, after, age, check, warn)
+            try:
+                got, complete = _fetch_combo(api, t, c, after, age, check, warn)
+            except Garage61Error as e:
+                # 2.7.1 (M3): one more go at this track/car after "can't reach Garage 61" (a brief drop),
+                # then give up; every combo already done has its checkpoint saved, so the next sync resumes
+                if getattr(e, "fatal", False) or getattr(e, "status", None) is not None:
+                    raise
+                log(f"  Lost the connection to Garage 61 at track {t} · car {c}; trying it once more.")
+                got, complete = _fetch_combo(api, t, c, after, age, check, warn)
             added, total = store.merge(t, c, got)
             new_laps += added
             changed = changed or added > 0

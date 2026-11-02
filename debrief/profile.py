@@ -173,6 +173,9 @@ def _group(key, label, items):
     return {"key": key, "label": label, "races": len(items), "phases": phases}
 
 
+EXIT_NOTE = "Exit speeds from reviews before 2.7.0 were measured 150 m after the apex."
+
+
 def build(rows: list, include_practice: bool = False) -> dict:
     """Profile for the library Skills tab (see spec 1.3). Never raises on odd rows; empty input gives
     {"groups": [], "weakest": None, "n_races": 0}.
@@ -181,10 +184,13 @@ def build(rows: list, include_practice: bool = False) -> dict:
     from . import library
     items = []
     n_skipped = 0
+    n_old = 0   # 2.7.1 (L4): reviews whose exit speeds were read at a fixed 150 m (before 2.7.0)
     for row in rows or []:
         if not include_practice and isinstance(row, dict) and not library.is_race(row):
             n_skipped += 1
             continue
+        if isinstance(row, dict) and row.get("exit_150"):
+            n_old += 1
         s = _usable(row)
         if s is None:
             continue
@@ -200,6 +206,10 @@ def build(rows: list, include_practice: bool = False) -> dict:
                       "weakest_last": WEAKEST_LAST},
            "groups": [], "weakest": None, "n_races": len(items),
            "sessions": "all" if include_practice else "race", "n_practice_skipped": n_skipped}
+    # 2.7.1 (L4): those can't be redone (no traces are kept), so the Skills tab says so
+    out["n_exit_150"] = n_old
+    if n_old:
+        out["exit_note"] = EXIT_NOTE
     if not items:
         return out
     out["groups"].append(_group("all", "All cars", items))

@@ -171,10 +171,12 @@ def progress(folder, rows: list | None = None) -> list:
 
     gap = best - target in seconds (positive = still that much to find; <= 0 = achieved).
     history = each reviewed race's best lap at the combo, oldest first.
-    pct = share of the way from your first reviewed best to the target (0..1), None without history."""
+    pct = share of the way from your first reviewed best to the target (0..1), None without history.
+    rows: the library rows to count; by default race sessions only (library.race_rows), the same rows the
+    library page's Goals tab uses (2.7.1, M6)."""
     from . import library
     if rows is None:
-        rows = library.list_reviews(folder)
+        rows = library.race_rows(library.list_reviews(folder))
     out = []
     for gl in load(folder):
         # races whose best isn't clean (every lap flagged, or a partial lap) never count toward a goal

@@ -416,18 +416,26 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 <script>
 (function(){
 // 2.7: practice / qualifying reviews are kept in ROWS (row.session) but personal bests, progress, weak spots and
-// the season / skills tabs count race sessions only, unless "Include practice and qualifying" is ticked (a
-// per-browser convenience; the page reloads so every table is rebuilt from the chosen rows). Row PB chips then
-// come from row.pb_all (every session counts) instead of row.pb (race sessions only).
-const isRace=r=>r.session==null||String(r.session).trim().toLowerCase().startsWith('race');
-let INC=false;try{INC=localStorage.getItem('debrief-incprac')==='1'}catch(e){}
+// the season / skills tabs count race sessions only, unless "Include practice and qualifying" is ticked. Row PB
+// chips then come from row.pb_all (every session counts) instead of row.pb (race sessions only).
+// 2.7.1 (M4): the page is sandboxed with an opaque origin, where localStorage throws, so the choice is an
+// in-memory flag mirrored into the hash as "#<tab>&incprac" (it survives tab switches and a reload), and
+// ticking the box re-renders the page in place (rerender) instead of reloading it.
+// isRace mirrors library.session_kind exactly: classified by exclusion, so only a session that starts with
+// practice / open practice / warmup or qualif / lone qualif is left out; None, 'Session', 'Heat', 'Feature' are races.
+const sessKind=s=>{const t=String(s==null?'':s).replace(/\s+/g,' ').trim().toLowerCase();
+  if(['practice','open practice','warmup','warm up','warm-up'].some(p=>t.startsWith(p)))return 'practice';
+  if(['qualif','lone qualif'].some(p=>t.startsWith(p)))return 'qualifying';return 'race'};
+const isRace=r=>sessKind(r&&r.session)==='race';
+const hashParts=()=>String(location.hash||'').slice(1).split('&');
+let INC=hashParts().includes('incprac');
 const ALL=(window.ROWS||[]).filter(r=>r&&isFinite(r.best));
-const R=INC?ALL:ALL.filter(isRace);
+let R=INC?ALL:ALL.filter(isRace);
 const N_PRAC=ALL.length-ALL.filter(isRace).length;
 const pbRow=r=>INC?(r.pb_all||r.pb||null):(r.pb||null);
-(function(){const cb=document.getElementById('incprac');if(!cb)return;cb.checked=INC;
-  const nt=document.getElementById('incpracNote');if(nt)nt.textContent=N_PRAC?'('+N_PRAC+' practice or qualifying review'+(N_PRAC===1?'':'s')+(INC?' included: they can set bests here':' kept out of personal bests and trends')+')':'(none in the library yet)';
-  cb.addEventListener('change',()=>{try{localStorage.setItem('debrief-incprac',cb.checked?'1':'0')}catch(e){}location.reload()})})();
+function incNote(){const cb=document.getElementById('incprac');if(cb)cb.checked=INC;
+  const nt=document.getElementById('incpracNote');if(nt)nt.textContent=N_PRAC?'('+N_PRAC+' practice or qualifying review'+(N_PRAC===1?'':'s')+(INC?' included: they can set bests here':' kept out of personal bests and trends')+')':'(none in the library yet)'}
+incNote();
 const $=id=>document.getElementById(id);const NS='http://www.w3.org/2000/svg';
 function el(t,a,x){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(x!=null)e.textContent=x;return e}
 function h(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
@@ -446,16 +454,20 @@ const plural=(n,w,ws)=>n+' '+(n===1?w:(ws||w+'s'));
 const pbOf=a=>{const c=a.filter(r=>r.best_clean!==false),pool=c.length?c:a;return pool.reduce((p,r)=>r.best<p.best?r:p,pool[0])};
 
 // ---------- groups
-const groups=new Map();
-R.forEach(r=>{const k=r.combo||(r.track+'|'+r.car);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r)});
-groups.forEach(a=>a.sort((x,y)=>tOf(x)-tOf(y)));
-const combos=[...groups.entries()].map(([k,a])=>({k,a,last:a[a.length-1]})).sort((x,y)=>tOf(y.last)-tOf(x.last));
+let groups,combos;
+function regroup(){groups=new Map();
+  R.forEach(r=>{const k=r.combo||(r.track+'|'+r.car);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r)});
+  groups.forEach(a=>a.sort((x,y)=>tOf(x)-tOf(y)));
+  combos=[...groups.entries()].map(([k,a])=>({k,a,last:a[a.length-1]})).sort((x,y)=>tOf(y.last)-tOf(x.last))}
+regroup();
 
 // ---------- header
+const LEDE0=$('lede').textContent;
+function renderHeader(){
 $('count').textContent=plural(R.length,INC?'review':'race review')+(N_PRAC&&!INC?' · '+N_PRAC+' practice/qualifying hidden':'');
-if(R.some(r=>r.test_data))$('testchip').classList.remove('hidden');
+$('testchip').classList.toggle('hidden',!R.some(r=>r.test_data));
 (function totals(){
-  const host=$('totals');const sum=(f)=>R.reduce((s,r)=>s+(ok(f(r))?f(r):0),0);
+  const host=$('totals');host.replaceChildren();const sum=(f)=>R.reduce((s,r)=>s+(ok(f(r))?f(r):0),0);
   const tracks=[...new Set(R.map(r=>r.track))],cars=[...new Set(R.map(r=>r.car))];
   const dates=R.map(r=>r.date).filter(Boolean).sort();
   const shorts=[...new Set(R.map(r=>r.track_short||r.track))];
@@ -466,11 +478,10 @@ if(R.some(r=>r.test_data))$('testchip').classList.remove('hidden');
     ['Cars driven',cars.length,cars.join(', ')||'None yet']];
   items.forEach(([l,v,s])=>{const k=h('div','stat');k.append(h('span','lab',l),h('span','v',String(v)),h('span','ctx',s));k.lastChild.title=s;host.append(k)});
 })();
-
-if(!R.length){
-  ['pbsec','progsec','weaksec'].forEach(id=>$(id).classList.add('hidden'));
-  $('lede').textContent='No reviews yet. Run "Review last race" after your next race and it will appear here.';
+['pbsec','progsec','weaksec'].forEach(id=>$(id).classList.toggle('hidden',!R.length));
+$('lede').textContent=R.length?LEDE0:'No reviews yet. Run "Review last race" after your next race and it will appear here.';
 }
+renderHeader();
 
 // ---------- personal bests
 let current=combos.length?combos[0].k:null;
@@ -615,14 +626,16 @@ function weak(c){
 function select(k){current=k;const c=combos.find(x=>x.k===k);if(!c)return;$('combo').value=k;pbTable();progress(c);weak(c)}
 
 // ---------- race table
-const COLS=[
+let COLS,hasIR,hasRes;
+function buildCols(){COLS=[
   {k:'date',l:'Date',v:r=>tOf(r)},{k:'track',l:'Track',v:r=>(r.track_short||r.track).toLowerCase()},{k:'car',l:'Car',v:r=>r.car.toLowerCase()},
   {k:'best',l:'Best',n:1,v:r=>r.best},{k:'median',l:'Median',n:1,v:r=>r.median},{k:'std',l:'σ',lc:1,n:1,v:r=>r.std},
   {k:'clean',l:'Clean laps',n:1,v:r=>r.laps?r.clean/r.laps:0}];
-const hasIR=R.some(r=>ok(r.irating)),hasRes=R.some(r=>r.result&&ok(r.result.finish_pos));
+hasIR=R.some(r=>ok(r.irating));hasRes=R.some(r=>r.result&&ok(r.result.finish_pos));
 if(hasIR)COLS.push({k:'ir',l:'iRating',n:1,v:r=>ok(r.irating)?r.irating:null});
 if(hasRes)COLS.push({k:'fin',l:'Finish',n:1,v:r=>r.result&&ok(r.result.finish_pos)?r.result.finish_pos:null});
-COLS.push({k:'top',l:'Top corner',v:r=>-(r.top_corner_avail||0)});
+COLS.push({k:'top',l:'Top corner',v:r=>-(r.top_corner_avail||0)})}
+buildCols();
 let sortK='date',sortDir=-1;
 function table(){
   const q=$('filt').value.trim().toLowerCase(),cf=$('tfilt').value;
@@ -660,10 +673,11 @@ const SEAS=(EX.season&&Array.isArray(EX.season.seasons))?EX.season.seasons:[];
 const seasonOf=r=>(r.season&&r.season.name)||'Unknown season';
 const intFmt=v=>ok(v)?String(Math.round(v)):'–';
 const sgn=(v,d=0)=>ok(v)?(v>0?'+':v<0?'−':'±')+Math.abs(v).toFixed(d):'–';
-(function seasonPicker(){const sel=$('seasonpick');const o=h('option',null,'All seasons');o.value='';sel.append(o);
+function seasonPicker(){const sel=$('seasonpick');const keep=sel.value;sel.replaceChildren();const o=h('option',null,'All seasons');o.value='';sel.append(o);
   const names=SEAS.length?SEAS.map(x=>x.name):[...new Set(R.map(seasonOf))];
   names.forEach(n=>{const e=SEAS.find(x=>x.name===n);const op=h('option',null,n+(e&&e.estimated?' (by date)':'')+' ('+(e?e.races:R.filter(r=>seasonOf(r)===n).length)+')');op.value=n;sel.append(op)});
-  sel.addEventListener('change',renderSeason)})();
+  sel.value=names.includes(keep)?keep:''}
+seasonPicker();$('seasonpick').addEventListener('change',renderSeason);
 let seasonRedraw=null;
 function barChart(items,o){ // items: [{label,value,sub}]
   const W=Math.max(300,Math.round(o.width||520)),H=200,ml=36,mr=12,mt=18,mb=40;
@@ -830,26 +844,42 @@ function renderSkills(){const tiles=$('sktiles'),pan=$('skpanel');tiles.replaceC
   const lg=h('div','legend');series.forEach(se=>{const sp=h('span');const i=h('i','k');i.style.borderColor=se.color;sp.append(i,document.createTextNode(se.name));lg.append(sp)});pan.append(lg);
   const c=h('div','chart');pan.append(c);
   skRedraw=()=>c.replaceChildren(lineChart(arr,series,{label:lab+' time lost per race',minSpan:1,zero:true,tick:v=>v.toFixed(v<10?1:0),width:c.clientWidth}));skRedraw();
-  pan.append(h('p','note','Scores are worked out again from the saved time lost each time the library refreshes: 100 means your typical laps matched your better laps in that part of the corner. This is not absolute pace and not a comparison with other drivers.'))}
+  pan.append(h('p','note','Scores are worked out again from the saved time lost each time the library refreshes: 100 means your typical laps matched your better laps in that part of the corner. This is not absolute pace and not a comparison with other drivers.'));
+  if(SKP&&typeof SKP.exit_note==='string'&&SKP.exit_note)pan.append(h('p','note skexitnote',SKP.exit_note))}
 
 // ================================================================ tabs (#overview, #season, #skills, #goals)
 const TABS=['overview','season','skills','goals'];let curTab=null;
-function showTab(name){if(!TABS.includes(name))name='overview';
+const tabOf=hs=>{const t=String(hs==null?'':hs).split('&')[0];return TABS.includes(t)?t:'overview'};
+function showTab(name){name=tabOf(name);
   TABS.forEach(t=>{$('tab-'+t).hidden=t!==name});
   document.querySelectorAll('.tabs a').forEach(a=>{if(a.dataset.tab===name)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
   const changed=curTab!==null&&curTab!==name;curTab=name;hideTip();
   if(name==='season')renderSeason();else if(name==='goals')renderGoals();else if(name==='skills')renderSkills();else if(redraw)redraw();
   if(changed)window.scrollTo(0,0)}
-addEventListener('hashchange',()=>showTab(location.hash.slice(1)));
+// "#season" from a tab link drops the "&incprac" flag: keepHash puts it back (a fragment change, never a reload)
+function keepHash(){const t=curTab||'overview',has=hashParts().includes('incprac');if(!INC&&!has)return;
+  const want='#'+t+(INC?'&incprac':'');if(location.hash!==want){try{location.replace(want)}catch(e){}}}
+addEventListener('hashchange',()=>{const t=tabOf(location.hash.slice(1));if(t!==curTab)showTab(t);keepHash()});
 showTab(location.hash.slice(1));
 
 // ---------- footer: how the numbers here are chosen
-(function notes(){const ul=$('libnotes');if(!ul)return;
+function renderNotes(){const ul=$('libnotes');if(!ul)return;ul.replaceChildren();
   [typeof EX.sessions_rule==='string'&&EX.sessions_rule?EX.sessions_rule:'Personal bests, progress, weak corners, the season summary, goals and the skills profile count race sessions only; practice and qualifying reviews are listed but don\u2019t set or compare against a personal best unless you tick \u201cInclude practice and qualifying\u201d.',
    INC?'\u201cInclude practice and qualifying\u201d is on: every session counts toward the bests and trends on this page. The Season and Skills tabs still summarise race sessions only.':'',
    'A review whose laps were all flagged by Garage 61, or whose best was a partial lap, never sets a personal best.',
    'Consistency (\u03c3) and \u201ctime to find\u201d come from each review; their thresholds scale with that track\u2019s lap time and length, so numbers from different tracks compare like for like.',
-   EX.generated_at?'Generated '+new Date(EX.generated_at).toLocaleString()+'.':''].filter(Boolean).forEach(t=>ul.append(h('li',null,t)))})();
+   EX.generated_at?'Generated '+new Date(EX.generated_at).toLocaleString()+'.':''].filter(Boolean).forEach(t=>ul.append(h('li',null,t)))}
+renderNotes();
+
+// ---------- "Include practice and qualifying": every table and chart is rebuilt from the chosen rows, in place
+function rerender(){R=INC?ALL:ALL.filter(isRace);regroup();renderHeader();
+  if(!combos.some(c=>c.k===current))current=combos.length?combos[0].k:null;
+  const tf=$('tfilt').value;fillSelect($('combo'),false);fillSelect($('tfilt'),true);$('tfilt').value=combos.some(c=>c.k===tf)?tf:'';
+  buildCols();if(!COLS.some(c=>c.k===sortK)){sortK='date';sortDir=-1}table();
+  if(current)select(current);else{pbTable();$('progress').replaceChildren();$('weak').replaceChildren();redraw=null}
+  seasonPicker();renderNotes();incNote();showTab(curTab);keepHash()}
+(function(){const cb=$('incprac');if(!cb)return;cb.addEventListener('change',()=>{INC=!!cb.checked;rerender()})})();
+keepHash();
 
 addEventListener('scroll',hideTip,{passive:true});
 let rt=0,lastW=innerWidth;addEventListener('resize',()=>{if(innerWidth===lastW)return;lastW=innerWidth;clearTimeout(rt);rt=setTimeout(()=>{if(curTab==='season'&&seasonRedraw)seasonRedraw();else if(curTab==='skills'&&skRedraw)skRedraw();else if(redraw)redraw()},120)});

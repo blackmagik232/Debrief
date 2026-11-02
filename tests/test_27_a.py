@@ -15,6 +15,7 @@ import re
 import sys
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -339,6 +340,61 @@ def test_watchdog_survives_an_error_and_still_stops():
     assert not t.is_alive() and s.stopping.is_set()
     assert any(m.startswith("ERROR in the window watchdog:\nTraceback") and "watchdog bug" in m for m in seen), seen
     assert any("Stopping" in m for m in seen)
+    s.server_close()
+
+
+def test_watchdog_restarts_after_an_error_while_the_window_is_open():
+    """2.7.1 (L3): an error with the window still open restarts the loop (after a short sleep) instead of
+    ending the thread, so the window closing later still stops Debrief; past WATCHDOG_RESTARTS errors a
+    minute it gives up and says so."""
+    s = S.DebriefServer(heartbeat_timeout=0.5, startup_grace=0)
+    s.WATCHDOG_RESTART_SLEEP_S = 0.01
+    seen = []
+    s.exit = lambda code=0: None
+    s.last_ping = time.monotonic() + 3600   # the window is open
+    real_loop = s._watchdog_loop
+    calls = {"n": 0}
+
+    def flaky_loop():
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise RuntimeError("passing watchdog bug")
+        return real_loop()
+
+    class J:
+        kind = None
+        busy = False
+        lock = threading.Lock()
+    with patched(app, say=seen.append), patched(s, jobs=J(), _watchdog_loop=flaky_loop):
+        t = threading.Thread(target=s.watchdog, daemon=True)
+        t.start()
+        deadline = time.monotonic() + 15
+        while calls["n"] < 3 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        time.sleep(1.5)
+        assert t.is_alive() and not s.stopping.is_set(), seen   # restarted, still watching
+        assert calls["n"] == 3 and len([m for m in seen if "passing watchdog bug" in m]) == 2, (calls, seen)
+        s.last_ping = time.monotonic() - 10   # now the window goes away
+        t.join(15)
+    assert not t.is_alive() and s.stopping.is_set()
+    assert any("Window closed" in m and "Stopping" in m for m in seen), seen
+    s.server_close()
+    # an error every time: at most WATCHDOG_RESTARTS restarts in a minute, then the thread ends and says why
+    s = S.DebriefServer(heartbeat_timeout=0.5, startup_grace=0)
+    s.WATCHDOG_RESTART_SLEEP_S = 0.0
+    s.exit = lambda code=0: None
+    s.last_ping = time.monotonic() + 3600
+    seen = []
+
+    def always():
+        raise RuntimeError("always")
+    with patched(app, say=seen.append), patched(s, _watchdog_loop=always):
+        t = threading.Thread(target=s.watchdog, daemon=True)
+        t.start()
+        t.join(30)
+    assert not t.is_alive() and not s.stopping.is_set()
+    assert len([m for m in seen if m.startswith("ERROR in the window watchdog")]) == s.WATCHDOG_RESTARTS + 1, seen
+    assert any("failed 6 times in a minute" in m for m in seen), seen
     s.server_close()
 
 

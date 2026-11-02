@@ -578,7 +578,10 @@ def test_practice_reviewed_from_last_race_gets_the_practice_suffix():
     """2nd verifier M-b: "Review last race" with practice included named practice folders without the
     _practice suffix, so the already-reviewed check missed them."""
     src = (ROOT / "debrief" / "app.py").read_text(encoding="utf-8")
-    assert "session_kind if session_kind in (1, 2, 3) else session_type(laps[0])" in src
+    # 2.7.1 (H1): the suffix comes from the session the review's laps are from (_one_session); the behaviour is
+    # covered end to end by test_271.test_review_with_practice_included_is_saved_as_the_session_it_reviewed
+    assert "laps, chosen_kind = _one_session(laps)" in src and '"qualifying"}.get(\n                                     chosen_kind, ""))' in src
+    assert app._one_session([{"sessionType": 1, "id": 1}])[1] == 1
     assert app.session_type({"sessionType": 1}) == 1 and app.session_type({"session_type": "practice"}) == 1
 
 

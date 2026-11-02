@@ -129,25 +129,58 @@ def _backup_sets(lib: Path) -> list:
     return sorted(sets, key=lambda d: (key(d), d.name), reverse=True)
 
 
-def backup_reviews(library_folder, version: str, log=None) -> int:
+def _backup_ok(target: Path, src: Path) -> bool:
+    """Is an existing backup copy usable? It must parse as JSON, and its size must match the source unless the
+    source has been rewritten since the copy was made (a refresh that was stopped halfway: the backup then
+    holds the review as it was before, which is the point of it, and must not be overwritten)."""
+    try:
+        json.loads(target.read_text(encoding="utf-8"))
+        ts, ss = target.stat(), src.stat()
+    except (OSError, ValueError):
+        return False
+    return ts.st_size == ss.st_size or ss.st_mtime_ns > ts.st_mtime_ns
+
+
+def _copy_atomic(src: Path, target: Path) -> None:
+    """Copy src to target through a temporary file in the target's folder, then os.replace: a copy cut
+    short (power cut, full disk) never leaves a half-written backup under the real name. Raises OSError."""
+    import shutil
+    import tempfile
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix="." + target.name + ".", suffix=".tmp", dir=str(target.parent))
+    os.close(fd)
+    try:
+        shutil.copy2(src, tmp)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def backup_reviews(library_folder, version: str, log=None, failed: set | None = None) -> int:
     """Copy every reviews/*/review.json into <library>/.backup/<version>/<review-folder>/review.json before
     the first rewrite of a new layout. version is the layout the reviews are in now (the old one), or
-    "unknown". Returns how many were copied. An existing set for that version is completed, not redone.
+    "unknown". Returns how many were copied. An existing set for that version is completed, not redone; a
+    copy in it that is damaged (doesn't parse, or the wrong size: _backup_ok) is made again. Each copy is
+    atomic (_copy_atomic). failed (a set) collects the review folders that couldn't be backed up.
     Keeps at most BACKUP_KEEP sets (the newest), pruning the rest."""
-    import shutil
     lib = Path(library_folder)
     version = _safe_version(version)
     dest = lib / BACKUP_DIR / version
     n = 0
     for p in sorted((lib / "reviews").glob("*/review.json")):
         target = dest / p.parent.name / "review.json"
-        if target.exists():
+        if target.exists() and _backup_ok(target, p):
             continue
         try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(p, target)
+            _copy_atomic(p, target)
             n += 1
         except OSError as e:
+            if failed is not None:
+                failed.add(p.parent.name)
             if log:
                 log(f"  Couldn't back up {p.parent.name}: {e}")
     try:   # the set's time is when it was (last) written, so pruning keeps the newest
@@ -237,14 +270,17 @@ def refresh_all(library_folder, log=None, should_stop=None, done=None, progress=
     done = done if done is not None else set()
     todo = sorted((lib / "reviews").glob("*/review.json"))
     total = len(todo)
+    unsafe: set = set()   # 2.7.1 (L2): review folders with no backup copy: left as they are this time
     if todo and not all(p.parent.name in done for p in todo):
         # 2.7 (M7): before the first rewrite, a copy of every review.json (the only copy of an analysed
         # review) goes to .backup/<old layout>/; restore_backup() puts it back. At most 2 sets are kept.
         try:
-            backup_reviews(lib, old_layout, log=log)
-        except Exception as e:  # noqa: BLE001  (a backup that can't be made mustn't stop the refresh)
+            backup_reviews(lib, old_layout, log=log, failed=unsafe)
+        except Exception as e:  # noqa: BLE001  (no backup at all: nothing is rewritten this time)
+            unsafe.update(p.parent.name for p in todo)
             if log:
                 log(f"  Couldn't back up the saved reviews before re-rendering: {e}")
+    skipped = 0
     if progress:
         progress(sum(1 for p in todo if p.parent.name in done), total)
     for p in todo:
@@ -252,6 +288,12 @@ def refresh_all(library_folder, log=None, should_stop=None, done=None, progress=
             continue
         if should_stop and should_stop():
             return n
+        if p.parent.name in unsafe:
+            skipped += 1
+            if log:
+                log(f"  {p.parent.name} kept as it was because it couldn't be backed up first; "
+                    "Debrief tries again next time it starts.")
+            continue
         try:
             before = p.stat().st_mtime_ns
             data = json.loads(p.read_text(encoding="utf-8"))
@@ -269,11 +311,12 @@ def refresh_all(library_folder, log=None, should_stop=None, done=None, progress=
             progress(k, total)
         if log and n and n % 25 == 0:
             log(f"  Refreshed {k} of {total} saved reviews...")
-    try:
-        lib.mkdir(parents=True, exist_ok=True)
-        atomic_write(marker, LAYOUT)
-    except OSError:
-        pass
+    if not skipped:   # 2.7.1 (L2): a review left un-refreshed keeps the layout open, so the next launch retries
+        try:
+            lib.mkdir(parents=True, exist_ok=True)
+            atomic_write(marker, LAYOUT)
+        except OSError:
+            pass
     if n or done:   # the library page once, now that every review is in the new layout (also after a resumed run)
         try:
             from . import library

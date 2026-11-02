@@ -6,8 +6,9 @@ Every row carries ``session`` from the review's meta ("Race", "Practice", "Quali
 older than 2.3). The rule, used everywhere a number is worked out ACROSS reviews:
 
   * Personal bests, progress trends, recurring weak corners, the season summary, goals and the skills
-    profile use RACE sessions only by default (``is_race``: session None or starting with "race";
-    an unknown session counts as a race, as strategy._is_race always did).
+    profile use RACE sessions only by default (``is_race`` / ``session_kind``: classified by exclusion,
+    so only a session that starts with "practice" / "open practice" / "warmup" or "qualif" / "lone qualif"
+    is left out; None, "Session", "Heat", "Feature" and anything else unknown count as a race).
   * Practice and qualifying rows are kept in the library and on the library page (the Races table
     shows them with a session chip) but don't set or compare against a personal best unless the caller
     asks: ``include_practice=True`` on list_reviews / pb_for / prep.build / profile.build, which the
@@ -262,6 +263,12 @@ def _consistency(d: dict) -> dict | None:
     return {"score": _int(c.get("score")), "label": str(c.get("label") or ""), "std": _r(c.get("std"))}
 
 
+def _exit_150(d: dict) -> bool:
+    """True for a review made before 2.7.0: it has corners but none says where its exit speed was read."""
+    cs = [c for c in (d.get("corners") or []) if isinstance(c, dict)]
+    return bool(cs) and not any("exit_at_m" in c for c in cs)
+
+
 def _skills(d: dict) -> dict | None:
     try:
         from . import skills
@@ -339,7 +346,7 @@ def _row_from(d, p: Path) -> dict | None:
         "started_at": str(m.get("started_at") or ""),
         "track": track, "track_short": short_track_name(track), "car": car,
         "combo": f"{track}|{car}",
-        "session": m.get("session"),
+        "session": row_session(m.get("session"), p.parent.name),
         "best": round(best, 3), "best_lap": (d.get("best") or {}).get("n"),
         # False when this race's best can't count for PBs/goals (all laps flagged, or a partial lap)
         "best_clean": clean_best(d) is not None,
@@ -361,17 +368,50 @@ def _row_from(d, p: Path) -> dict | None:
         # 2.3: compact skill numbers (loss per phase, per-mille of lap time) for the Skills tab; None on
         # reviews without a usable skills block (old reviews get one when the library refreshes)
         "skills": _skills(d),
+        # 2.7.1 (L4): reviews before 2.7.0 read exit speed 150 m after the apex; 2.7.0 scales it per corner
+        # (corners[].exit_at_m). Old values can't be recomputed (no traces are kept), so they are flagged.
+        "exit_150": _exit_150(d),
         "pb": None,  # filled by list_reviews (PB at the time of that race, chronologically)
     }
 
 
 # ---------------------------------------------------------------- combos + personal bests
 
+_PRACTICE_PREFIXES = ("practice", "open practice", "warmup", "warm up", "warm-up")
+_QUALIFYING_PREFIXES = ("qualif", "lone qualif")
+
+
+def session_kind(s) -> str:
+    """"practice" | "qualifying" | "race" for a review's session label. Classified by EXCLUSION (2.7.1):
+    only a label that starts with practice / open practice / warmup is practice, only one that starts with
+    qualif / lone qualif is qualifying; everything else (None, "", "Session", "Heat", "Feature", "Race 2")
+    is a race. strategy._is_race and the library page's isRace (templates/library.html) use this same rule."""
+    t = re.sub(r"\s+", " ", str(s or "")).strip().lower()
+    if t.startswith(_PRACTICE_PREFIXES):
+        return "practice"
+    if t.startswith(_QUALIFYING_PREFIXES):
+        return "qualifying"
+    return "race"
+
+
+def row_session(label, dir_name: str = ""):
+    """The session a library row shows. Reviews saved 2.1.0-2.7.0 with practice included carry the generic
+    "Session" (or nothing); their folder name still says _practice / _qualifying when that's what they were
+    (review_dir's suffix), so those stay out of race numbers. Any other label is kept as it is."""
+    if str(label or "").strip().lower() in ("", "session"):
+        n = str(dir_name or "").lower()
+        if n.endswith("_practice"):
+            return "Practice"
+        if n.endswith("_qualifying"):
+            return "Qualifying"
+    return label
+
+
 def is_race(row) -> bool:
-    """True for a race review (session None or "Race..."); False for practice / qualifying rows. The rule
-    is in the module docstring."""
+    """True for a race review; False for practice / qualifying rows (session_kind). The rule is in the
+    module docstring."""
     s = (row or {}).get("session") if isinstance(row, dict) else None
-    return s is None or str(s).strip().lower().startswith("race")
+    return session_kind(s) == "race"
 
 
 def race_rows(rows: list, include_practice: bool = False) -> list:
@@ -647,7 +687,7 @@ def _summary_from(d, p: Path) -> dict | None:
     ids = d.get("combo_ids") if isinstance(d.get("combo_ids"), dict) else {}
     laps = d.get("laps", [])
     return {"track": m.get("track"), "car": m.get("car"), "started_at": m.get("started_at"),
-            "session": m.get("session"), "best_t": (d.get("best") or {}).get("t"),
+            "session": row_session(m.get("session"), p.parent.name), "best_t": (d.get("best") or {}).get("t"),
             "n_laps": len(laps) if hasattr(laps, "__len__") else None,
             "track_id": ids.get("track_id"), "car_id": ids.get("car_id"), "clean_best": clean_best(d)}
 

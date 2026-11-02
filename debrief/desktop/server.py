@@ -950,27 +950,47 @@ class DebriefServer(ThreadingHTTPServer):
         # the page is closing (or reloading): exit in ~4 s unless a new ping arrives
         self.last_ping = time.monotonic() - self.timeout_s + 4
 
+    WATCHDOG_RESTARTS = 5         # restarts of the loop allowed within WATCHDOG_WINDOW_S ...
+    WATCHDOG_WINDOW_S = 60.0
+    WATCHDOG_RESTART_SLEEP_S = 1.0
+
     def watchdog(self):
         """Stops Debrief once the window has gone. 2.7.0 (M6): an error inside the loop used to kill this
         thread silently and leave Debrief running with no window; now it is logged and, if the window is
-        already gone, Debrief still exits."""
-        try:
-            self._watchdog_loop()
-        except Exception:  # noqa: BLE001
+        already gone, Debrief still exits. 2.7.1 (L3): with the window still open, the loop is started again
+        after a short sleep (at most WATCHDOG_RESTARTS times a minute; past that Debrief stops watching and
+        says so), so a passing error never leaves Debrief running after the window closes."""
+        restarts = []
+        while True:
             try:
-                app.say("ERROR in the window watchdog:\n" + traceback.format_exc())
+                self._watchdog_loop()
+                return
             except Exception:  # noqa: BLE001
-                pass
-            try:
-                idle = time.monotonic() - self.last_ping
-                gone = idle > self.timeout_s
-            except Exception:  # noqa: BLE001
-                gone = True
-            if gone and not self.stopping.is_set():
-                app.say("Window closed and the watchdog failed. Stopping.")
-                self.stopping.set()
-                threading.Thread(target=self.shutdown, daemon=True).start()
-                threading.Timer(5.0, self.exit, args=(0,)).start()   # even if shutdown() itself hangs
+                try:
+                    app.say("ERROR in the window watchdog:\n" + traceback.format_exc())
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    idle = time.monotonic() - self.last_ping
+                    gone = idle > self.timeout_s
+                except Exception:  # noqa: BLE001
+                    gone = True
+                if gone and not self.stopping.is_set():
+                    app.say("Window closed and the watchdog failed. Stopping.")
+                    self.stopping.set()
+                    threading.Thread(target=self.shutdown, daemon=True).start()
+                    threading.Timer(5.0, self.exit, args=(0,)).start()   # even if shutdown() itself hangs
+                    return
+                if self.stopping.is_set():
+                    return
+                now = time.monotonic()
+                restarts = [t for t in restarts if now - t < self.WATCHDOG_WINDOW_S] + [now]
+                if len(restarts) > self.WATCHDOG_RESTARTS:
+                    app.say(f"The window watchdog failed {len(restarts)} times in a minute; it has stopped. "
+                            "Close Debrief from the tray or Task Manager if it stays open after the window.")
+                    return
+                if self.stopping.wait(self.WATCHDOG_RESTART_SLEEP_S):
+                    return
 
     def _watchdog_loop(self):
         prev = time.monotonic()
@@ -1241,7 +1261,9 @@ class Handler(BaseHTTPRequestHandler):
         cfg = self._cfg()
         goals = self._module("goals")
         folder = cfg["library_folder"]
-        return self._json({"ok": True, "goals": goals.load(folder), "progress": goals.progress(folder)})
+        # 2.7.1 (M6): race sessions only, as the library page's Goals tab (library.rebuild) counts them
+        rows = library.race_rows(library.list_reviews(folder))
+        return self._json({"ok": True, "goals": goals.load(folder), "progress": goals.progress(folder, rows=rows)})
 
     def _get_profile(self, q):
         """Driver profile (skill trends) summary for the window's Skills page bar. Library data only, never a
@@ -1458,18 +1480,11 @@ class Handler(BaseHTTPRequestHandler):
 
     @staticmethod
     def scrub_diagnostics(text: str, secrets=()) -> str:
-        """A log excerpt safe to paste somewhere: the home folder becomes ~ (app.scrub_home), the saved
-        token and webhook (and any webhook-shaped address) become …, and e-mail addresses are masked."""
-        text = app.scrub_home(str(text))
-        for sec in secrets:
-            sec = str(sec or "").strip()
-            if len(sec) >= 8:
-                text = text.replace(sec, "…")
-        text = redact_webhook(text, None)
-        # "Authorization: Bearer <token>" and "token=<token>" shapes, in case a library ever logged one
-        text = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}", r"\1…", text)
-        text = re.sub(r"(?i)\b(token[\"']?\s*[:=]\s*[\"']?)[A-Za-z0-9._~+/=-]{8,}", r"\1…", text)
-        return Handler._EMAIL_RE.sub("[email]", text)
+        """A log excerpt safe to paste somewhere (app.scrub_text, 2.7.1 M5): the home folder in any form becomes
+        ~, the saved token and webhook (and any seen earlier, or any webhook-shaped address) become …, token /
+        key / password / Authorization shapes and e-mail addresses are masked, and the bare Windows user name
+        becomes [user]."""
+        return redact_webhook(app.scrub_text(str(text), secrets), None)
 
     @staticmethod
     def _tail_lines(path: Path, n: int) -> list:

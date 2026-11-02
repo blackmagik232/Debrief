@@ -1015,7 +1015,9 @@ function fillSettings(v){
   $('secretsNote').textContent=v.secrets_at_rest==='dpapi'?'Your Garage 61 token and Discord webhook are stored there encrypted to your Windows account (DPAPI), so a copied settings.toml doesn\'t hold them in the clear.':'Your Garage 61 token and Discord webhook are stored there in settings.toml. Keep that file private.';
   if(typeof v.verification_note==='string'&&v.verification_note)$('updVerify').textContent=v.verification_note;
   if(guideOn)updateGuide();
-  const st=$('tokStatus');st.textContent=v.token_saved?'Token saved (ends in '+v.token_hint+')':'No token saved yet';
+  // 2.7.1 (M1): a token saved encrypted to another Windows account (or damaged) is not "no token saved yet"
+  const unread=!v.token_saved&&!!v.token_unreadable;$('tokUnread').hidden=!unread;$('gTokUnread').hidden=!unread;
+  const st=$('tokStatus');st.textContent=v.token_saved?'Token saved (ends in '+v.token_hint+')':(unread?'Saved token can\'t be opened':'No token saved yet');
   st.className='pill '+(v.token_saved?'ok':'no');
   $('refs').value=String(v.max_reference_laps);$('prac').checked=!!v.include_practice;
   if(document.activeElement!==$('salut'))$('salut').value=typeof v.salutation==='string'?v.salutation:'';
@@ -1030,7 +1032,8 @@ function fillSettings(v){
   if(document.activeElement!==$('cardsFolder'))$('cardsFolder').value=typeof v.team_cards_folder==='string'?v.team_cards_folder:'';
   $('cardsShare').checked=!!v.share_my_cards;cardsStatus(v);
   discordSaved=!!v.discord_saved;discordHint=typeof v.discord_hint==='string'?v.discord_hint:null;
-  const dp=$('discordPill');dp.textContent=discordSaved?'Webhook saved ('+(discordHint||'…')+')':'Off';dp.className='pill'+(discordSaved?' ok':'');
+  const dUnread=!discordSaved&&!!v.discord_unreadable;$('discordUnread').hidden=!dUnread;
+  const dp=$('discordPill');dp.textContent=discordSaved?'Webhook saved ('+(discordHint||'…')+')':(dUnread?'Can\'t be opened':'Off');dp.className='pill'+(discordSaved?' ok':(dUnread?' no':''));
   $('discordCheck').hidden=!discordSaved;$('discordClear').hidden=!discordSaved;if(!discordSaved)$('discordWhere').hidden=true;
   frameBar();
 }

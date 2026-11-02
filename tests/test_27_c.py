@@ -399,12 +399,82 @@ def _browser_check(page):
         assert not errs, errs
         assert r["rows"] == 4 and "4 reviews" in r["count"] and r["pbs"] >= 1, r
         ctx.close()
+        _sandbox_check(b, page)
     finally:
         try:
             b.close()
             pw.stop()
         except Exception:  # noqa: BLE001
             pass
+
+
+def _sandbox_check(b, page):
+    """2.7.1 (M4): the page as the app serves it: over HTTP with the library CSP sandbox (opaque origin, where
+    localStorage throws). Ticking the box shows the practice rows, unticking hides them, with no reload and no
+    console errors; the flag rides in the hash and the tabs still switch."""
+    import http.server
+    import threading
+    from debrief.desktop.server import LIB_CSP
+    body = page.read_bytes()
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Security-Policy", LIB_CSP)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        ctx = b.new_context(viewport={"width": 1280, "height": 900})
+        ctx.route("**/fonts.googleapis.com/**", lambda r: r.abort())
+        ctx.route("**/fonts.gstatic.com/**", lambda r: r.abort())
+        pg = ctx.new_page()
+        errs, loads = [], []
+        pg.on("pageerror", lambda e: errs.append("pageerror: " + str(e)))
+        pg.on("console", lambda m: errs.append("console: " + m.text) if m.type == "error" and "fonts.g" not in m.text
+              and "fonts.g" not in (m.location or {}).get("url", "") else None)
+        pg.on("load", lambda: loads.append(1))
+        pg.goto(f"http://127.0.0.1:{srv.server_address[1]}/library/index.html")
+        pg.wait_for_function("() => document.querySelectorAll('#list tbody tr').length > 0", timeout=15000)
+        assert pg.evaluate("() => { try { localStorage.setItem('x', '1'); return 'stored' } catch (e) { return 'throws' } }") == "throws"
+        rows = "() => ({rows: document.querySelectorAll('#list tbody tr').length, chips: document.querySelectorAll('#list .sesschip').length," \
+               " checked: document.getElementById('incprac').checked, hash: location.hash, count: document.getElementById('count').textContent," \
+               " tab: [...document.querySelectorAll('[id^=tab-]')].filter(e => !e.hidden).map(e => e.id).join()})"
+        r = pg.evaluate(rows)
+        assert r["rows"] == 2 and r["chips"] == 0 and not r["checked"], r
+        pg.click("#incprac")
+        pg.wait_for_function("() => document.querySelectorAll('#list .sesschip').length === 2", timeout=15000)
+        r = pg.evaluate(rows)
+        assert r["rows"] == 4 and r["checked"] and r["hash"] == "#overview&incprac" and "4 reviews" in r["count"], r
+        # tabs still switch, and the flag survives a tab link (which drops it from the hash)
+        pg.click(".tabs a[data-tab=season]")
+        pg.wait_for_function("() => !document.getElementById('tab-season').hidden && location.hash === '#season&incprac'", timeout=15000)
+        pg.click(".tabs a[data-tab=overview]")
+        pg.wait_for_function("() => !document.getElementById('tab-overview').hidden", timeout=15000)
+        r = pg.evaluate(rows)
+        assert r["rows"] == 4 and r["checked"] and r["tab"] == "tab-overview", r
+        # a reload keeps the choice (it is in the hash, not in storage)
+        pg.reload()
+        pg.wait_for_function("() => document.querySelectorAll('#list tbody tr').length > 0", timeout=15000)
+        r = pg.evaluate(rows)
+        assert r["rows"] == 4 and r["checked"], r
+        n_loads = len(loads)
+        pg.click("#incprac")
+        pg.wait_for_function("() => document.querySelectorAll('#list .sesschip').length === 0", timeout=15000)
+        r = pg.evaluate(rows)
+        assert r["rows"] == 2 and not r["checked"] and "incprac" not in r["hash"] and "2 practice/qualifying hidden" in r["count"], r
+        pg.click(".tabs a[data-tab=skills]")
+        pg.wait_for_function("() => !document.getElementById('tab-skills').hidden && location.hash === '#skills'", timeout=15000)
+        assert len(loads) == n_loads, "the toggle reloaded the page"
+        assert not errs, errs
+        ctx.close()
+    finally:
+        srv.shutdown()
 
 
 def test_review_page_shows_worth_a_look_and_possibly_traffic():

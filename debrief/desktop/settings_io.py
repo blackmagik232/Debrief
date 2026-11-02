@@ -105,16 +105,54 @@ def unprotect_secret(blob_b64: str) -> str | None:
         return None
 
 
+def secret_state(raw: dict, key: str) -> tuple[str, str]:
+    """(value, state) of a saved secret. state: "ok" (value read from key_dpapi or the plain key),
+    "absent" (neither is saved; value ""), or "unreadable" (a key_dpapi blob is saved but this Windows
+    account can't open it, and there is no plain value to fall back on; value ""). 2.7.1 (M1): the Settings
+    screen tells "unreadable" apart from "absent" instead of saying no token was ever saved."""
+    prot = raw.get(key + DPAPI_SUFFIX)
+    blob = isinstance(prot, str) and bool(prot.strip())
+    if blob:
+        v = unprotect_secret(prot)
+        if v is not None and v.strip():
+            return v.strip(), "ok"
+    v = raw.get(key)
+    v = v.strip() if isinstance(v, str) else ""
+    if v:
+        return v, "ok"
+    return "", ("unreadable" if blob else "absent")
+
+
 def read_secret(raw: dict, key: str) -> str:
     """The saved value of a secret, from its protected form (key_dpapi) first, else the plain key.
-    "" when neither is there or the protected one can't be opened."""
-    prot = raw.get(key + DPAPI_SUFFIX)
-    if isinstance(prot, str) and prot.strip():
-        v = unprotect_secret(prot)
-        if v is not None:
-            return v.strip()
-    v = raw.get(key)
-    return v.strip() if isinstance(v, str) else ""
+    "" when neither is there or the protected one can't be opened (secret_state says which)."""
+    return secret_state(raw, key)[0]
+
+
+def secret_unreadable(raw: dict, key: str) -> bool:
+    return secret_state(raw, key)[1] == "unreadable"
+
+
+_LOGGED_ONCE: set = set()
+
+
+def _log_once(tag: str, msg: str) -> None:
+    """app.say(msg) the first time `tag` comes up in this process (a reload every few seconds stays quiet)."""
+    if tag in _LOGGED_ONCE:
+        return
+    _LOGGED_ONCE.add(tag)
+    try:
+        app.say(msg)
+    except Exception:  # noqa: BLE001  (a log line is never worth an error)
+        pass
+
+
+_UNREADABLE_LOG = {
+    "token": "Settings: the saved Garage 61 token (token_dpapi) can't be opened on this Windows account. "
+             "Paste it again in Settings.",
+    "discord_webhook": "Settings: the saved Discord webhook (discord_webhook_dpapi) can't be opened on this "
+                       "Windows account. Paste it again in Settings.",
+}
 
 
 def resolve_secrets(cfg: dict) -> dict:
@@ -122,10 +160,14 @@ def resolve_secrets(cfg: dict) -> dict:
     the *_dpapi entries, so the rest of the app never sees the difference."""
     for k in SECRET_KEYS:
         if k + DPAPI_SUFFIX in cfg:
-            v = read_secret(cfg, k)
+            v, state = secret_state(cfg, k)
             cfg.pop(k + DPAPI_SUFFIX, None)
             if v:
                 cfg[k] = v
+            elif state == "unreadable":
+                _log_once("unreadable:" + k, _UNREADABLE_LOG[k])
+        if isinstance(cfg.get(k), str):
+            app.remember_secret(cfg[k])   # 2.7.1 (M5): never in a shared log excerpt
     return cfg
 
 
@@ -301,6 +343,9 @@ def public_view() -> dict:
         "file_exists": app.settings_path().exists(),
         "error": err,
         "token_saved": has,
+        # 2.7.1 (M1): a token_dpapi is saved but this Windows account can't open it (not "never saved")
+        "token_unreadable": secret_unreadable(raw, "token"),
+        "discord_unreadable": secret_unreadable(raw, "discord_webhook"),
         "token_hint": ("…" + read_secret(raw, "token")[-4:]) if has else None,
         # 2.7.0: how the token and webhook are kept in settings.toml ("dpapi" on Windows, "plain" elsewhere)
         "secrets_at_rest": "dpapi" if secrets_protected() else "plain",
@@ -445,6 +490,7 @@ def _set_key(text: str, key: str, value) -> str:
 
 
 _SAVE_LOCK = threading.Lock()
+_LABEL = {"token": "Garage 61 token", "discord_webhook": "Discord webhook"}
 
 
 def _protect_writes(clean: dict, before: dict) -> dict:
@@ -461,7 +507,13 @@ def _protect_writes(clean: dict, before: dict) -> dict:
                 try:
                     out[k + DPAPI_SUFFIX] = protect_secret(v)
                 except OSError:
-                    continue            # DPAPI unavailable (an odd account): keep the plain line, as before 2.7
+                    # DPAPI unavailable (an odd account): keep the plain line, as before 2.7, and blank any
+                    # older blob, which read_secret would otherwise prefer over the value just pasted
+                    # (2.7.1, M2: the save then failed its read-back check)
+                    out[k + DPAPI_SUFFIX] = ""
+                    _log_once("protect:" + k, f"Settings: Windows couldn't encrypt the {_LABEL[k]} (DPAPI), so "
+                              "it is saved in settings.toml in the clear. Keep that file private.")
+                    continue
                 out[k] = ""
             else:
                 out[k + DPAPI_SUFFIX] = ""       # cleared: both forms go
@@ -574,6 +626,10 @@ def save(updates: dict) -> dict:
             before = app._parse_toml(text)
         except SystemExit:
             before_ok, before = False, {}
+        for k in SECRET_KEYS:   # 2.7.1 (M5): the value being replaced, and the new one, stay out of shared logs
+            if k in clean:
+                app.remember_secret(read_secret(before, k) if before_ok else "")
+                app.remember_secret(clean[k])
         lines = _protect_writes(clean, before if before_ok else {})
         for k, v in lines.items():
             text = _set_key(text, k, v)

@@ -353,8 +353,8 @@ def _day_label(row) -> str:
 
 
 def _is_race(row) -> bool:
-    s = row.get("session")
-    return s is None or str(s).strip().lower().startswith("race")
+    from .library import is_race   # one rule (library.session_kind): only practice / qualifying are left out
+    return is_race(row)
 
 
 def _review(cfg, row):

@@ -200,12 +200,108 @@ def _home_forms() -> list[str]:
     return sorted(forms, key=len, reverse=True)
 
 
+# 2.7.1 (M5): one scrubber for everything that may be shared (debrief.log via say(), Copy diagnostics).
+_SEP = r"(?:\\+|/+|%5[Cc]|%2[Ff])+"         # \, \\ (repr / JSON), /, and their URL-encoded forms
+_HOME_END = r"(?![A-Za-z0-9_~])"
+_KNOWN_SECRETS: set = set()                  # tokens / webhooks this process has seen (saved, or replaced)
+
+
+def remember_secret(value) -> None:
+    """Note a secret (a token or webhook, the current one or one just replaced) so log excerpts never show it."""
+    v = str(value or "").strip()
+    if len(v) >= 8 and not v.startswith("PASTE"):
+        _KNOWN_SECRETS.add(v)
+
+
+def _path_rx(parts: list) -> str:
+    """A regex for a path given as its segments: any slash style (\\, \\\\, /, %5C, %2F), a space as itself,
+    %20 or +."""
+    import re as _re
+    return _SEP.join(_re.escape(p).replace(r"\ ", " ").replace(" ", r"(?: |%20|\+)") for p in parts)
+
+
+def _home_patterns() -> list:
+    """(compiled regex, replacement) for the home folder in every form a log line can carry it: both slash
+    styles, doubled backslashes (a repr or JSON), URL-encoded (file:///C:/Users/Swazi%20Williams), and the
+    8.3 short name of the user's folder (C:\\Users\\SWAZIW~1)."""
+    import re as _re
+    pats, seen = [], set()
+    for h in _home_forms():
+        parts = [p for p in _re.split(r"[\\/]+", h) if p]
+        key = tuple(x.lower() for x in parts)
+        if len(parts) < 1 or key in seen:
+            continue
+        seen.add(key)
+        drive = bool(_re.match(r"^[A-Za-z]:$", parts[0]))
+        lead = "" if drive else _SEP      # /home/x: the leading slash is part of the match
+        flags = _re.IGNORECASE if os.name == "nt" or drive else 0
+        pats.append((_re.compile(lead + _path_rx(parts) + _HOME_END, flags), "~"))
+        if len(parts) >= 2:                # the user's folder as an 8.3 short name: <parent>\SWAZIW~1
+            pats.append((_re.compile(lead + _path_rx(parts[:-1]) + _SEP + r"[^\\/\s\"'<>|:*?]{1,8}~\d+" + _HOME_END,
+                                     flags), "~"))
+    return pats
+
+
+def _user_names() -> list:
+    """The Windows user name and the last segment of the home folder (3+ characters), for the backstop."""
+    import re as _re
+    names = set()
+    for v in [os.environ.get("USERNAME"), os.environ.get("USER")] + \
+             [(_re.split(r"[\\/]+", h.rstrip("\\/")) or [""])[-1] for h in _home_forms()]:
+        v = (v or "").strip()
+        if len(v) >= 3 and not _re.match(r"^[A-Za-z]:$", v):
+            names.add(v)
+    return sorted(names, key=len, reverse=True)
+
+
 def scrub_home(text: str) -> str:
     """Write "~" instead of the home folder (it holds the Windows user name), so a log can be shared."""
+    for rx, rep in _home_patterns():
+        text = rx.sub(rep, text)
+    return text
+
+
+_TOKEN_SHAPES = None
+
+
+def _token_shapes():
+    global _TOKEN_SHAPES
+    if _TOKEN_SHAPES is None:
+        import re as _re
+        val = r"[A-Za-z0-9._~+/=%-]{6,}"
+        _TOKEN_SHAPES = [
+            # Authorization: Basic|Bearer|Token <value>  (the scheme is kept, the credentials go)
+            (_re.compile(r"(?i)(authorization[\"']?\s*[:=]\s*[\"']?(?:basic|bearer|token|digest)?\s*)" + val), r"\1…"),
+            (_re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}"), r"\1…"),
+            # token=..., access_token=..., "api_key": "...", password: ...  (no word boundary needed)
+            (_re.compile(r"(?i)((?:token|secret|key|auth|password|passwd)[\"']?\s*[:=]\s*[\"']?)" + val), r"\1…"),
+            # "token <long value with a digit>" (a library's own error message quoting it)
+            (_re.compile(r"(?i)((?:token|secret|password)\s+)(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]{16,}"), r"\1…"),
+            (_re.compile(r"(?i)(discord(?:app)?\.com/api/webhooks/\d+/)[A-Za-z0-9_-]+"), r"\1…"),
+            (_re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "[email]"),
+        ]
+    return _TOKEN_SHAPES
+
+
+def scrub_text(text: str, secrets=(), names: bool = True) -> str:
+    """Everything in `text` that could identify or let someone in, taken out before it is shared: the home
+    folder in every form (scrub_home), the given secrets and every one this process has seen (remember_secret),
+    token / key / password / Authorization shapes, Discord webhook tokens and e-mail addresses. names=True
+    also replaces the bare Windows user name (whole word, any case) with [user], as a backstop."""
     import re as _re
-    for h in _home_forms():
-        flags = _re.IGNORECASE if os.name == "nt" or _re.match(r"^[A-Za-z]:", h) else 0
-        text = _re.sub(_re.escape(h) + r"(?=[\\/]|$|[\s'\")\],;:])", "~", text, flags=flags)
+    text = scrub_home(str(text))
+    for sec in sorted({str(x or "").strip() for x in list(secrets) + list(_KNOWN_SECRETS)}, key=len, reverse=True):
+        if len(sec) >= 8:
+            text = _re.sub(_re.escape(sec), "…", text, flags=_re.IGNORECASE)
+            tail = sec.rstrip("/").rsplit("/", 1)[-1]   # a webhook's token on its own
+            if tail != sec and len(tail) >= 20:
+                text = text.replace(tail, "…")
+    for rx, rep in _token_shapes():
+        text = rx.sub(rep, text)
+    if names:
+        for n in _user_names():
+            text = _re.sub(r"(?<![A-Za-z0-9])" + _path_rx([n]) + r"(?![A-Za-z0-9])", "[user]", text,
+                           flags=_re.IGNORECASE)
     return text
 
 
@@ -231,7 +327,7 @@ def say(msg):
         except (OSError, ValueError):
             pass
     if LOG_FILE:
-        line = scrub_home(str(msg)) + "\n"
+        line = scrub_text(str(msg), names=False) + "\n"
         with _LOG_LOCK:
             _rotate_log(LOG_FILE)
             try:
@@ -585,6 +681,27 @@ def find_last_event(api, sessions, cache_dir=None, library_folder=None):
     return g(best, "event"), _id(g(best, "track_id", "trackId", "track")), _id(g(best, "car_id", "carId", "car"))
 
 
+def session_label(kind) -> str:
+    """meta.session for a review of laps of this session type: Practice / Qualifying, else Race (a race
+    session or an unknown type both count as a race, as library.session_kind classifies them)."""
+    return {1: "Practice", 2: "Qualifying"}.get(kind, "Race")
+
+
+def _one_session(laps):
+    """(laps, kind): the laps of ONE session. An event searched with practice included can return its
+    practice, qualifying and race laps together; the review is of the race when the event has one, else of
+    the session of the newest lap. kind is 1 / 2 / 3, or None when the laps don't say (counted as a race)."""
+    kinds = {session_type(l) for l in laps}
+    if len(kinds) <= 1:
+        return laps, next(iter(kinds), None)
+    if 3 in kinds:
+        pick = 3
+    else:
+        dated = [l for l in laps if lap_start_dt(l)]
+        pick = session_type(max(dated, key=lap_start_dt)) if dated else session_type(laps[-1])
+    return [l for l in laps if session_type(l) == pick], pick
+
+
 TEL_FAIL_RUN = 3   # telemetry downloads failing in a row before the review stops asking (as sync.TEL_FAIL_RUN)
 TEL_GIVING_UP = "Garage 61 isn't sending telemetry right now; reviewing with the laps already downloaded"
 TEL_NONE_MSG = ("Garage 61 isn't sending telemetry right now, and none of this race's laps had been downloaded "
@@ -637,6 +754,7 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
         if keys:
             say(f"  Lap fields seen: {', '.join(keys)}")
         raise SystemExit("That session has no laps for you." if session_kind else "That event has no race laps for you.")
+    laps, chosen_kind = _one_session(laps)
     car, track = g(laps[0], "car_id", "carId", "car"), g(laps[0], "track_id", "trackId", "track")
     car_name, track_name = name_of(api, "car", car), name_of(api, "track", track)
     timed = [l for l in laps if lap_time(l)]
@@ -652,8 +770,10 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
         try:
             csv = api.lap_csv(g(l, "id"))
         except Garage61Error as e:
-            if getattr(e, "fatal", False) or getattr(e, "status", None) == 401 or e.status is None:
-                raise   # the token was rejected, or Garage 61 can't be reached at all: nothing else will work
+            if getattr(e, "fatal", False) or getattr(e, "status", None) == 401:
+                raise   # the token was rejected: nothing else will work
+            # 2.7.1 (M3): "can't reach Garage 61" (status None) counts toward the breaker like any other
+            # failure, so a dropped connection mid-review finishes with the laps already downloaded
             run_fail += 1
             skipped += 1
             say(f"  Telemetry for lap {g(l, 'id')} failed: {e}")
@@ -662,6 +782,8 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
                 if tel:
                     step(TEL_GIVING_UP)
                     break
+                if getattr(e, "status", None) is None:
+                    raise   # offline with nothing downloaded: the plain "can't reach Garage 61" message
                 raise SystemExit(TEL_NONE_MSG)
             continue
         run_fail = 0
@@ -679,12 +801,17 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     # never a partial lap (the 7 s "lap" at the finish line) or a pit lap: that would pick nonsense refs
     my_best = full_lap_best(with_tel) or min(lap_time(l) for l in with_tel)
     step("Looking for comparison laps from your teammates and followed drivers...", 0.72)
-    refs = pick_refs(api, _id(car), _id(track), my_best, slug, cfg["max_reference_laps"])
-    ref_tel = {}
-    for r in refs:
-        csv = api.lap_csv(g(r, "id"))
-        if csv:
-            ref_tel[g(r, "id")] = csv
+    refs, ref_tel = [], {}
+    try:
+        refs = pick_refs(api, _id(car), _id(track), my_best, slug, cfg["max_reference_laps"])
+        for r in refs:
+            csv = api.lap_csv(g(r, "id"))
+            if csv:
+                ref_tel[g(r, "id")] = csv
+    except Garage61Error as e:
+        if getattr(e, "fatal", False) or getattr(e, "status", None) == 401:
+            raise
+        say(f"  Comparison laps failed: {e}")   # 2.7.1 (M3): the review goes on with what it has
     refs = [r for r in refs if g(r, "id") in ref_tel]
     step(f"  {len(refs)} comparison lap(s) with telemetry." if refs else
          "  No comparison laps (follow a few drivers in this car on Garage 61 to get some).", 0.8)
@@ -707,8 +834,9 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
         step("  Multi-class race: laps that lost time to traffic will be left out of your pace numbers.")
     meta = {"driver": my_name, "event_id": event_id, "car": car_name, "track": track_name,
             "started_at": min(starts).isoformat() if starts else "",
-            "session": {1: "Practice", 2: "Qualifying", 3: "Race"}.get(sessions[0], "Session")
-                       if len(sessions) == 1 else "Session",
+            # 2.7.1 (H1): from the laps actually reviewed, never "Session" (which the library used to read as
+            # not-a-race, so "Review my last race" with practice included vanished from PBs and trends)
+            "session": session_label(chosen_kind),
             # how the review addresses you (settings: salutation); empty = neutral
             "salutation": normalise_salutation(cfg.get("salutation", "")),
             "multiclass": multiclass,
@@ -734,7 +862,7 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     # a practice or qualifying review of the same event gets its own folder, next to the race's
     out_dir = library.review_dir(cfg["library_folder"], laps, track_name, car_name,
                                  suffix={1: "practice", 2: "qualifying"}.get(
-                                     session_kind if session_kind in (1, 2, 3) else session_type(laps[0]), ""))
+                                     chosen_kind, ""))
     # personal-best check against earlier reviews of this track and car (no Garage 61 requests)
     try:
         data["pb"] = library.pb_for(cfg["library_folder"], data, exclude_dir=out_dir.name)

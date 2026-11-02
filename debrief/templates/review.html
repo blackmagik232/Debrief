@@ -1622,12 +1622,13 @@ safe('your race',()=>{const int=(v,lo,hi)=>typeof v==='number'&&Number.isInteger
   const moments={};const add=(lap,kind,text)=>{if(!lap)return;(moments[lap]=moments[lap]||[]).push({kind,text})};
   list('passes').forEach(p=>add(p.lap,p.made?'made':'lost',(p.made?'You passed ':'Passed by ')+String(p.other)+pfor(p.for_position)+otherWords(p)+(p.stuck?'':', swapped straight back')));
   list('incidents').forEach(i=>{const l=num(i.places_lost)?i.places_lost:0;add(i.lap,'incident',(Array.isArray(i.what)&&i.what.length?i.what.join(', '):'Incident')+(Array.isArray(i.others)&&i.others.length?' with '+i.others.join(', '):'')+(l>0?', '+l+' places lost':l<0?', '+(-l)+' places gained':'')+(i.out?', out of the race':''))});
-  list('pits').forEach(p=>add(p.lap,'pit','Pit stop, '+p.seconds+' s in the lane'));
+  list('pits').forEach(p=>add(p.lap,'pit',p.seconds+' s in the pits'));
   list('fights').forEach(f=>{if((f.seconds||0)>=15)add(f.lap_from,'fight','Fight with '+String(f.other)+pfor(f.for_position)+', '+Math.round(f.seconds||0)+' s'+(num(f.closest_s)?(f.closest_s<0.01?', side by side at the closest':', closest '+f.closest_s.toFixed(2)+' s'):''))});
   // verdict and timeline
   if(typeof R.verdict==='string'&&R.verdict)$('rlVerdict').textContent=R.verdict;
   const COL={made:'var(--good,#2e9e4f)',lost:'var(--bad,#c8312f)',incident:'#e07b00',pit:'#7b4fb0'};
-  const STATE={start:'Opening lap',pit:'Pit lap',incident:'Incident',fight:'Fighting',close:'Close to another car',clear:'Clear air'};
+  const STATE={start:'Opening lap',pit:'Pit lap',incident:'Incident',fight:'Racing another car',close:'Close to another car',clear:'Clear air',unknown:'Not known'};
+  const V2=num(R.version)&&R.version>=2;if(!V2)$('rlLede').dataset.old='1';
   const pos=laps.filter(x=>num(x.pos));
   const detail=n=>{const host=$('rlLapDetail');host.replaceChildren();const r=laps.find(x=>x.lap===n);if(!r)return;
     const head=h('p');head.append(h('b',null,'Lap '+n),document.createTextNode((num(r.pos)?' · P'+r.pos:'')+(num(r.t)?' · '+fmt(r.t):'')+' · '+(STATE[r.state]||'')));host.append(head);
@@ -1654,12 +1655,12 @@ safe('your race',()=>{const int=(v,lo,hi)=>typeof v==='number'&&Number.isInteger
     $('rlLapDetail').append(h('p','note','Choose a lap on the chart to see what happened on it.'))}
   // racecraft
   $('racelog').hidden=false;$('jumpRaceLog').hidden=false;
-  $('rlLede').textContent='From a replay scan of race '+String(R.subsession||'')+'. '+(R.official?'The finish is from the official results.':'Positions are the order on the road, not official results.')+' Positions are overall, across every class. Passes and fights cover the cars near yours, because iRacing only gives live data for cars near the replay camera. Lap numbers here are race laps.';
+  $('rlLede').textContent='From a replay scan of race '+String(R.subsession||'')+'. '+(R.official?'The finish is from the official results.':'Positions are the order on the road, not official results.')+' Positions are overall, across every class. Passes and fights cover the cars near yours, because iRacing only gives live data for cars near the replay camera. Lap numbers here are race laps.'+(V2?'':' This was linked with an older version: scan or link it again for corrected positions.');
   const chips=$('rlChips');const chip=t=>chips.append(h('span','chip',t));const C=isObj(R.craft)?R.craft:{};
-  if(R.start_type)chip(R.start_type==='rolling'?'Rolling start':'Standing start');if(R.grid)chip('Started P'+R.grid);if(R.pos_after_lap1)chip('P'+R.pos_after_lap1+' after lap 1');
+  if(R.start_type)chip(R.start_type==='rolling'?'Rolling start':'Standing start');if(V2&&R.grid)chip('Started P'+R.grid);if(V2&&R.pos_after_lap1)chip('P'+R.pos_after_lap1+' after lap 1');
   if(R.finish)chip('Finished P'+R.finish+(R.official?'':' on the road'));
   const onT=list('passes').filter(p=>p.how==='on track'&&p.lap>1);chip(onT.filter(p=>p.made).length+' on-track passes after lap 1');chip(onT.filter(p=>!p.made).length+' suffered');if(R.ended)chip(String(R.ended));
-  const P=isObj(R.pit_cost)?R.pit_cost:{};const st=Array.isArray(P.stops)?P.stops.filter(isObj):[];if(st.length){$('rlPitPanel').hidden=false;const ul=h('ul','rcsum');st.forEach(s=>ul.append(h('li',null,'Lap '+s.lap+': '+s.seconds+' s in the lane'+(int(s.before,1,500)&&int(s.after,1,500)?', P'+s.before+' to P'+s.after+' around it':''))));$('rlPits').append(h('p',null,'Total: '+Math.floor(P.total_s/60)+' min '+Math.round(P.total_s%60)+' s'),ul)}
+  const P=isObj(R.pit_cost)?R.pit_cost:{};const st=Array.isArray(P.stops)?P.stops.filter(isObj):[];if(st.length){$('rlPitPanel').hidden=false;const ul=h('ul','rcsum');st.forEach(s=>ul.append(h('li',null,'Lap '+s.lap+': '+(s.kind==='tow'?'looks like a tow or reset, then '+s.seconds+' s in the pits':s.kind==='drive'?s.seconds+' s through the pit lane, no stop':s.seconds+' s in the pit lane')+(int(s.before,1,500)&&int(s.after,1,500)?', P'+s.before+' to P'+s.after+' around it':''))));$('rlPits').append(h('p',null,'Total: '+Math.floor(P.total_s/60)+' min '+Math.round(P.total_s%60)+' s'),ul)}
   const pc=list('pass_corners');if(pc.length){$('rlCornerPanel').hidden=false;const ul=h('ul','rcsum');pc.forEach(c=>ul.append(h('li',null,String(c.corner)+': '+c.made+' made, '+c.lost+' suffered')));$('rlCorners').append(ul)}
   const tc=list('traffic_check');if(tc.length){$('rlTrafficPanel').hidden=false;tc.forEach(t=>$('rlTraffic').append(h('li',null,(t.review_lap?'Your lap '+t.review_lap+' (race lap '+t.lap+'): ':'Lap '+t.lap+': ')+String(t.text||''))))}
   const so=$('rlStories');list('stories').forEach(s=>{const p=h('div','panel');p.append(h('h3',null,String(s.title||'')));const ul=h('ul','rcsum');(Array.isArray(s.beats)?s.beats:[]).filter(isObj).forEach(b=>ul.append(h('li',null,(b.lap?'Lap '+b.lap+': ':'')+String(b.text||''))));p.append(ul);so.append(p)});

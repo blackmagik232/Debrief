@@ -18,6 +18,11 @@ LONG_STOP_S = 60.0
 SETTLE_S = 8.0        # iRacing's position reading settles this long after the line
 MAX_GAP_S = 60.0
 MIN_PEER_LAPS = 5
+PASS_WINDOW_S = 8.0
+PASS_NEAR = 0.1       # a tenth of a lap: closer than this on both sides for a swap to be a pass
+TOW_JUMP = 0.03
+NEAR_FIGHT_S = 5.0    # this long within a second of a car counts as racing it
+NEAR_CLEAR_S = 2.0
 
 
 def _num(v):
@@ -75,10 +80,10 @@ def positions(samples, car) -> list:
     """iRacing's own running position at the end of each lap, for this car. It settles a few seconds after the line, and
     it's the one position every car always has: the scan's lap order leaves out cars away from the replay camera."""
     idx = car.get("car_idx")
-    if not samples or idx not in (samples.get("idxs") or []):
+    if not samples or idx not in (samples.get("idxs") or []) or not samples.get("samples"):
         return []
     col = samples["idxs"].index(idx)
-    rows = samples.get("samples") or []
+    rows = samples["samples"]
     times = [r[0] for r in rows]
     out = []
     for n, t in sorted(_cross(car).items()):
@@ -91,6 +96,88 @@ def positions(samples, car) -> list:
         if isinstance(p, int) and p > 0:
             out.append({"lap": n, "pos": p})
     return out
+
+
+def _valid(v):
+    return isinstance(v, (int, float)) and 0 <= v <= 1
+
+
+def _wrapped(a, b):
+    d = (a - b) % 1.0
+    return d - 1.0 if d > 0.5 else d
+
+
+def real_pass(samples, my_idx, other_idx, t, made) -> bool | None:
+    """Did the two cars really swap on track around t? None when the readings can't say. A swap seen only in the
+    estimated order, with the cars a third of a lap apart throughout, isn't a pass."""
+    idxs = (samples or {}).get("idxs") or []
+    if my_idx not in idxs or other_idx not in idxs:
+        return None
+    a, b = idxs.index(my_idx), idxs.index(other_idx)
+    rows = samples.get("samples") or []
+    times = [r[0] for r in rows]
+    leads = {"before": [], "after": []}
+    for k in range(bisect.bisect_left(times, t - PASS_WINDOW_S), bisect.bisect_right(times, t + PASS_WINDOW_S)):
+        p = rows[k][2] or []
+        if a < len(p) and b < len(p) and _valid(p[a]) and _valid(p[b]) and abs(rows[k][0] - t) >= 0.5:
+            leads["before" if rows[k][0] < t else "after"].append(_wrapped(p[a], p[b]))
+    if not leads["before"] or not leads["after"]:
+        return None
+    x, y = leads["before"][-1], leads["after"][0]
+    close = abs(x) < PASS_NEAR and abs(y) < PASS_NEAR
+    return close and (x < 0 < y if made else y < 0 < x)
+
+
+def position_at(samples, idx, t):
+    idxs = (samples or {}).get("idxs") or []
+    if idx not in idxs or not samples.get("samples"):
+        return None
+    rows = samples["samples"]
+    k = min(bisect.bisect_left([r[0] for r in rows], t), len(rows) - 1)
+    p = (rows[k][5] or [None] * len(idxs))[idxs.index(idx)]
+    return p if isinstance(p, int) and p > 0 else None
+
+
+def stop_kind(samples, idx, p) -> str:
+    """"tow" when the car appears in its stall from elsewhere on the track, "drive" for no stationary time, else "stop"."""
+    idxs = (samples or {}).get("idxs") or []
+    t = _num(p.get("in"))
+    if idx in idxs and t is not None and samples.get("samples"):
+        col = idxs.index(idx)
+        rows = samples["samples"]
+        k = bisect.bisect_left([r[0] for r in rows], t)
+        here = next((rows[j][2][col] for j in range(k, min(k + 6, len(rows))) if rows[j][2] and _valid(rows[j][2][col])), None)
+        prev = next((rows[j][2][col] for j in range(k - 1, max(k - 40, -1), -1) if rows[j][2] and _valid(rows[j][2][col]) and not (rows[j][4] or [0] * (col + 1))[col]), None)
+        if here is not None and prev is not None and abs(_wrapped(here, prev)) > TOW_JUMP:
+            return "tow"
+    return "drive" if not (_num(p.get("stationary_s")) or 0) and (_num(p.get("seconds")) or 0) < 60 else "stop"
+
+
+def _near_cars(samples, me_car, by_idx, t0, t1, lap_s):
+    """(seconds with a car within a second of yours, its name) over part of a lap, from all readings, not just the next car in the order."""
+    idxs = (samples or {}).get("idxs") or []
+    idx = me_car.get("car_idx")
+    if idx not in idxs or t0 is None or t1 is None or not lap_s:
+        return None, None
+    me = idxs.index(idx)
+    rows = samples["samples"]
+    times = [r[0] for r in rows]
+    span = FIGHT_GAP / lap_s
+    seen = {}
+    total = 0.0
+    lo, hi = bisect.bisect_left(times, t0), bisect.bisect_right(times, t1)
+    for k in range(lo, hi):
+        p, pit = rows[k][2] or [], rows[k][4] or []
+        if me >= len(p) or not _valid(p[me]) or (me < len(pit) and pit[me]):
+            continue
+        step = times[k] - times[k - 1] if k else 0.0
+        near = [i for i, v in enumerate(p) if i != me and _valid(v) and abs(_wrapped(v, p[me])) < span and not (i < len(pit) and pit[i])]
+        if near:
+            total += step
+            for i in near:
+                seen[i] = seen.get(i, 0.0) + step
+    name = (by_idx.get(idxs[max(seen, key=seen.get)]) or {}).get("name") if seen else None
+    return total, name
 
 
 def _neighbours(samples, me_car, n, t, by_idx, cross):
@@ -119,8 +206,8 @@ def _neighbours(samples, me_car, n, t, by_idx, cross):
             by_idx[b].get("name") if b is not None else None, gap(b, -1) if b is not None else None)
 
 
-def _state(n, a_gap, b_gap, spans, pits, incidents, fights):
-    """Clear air means no car with a known gap inside CLEAR_GAP: a car that close is always in view of the camera."""
+def _state(n, a_gap, b_gap, near_s, pits, incidents, fights):
+    """From every car in view during the lap. Without readings, it's unknown, never clear air."""
     if n == 1:
         return "start"
     if any(p <= n <= q for p, q in pits):
@@ -128,9 +215,11 @@ def _state(n, a_gap, b_gap, spans, pits, incidents, fights):
     if n in incidents:
         return "incident"
     near = [g for g in (a_gap, b_gap) if g is not None and g >= 0]
-    if any(g < FIGHT_GAP for g in near) or n in fights:
+    if any(g < FIGHT_GAP for g in near) or n in fights or (near_s or 0) >= NEAR_FIGHT_S:
         return "fight"
-    if all(g >= CLEAR_GAP for g in near):
+    if near_s is None:
+        return "unknown"
+    if near_s < NEAR_CLEAR_S and all(g >= CLEAR_GAP for g in near):
         return "clear"
     return "close"
 
@@ -169,10 +258,10 @@ def build(scan: dict, me_car: dict, rc: dict, data: dict, samples: dict | None =
     lap_map = align_laps(data.get("laps"), me_car)
     back = {v: k for k, v in lap_map.items()}
     pit_spans = []
-    for p in scan.get("pit_stops") or []:
-        if isinstance(p, dict) and str((p.get("car") or {}).get("number")) == me:
-            a, b = _lap_between(cross[me], p.get("in")), _lap_between(cross[me], p.get("out"))
-            pit_spans.append((a, b))
+    idx = me_car.get("car_idx")
+    my_stops = [p for p in scan.get("pit_stops") or [] if isinstance(p, dict) and str((p.get("car") or {}).get("number")) == me]
+    for p in my_stops:
+        pit_spans.append((_lap_between(cross[me], p.get("in")), _lap_between(cross[me], p.get("out"))))
     incident_laps = {i.get("lap") for i in rc.get("incidents") or []}
     fight_laps = set()
     for f in rc.get("fights") or []:
@@ -184,9 +273,10 @@ def build(scan: dict, me_car: dict, rc: dict, data: dict, samples: dict | None =
     pos_at = {x["lap"]: x["pos"] for x in rc.get("positions") or []}
     for n in sorted(set(mine) | {x for x in cross[me] if x >= 1}):
         a_n, a_g, b_n, b_g = _neighbours(samples, me_car, n, cross[me].get(n), by_idx, cross)
-        rows.append({"lap": n, "review_lap": back.get(n), "t": _r(mine.get(n), 3), "pos": pos_at.get(n),
+        near_s, near_name = _near_cars(samples, me_car, by_idx, cross[me].get(n - 1), cross[me].get(n), mine.get(n)) if samples else (None, None)
+        rows.append({"lap": n, "review_lap": back.get(n), "t": _r(mine.get(n), 3), "pos": pos_at.get(n), "near_s": _r(near_s, 1), "near": near_name,
                      "ahead": a_n, "gap_ahead": _r(a_g), "behind": b_n, "gap_behind": _r(b_g),
-                     "state": _state(n, a_g, b_g, None, pit_spans, incident_laps, fight_laps)})
+                     "state": _state(n, a_g, b_g, near_s, pit_spans, incident_laps, fight_laps)})
     # After a long stop (repairs) the car may not be the same car, so clear air against fighting is only compared before it
     long_stop = min((a for (a, _b), p in zip(pit_spans, [x for x in scan.get("pit_stops") or [] if isinstance(x, dict) and str((x.get("car") or {}).get("number")) == me])
                      if (_num(p.get("seconds")) or 0) > LONG_STOP_S and a), default=None)
@@ -200,7 +290,7 @@ def build(scan: dict, me_car: dict, rc: dict, data: dict, samples: dict | None =
     pace.update(_peers(cars, me_car, me, best, pace["typical"]))
     corners = [c for c in data.get("corners") or [] if isinstance(c, dict)]
     return {"lap_map": {str(k): v for k, v in lap_map.items()}, "matched": len(lap_map), "review_laps": len(data.get("laps") or []),
-            "laps": rows, "pace": pace, "pit_cost": _pits(rc, rows), "incident_cost": _incidents(rc, rows, clear),
+            "laps": rows, "pace": pace, "pit_cost": _pits(rc, samples, idx, my_stops), "incident_cost": _incidents(rc, rows, clear),
             "pass_corners": _pass_corners(rc, corners, data, _pct_lookup(samples, me_car.get("car_idx"))),
             "corner_context": _corner_context(corners, lap_map, {r["lap"]: r["state"] for r in comparable}),
             "craft": _craft(rc), "verdict": _verdict(rc, rows, pace, scan)}
@@ -243,16 +333,15 @@ def _peers(cars, me_car, me, best, typical):
     return out
 
 
-def _pits(rc, rows):
-    pos = {r["lap"]: r["pos"] for r in rows if r["pos"]}
+def _pits(rc, samples, idx, stops):
     out = []
-    for p in rc.get("pits") or []:
-        lap = p.get("lap") or 0
-        before = next((pos[n] for n in range(lap - 1, 0, -1) if n in pos), None)
-        after = next((pos[n] for n in range(lap + 1, lap + 6) if n in pos), None)
-        out.append({"lap": lap, "seconds": p.get("seconds"), "before": before, "after": after,
+    for p, row in zip(stops, rc.get("pits") or []):
+        a, b = _num(p.get("in")), _num(p.get("out"))
+        before = position_at(samples, idx, a - 3) if a is not None else None
+        after = position_at(samples, idx, b + SETTLE_S) if b is not None else None
+        out.append({"lap": row.get("lap"), "seconds": row.get("seconds"), "kind": stop_kind(samples, idx, p), "before": before, "after": after,
                     "places": after - before if before and after else None})
-    return {"stops": out, "total_s": _r(sum(p.get("seconds") or 0 for p in rc.get("pits") or []), 1)}
+    return {"stops": out, "total_s": _r(sum(x.get("seconds") or 0 for x in rc.get("pits") or []), 1)}
 
 
 def _incidents(rc, rows, clear):
@@ -325,13 +414,18 @@ def _clock(s):
 def _verdict(rc, rows, pace, scan) -> str:
     bits = []
     grid, fin = rc.get("grid"), rc.get("finish")
+    where = "." if rc.get("official") else " on the road."
     if grid and fin:
-        bits.append(f"P{grid} to P{fin}" + ("." if rc.get("official") else " on the road."))
+        bits.append(f"P{grid} to P{fin}" + where)
+    elif fin:
+        bits.append(f"Finished P{fin}" + where)
     total = sum(p.get("seconds") or 0 for p in rc.get("pits") or [])
     laps = scan.get("laps")
     done = max((r["lap"] for r in rows), default=None)
     if total >= 60:
-        bits.append(f"{_clock(total)} in the pits over {len(rc['pits'])} stops" + (f", and {done} of {laps} laps completed." if laps and done and done < laps else "."))
+        bits.append(f"{_clock(total)} in the pits" + (f", {done} of {laps} laps completed." if laps and done and done < laps else "."))
+    elif laps and done and done < laps:
+        bits.append(f"{done} of {laps} laps completed.")
     v = pace.get("vs_peers")
     if v is not None:
         who = pace.get("peer_label")

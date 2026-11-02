@@ -202,11 +202,15 @@ def build(scan: dict, me_car: dict, subsession, official: dict | None = None, co
     # positions come only from iRacing's own reading at the line (race_analysis.positions).
     known = lambda t, v: None  # noqa: E731
     all_passes = [p for p in scan.get("passes") or [] if isinstance(p, dict) and isinstance(p.get("time"), (int, float))]
+    from . import race_analysis
+    by_number = {str(c.get("number")): c.get("car_idx") for c in scan.get("cars") or [] if isinstance(c, dict)}
     mine = []
     for p in sorted(all_passes, key=lambda x: x["time"]):
         a, b = str((p.get("passer") or {}).get("number")), str((p.get("passed") or {}).get("number"))
         if me not in (a, b):
             continue
+        if samples and race_analysis.real_pass(samples, me_car.get("car_idx"), by_number.get(b if a == me else a), p["time"], a == me) is not True:
+            continue        # the replay's readings don't show these two cars swapping on track
         back = any(str((q.get("passer") or {}).get("number")) == b and str((q.get("passed") or {}).get("number")) == a
                    and 0 < q["time"] - p["time"] <= STUCK_S for q in all_passes)
         mine.append({"t": _r(p["time"], 2), "lap": lap(p["time"]), "made": a == me, "other": _who(p.get("passed" if a == me else "passer")),
@@ -230,11 +234,13 @@ def build(scan: dict, me_car: dict, subsession, official: dict | None = None, co
         incidents.append({"t": _r(i.get("from")), "lap": i.get("lap") or lap(i.get("from") or 0), "level": i.get("level"),
                           "what": sorted((you.get("what") or {}).keys()), "others": [_who(c) for c in cs if c is not you],
                           "places_lost": you.get("places_lost"), "out": bool(you.get("out_of_race"))})
-    pits = [{"t": _r(p.get("in")), "lap": p.get("lap"), "seconds": _r(p.get("seconds"), 1)} for p in scan.get("pit_stops") or []
+    pits = [{"t": _r(p.get("in")), "lap": lap(p.get("in") or 0), "seconds": _r(p.get("seconds"), 1)} for p in scan.get("pit_stops") or []
             if isinstance(p, dict) and str((p.get("car") or {}).get("number")) == me]
-    from . import race_analysis
     positions = race_analysis.positions(samples, me_car)
-    grid, finish = me_car.get("grid"), me_car.get("finish")
+    # The scan's grid only ranks the cars it could read at the green, so it isn't a position unless every car was read
+    racing = [c for c in scan.get("cars") or [] if isinstance(c, dict) and not c.get("never_on_track")]
+    grid = me_car.get("grid") if racing and all(c.get("grid") or c.get("pit_lane_start") for c in racing) else None
+    finish = me_car.get("finish")
     is_official = False
     if official:
         fin = [str(x) for x in official.get("finish") or []]
@@ -253,7 +259,7 @@ def build(scan: dict, me_car: dict, subsession, official: dict | None = None, co
                      "pit_stops": len(scan.get("pit_stops") or [])}}
     by_lap = {x["lap"]: x["pos"] for x in positions}
     for i in incidents:         # places from iRacing's positions either side of the lap, not from the mid-lap estimate
-        before = by_lap.get((i["lap"] or 1) - 1, grid if (i["lap"] or 1) == 1 else None)
+        before = by_lap.get((i["lap"] or 1) - 1) if (i["lap"] or 1) > 1 else grid      # no position exists before the first line
         after = next((by_lap[n] for n in range((i["lap"] or 1) + 1, (i["lap"] or 1) + 3) if n in by_lap), by_lap.get(i["lap"]))
         i["places_lost"] = after - before if isinstance(before, int) and isinstance(after, int) else None
     out["stories"] = stories(out)
@@ -339,9 +345,12 @@ def traffic_check(rc: dict, counts: dict | None, lap_map: dict | None = None) ->
             continue
         seen = [f"fighting {f['other']}" for f in rc["fights"] if (f.get("lap_from") or 0) <= n <= (f.get("lap_to") or 0)]
         seen += [("passing " if p["made"] else "passed by ") + p["other"] for p in rc["passes"] if p["lap"] == n]
+        row = next((r for r in rc.get("laps") or [] if r.get("lap") == n), {})
+        if not seen and (row.get("near_s") or 0) >= 2 and row.get("near"):
+            seen = [f"within a second of {row['near']} for {row['near_s']:.0f} s"]
         seen = list(dict.fromkeys(seen))[:3]
         out.append({"lap": n, "review_lap": yours, "confirmed": bool(seen), "text": ("The replay shows you " + " and ".join(seen) + ".") if seen
-                    else "The replay shows no fight or pass of yours on this lap, so traffic is less likely; it can't rule out a car you didn't race."})
+                    else "The replay shows no car close to you on this lap, so a mistake is more likely than traffic."})
     return out
 
 
@@ -467,7 +476,7 @@ def refresh_saved(library_folder, data: dict) -> bool:
         return False
     scan = read_scan(own)
     car = find_me(scan["cars"], meta.get("driver")) if scan else None
-    if car is None:
+    if car is None or read_samples(own) is None:     # never swap a good log for a poorer one
         return False
     attach(data, {"dir": own, "subsession": str(scan.get("subsession")), "scan": scan, "car": car, "official": read_official(own, scan.get("subsession"))})
     return True

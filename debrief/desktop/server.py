@@ -373,7 +373,7 @@ def design_tokens() -> str:
 JOB_TITLES = {"review": "Reviewing your last race", "check": "Checking the connection",
               "prep": "Building your track prep page", "team": "Updating the team hub",
               "sync": "Syncing your Garage 61 history", "schedule": "Loading the iRacing season schedule",
-              "update": "Updating Debrief", "weekly": "Updating this week's team leaderboards"}
+              "scan": "Scanning the replay", "update": "Updating Debrief", "weekly": "Updating this week's team leaderboards"}
 BACKGROUND_TITLES = {"refresh": "Updating your saved reviews to the new page layout"}
 
 
@@ -386,6 +386,7 @@ class Jobs:
         self.seq = 0
         self.st = {"state": "idle"}
         self.stop_sync = threading.Event()
+        self.stop_scan = threading.Event()
         self.thread = None
         self.on_update_started = None   # set by the server: close Debrief so the installer can replace it
         self.closing = False            # set while Debrief closes for an update: no new jobs
@@ -446,6 +447,7 @@ class Jobs:
             if self.st.get("kind") != "sync":
                 return False
             self.stop_sync.set()
+            self.stop_scan.set()
             t = self.thread
         if t is not None:
             t.join(wait_s)
@@ -494,6 +496,8 @@ class Jobs:
             jid = self.seq
             if kind == "sync":
                 self.stop_sync.clear()
+            if kind == "scan":
+                self.stop_scan.clear()
             self.thread = threading.Thread(target=self._run, args=(kind, jid, dict(params or {})), daemon=True,
                                            name=f"job-{kind}")
             self.thread.start()
@@ -509,7 +513,7 @@ class Jobs:
                 msg = str(msg)
                 self.st["message"] = msg.strip()
                 # per-lap telemetry ticks update the message only; real steps go in the list
-                if not msg.startswith(("Telemetry for lap ", "Telemetry for session ")):
+                if not msg.startswith(("Telemetry for lap ", "Telemetry for session ", "Scanning replay: ")):
                     self.st["steps"].append(msg.strip())
                     del self.st["steps"][:-60]
         return cb
@@ -526,6 +530,14 @@ class Jobs:
                                       session_kind=params.get("session_type"), track_id=params.get("track_id"),
                                       car_id=params.get("car_id"))
                 result = {"review": Path(page).parent.name}
+            elif kind == "scan":
+                from .. import replay_scan
+                try:
+                    api = app.make_api(cfg)
+                except (SystemExit, Exception):  # noqa: BLE001  (a scan never needs Garage 61)
+                    api = None
+                result = replay_scan.for_review(cfg["library_folder"], params["review_path"], api=api, progress=cb,
+                                                should_stop=self.stop_scan.is_set)
             elif kind == "sync":
                 result = {"sync": app.cmd_sync(cfg, progress=cb, should_stop=self.stop_sync.is_set)}
             elif kind == "prep":
@@ -1700,6 +1712,16 @@ class Handler(BaseHTTPRequestHandler):
             if not self._token_saved():
                 return self._json({"ok": False, "error": FINISH_SETUP, "setup": True}, 400)
             return self._json(self.server.jobs.start("review", params))
+        if r == "api/replay-scan":
+            try:
+                d = self._review_dir(self._cfg(), body.get("review"))
+            except ValueError as e:
+                return self._json({"ok": False, "error": str(e)}, 400)
+            return self._json(self.server.jobs.start("scan", {"review_path": str(d)}))
+        if r == "api/replay-scan-stop":
+            if self.server.jobs.kind == "scan":
+                self.server.jobs.stop_scan.set()
+            return self._json({"ok": True})
         if r == "api/sync":
             return self._post_sync(body)
         if r == "api/sync-stop":

@@ -60,6 +60,7 @@
         <span class="pill" id="fbPill" hidden></span>
         <button type="button" class="btn" id="fbResult" hidden>Add race result</button>
         <button type="button" class="btn" id="fbMarkers" hidden title="A marker file for DaVinci Resolve">Resolve markers</button>
+        <button type="button" class="btn" id="fbScan" hidden title="Add the race log by scanning this race's replay in iRacing">Scan this race</button>
         <button type="button" class="btn" id="fbRaceCap" hidden title="Add the race log from RaceCap's replay scan">Link RaceCap</button>
         <button type="button" class="btn" id="fbDiscord" hidden>Post to Discord</button>
         <button type="button" class="btn" id="fbPrep" hidden>Pick another track</button>
@@ -134,6 +135,7 @@
       <h1 id="jobTitle">Reviewing your last race</h1>
       <div class="progress"><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="jobBar"><i></i></div><span class="pct num" id="jobPct">0%</span></div>
       <p class="now" id="jobNow">Starting...</p>
+      <div class="row"><button type="button" class="btn" id="jobStop" hidden>Stop scan</button></div>
       <div class="callout err" id="jobErr" hidden>
         <h3 id="jobErrTitle">The review stopped</h3>
         <p id="jobErrMsg"></p>
@@ -462,6 +464,14 @@
     <p class="note">Debrief asks Garage 61 which RaceCap race this is. If it can't tell, type the race ID (the number at the start of the race's folder in RaceCap).</p>
     <label class="field" for="linkSub"><span>Race ID (optional)</span><input id="linkSub" type="text" inputmode="numeric" maxlength="12"></label>
     <div class="row"><button type="submit" class="btn primary" id="linkGo">Link</button><span class="msg" id="linkMsg" role="status"></span></div>
+  </form>
+</dialog>
+<dialog id="dlgScan" aria-labelledby="scanTitle">
+  <form id="fScan" method="dialog" autocomplete="off">
+    <div class="phead"><h3 id="scanTitle">Scan this race</h3><button type="button" class="btn ghost" id="scanClose">Close</button></div>
+    <p class="note">Load this race's replay in iRacing first. Debrief fast-forwards through the race once, usually a few minutes, and records nothing. It adds a race log of every pass, fight, incident and pit stop to this review.</p>
+    <p class="note">No OBS or recording is needed. Just leave iRacing alone until it finishes. Your replay goes back to where it was.</p>
+    <div class="row"><button type="submit" class="btn primary" id="scanGo">Start scan</button><span class="msg" id="scanMsg" role="status"></span></div>
   </form>
 </dialog>
 <dialog id="dlgHelp" aria-labelledby="helpTitle">

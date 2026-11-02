@@ -735,10 +735,16 @@ def _stepper(progress):
 def _racecap_race(cfg, api, event_id, track_name, laps, my_name):
     """The race folder in RaceCap's library for this review, or None. Only with a folder in Settings; never fatal."""
     folder = str(cfg.get("racecap_library") or "").strip()
-    if not folder:
-        return None
     try:
-        from . import racecap_link
+        from . import racecap_link, replay_scan
+        own = replay_scan.find_for_event(cfg["library_folder"], event_id)
+        if own is not None:     # a scan Debrief made itself for this event: no requests, no RaceCap needed
+            scan = racecap_link.read_scan(own)
+            car = racecap_link.find_me(scan["cars"], my_name) if scan else None
+            if car is not None:
+                return {"dir": own, "subsession": str(scan.get("subsession")), "scan": scan, "car": car, "official": None}
+        if not folder:
+            return None
         starts = [dt for dt in (lap_start_dt(l) for l in laps) if dt]
         found, why = racecap_link.prepare(folder, event_id, track_name, min(starts).isoformat() if starts else "", my_name,
                                           api, log=say)

@@ -164,7 +164,7 @@ function frameBar(){
   bar.hidden=!want;if(!want)return;
   $('fbResult').hidden=v!=='review';$('fbPrep').hidden=v!=='prepPage';$('fbTeam').hidden=v!=='teamPage';$('fbWeekly').hidden=v!=='teamPage';
   $('fbDiscord').hidden=v!=='review'||!discordSaved;
-  $('fbMarkers').hidden=v!=='review';$('fbRaceCap').hidden=v!=='review'||!racecapOn;
+  $('fbMarkers').hidden=v!=='review';$('fbRaceCap').hidden=v!=='review'||!racecapOn;$('fbScan').hidden=v!=='review';
   const pill=$('fbPill');pill.hidden=true;$('fbBar').hidden=true;
   if(v==='skills'){const p=profileInfo,rf=p&&p.refreshing;
     $('fbText').textContent=!p?'Driver profile':
@@ -243,8 +243,8 @@ async function loadReviews(){
 }
 
 /* ---------- jobs: review / prep / team share the progress screen; check stays in Settings */
-const TITLES0={weekly:'Updating this week\'s team leaderboards',update:'Updating Debrief',sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
-const STOPPED={weekly:'The leaderboard refresh stopped',update:'The update stopped',review:'The review stopped',prep:'The prep page stopped',team:'The team refresh stopped'};
+const TITLES0={scan:'Scanning the replay',weekly:'Updating this week\'s team leaderboards',update:'Updating Debrief',sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
+const STOPPED={scan:'The scan stopped',weekly:'The leaderboard refresh stopped',update:'The update stopped',review:'The review stopped',prep:'The prep page stopped',team:'The team refresh stopped'};
 const TITLES=Object.assign({},TITLES0);   // the review title can change per job; TITLES0 keeps the defaults
 let handled=new Set(),polling=false,lastJob=null,lastStart=null;
 async function startJob(kind,body){
@@ -252,7 +252,7 @@ async function startJob(kind,body){
     if(lastJob.kind===kind&&kind!=='check')openJob();
     else banner('Debrief is busy: '+(lastJob.title||TITLES[lastJob.kind]||'a job').toLowerCase()+'. Wait for it to finish.',true);
     return false}
-  let r;try{r=await post(kind,body)}catch(e){connectionLost();return false}
+  let r;try{r=await post(kind==='scan'?'replay-scan':kind,body)}catch(e){connectionLost();return false}
   if(!r.ok){banner(r.error||'Could not start.',true);return false}
   if(lastJob&&lastJob.kind==='sync'&&lastJob.state==='running')banner('History sync paused for this. It carries on next time.');
   lastStart={kind,body};lastJob={state:'running',kind,id:r.id};
@@ -275,6 +275,7 @@ $('btnReview').addEventListener('click',startReview);
 
 function resetJobView(kind){
   if(kind==='review'&&!(lastJob&&lastJob.title))TITLES.review=TITLES0.review;   // a plain "Review last race" never keeps an earlier job's title
+  $('jobStop').hidden=kind!=='scan';$('jobStop').disabled=false;
   $('jobTitle').textContent=TITLES[kind]||'Working';$('jobErrTitle').textContent=STOPPED[kind]||'It stopped';
   $('jobEyebrow').textContent='Working';$('jobErr').hidden=true;$('jobSteps').replaceChildren();
   $('jobNow').textContent='Starting...';setBar(0);$('jobBar').parentElement.className='progress';
@@ -309,6 +310,7 @@ function render(s){
     const ol=$('jobSteps');const steps=s.steps||[];
     if(ol.children.length!==steps.length){ol.replaceChildren(...steps.map(t=>h('li',null,t)));ol.scrollTop=ol.scrollHeight}
     if(s.state==='running')$('jobEyebrow').textContent='Working';
+    if(s.state!=='running')$('jobStop').hidden=true;
     if(s.state==='error'&&!handled.has(s.id)){handled.add(s.id);
       $('jobEyebrow').textContent='Stopped';$('jobErrMsg').textContent=s.error;$('jobErr').hidden=false;
       $('jobBar').parentElement.className='progress fail';
@@ -316,7 +318,8 @@ function render(s){
     if(s.state==='done'&&!handled.has(s.id)){handled.add(s.id);
       $('jobEyebrow').textContent='Done';$('jobBar').parentElement.className='progress done';
       const stay=current.view==='job';  // only jump to the result if the person is still watching
-      if(s.kind==='review')loadReviews().then(()=>{if(s.result&&s.result.review){if(stay)openReview(s.result.review);banner('Review ready.')}});
+      if(s.kind==='scan'){loadReviews().then(()=>{if(s.result&&s.result.review){if(stay)openReview(s.result.review);else reloadFrame();banner('Race log added from the replay'+(s.result.confirmed?'.':'. Garage 61 couldn\'t confirm it\'s the same race, so check the names look right.'),false,9000)}})}
+      else if(s.kind==='review')loadReviews().then(()=>{if(s.result&&s.result.review){if(stay)openReview(s.result.review);banner('Review ready.')}});
       else loadPages().then(()=>{const team=s.kind==='team'||s.kind==='weekly';
         if(s.result&&s.result.page){if(stay)openPage(s.result.page,team?'teamPage':'prepPage');
         banner(s.kind==='weekly'?'This week\'s leaderboards updated'+(ok(s.result.requests)?' ('+s.result.requests+' Garage 61 request'+(s.result.requests===1?'':'s')+').':'.'):
@@ -1002,6 +1005,10 @@ $('fRaceCap').addEventListener('submit',async e=>{e.preventDefault();setMsg('rca
   if(!r.ok){setMsg('rcapMsg',r.error,'bad');return}fillSettings(r.settings);frameBar();setMsg('rcapMsg','Saved.','ok')});
 function openDlg(d){if(d.showModal)d.showModal();else d.setAttribute('open','')}
 function closeDlg(d){if(d.close)d.close();else d.removeAttribute('open')}
+$('fbScan').addEventListener('click',()=>{setMsg('scanMsg','');openDlg($('dlgScan'))});
+$('scanClose').addEventListener('click',()=>closeDlg($('dlgScan')));
+$('fScan').addEventListener('submit',async e=>{e.preventDefault();const dir=current.dir;if(!dir)return;closeDlg($('dlgScan'));startJob('scan',{review:dir})});
+$('jobStop').addEventListener('click',async()=>{$('jobStop').disabled=true;$('jobNow').textContent='Stopping and putting the replay back...';try{await post('replay-scan-stop')}catch(e){}});
 $('fbRaceCap').addEventListener('click',()=>{$('linkSub').value='';setMsg('linkMsg','');openDlg($('dlgLink'));$('linkSub').focus()});
 $('linkClose').addEventListener('click',()=>closeDlg($('dlgLink')));
 $('fLink').addEventListener('submit',async e=>{e.preventDefault();const dir=current.dir;if(!dir)return;setMsg('linkMsg','Looking...');$('linkGo').disabled=true;let r;
@@ -1019,7 +1026,7 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
  words:[['Clean lap','A full lap Garage 61 didn\'t flag: no incident and not a pit lap.'],['Typical lap','The middle of your clean laps. Half were quicker, half slower.'],
   ['Comparison lap','A lap by a teammate, a followed driver or, with RaceCap, a rival, that yours are measured against.'],['Best sectors added up','Your best time through each part of the track, added together. A guide, not a lap you must be able to drive.'],
   ['Brake point','Where on the track you first brake.'],['Apex','The slowest point of a corner, near the inside.'],['Coasting','Time with neither pedal pressed.'],['Stint','A run of laps between pit stops.'],
-  ['Possibly traffic','A lap lost time in one short stretch your other laps didn\'t. It could be another car or a mistake.'],['Race log','Passes, fights, incidents and pit stops from a RaceCap replay scan.'],
+  ['Possibly traffic','A lap lost time in one short stretch your other laps didn\'t. It could be another car or a mistake.'],['Race log','Passes, fights, incidents and pit stops from a replay scan. Press Scan this race on a review, or link a scan from RaceCap.'],
   ['On the road','The order the cars crossed the line in the replay. The iRacing results are the official order.'],['Rolling or standing start','Whether the field was moving at the green flag.'],
   ['Resolve markers','A file DaVinci Resolve imports to mark your race\'s moments on a timeline.']],
  keys:[['Ctrl+R','Review last race'],['Ctrl+,','Settings'],['Tab','Move to the next button or chart'],['Arrow keys','Move along a chart that has focus'],['Esc','Close a window like this one']]};

@@ -43,7 +43,7 @@ _on_disk = sorted("debrief." + ".".join(p.relative_to(PKG).with_suffix("").parts
 _missing = [m for m in _on_disk if m not in hiddenimports]
 if _missing:
     print(f"collect_submodules missed {_missing}; adding them by name")
-hiddenimports = sorted(set(hiddenimports) | set(_on_disk))
+hiddenimports = sorted(set(hiddenimports) | set(_on_disk) | {"irsdk", "yaml"})
 for _must in ("debrief.prep", "debrief.goals", "debrief.results", "debrief.team", "debrief.sync",
               "debrief.schedule", "debrief.series", "debrief.notes", "debrief.prepare", "debrief.updater", "debrief.insights",
               "debrief.technique_plus", "debrief.skills", "debrief.session_review", "debrief.profile",

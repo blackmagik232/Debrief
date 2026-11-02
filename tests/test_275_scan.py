@@ -42,7 +42,7 @@ def review(session="Race", driver="J Williams", track="Test Track"):
     d = lib / "reviews" / "r1"
     d.mkdir(parents=True)
     data = {"meta": {"driver": driver, "track": track, "car": "F4", "session": session, "event_id": "EV1", "started_at": "2026-11-02T00:00:00+00:00"},
-            "laps": [{"n": n, "t": 84.0, "clean": True} for n in range(1, 7)], "best": {"n": 1, "t": 84.0}, "median": 84.0, "corners": [], "style": {}, "counts": {"traffic": [3]}}
+            "laps": [{"n": n, "t": 84.5, "clean": True} for n in range(1, 6)], "best": {"n": 1, "t": 84.5}, "median": 84.5, "corners": [], "style": {}, "counts": {"traffic": [3]}}
     report.write(d, data)
     return lib, d
 
@@ -164,7 +164,7 @@ if __name__ == "__main__":
             try:
                 fn()
                 print("ok", k)
-            except Exception:  # noqa: BLE001
+            except (Exception, SystemExit):  # noqa: BLE001
                 import traceback
                 fails += 1
                 traceback.print_exc()

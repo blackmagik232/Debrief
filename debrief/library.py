@@ -305,6 +305,14 @@ def _row(p: Path) -> dict | None:
     return _row_from(json.loads(p.read_text(encoding="utf-8")), p)
 
 
+def _racecap(d: dict) -> dict | None:
+    try:
+        from . import profile
+        return profile.racecap_row(d)
+    except Exception:  # noqa: BLE001  (an odd scan must never lose the review from the library)
+        return None
+
+
 def _row_from(d, p: Path) -> dict | None:
     if not isinstance(d, dict):
         return None
@@ -372,6 +380,9 @@ def _row_from(d, p: Path) -> dict | None:
         # 2.7.1 (L4): reviews before 2.7.0 read exit speed 150 m after the apex; 2.7.0 scales it per corner
         # (corners[].exit_at_m). Old values can't be recomputed (no traces are kept), so they are flagged.
         "exit_150": _exit_150(d),
+        # compact replay-scan numbers for the racecraft profile, the track prep brief and the weekly digest
+        "racecap": _racecap(d),
+        "driver": str(m.get("driver") or ""),
         "pb": None,  # filled by list_reviews (PB at the time of that race, chronologically)
     }
 
@@ -717,7 +728,7 @@ def season_summary(rows: list, include_practice: bool = False) -> dict:
 # missing or damaged index, another Debrief version or time zone) is worked out again and the index is
 # rewritten atomically. Losing the index only costs one slow scan.
 INDEX_FILE = ".rows.json"
-INDEX_VERSION = 1
+INDEX_VERSION = 2   # 2: rows gained "racecap" (the Skills tab's racecraft profile) and "driver"
 RACY_NS = 3_000_000_000   # entries for files changed less than 3 s before they were read are re-read
 _INDEX_LOCK = __import__("threading").Lock()
 
@@ -892,7 +903,14 @@ def rebuild(folder, rows: list | None = None) -> Path:
         import logging
         logging.getLogger("debrief.library").exception("Skill profile failed: %s", e)
         sk = None
-    extra = {"goals": gp, "season": season_summary(rows), "skills": sk,
+    try:
+        from . import discord
+        digest = discord.digest(rows)
+    except Exception as e:  # a digest problem must never stop the library page
+        import logging
+        logging.getLogger("debrief.library").exception("Weekly digest failed: %s", e)
+        digest = None
+    extra = {"goals": gp, "season": season_summary(rows), "skills": sk, "digest": digest,
              "sessions_rule": "Personal bests, progress, weak corners, the season summary, goals and the skills "
                               "profile count race sessions only; practice and qualifying reviews are listed but "
                               "don't set or compare against a personal best unless you tick \"Include practice "

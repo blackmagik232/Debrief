@@ -446,6 +446,29 @@ td.d b{color:var(--ink);font-weight:600}
 .phase .row b{font-family:var(--mono);color:var(--ink);font-weight:600}
 </style>
 
+<style media="all">
+/* Save as PDF (the browser's print path): light colours, no controls, nothing hover-only, charts kept whole */
+@media print{
+:root{--bg:#fff!important;--panel:#fff!important;--ink:#111!important;--ink2:#333!important;--muted:#555!important;--line:#ccc!important;--axis:#999!important;--band:#f4f4f4!important;--track:#e4e4e4!important;--hi:#eef3fb!important;--a:#1f6cc4!important;--b:#b8461a!important;--mid:#bbb!important;--pb:#6250d6!important;--pbbg:#ece9fb!important;--warn:#7a5000!important;--good:#0a7a2f!important;--bad:#b02a2a!important;--bt:#b8461a!important;--on-a:#fff!important;--h1:#e6effb!important;--h7:#0d366b!important;--shadow:none!important;color-scheme:light}
+@page{margin:12mm}
+/* tall grids overlap across a page break when printed */
+.wrap,.tabpane,body>section,.wrap>section,.tabpane>section,section,.fbody{display:block!important}
+section,.fspark{margin-bottom:16px}
+.tabpane[hidden],section[hidden]{display:none!important}
+.hidden{display:none!important}
+html,body{background:#fff!important;color:#111!important}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-shadow:none!important;animation:none!important;transition:none!important}
+nav,dialog,#tip,#readout,#toast,#srLive,.controls,.progctl .controls,button:not(.sktile),select,input,details:not([open]){display:none!important}
+.jump,header,.panel,.tablewrap,.chart{position:static!important}
+.tablewrap,.chart{overflow:visible!important}
+.chart{height:auto!important;min-height:0!important;max-height:none!important;display:block!important}
+.panel,.stat,.sktile,figure,svg,tr{break-inside:avoid}
+h2,h3,.sechead{break-after:avoid}
+svg,canvas,img{max-width:100%!important;height:auto}
+a{color:inherit!important;text-decoration:none!important}
+#dgcard{display:none!important}
+}
+</style>
 </head><body>
 <div class="wrap">
 <header>

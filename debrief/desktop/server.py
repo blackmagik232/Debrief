@@ -1784,7 +1784,9 @@ class Handler(BaseHTTPRequestHandler):
             # while the saved-review refresh rewrites every review.json, each one looks newer than the page:
             # show the page as it is (refresh_all rebuilds it once at the end) unless there isn't one yet
             refreshing = self.server.jobs.background_running("refresh")
-            if not idx.exists() or (idx.stat().st_mtime < newest and not refreshing):
+            # the page holds "the last 7 days" (the digest), so a page from an earlier day is rebuilt too
+            stale_day = idx.exists() and datetime.fromtimestamp(idx.stat().st_mtime).date() != datetime.now().date()
+            if not idx.exists() or ((idx.stat().st_mtime < newest or stale_day) and not refreshing):
                 try:
                     library.rebuild(lib)
                 except Exception:  # noqa: BLE001

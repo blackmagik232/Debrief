@@ -190,6 +190,11 @@ def test_rival_lap_goes_through_the_real_analysis_and_page_data():
     json.loads((out / "review.json").read_text(encoding="utf-8"))
 
 
+def test_digest_post_button_can_show_on_season():
+    js = (ROOT / "debrief/desktop/ui/app.js").read_text(encoding="utf-8")
+    assert "(v==='season'&&discordSaved)" in js and "(v!=='review'&&v!=='season')||!discordSaved" in js
+
+
 def test_markers_exact_and_approximate():
     s = scan()
     d = {"meta": {"track": "Test Track"}, "racecap": rl.build(s, s["cars"][1], 555)}

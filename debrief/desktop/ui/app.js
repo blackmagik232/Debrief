@@ -194,7 +194,7 @@ function welcome(){
 let pages={team:null,prep:[]},resultFor={dir:null,result:null},racecapOn=false;
 function frameBar(){
   const v=current.view,bar=$('frameBar');
-  const want=v==='review'||v==='prepPage'||v==='teamPage'||v==='skills'||v==='sample'||v==='goalCharts';
+  const want=v==='review'||(v==='season'&&discordSaved)||v==='prepPage'||v==='teamPage'||v==='skills'||v==='sample'||v==='goalCharts';
   bar.hidden=!want;if(!want)return;
   $('fbResult').hidden=v!=='review';$('fbPrep').hidden=v!=='prepPage';$('fbTeam').hidden=v!=='teamPage';$('fbWeekly').hidden=v!=='teamPage';
   $('fbDiscord').hidden=(v!=='review'&&v!=='season')||!discordSaved;
@@ -215,6 +215,7 @@ function frameBar(){
     $('fbText').textContent=r?'Race result saved':'Add your finishing position, incidents and iRating to this race.';
     $('fbResult').textContent=r?'Edit race result':'Add race result';
     if(r&&ok(r.finish_pos)){pill.hidden=false;pill.className='pill ok';pill.textContent='P'+r.finish_pos+(ok(r.field_size)?' of '+r.field_size:'')}}
+  if(v==='season')$('fbText').textContent='Post this week\'s digest after checking the preview. Nothing posts until you press Post.';
   if(v==='prepPage')$('fbText').textContent='Track prep page';
   if(v==='teamPage')$('fbText').textContent='Team hub'+(pages.team_updated?' · updated '+fmtWhen(pages.team_updated):'');
 }

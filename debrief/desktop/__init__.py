@@ -21,7 +21,7 @@ from .. import app
 
 # Feature modules the window loads by name (app.optional_module / lazy imports). The selftest imports
 # each one, so a build that leaves one out fails in CI instead of on someone's PC.
-FEATURE_MODULES = ("engine", "report", "library", "prep", "goals", "results", "team", "sync",
+FEATURE_MODULES = ("race_analysis", "racecap_link", "replay_scan", "results_csv", "markers", "depth", "engine", "report", "library", "prep", "goals", "results", "team", "sync",
                    "analysis_plus", "schedule", "series", "notes", "prepare", "updater", "insights",
                    # 2.3 "Know your driving"
                    "technique_plus", "skills", "session_review", "profile",

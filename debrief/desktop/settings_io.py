@@ -7,6 +7,14 @@ the page only learns whether each one is saved.
 The Discord webhook (2.5) is a secret too: its address carries a token. The page gets only
 discord_saved and discord_hint ("…1234", the end of the webhook id, never the token), and only
 discord_webhook() below hands the address to the server's Discord endpoints.
+
+At rest (2.7.0 "Trust", H3): on Windows both secrets are wrapped with DPAPI (CryptProtectData, tied to
+the Windows account) and written as token_dpapi = "<base64>" and discord_webhook_dpapi = "<base64>", so
+a copied settings.toml, a backup or a sync folder never holds them in the clear. load_settings() reads
+either form (a plaintext token or discord_webhook from an older install still works); the first save
+after the upgrade rewrites the plaintext key in the protected form. Off Windows (the tests, a source
+checkout on Linux) the plain keys are kept: there is no DPAPI there. See secrets_protected() for the
+source-checkout-on-Windows case.
 """
 from __future__ import annotations
 
@@ -29,6 +37,115 @@ _WEBHOOK_RE = re.compile(r"^https://(?:(?:ptb|canary)\.)?discord(?:app)?\.com/ap
 BAD_WEBHOOK = ("That isn't a Discord webhook address. In Discord: channel settings > Integrations > Webhooks > "
                "Copy Webhook URL.")
 MAX_FOLDER = 400
+
+# ---------------------------------------------------------------- secrets at rest (DPAPI)
+SECRET_KEYS = ("token", "discord_webhook")
+DPAPI_SUFFIX = "_dpapi"
+_DPAPI_ENTROPY = b"Debrief settings v1"      # ties the blob to Debrief, not just to the Windows account
+CRYPTPROTECT_UI_FORBIDDEN = 0x01
+
+
+def dpapi_available() -> bool:
+    """True on Windows, where CryptProtectData exists (ctypes, no extra package)."""
+    return os.name == "nt"
+
+
+def secrets_protected() -> bool:
+    """Write secrets in the DPAPI form? Yes in the installed app on Windows (the only way the app runs for
+    people), and from source on Windows when DEBRIEF_PROTECT_SECRETS=1. A source checkout keeps the plain
+    keys: `python -m debrief` (app.py) reads settings.toml straight and doesn't load this module, so a
+    protected token would look missing to it; and the test-suite's settings files are plain by design.
+    Reading the protected form works everywhere this module is loaded, whatever this says."""
+    if not dpapi_available():
+        return False
+    return bool(app.FROZEN) or os.environ.get("DEBRIEF_PROTECT_SECRETS") == "1"
+
+
+def _dpapi_call(protect: bool, data: bytes) -> bytes:
+    import ctypes
+    from ctypes import wintypes
+
+    class DATA_BLOB(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+    def blob(b: bytes):
+        buf = ctypes.create_string_buffer(b, len(b))
+        return DATA_BLOB(len(b), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))), buf
+    crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    inp, _keep = blob(data)
+    ent, _keep2 = blob(_DPAPI_ENTROPY)
+    out = DATA_BLOB()
+    fn = crypt32.CryptProtectData if protect else crypt32.CryptUnprotectData
+    ok = fn(ctypes.byref(inp), None, ctypes.byref(ent), None, None, CRYPTPROTECT_UI_FORBIDDEN, ctypes.byref(out))
+    if not ok:
+        raise OSError(ctypes.get_last_error() or 0, "DPAPI call failed")
+    try:
+        return ctypes.string_at(out.pbData, out.cbData)
+    finally:
+        kernel32.LocalFree(out.pbData)
+
+
+def protect_secret(value: str) -> str:
+    """A secret as it is written to settings.toml on Windows: base64 of its DPAPI blob. Raises OSError."""
+    import base64
+    return base64.b64encode(_dpapi_call(True, value.encode("utf-8"))).decode("ascii")
+
+
+def unprotect_secret(blob_b64: str) -> str | None:
+    """The secret back from a *_dpapi value; None if it can't be read (another Windows account, a
+    corrupted value, or not Windows at all)."""
+    import base64
+    try:
+        raw = base64.b64decode(str(blob_b64 or "").strip(), validate=True)
+        if not raw or not dpapi_available():
+            return None
+        return _dpapi_call(False, raw).decode("utf-8")
+    except (ValueError, OSError, UnicodeDecodeError, AttributeError):
+        return None
+
+
+def read_secret(raw: dict, key: str) -> str:
+    """The saved value of a secret, from its protected form (key_dpapi) first, else the plain key.
+    "" when neither is there or the protected one can't be opened."""
+    prot = raw.get(key + DPAPI_SUFFIX)
+    if isinstance(prot, str) and prot.strip():
+        v = unprotect_secret(prot)
+        if v is not None:
+            return v.strip()
+    v = raw.get(key)
+    return v.strip() if isinstance(v, str) else ""
+
+
+def resolve_secrets(cfg: dict) -> dict:
+    """For app.load_settings: fill cfg["token"] / cfg["discord_webhook"] from the protected keys and drop
+    the *_dpapi entries, so the rest of the app never sees the difference."""
+    for k in SECRET_KEYS:
+        if k + DPAPI_SUFFIX in cfg:
+            v = read_secret(cfg, k)
+            cfg.pop(k + DPAPI_SUFFIX, None)
+            if v:
+                cfg[k] = v
+    return cfg
+
+
+def _install_loader() -> None:
+    """Make app.load_settings() hand out the secrets whichever form they are saved in. app.py itself
+    reads TOML only, so the protected keys are resolved here, once, when the desktop app loads this module
+    (the server imports it before anything asks for settings). Idempotent."""
+    orig = getattr(app, "load_settings", None)
+    if orig is None or getattr(orig, "_debrief_resolves_secrets", False):
+        return
+
+    def load_settings():
+        return resolve_secrets(orig())
+    load_settings.__doc__ = orig.__doc__
+    load_settings.__wrapped__ = orig
+    load_settings._debrief_resolves_secrets = True
+    app.load_settings = load_settings
+
+
+_install_loader()
 
 
 def expand_folder(v: str) -> str:
@@ -76,7 +193,7 @@ def _raw() -> tuple[dict, str | None]:
 
 
 def token_present(raw: dict) -> bool:
-    t = str(raw.get("token") or "").strip()
+    t = read_secret(raw, "token")
     return bool(t) and not t.startswith(PLACEHOLDER_PREFIX)
 
 
@@ -151,7 +268,7 @@ def webhook_hint(url: str) -> str:
 
 
 def _saved_webhook(raw: dict) -> str | None:
-    v = str(raw.get("discord_webhook") or "").strip()
+    v = read_secret(raw, "discord_webhook")
     return v if v and webhook_valid(v) else None
 
 
@@ -159,6 +276,16 @@ def discord_webhook() -> str | None:
     """The saved webhook address, for the server's Discord endpoints only. Never send it to the page or a log."""
     raw, _err = _raw()
     return _saved_webhook(raw)
+
+
+def _verification() -> tuple[str, str]:
+    """(updater.verification_level(), the Settings > Updates sentence for it)."""
+    try:
+        from .. import updater
+        return updater.verification_level(), updater.verification_note()
+    except Exception:  # noqa: BLE001  (never let the updater module keep Settings from opening)
+        return "checksum", ("Updates are checked by SHA-256 checksum. Signed updates switch on once a signing "
+                            "key is published.")
 
 
 def public_view() -> dict:
@@ -174,7 +301,9 @@ def public_view() -> dict:
         "file_exists": app.settings_path().exists(),
         "error": err,
         "token_saved": has,
-        "token_hint": ("…" + str(raw["token"]).strip()[-4:]) if has else None,
+        "token_hint": ("…" + read_secret(raw, "token")[-4:]) if has else None,
+        # 2.7.0: how the token and webhook are kept in settings.toml ("dpapi" on Windows, "plain" elsewhere)
+        "secrets_at_rest": "dpapi" if secrets_protected() else "plain",
         "max_reference_laps": 3,
         "include_practice": False,
         "sync_on_open": bool(raw.get("sync_on_open", True)),
@@ -193,6 +322,9 @@ def public_view() -> dict:
         # 2.5 Discord webhook: saved or not, and the end of the webhook id. Never the address or its token.
         "discord_saved": False,
         "discord_hint": None,
+        # 2.7.0 (H1): what an update is checked against before it installs, in the window's own words
+        "verification_level": _verification()[0],
+        "verification_note": _verification()[1],
     }
     hook = _saved_webhook(raw)
     if hook:
@@ -315,6 +447,34 @@ def _set_key(text: str, key: str, value) -> str:
 _SAVE_LOCK = threading.Lock()
 
 
+def _protect_writes(clean: dict, before: dict) -> dict:
+    """The lines to write for the validated updates. On Windows a secret goes out as key_dpapi (its DPAPI
+    blob) and the plain key is blanked; a plain secret left by an older version is rewritten the same way
+    on this save, whatever was changed. Off Windows the plain keys are written as before."""
+    out = dict(clean)
+    if not secrets_protected():
+        return out
+    for k in SECRET_KEYS:
+        if k in out:
+            v = out[k]
+            if v:
+                try:
+                    out[k + DPAPI_SUFFIX] = protect_secret(v)
+                except OSError:
+                    continue            # DPAPI unavailable (an odd account): keep the plain line, as before 2.7
+                out[k] = ""
+            else:
+                out[k + DPAPI_SUFFIX] = ""       # cleared: both forms go
+        elif isinstance(before.get(k), str) and before.get(k).strip() and \
+                not str(before.get(k)).startswith(PLACEHOLDER_PREFIX):
+            try:
+                out[k + DPAPI_SUFFIX] = protect_secret(str(before[k]).strip())
+            except OSError:
+                continue
+            out[k] = ""
+    return out
+
+
 def save(updates: dict) -> dict:
     """Apply validated updates to settings.toml, keeping every other line as it was.
     Raises ValueError with a friendly message on bad input."""
@@ -411,15 +571,17 @@ def save(updates: dict) -> dict:
         text = p.read_text(encoding="utf-8-sig") if p.exists() else _example_text()
         before_ok = True
         try:
-            app._parse_toml(text)
+            before = app._parse_toml(text)
         except SystemExit:
-            before_ok = False
-        for k, v in clean.items():
+            before_ok, before = False, {}
+        lines = _protect_writes(clean, before if before_ok else {})
+        for k, v in lines.items():
             text = _set_key(text, k, v)
         if before_ok:
             after = app._parse_toml(text)  # raises SystemExit if our edit broke the file (it shouldn't)
             # every change must read back as a top-level setting with the new value, or nothing is saved
-            if any(after.get(k) != v for k, v in clean.items()):
+            if any(after.get(k) != v for k, v in lines.items()) or \
+                    any(read_secret(after, k) != v for k, v in clean.items() if k in SECRET_KEYS):
                 raise ValueError("Debrief couldn't save that safely, because settings.toml has been edited "
                                  "by hand in an unusual way. Open settings.toml and change it there, or "
                                  "delete it to start again.")

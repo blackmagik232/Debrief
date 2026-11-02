@@ -4,8 +4,9 @@
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="connect-src 'none'; object-src 'none'; base-uri 'none'">
 <script>try{const t=localStorage.getItem('debrief-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" referrerpolicy="no-referrer" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<!-- Fonts (2.7.0): the desktop server adds a stylesheet link to its bundled Barlow Condensed, IBM Plex Sans and
+     JetBrains Mono as it serves this page. Opened straight from disk the page uses the system fonts named in the
+     tokens below. Nothing is ever fetched from a web font service. -->
 <style>
 /* Layout: a timing-screen debrief inside the app window. Summary strip first, then the lap compare
    workbench (splits, map, telemetry), best possible lap, corner cards, pace, habits, plan.

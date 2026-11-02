@@ -12,7 +12,9 @@ import base64
 import hashlib
 import os
 import secrets
+import platform
 import shutil
+import sys
 import threading
 import time
 import traceback
@@ -39,7 +41,18 @@ LIB_TYPES = {".html", ".json", ".png", ".svg", ".css", ".js"}
 # nosniff Edge then refuses to run app.js and the window opens blank).
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
         ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",
-        ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon"}
+        ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".woff2": "font/woff2"}
+# 2.7.0 (M9): the three faces ship with Debrief (ui/fonts/, SIL OFL) and are served at static/fonts/, so
+# the window and the library pages never call fonts.googleapis.com. Only these names are served.
+FONTS = UI / "fonts"
+FONT_FILE_OK = re.compile(r"^[a-z0-9-]+\.(woff2|css)$")
+FONTS_CSS = "static/fonts/fonts.css"
+# Library pages carry no font link of their own (opened from disk they use the system fonts); the local
+# stylesheet link is added as a page is served, and the Google Fonts links of pages saved before 2.7.0 are
+# replaced by it, so no page ever calls out.
+_FONT_LINK = re.compile(r'<link\b[^>]*\bhref="(?:https://fonts\.googleapis\.com/[^"]*|/[A-Za-z0-9_-]+/static/fonts/fonts\.css)"[^>]*>', re.I)
+_FONT_PRECONNECT = re.compile(r'<link\b[^>]*\brel="preconnect"[^>]*\bhref="https://fonts\.(?:googleapis|gstatic)\.com"[^>]*>\s*', re.I)
+_FIRST_STYLE = re.compile(r"<(?:style|link)\b", re.I)
 # Library pages (review, library, prep, team pages, or any .html someone drops in the folder) run in an
 # opaque origin: their scripts work, but they can't call the API, read the window or change settings.
 # connect-src 'none' matches the policy in the templates' own <meta> tag: library pages never use the network
@@ -72,7 +85,7 @@ def ui_csp(html: str) -> str:
     hashes = " ".join("'sha256-" + base64.b64encode(hashlib.sha256(m.encode("utf-8")).digest()).decode() + "'"
                       for m in _INLINE_SCRIPT.findall(html))
     return ("default-src 'self'; script-src 'self'" + (" " + hashes if hashes else "") + "; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; "
+            "style-src 'self' 'unsafe-inline'; font-src 'self'; "
             "img-src 'self' data:; connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; "
             "worker-src 'self' blob:; "   # the heartbeat worker (app.js) is a blob: script
             "object-src 'none'; base-uri 'none'; form-action 'self'")
@@ -83,6 +96,32 @@ def with_bridge(html: bytes) -> bytes:
     low = html.lower()
     i = low.rfind(b"</body>")
     return html[:i] + tag + html[i:] if i >= 0 else html + tag
+
+
+def with_fonts(html: bytes, secret: str) -> bytes:
+    """A library page as served: a stylesheet link to this server's bundled fonts goes in its <head>
+    (an absolute path, since review, prep, team and library pages sit at different depths), before the
+    page's own styles. The Google Fonts links of pages saved before 2.7.0 are replaced by it, so no page
+    ever calls out. Only the <head> is looked at: a page's own data (the inline JSON) is never touched."""
+    end = html.lower().find(b"</head>")
+    if end < 0:
+        return html
+    head = html[:end].decode("utf-8", "surrogateescape")
+    local = f'<link rel="stylesheet" href="/{secret}/{FONTS_CSS}">'
+    head = _FONT_PRECONNECT.sub("", head)
+    done = False
+
+    def swap(m):
+        nonlocal done
+        if done:
+            return ""
+        done = True
+        return local
+    head = _FONT_LINK.sub(swap, head)
+    if not done:
+        m = _FIRST_STYLE.search(head)
+        head = head[:m.start()] + local + "\n" + head[m.start():] if m else head + local + "\n"
+    return head.encode("utf-8", "surrogateescape") + html[end:]
 REVIEW_DIR_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
 GOAL_ID_OK = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 # race result fields: (kind, min, max). results.save validates again; this is the server's own gate.
@@ -554,7 +593,9 @@ def _run_update(cb) -> dict:
         if not info["newer"]:
             raise SystemExit(f"You already have the newest version ({info['current']}).")
         path = updater.download(info, progress=cb)
-        cb(0.97, "Verified. Installing... Debrief will close and reopen in a moment.")
+        # 2.7.0: say what was checked. "Signature verified" only once a release key is set and the .sig
+        # really verified; until then the installer's SHA-256 matched the published checksum, no more.
+        cb(0.97, updater.installing_message())
         updater.launch(path, info.get("latest"))
     except updater.UpdateError as e:
         raise SystemExit(str(e))
@@ -864,6 +905,20 @@ class DebriefServer(ThreadingHTTPServer):
         self.update_outcome = None   # how the last in-app update went (set at start; see updater.pending_result)
         self.exit = os._exit         # replaced in tests
 
+    # errors a request thread didn't catch itself (a crash inside do_GET/do_POST before any reply). The
+    # library's default prints them to stderr, which is /dev/null under pythonw: they vanished (2.7.0 M6).
+    # The window's own disconnects (it closed, or Edge dropped a kept-alive socket) are routine, not errors.
+    QUIET_ERRORS = (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)
+
+    def handle_error(self, request, client_address):
+        exc = sys.exc_info()[1]
+        if isinstance(exc, self.QUIET_ERRORS) or isinstance(exc, OSError) and getattr(exc, "winerror", None) in (10053, 10054):
+            return
+        try:
+            app.say("ERROR handling a request from the window:\n" + traceback.format_exc())
+        except Exception:  # noqa: BLE001  (logging must never take the server down)
+            pass
+
     def _close_for_update(self):
         """The installer is running: stop in a few seconds (after the window has seen the result) so it
         can replace Debrief's files. It waits for Debrief to close, installs and reopens Debrief.
@@ -896,6 +951,28 @@ class DebriefServer(ThreadingHTTPServer):
         self.last_ping = time.monotonic() - self.timeout_s + 4
 
     def watchdog(self):
+        """Stops Debrief once the window has gone. 2.7.0 (M6): an error inside the loop used to kill this
+        thread silently and leave Debrief running with no window; now it is logged and, if the window is
+        already gone, Debrief still exits."""
+        try:
+            self._watchdog_loop()
+        except Exception:  # noqa: BLE001
+            try:
+                app.say("ERROR in the window watchdog:\n" + traceback.format_exc())
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                idle = time.monotonic() - self.last_ping
+                gone = idle > self.timeout_s
+            except Exception:  # noqa: BLE001
+                gone = True
+            if gone and not self.stopping.is_set():
+                app.say("Window closed and the watchdog failed. Stopping.")
+                self.stopping.set()
+                threading.Thread(target=self.shutdown, daemon=True).start()
+                threading.Timer(5.0, self.exit, args=(0,)).start()   # even if shutdown() itself hangs
+
+    def _watchdog_loop(self):
         prev = time.monotonic()
         while not self.stopping.wait(1.0):
             now = time.monotonic()
@@ -943,11 +1020,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        if "Cache-Control" not in extra:   # the bundled fonts may be kept for a day (see _font)
+            self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "SAMEORIGIN")
-        if "Content-Security-Policy" not in extra:   # library pages carry their own (sandbox) policy
+        if "Content-Security-Policy" not in extra and "Cross-Origin-Resource-Policy" not in extra:
+            # library pages carry their own (sandbox) policy; the fonts say cross-origin (see _font)
             self.send_header("Cross-Origin-Resource-Policy", "same-origin")
         for k, v in extra.items():
             self.send_header(k, v)
@@ -1041,6 +1120,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._file(UI / name)
             if name == "icon.png" and ICON_PNG.exists():
                 return self._file(ICON_PNG)
+            if name.startswith("fonts/"):
+                return self._font(name[len("fonts/"):])
             return self._nf()
         if r == "api/status":
             return self._json(self.server.jobs.snapshot())
@@ -1054,7 +1135,8 @@ class Handler(BaseHTTPRequestHandler):
         if r.startswith("lib/"):
             return self._lib(r[len("lib/"):])
         if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/pages", "api/sessions", "api/prepare",
-                 "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand"):
+                 "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand",
+                 "api/diagnostics"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -1370,6 +1452,110 @@ class Handler(BaseHTTPRequestHandler):
         info.pop("notes", None) if q.get("auto") == "1" else None
         return self._json({"ok": True, "installed": app.FROZEN, **info, "last_update": last})
 
+    # ---------- diagnostics (2.7.0, L3)
+    DIAG_LOG_LINES = 200
+    _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+    @staticmethod
+    def scrub_diagnostics(text: str, secrets=()) -> str:
+        """A log excerpt safe to paste somewhere: the home folder becomes ~ (app.scrub_home), the saved
+        token and webhook (and any webhook-shaped address) become …, and e-mail addresses are masked."""
+        text = app.scrub_home(str(text))
+        for sec in secrets:
+            sec = str(sec or "").strip()
+            if len(sec) >= 8:
+                text = text.replace(sec, "…")
+        text = redact_webhook(text, None)
+        # "Authorization: Bearer <token>" and "token=<token>" shapes, in case a library ever logged one
+        text = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}", r"\1…", text)
+        text = re.sub(r"(?i)\b(token[\"']?\s*[:=]\s*[\"']?)[A-Za-z0-9._~+/=-]{8,}", r"\1…", text)
+        return Handler._EMAIL_RE.sub("[email]", text)
+
+    @staticmethod
+    def _tail_lines(path: Path, n: int) -> list:
+        """The last n lines of a text file, read from its end (the log can be 1 MB)."""
+        try:
+            size = path.stat().st_size
+        except OSError:
+            return []
+        chunk = min(size, 256 * 1024)
+        try:
+            with open(path, "rb") as f:
+                f.seek(size - chunk)
+                data = f.read(chunk)
+        except OSError:
+            return []
+        lines = data.decode("utf-8", "replace").splitlines()
+        if chunk < size and lines:
+            lines = lines[1:]   # the first line is probably cut
+        return lines[-n:]
+
+    @staticmethod
+    def _dir_size(path: Path, limit_files: int = 20000):
+        """Bytes under a folder, or None when it's too big to count cheaply."""
+        total, n = 0, 0
+        try:
+            for root, _dirs, files in os.walk(path):
+                for f in files:
+                    n += 1
+                    if n > limit_files:
+                        return None
+                    try:
+                        total += os.stat(os.path.join(root, f)).st_size
+                    except OSError:
+                        pass
+        except OSError:
+            return None
+        return total
+
+    def _get_diagnostics(self, q):
+        """What "Copy diagnostics" in About collects: versions, what updates are checked against, how much
+        is saved, where the data folder is and the end of debrief.log with the home folder, the token, the
+        webhook and e-mail addresses taken out. Never a request; never a secret."""
+        from .. import __version__, updater
+        secrets_ = []
+        cfg = None
+        try:
+            cfg = app.load_settings()
+        except SystemExit:
+            pass
+        if cfg:
+            secrets_.append(cfg.get("token"))
+        try:
+            secrets_.append(settings_io.discord_webhook())
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            level = updater.verification_level()
+        except Exception:  # noqa: BLE001
+            level = "unknown"
+        out = {"ok": True, "version": __version__, "platform": platform.platform(aliased=True),
+               "python": sys.version.split()[0], "frozen": bool(app.FROZEN), "verification_level": level,
+               "settings_folder": app.scrub_home(str(app.HERE)), "reviews": None, "sessions": None,
+               "cache_bytes": None, "library_folder": None, "log": []}
+        if cfg:
+            try:
+                lib = Path(cfg["library_folder"])
+                out["library_folder"] = app.scrub_home(str(lib))
+                out["reviews"] = sum(1 for _ in (lib / "reviews").glob("*/review.json"))
+            except OSError:
+                pass
+            try:
+                api = self._cache_api(cfg)
+                if api is not None:
+                    from .. import sync
+                    raw = sync._read_json(sync.Store.for_api(api).root / "sessions.json", {})
+                    out["sessions"] = len((raw or {}).get("sessions") or []) if isinstance(raw, dict) else 0
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                out["cache_bytes"] = self._dir_size(Path(cfg["cache_dir"]))
+            except Exception:  # noqa: BLE001
+                pass
+        log = Path(app.LOG_FILE) if app.LOG_FILE else app.HERE / "debrief.log"
+        out["log"] = [self.scrub_diagnostics(ln, secrets_) for ln in self._tail_lines(log, self.DIAG_LOG_LINES)]
+        return self._json(out)
+
     def _get_weekly(self, q):
         """What "Refresh this week" would do and roughly how many Garage 61 requests it would use
         (leaderboards.plan). Never a request: the schedule, your saved series, the cached lists and snapshots."""
@@ -1417,9 +1603,25 @@ class Handler(BaseHTTPRequestHandler):
         ctype = MIME.get(p.suffix.lower(), "application/octet-stream")
         if lib:
             if p.suffix.lower() == ".html":
-                body = with_bridge(body)
+                body = with_bridge(with_fonts(body, self.server.secret))
             return self._send(200, body, ctype, {"Content-Security-Policy": LIB_CSP})
         self._send(200, body, ctype)
+
+    def _font(self, name: str):
+        """static/fonts/<file>: the bundled stylesheet and woff2 files. Library pages run in a sandbox
+        (an opaque origin), so for them these are cross-origin fetches: the stylesheet needs a resource
+        policy that allows it and the font files (a CORS fetch, Origin: null) an allow-origin header.
+        Nothing here is secret: the files are the same for every copy of Debrief."""
+        if not FONT_FILE_OK.match(name):
+            return self._nf()
+        p = FONTS / name
+        try:
+            body = p.read_bytes()
+        except OSError:
+            return self._nf()
+        self._send(200, body, MIME.get(p.suffix.lower(), "application/octet-stream"),
+                   {"Access-Control-Allow-Origin": "*", "Cross-Origin-Resource-Policy": "cross-origin",
+                    "Cache-Control": "private, max-age=86400"})
 
     def _lib(self, rel: str):
         lib = self._library_folder()

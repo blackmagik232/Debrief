@@ -119,13 +119,27 @@ jobs:
           Get-Item "dist-installer\Debrief-Setup-${{ steps.ver.outputs.version }}.exe"
 
       - name: Upgrade test (previous release -> this build, the way the in-app updater does it)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # contents: read only (the job's permissions above)
         run: |
           $v = "${{ steps.ver.outputs.version }}"
           $setup = Resolve-Path "dist-installer\Debrief-Setup-$v.exe"
           $app = Join-Path $env:LOCALAPPDATA "Programs\Debrief"
           $exe = Join-Path $app "Debrief.exe"
-          # the newest published release (public download, no token)
-          $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/latest" -Headers @{ "User-Agent" = "debrief-ci" }
+          # the newest published release. The job's own token (read-only) keeps the call off the anonymous
+          # rate limit (60/hour per runner IP, shared with everyone else on it). If GitHub's API is down or
+          # rate-limited the test is skipped with a warning, not failed: it checks the upgrade path, not GitHub.
+          $headers = @{ "User-Agent" = "debrief-ci"; "Accept" = "application/vnd.github+json" }
+          if ($env:GITHUB_TOKEN) { $headers["Authorization"] = "Bearer $env:GITHUB_TOKEN" }
+          try {
+            $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/latest" -Headers $headers -TimeoutSec 60
+          } catch {
+            $code = $null
+            try { $code = [int]$_.Exception.Response.StatusCode } catch {}
+            if ($code -eq 404) { Write-Host "No release published yet; nothing to upgrade from. Skipping."; exit 0 }
+            Write-Host "::warning title=Upgrade test skipped::GitHub's releases API couldn't be reached (HTTP $code): $($_.Exception.Message)"
+            exit 0
+          }
           $asset = $rel.assets | Where-Object { $_.name -match '^Debrief-Setup-[\d.]+\.exe$' } | Select-Object -First 1
           if (-not $asset) { Write-Host "No previous release to upgrade from; skipping."; exit 0 }
           if ($rel.tag_name -eq "v$v") { Write-Host "This version is already released; skipping."; exit 0 }

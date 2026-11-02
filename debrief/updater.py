@@ -3,6 +3,7 @@
     check(force=False)  -> {"current", "latest", "newer", "notes", "url", "installer", "size", "sha256_url", ...}
     download(info, progress) -> path of the verified installer (temp folder)
     launch(path)        start the installer silently; it closes Debrief, installs and reopens it
+    verification_level() -> "signature" | "checksum": what download() actually checks today
 
 Debrief asks GitHub for the newest release at most once a day (one request, nothing about you is
 sent), and only when "check_updates" is on in settings.toml (it is by default). The installer is only
@@ -50,8 +51,37 @@ BAD_SIGNATURE = ("This update's signature doesn't match Debrief's release key, s
                  "Download it from the release page (github.com/blackmagik232/debrief/releases) if you trust it.")
 
 
+# 2.7.0 "Trust": the window says what was actually checked, never more. Without a key the installer's
+# SHA-256 was compared with the published checksum; with one, its Ed25519 signature was verified.
+VERIFIED_SIGNATURE = "Signature verified. Installing... Debrief will close and reopen in a moment."
+VERIFIED_CHECKSUM = "Checksum matched. Installing... Debrief will close and reopen in a moment."
+NOTE_SIGNATURE = "Updates are signature-verified."
+NOTE_CHECKSUM = ("Updates are checked by SHA-256 checksum. Signed updates switch on once a signing key is "
+                 "published.")
+
+
 class UpdateError(Exception):
     """A problem to show as-is."""
+
+
+def verification_level() -> str:
+    """What an update is checked against before it installs: "signature" (an Ed25519 release key is set,
+    so the .sig must verify) or "checksum" (no key yet: the published SHA-256 only). A broken key counts
+    as "signature": with one set, nothing installs unsigned (release_keys refuses every update)."""
+    try:
+        return "signature" if release_keys() else "checksum"
+    except UpdateError:
+        return "signature"
+
+
+def verification_note() -> str:
+    """The sentence Settings > Updates shows for verification_level()."""
+    return NOTE_SIGNATURE if verification_level() == "signature" else NOTE_CHECKSUM
+
+
+def installing_message() -> str:
+    """The progress line after download() returned: it names only the check that really ran."""
+    return VERIFIED_SIGNATURE if verification_level() == "signature" else VERIFIED_CHECKSUM
 
 
 def _ver(s) -> tuple:

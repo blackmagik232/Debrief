@@ -238,7 +238,8 @@ def stories(rc: dict) -> list:
     """Whole stories of this driver's race: a setup, what changed, and how it ended. Only what the scan shows."""
     out = []
     where = "officially" if rc.get("official") else "on the road"
-    made = [p for p in rc["passes"] if p["made"]]
+    on_track = [p for p in rc["passes"] if p.get("how") == "on track"]
+    made = [p for p in on_track if p["made"]]
     last_lap = rc["positions"][-1]["lap"] if rc["positions"] else None
     for f in sorted(rc["fights"], key=lambda x: (-(x.get("passes") or 0), -(x.get("seconds") or 0))):
         if not f.get("passes") and (f.get("seconds") or 0) < 30:
@@ -278,8 +279,8 @@ def stories(rc: dict) -> list:
         beats = [{"role": "setup", "lap": 1, "text": f"Started P{grid}."}]
         if rc.get("pos_after_lap1"):
             beats.append({"role": "turn", "lap": 1, "text": f"P{rc['pos_after_lap1']} after lap 1."})
-        n_made, n_lost = len(made), sum(1 for p in rc["passes"] if not p["made"])
-        beats.append({"role": "turn", "lap": None, "text": f"{n_made} pass{'es' if n_made != 1 else ''} made, {n_lost} suffered."})
+        n_made, n_lost = len(made), len(on_track) - len(made)
+        beats.append({"role": "turn", "lap": None, "text": f"{n_made} on-track pass{'es' if n_made != 1 else ''} made, {n_lost} suffered."})
         beats.append({"role": "outcome", "lap": last_lap, "text": f"Finished P{fin} {where}."})
         out.append({"id": "climb" if up else "slide", "title": f"P{grid} to P{fin}", "beats": beats})
     seen = {}

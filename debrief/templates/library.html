@@ -272,6 +272,10 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 .lib .tabs a[aria-current="page"]{color:var(--ink);background:var(--panel);box-shadow:inset 0 -2px 0 var(--a)}
 .lib .tabpane{display:grid;gap:var(--s7);min-width:0}
 .lib .pbchip{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--pb);background:var(--pbbg);border-radius:3px;padding:1px 5px;margin-left:6px;vertical-align:1px;font-weight:600}
+.lib .incprac{display:flex;align-items:center;gap:8px;font-size:var(--t-sm);color:var(--ink2);margin-top:var(--s2)}
+.lib .sesschip{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);border:1px solid var(--line);border-radius:3px;padding:0 5px;margin-left:6px;vertical-align:1px}
+.lib footer{border-top:1px solid var(--line);padding-top:var(--s4);margin-top:var(--s6);display:grid;gap:var(--s2);font-size:var(--t-sm);color:var(--muted)}
+.lib footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 .lib .firstchip{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:3px;padding:0 5px;margin-left:6px;vertical-align:1px}
 .lib .season-stats .stat .v{font-size:24px}
 .lib .delta-up{color:var(--good)} .lib .delta-down{color:var(--bad)}
@@ -318,6 +322,7 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
   <h1>Progress</h1>
   <p class="lede" id="lede">Your pace and consistency across every race you've reviewed. Pick a track and car below to see how they have moved.</p>
   <div class="stats" id="totals"></div>
+  <label class="incprac" for="incprac"><input type="checkbox" id="incprac"> Include practice and qualifying <span class="note" id="incpracNote"></span></label>
 </header>
 <nav class="tabs" aria-label="Library views"><a href="#overview" data-tab="overview">Progress</a><a href="#season" data-tab="season">Season</a><a href="#skills" data-tab="skills">Skills</a><a href="#goals" data-tab="goals">Goals<span id="goalcount"></span></a></nav>
 
@@ -399,6 +404,10 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
     <div class="goals" id="goals"></div>
   </section>
 </div>
+<footer>
+  <span class="eyebrow">How this was made</span>
+  <ul id="libnotes"></ul>
+</footer>
 </div>
 <div id="srLive" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)" aria-live="polite"></div>
 <div id="tip" hidden></div>
@@ -406,7 +415,19 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 <script>window.ROWS=/*ROWS*/[];window.EXTRA=/*EXTRA*/null;</script>
 <script>
 (function(){
-const R=(window.ROWS||[]).filter(r=>r&&isFinite(r.best));
+// 2.7: practice / qualifying reviews are kept in ROWS (row.session) but personal bests, progress, weak spots and
+// the season / skills tabs count race sessions only, unless "Include practice and qualifying" is ticked (a
+// per-browser convenience; the page reloads so every table is rebuilt from the chosen rows). Row PB chips then
+// come from row.pb_all (every session counts) instead of row.pb (race sessions only).
+const isRace=r=>r.session==null||String(r.session).trim().toLowerCase().startsWith('race');
+let INC=false;try{INC=localStorage.getItem('debrief-incprac')==='1'}catch(e){}
+const ALL=(window.ROWS||[]).filter(r=>r&&isFinite(r.best));
+const R=INC?ALL:ALL.filter(isRace);
+const N_PRAC=ALL.length-ALL.filter(isRace).length;
+const pbRow=r=>INC?(r.pb_all||r.pb||null):(r.pb||null);
+(function(){const cb=document.getElementById('incprac');if(!cb)return;cb.checked=INC;
+  const nt=document.getElementById('incpracNote');if(nt)nt.textContent=N_PRAC?'('+N_PRAC+' practice or qualifying review'+(N_PRAC===1?'':'s')+(INC?' included: they can set bests here':' kept out of personal bests and trends')+')':'(none in the library yet)';
+  cb.addEventListener('change',()=>{try{localStorage.setItem('debrief-incprac',cb.checked?'1':'0')}catch(e){}location.reload()})})();
 const $=id=>document.getElementById(id);const NS='http://www.w3.org/2000/svg';
 function el(t,a,x){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(x!=null)e.textContent=x;return e}
 function h(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
@@ -431,7 +452,7 @@ groups.forEach(a=>a.sort((x,y)=>tOf(x)-tOf(y)));
 const combos=[...groups.entries()].map(([k,a])=>({k,a,last:a[a.length-1]})).sort((x,y)=>tOf(y.last)-tOf(x.last));
 
 // ---------- header
-$('count').textContent=plural(R.length,'review');
+$('count').textContent=plural(R.length,INC?'review':'race review')+(N_PRAC&&!INC?' · '+N_PRAC+' practice/qualifying hidden':'');
 if(R.some(r=>r.test_data))$('testchip').classList.remove('hidden');
 (function totals(){
   const host=$('totals');const sum=(f)=>R.reduce((s,r)=>s+(ok(f(r))?f(r):0),0);
@@ -615,9 +636,11 @@ function table(){
   const th=h('thead');th.append(tr0);t.append(th);const tb=h('tbody');
   rows.forEach(r=>{const tr=h('tr');const td=h('td');const a=h('a',null,r.track_short||r.track);a.href=r.path;a.title=r.track;td.append(a);
     const dd=h('td','mono nw',fmtDate(r.date));if(r.test_data)dd.append(h('span','tchip','test'));
-    const tdB=h('td','n nw',fmt(r.best));const pb=r.pb||null;
+    const tdB=h('td','n nw',fmt(r.best));const pb=pbRow(r);
+    if(!isRace(r))dd.append(h('span','sesschip',String(r.session)));
     if(pb&&pb.is_pb){const c=h('span','pbchip','PB');c.title='New personal best here: '+fmtD(pb.delta)+' vs your previous best '+fmt(pb.previous_best)+(pb.previous_date?' ('+fmtDate(pb.previous_date)+')':'');tdB.prepend(c);c.style.margin='0 6px 0 0'}
     else if(pb&&pb.first_time){const c=h('span','firstchip','First');c.title='Your first reviewed race at this track and car';tdB.prepend(c);c.style.margin='0 6px 0 0'}
+    else if(pb&&pb.session_excluded){tdB.title='Practice and qualifying laps don\u2019t set personal bests'+(ok(pb.previous_best)?' (race best here '+fmt(pb.previous_best)+')':'')}
     tr.append(dd,td,h('td','nw',r.car),tdB,h('td','n',fmt(r.median)),h('td','n',ok(r.std)?r.std.toFixed(2):'–'),
       h('td','n',r.clean+'/'+r.laps));
     if(hasIR)tr.append(h('td','n',ok(r.irating)?String(r.irating):'–'));
@@ -819,6 +842,14 @@ function showTab(name){if(!TABS.includes(name))name='overview';
   if(changed)window.scrollTo(0,0)}
 addEventListener('hashchange',()=>showTab(location.hash.slice(1)));
 showTab(location.hash.slice(1));
+
+// ---------- footer: how the numbers here are chosen
+(function notes(){const ul=$('libnotes');if(!ul)return;
+  [typeof EX.sessions_rule==='string'&&EX.sessions_rule?EX.sessions_rule:'Personal bests, progress, weak corners, the season summary, goals and the skills profile count race sessions only; practice and qualifying reviews are listed but don\u2019t set or compare against a personal best unless you tick \u201cInclude practice and qualifying\u201d.',
+   INC?'\u201cInclude practice and qualifying\u201d is on: every session counts toward the bests and trends on this page. The Season and Skills tabs still summarise race sessions only.':'',
+   'A review whose laps were all flagged by Garage 61, or whose best was a partial lap, never sets a personal best.',
+   'Consistency (\u03c3) and \u201ctime to find\u201d come from each review; their thresholds scale with that track\u2019s lap time and length, so numbers from different tracks compare like for like.',
+   EX.generated_at?'Generated '+new Date(EX.generated_at).toLocaleString()+'.':''].filter(Boolean).forEach(t=>ul.append(h('li',null,t)))})();
 
 addEventListener('scroll',hideTip,{passive:true});
 let rt=0,lastW=innerWidth;addEventListener('resize',()=>{if(innerWidth===lastW)return;lastW=innerWidth;clearTimeout(rt);rt=setTimeout(()=>{if(curTab==='season'&&seasonRedraw)seasonRedraw();else if(curTab==='skills'&&skRedraw)skRedraw();else if(redraw)redraw()},120)});

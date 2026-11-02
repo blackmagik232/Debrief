@@ -25,18 +25,30 @@ MAX_TEAMMATES = 12
 
 
 # ---------------------------------------------------------------- picker
-def combos(folder) -> list:
+def combos(folder, include_practice: bool = False) -> list:
     """Track+car combos in your library, newest first:
     [{"track", "car", "track_short", "track_id", "car_id", "races", "last_date", "best"}]
     track_id/car_id are None for reviews made before Debrief v2 unless another review of the same
-    combo has them (see resolve_ids)."""
+    combo has them (see resolve_ids). 2.7: "best" and "races" count race sessions only unless
+    include_practice (library docstring); a combo you've only practised at is still listed, with best None."""
     groups = {}
     for r in library.list_reviews(folder):  # newest first
+        race = include_practice or library.is_race(r)
+        if not race and r["combo"] in groups:
+            continue
+        if not race:
+            groups[r["combo"]] = {"track": r["track"], "car": r["car"], "track_short": r["track_short"],
+                                  "track_id": r.get("track_id"), "car_id": r.get("car_id"), "races": 0,
+                                  "last_date": r["date"], "best": None, "practice_only": True}
+            continue
         c = groups.get(r["combo"])
         if c is None:
             groups[r["combo"]] = {"track": r["track"], "car": r["car"], "track_short": r["track_short"],
                                   "track_id": r.get("track_id"), "car_id": r.get("car_id"), "races": 1,
                                   "last_date": r["date"], "best": r["best"] if r.get("best_clean", True) else None}
+        elif c.get("practice_only"):
+            c.update({"races": 1, "last_date": r["date"], "best": r["best"] if r.get("best_clean", True) else None,
+                      "practice_only": False})
         else:
             c["races"] += 1
             if r.get("best_clean", True):
@@ -240,7 +252,7 @@ def _teammates(api, track_id, car_id, team_slug, my_best, log):
 
 # ---------------------------------------------------------------- practice plan
 _METRIC = {  # metric -> (noun, unit)
-    "min_mph": ("minimum speed", "mph"), "exit_mph": ("exit speed 150 m past the apex", "mph"),
+    "min_mph": ("minimum speed", "mph"), "exit_mph": ("exit speed past the apex", "mph"),
     "brake_on": ("brake point", "m"), "full_thr": ("full-throttle point", "m"),
     "peak_brake": ("peak brake pressure", "%"), "abs_s": ("time on ABS", "s"), "coast_s": ("coasting", "s"),
 }
@@ -256,10 +268,11 @@ def _strong(drv: dict) -> bool:
     return abs(r) >= pattern_r_needed(n)
 
 
-def _target(drv: dict, apex: float | None) -> tuple[str, str] | None:
-    """Turn one correlation from the engine into a concrete target.
+def _target(drv: dict, apex: float | None, exit_at: float | None = None) -> tuple[str, str] | None:
+    """Turn one correlation from the engine into something to try in practice, worded as what your quicker
+    laps did (2.7: never "aim for": the link is correlational, not proof of cause).
     The engine's r is corr(metric, corner time): r < 0 means a HIGHER metric went with QUICKER laps,
-    so the target is your 75th percentile; r > 0 means LOWER went with quicker, target the 25th."""
+    so the number quoted is your 75th percentile; r > 0 means LOWER went with quicker, the 25th."""
     k, r = drv.get("metric"), _num(drv.get("r"))
     p25, p75 = _num(drv.get("p25")), _num(drv.get("p75"))
     if k not in _METRIC or r is None or p25 is None or p75 is None:
@@ -268,29 +281,30 @@ def _target(drv: dict, apex: float | None) -> tuple[str, str] | None:
     v = p75 if up else p25
     q = f"(r {r:+.2f}, {drv.get('n', '?')} laps)"
     if k == "min_mph":
-        return (f"aim for ~{v:.0f} mph at the slowest point",
+        return (f"your quicker laps were around ~{v:.0f} mph at the slowest point",
                 f"on your quicker laps you tended to carry {'more' if up else 'less'} minimum speed {q}")
     if k == "exit_mph":
-        return (f"aim for ~{v:.0f} mph 150 m past the apex",
+        where = f"{exit_at:.0f} m" if exit_at else "a short way"
+        return (f"your quicker laps were around ~{v:.0f} mph {where} past the apex",
                 f"on your quicker laps you tended to come out {'faster' if up else 'slower'} {q}")
     if k == "brake_on":
         before = (apex - v) if apex is not None else None
-        txt = (f"brake ~{before:.0f} m before the apex" if before is not None and before > 0
-               else f"brake at about the {v:.0f} m mark")
+        txt = (f"your quicker laps braked ~{before:.0f} m before the apex" if before is not None and before > 0
+               else f"your quicker laps braked at about the {v:.0f} m mark")
         return (txt, f"on your quicker laps you tended to brake {'later' if up else 'earlier'} {q}")
     if k == "full_thr":
         after = (v - apex) if apex is not None else None
-        txt = (f"be flat out ~{after:.0f} m after the apex" if after is not None and after > 0
-               else f"be flat out by about the {v:.0f} m mark")
+        txt = (f"your quicker laps were flat out ~{after:.0f} m after the apex" if after is not None and after > 0
+               else f"your quicker laps were flat out by about the {v:.0f} m mark")
         return (txt, f"on your quicker laps you tended to reach full throttle {'later' if up else 'sooner'} {q}")
     if k == "peak_brake":
-        return (f"peak around {v:.0f}% brake",
+        return (f"your quicker laps peaked around {v:.0f}% brake",
                 f"on your quicker laps you tended to brake {'harder' if up else 'lighter'} {q}")
     if k == "abs_s":
-        return (f"keep ABS time near {v:.2f} s",
+        return (f"your quicker laps spent about {v:.2f} s on ABS",
                 f"on your quicker laps you tended to spend {'more' if up else 'less'} time on ABS {q}")
     if k == "coast_s":
-        return (f"keep coasting near {v:.2f} s",
+        return (f"your quicker laps coasted about {v:.2f} s",
                 f"on your quicker laps you tended to coast {'more' if up else 'less'} {q}")
     return None
 
@@ -325,7 +339,7 @@ def _corner_drill(w: dict, corner: dict | None, tech: dict | None, laps: int, cl
     for drv in (corner or {}).get("drivers") or []:
         if not _strong(drv):
             continue
-        t = _target(drv, apex)
+        t = _target(drv, apex, _num((corner or {}).get("exit_at_m")))
         if t and len(targets) < 2:
             targets.append(t[0])
             why.append(t[1])
@@ -446,13 +460,17 @@ def practice_plan(hist, weak, latest, tech, goal, mates) -> list:
 
 # ---------------------------------------------------------------- build / write
 def build(api, folder, track_id: int, car_id: int, team_slug: str | None, log=print,
-          track: str | None = None, car: str | None = None) -> dict:
+          track: str | None = None, car: str | None = None, include_practice: bool = False) -> dict:
     """Prep data for one track + car. api may be None (offline: no teammates).
     track/car (full names) are optional fallbacks for old reviews without Garage 61 ids.
-    Request worst case: 4 (see module docstring); data["requests"] says how many were used."""
+    Request worst case: 4 (see module docstring); data["requests"] says how many were used.
+    2.7: history, the trend and the recurring weak corners come from RACE reviews only (library docstring)
+    unless include_practice; practice / qualifying reviews at the combo are counted in "practice_sessions"."""
     folder = Path(folder)
     start_req = getattr(api, "requests_made", 0) if api is not None else 0
-    rows = library.list_reviews(folder)
+    rows_all = library.list_reviews(folder)
+    rows = library.race_rows(rows_all, include_practice)
+    n_prac = 0
     probe = {"track": track or "", "car": car or "", "track_id": track_id, "car_id": car_id}
     mine = [r for r in rows if library.same_combo(probe, r)]
     if not mine and track and car:  # ids given but the reviews have none: fall back to names
@@ -472,6 +490,11 @@ def build(api, folder, track_id: int, car_id: int, team_slug: str | None, log=pr
                     and library._norm(r["car"]) == library._norm(car)]
             if mine:
                 track, car = mine[0]["track"], mine[0]["car"]
+    if mine:
+        n_prac = sum(1 for r in rows_all if not library.is_race(r) and library.same_combo(mine[0], r))
+    elif track and car:
+        n_prac = sum(1 for r in rows_all if not library.is_race(r) and library._norm(r["track"]) == library._norm(track)
+                     and library._norm(r["car"]) == library._norm(car))
     track = track or f"Track {track_id}"
     car = car or f"Car {car_id}"
     log(f"Preparing {library.short_track_name(track)} in the {car}...")
@@ -508,6 +531,7 @@ def build(api, folder, track_id: int, car_id: int, team_slug: str | None, log=pr
                        if newest else None),
             "teammates": mates, "goal": goal, "plan": plan, "requests": used,
             "membership": mem, "team": team_d,
+            "sessions": "all" if include_practice else "race", "practice_sessions": n_prac,
             "test_data": any(r.get("test_data") for r in mine)}
 
 

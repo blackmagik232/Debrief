@@ -9,7 +9,7 @@
      tokens below. Nothing is ever fetched from a web font service. -->
 <style>
 /* Layout: a timing-screen debrief inside the app window. Summary strip first, then the lap compare
-   workbench (splits, map, telemetry), best possible lap, corner cards, pace, habits, plan.
+   workbench (splits, map, telemetry), best sectors added up, corner cards, pace, habits, plan.
    Lap A / you = blue, lap B / comparison = orange, fastest segment = timing purple. */
 :root{
   --bg:#f3f4f6; --panel:#ffffff; --ink:#161a1f; --ink2:#47505a; --muted:#68717b;
@@ -136,7 +136,7 @@ select:focus-visible,button:focus-visible,[tabindex]:focus-visible,a:focus-visib
 .empty{border:1px dashed var(--axis);border-radius:6px;padding:var(--s4);color:var(--ink2);font-size:var(--t-sm);display:grid;gap:4px;background:var(--band)}
 .empty b{color:var(--ink)}
 
-/* best possible lap */
+/* best sectors added up */
 .pbhead{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s6);align-items:baseline}
 .pbhead .n{display:grid}
 .pbhead .n span:first-child{font-size:var(--t-sm);color:var(--ink2)}
@@ -202,7 +202,7 @@ g.kf>:first-child{stroke:var(--ink);stroke-width:1.5px}
 .split.kf,.drow.kf,.irow.kf,.ribbon div.kf{outline:2px solid var(--a);outline-offset:-2px}
 .sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .hab{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:var(--s4)}
-.hab .panel{border-top:3px solid var(--line)}.hab .bad{border-top-color:var(--bad)}.hab .good{border-top-color:var(--good)}
+.hab .panel{border-top:3px solid var(--line)}.hab .bad{border-top-color:var(--bad)}.hab .good{border-top-color:var(--good)}.hab .look{border-top-color:var(--muted)}
 .hab ul{margin:0;padding:0;list-style:none;display:grid;gap:var(--s3)}
 .hab li b{display:block}.hab li span{color:var(--ink2);font-size:var(--t-sm)}
 .hab .none{color:var(--muted);font-size:var(--t-sm)}
@@ -433,7 +433,7 @@ td.d b{color:var(--ink);font-weight:600}
 <div class="empty" id="failNote" role="status" hidden><b>Some parts of this review couldn't be drawn.</b><span>It was probably made by an older version of Debrief. Open Sessions in the app and click Review again on this race to rebuild it; the rest of the page below still works.</span></div>
 
 <nav class="jump" id="jump" aria-label="Sections">
-  <a href="#summary">Summary</a><a href="#coach">What to work on</a><a href="#session">Runs</a><a href="#race">Race story</a><a href="#racecraft">Race craft</a><a href="#deep">All the numbers</a><a href="#compare">Compare laps</a><a href="#possible">Best possible</a><a href="#corners">Corners</a><a href="#technique">Technique</a><a href="#bestworst">Best vs worst</a><a href="#pace">Pace</a><a href="#consistency">Consistency</a><a href="#stint">Stint</a><a href="#habits">Driving style</a><a href="#plan">Practice plan</a>
+  <a href="#summary">Summary</a><a href="#coach">What to work on</a><a href="#session">Runs</a><a href="#race">Race story</a><a href="#racecraft">Race craft</a><a href="#deep">All the numbers</a><a href="#compare">Compare laps</a><a href="#possible">Best sectors</a><a href="#corners">Corners</a><a href="#technique">Technique</a><a href="#bestworst">Best vs worst</a><a href="#pace">Pace</a><a href="#consistency">Consistency</a><a href="#stint">Stint</a><a href="#habits">Driving style</a><a href="#plan">Practice plan</a>
 </nav>
 
 <section id="summary" aria-label="Summary">
@@ -452,6 +452,7 @@ td.d b{color:var(--ink);font-weight:600}
     <div class="hab">
       <div class="panel bad"><h3>Bad habits</h3><ul id="badList"></ul></div>
       <div class="panel good"><h3>Good habits</h3><ul id="goodList"></ul></div>
+      <div class="panel look" id="lookPanel" hidden><h3>Worth a look <span class="note">cost time, but the data can’t call it a habit</span></h3><ul id="lookList"></ul></div>
     </div>
   </div>
 </section>
@@ -512,8 +513,9 @@ td.d b{color:var(--ink);font-weight:600}
 </section>
 
 <section id="possible">
-  <div class="sechead"><h2>Best possible lap</h2>
-  <p class="lede" id="pbLede"></p></div>
+  <div class="sechead"><h2>Best sectors added up</h2>
+  <p class="lede" id="pbLede"></p>
+  <p class="note">A guide, not a target: each piece came from a different lap and the pieces depend on each other (a quick exit costs the next entry), so no one can drive this lap in one go.</p></div>
   <div class="panel" id="pbPanel"></div>
 </section>
 
@@ -567,7 +569,7 @@ td.d b{color:var(--ink);font-weight:600}
       <div class="scorebox" id="conScore"></div>
       <div><div class="scale4" id="conScale"></div><div class="scale4lab"><span>Scattered</span><span>Up and down</span><span>Consistent</span><span>Very consistent</span></div></div>
       <div class="facts" id="conFacts"></div>
-      <p class="note">How it’s worked out: 60% comes from the spread of your clean laps (no spread scores full marks, ±1.2 s or more scores none) and 40% from the share of clean laps within half a second of your best.</p></div>
+      <p class="note" id="consHow">How it’s worked out: 60% comes from the spread of your clean laps (no spread scores full marks, ±1.2 s or more scores none) and 40% from the share of clean laps within half a second of your best. Those seconds are for a 90 s lap and scale with your median lap, so a 30 s oval and an 8-minute lap are judged alike.</p></div>
     <div class="panel"><h3>Corner by corner</h3><div id="conCorners"></div>
       <p class="note">The bar is how much your time through each corner moved around on clean laps (the middle half of your laps fall within this range). Shorter is more repeatable.</p></div>
   </div>
@@ -736,7 +738,7 @@ const SEG=safe('splits',()=>{const S0=D.segments;
 const segOf=k=>{if(!SEG||!k)return null;const a=isMe(k)?SEG.laps[k.slice(2)]:SEG.refs[k];return Array.isArray(a)&&a.length===SEG.names.length?a:null};
 const cornerById={};D.corners.forEach(c=>cornerById[c.id]=c);
 if(!HAS_TEL){['compare','possible','technique','habits','bestworst'].forEach(id=>{const s=$(id);if(s){s.hidden=true;s.dataset.notel='1'}});
-  const n=h('div','empty');n.append(h('b',null,'This review has no telemetry, so it shows lap times only.'),h('span',null,'Compare laps, the best possible lap, corner technique and driving style need telemetry. Review the race again from Sessions to rebuild it.'));
+  const n=h('div','empty');n.append(h('b',null,'This review has no telemetry, so it shows lap times only.'),h('span',null,'Compare laps, best sectors added up, corner technique and driving style need telemetry. Review the race again from Sessions to rebuild it.'));
   $('deep').insertBefore(n,$('compare'))}
 
 // ---------- summary (built from DOM nodes: no data string ever goes through innerHTML)
@@ -773,12 +775,13 @@ safe('race summary',()=>{
   P('Your best was ',{b:fmt(D.best.t)},' on lap '+D.best.n+', '+ab(D.median-D.best.t)+' s quicker than your median lap.');
   if(D.std_clean!=null)P('Clean laps typically varied by about ',{b:'±'+D.std_clean.toFixed(2)+' s'},(cleanLaps.length>=5&&Math.abs(D.trend_total)>=0.2?', and by the trend line they got '+ab(D.trend_total)+' s '+(D.trend_total>0?'slower':'quicker')+' from start to finish, which tyres, fuel and track temperature all feed into.':'.'));
   const unclean=c.unclean||[],slow=c.slow||[],traffic=c.traffic||[];
-  if(slow.length)P((slow.length===1?'Lap ':'Laps ')+andList(slow.map(String))+(slow.length===1?' was':' were')+' more than '+SLOW_TXT+' off your median.');
+  const possT=Array.isArray(c.traffic_possible)?c.traffic_possible.filter(n=>typeof n==='number'):[];
+  if(slow.length)P((slow.length===1?'Lap ':'Laps ')+andList(slow.map(String))+(slow.length===1?' was':' were')+' more than '+SLOW_TXT+' off your median'+(possT.length?' ('+(possT.length===1?'lap ':'laps ')+andList(possT.map(String))+' lost it in one short stretch your other laps didn\u2019t: possibly traffic, possibly a mistake)':'')+'.');
   if(unclean.length)P('Garage 61 flagged '+(unclean.length===1?'lap ':'laps ')+andList(unclean.map(String))+' as unclean.');
   if(traffic.length)P((traffic.length===1?'Lap ':'Laps ')+andList(traffic.map(String))+' lost time in one short stretch, most likely to traffic, so '+(traffic.length===1?'it is':'they are')+' left out of your pace numbers.');
   const bl=segOf(bestKey);
   if(SEG&&SEG.possible!=null&&SEG.possible<D.best.t&&bl){const g=SEG.names.map((nm,j)=>[nm,bl[j]-SEG.best[j].t]).filter(x=>x[1]>=0.02).sort((a,b)=>b[1]-a[1]).slice(0,2);
-    P('Your fastest time through each corner, taken from any lap Garage 61 marked clean, adds up to ',{b:fmt(SEG.possible)},', '+ab(D.best.t-SEG.possible)+' s under your best lap'+(g.length?', with the biggest pieces in '+andList(g.map(x=>x[0]+' ('+x[1].toFixed(2)+' s)')):'')+'.')}
+    P('Your fastest time through each '+(SEG.basis&&SEG.basis!=='corners'?'sector':'corner')+', taken from any lap Garage 61 marked clean, adds up to ',{b:fmt(SEG.possible)},', '+ab(D.best.t-SEG.possible)+' s under your best lap'+(g.length?', with the biggest pieces in '+andList(g.map(x=>x[0]+' ('+x[1].toFixed(2)+' s)')):'')+' (a guide, not a lap anyone can drive: the pieces came from different laps).')}
   if(mainRef){const gap=D.best.t-mainRef.t;let tail='';const rl=segOf(mainRef.key);if(bl&&rl){const g=SEG.names.map((nm,j)=>[nm,bl[j]-rl[j]]).filter(x=>x[1]>=0.05).sort((a,b)=>b[1]-a[1]).slice(0,2);if(g.length&&gap>0)tail=' Your best lap lost the most to it in '+andList(g.map(x=>x[0]))+'.'}
     P(String(mainRef.name||'The comparison driver')+'’s '+fmt(mainRef.t)+' is '+ab(gap)+' s '+(gap>0?'quicker':'slower')+' than your best.'+tail)}
   else P('There were no comparison laps for this car and track, so this review compares your laps with each other.');
@@ -973,12 +976,13 @@ if(HAS_TEL){selA.value=state.a;selB.value=state.b;safe('compare laps',renderComp
 
 // ---------- best possible lap
 safe('best possible lap',()=>{if(!HAS_TEL)return;const host=$('pbPanel');
-  if(!SEG||SEG.possible==null||!segOf(bestKey)){$('pbLede').textContent='This needs at least three clean laps with telemetry.';host.append(h('p','note','Not enough clean laps to build a best possible lap.'));return}
-  $('pbLede').textContent='Your fastest time through each corner, taken from any lap Garage 61 marked clean, added together. Each segment runs from the fastest point before a corner to the fastest point after it, so the segments add up to a full lap.';
-  if(D.best.t-SEG.possible<0.1){$('pbLede').textContent='Your best corners from every lap add up to '+fmt(SEG.possible)+', within '+ab(D.best.t-SEG.possible,2)+' s of your best lap: that lap already put your best corners together.';host.hidden=true;return}
+  if(!SEG||SEG.possible==null||!segOf(bestKey)){$('pbLede').textContent='This needs at least three clean laps with telemetry.';host.append(h('p','note','Not enough clean laps to add up your best sectors.'));return}
+  const bySector=SEG.basis&&SEG.basis!=='corners';
+  $('pbLede').textContent=(bySector?'Your fastest time through each sector':'Your fastest time through each corner')+', taken from any lap Garage 61 marked clean, added together.'+(bySector?' No distinct braking zones were found on this track, so the lap is split by '+(D.no_corners&&D.no_corners.basis?D.no_corners.basis:'sector')+' instead of by corner.':' Each segment runs from the fastest point before a corner to the fastest point after it, so the segments add up to a full lap.');
+  if(D.best.t-SEG.possible<0.1){$('pbLede').textContent='Your best '+(bySector?'sectors':'corners')+' from every lap add up to '+fmt(SEG.possible)+', within '+ab(D.best.t-SEG.possible,2)+' s of your best lap: that lap already put them together.';host.hidden=true;return}
   const bl=segOf(bestKey);const head=h('div','pbhead');
   const n=(lab,v,cls)=>{const d=h('div','n');d.append(h('span',null,lab),h('b',cls||null,v));head.append(d)};
-  n('Best possible lap',fmt(SEG.possible),'pb');n('Your best lap (lap '+D.best.n+')',fmt(D.best.t));n('Difference',ab(D.best.t-SEG.possible,3)+' s');if(mainRef)n(firstName(mainRef.name)+'’s lap',fmt(mainRef.t));host.append(head);
+  n('Best sectors added up',fmt(SEG.possible),'pb');n('Your best lap (lap '+D.best.n+')',fmt(D.best.t));n('Difference',ab(D.best.t-SEG.possible,3)+' s');if(mainRef)n(firstName(mainRef.name)+'’s lap',fmt(mainRef.t));host.append(head);
   const rib=h('div','ribbon');rib.setAttribute('role','img');rib.setAttribute('aria-label','Which lap each corner’s best came from');
   SEG.names.forEach((nm,j)=>{const b=SEG.best[j];const d=h('div',b.lap!==D.best.n?'pb':null);d.style.flex=(SEG.cuts[j+1]-SEG.cuts[j])+' 1 0';d.append(h('b',null,nm),h('span',null,'L'+b.lap));hover(d,nm+' · best from lap '+b.lap,[b.t.toFixed(3)+' s',b.lap===D.best.n?'Same as your best lap':'Your best lap: '+bl[j].toFixed(3)+' s ('+sg(bl[j]-b.t,3)+')']);rib.append(d)});
   host.append(rib);kbChart(rib,'Which lap each corner’s best came from');const lg=h('div','legend');lg.innerHTML='<span><i class="k box" style="background:var(--pbbg);box-shadow:inset 0 2px 0 var(--pb)"></i>Best came from another lap</span><span><i class="k box" style="background:var(--band)"></i>Best came from your best lap</span>';host.append(lg);
@@ -990,19 +994,19 @@ safe('best possible lap',()=>{if(!HAS_TEL)return;const host=$('pbPanel');
     tr.append(h('td','mono',nm),h('td','n',b.t.toFixed(3)),c3,h('td','n',bl[j].toFixed(3)),c5,h('td','n',med.toFixed(3)));if(rl)tr.append(h('td','n',rl[j].toFixed(3)));
     const ct=h('td');ct.style.textAlign='right';if(b.lap!==D.best.n){const bt=h('button','ghost','Compare');bt.type='button';bt.title='Compare lap '+b.lap+' with your best lap in '+nm;bt.onclick=()=>{setPair('me'+b.lap,bestKey);state.seg=j;zoom(Math.max(0,SEG.cuts[j]-40),Math.min(L,SEG.cuts[j+1]+40));renderSplits();$('compare').scrollIntoView()};ct.append(bt)}tr.append(ct);tb.append(tr)});
   t.append(tb);const tf=h('tfoot');const fr=h('tr');fr.append(h('td',null,'Lap'),h('td','n',fmt(SEG.possible)),h('td'),h('td','n',fmt(D.best.t)),h('td','n','+'+(D.best.t-SEG.possible).toFixed(3)),h('td','n',''));if(rl)fr.append(h('td','n',fmt(mainRef.t)));fr.append(h('td'));tf.append(fr);t.append(tf);tw.append(t);host.append(tw);
-  host.append(h('p','note','Median is across the '+plural(elig.length,'lap')+' Garage 61 marked clean (this includes off-pace laps, so it can differ from the clean count at the top).'),h('p','note',' Corner times depend on each other, so the best possible lap is a guide rather than a lap anyone has driven.'))},'possible');
+  host.append(h('p','note','Median is across the '+plural(elig.length,'lap')+' Garage 61 marked clean (this includes off-pace laps, so it can differ from the clean count at the top).'),h('p','note',' Corner times depend on each other, so this total is a guide rather than a lap anyone has driven or could drive in one go.'))},'possible');
 
 // ---------- corner cards
 const stripR=t=>String(t||'').replace(/\s*\(r [+\-−]?\d?\.\d+\)/g,'').replace(/in the explorer/g,'in Compare laps');
 const sparkFns=[];
 // why a lap is not clean: traffic, flagged by Garage 61, or more than a second off (plain words for tooltips)
-const lapWhy=n=>{const c=D.counts;const has=k=>Array.isArray(c[k])&&c[k].includes(n);return has('traffic')?'Traffic':has('unclean')?'Flagged by Garage 61 (incident or track limits)':has('slow')?'Off-pace (more than '+SLOW_TXT+' off)':(lapBy[n]&&!lapBy[n].clean?'Off-pace':'')};
+const lapWhy=n=>{const c=D.counts;const has=k=>Array.isArray(c[k])&&c[k].includes(n);return has('traffic')?'Traffic':has('unclean')?'Flagged by Garage 61 (incident or track limits)':has('slow')?(has('traffic_possible')?'Off-pace (possibly traffic)':'Off-pace (more than '+SLOW_TXT+' off)'):(lapBy[n]&&!lapBy[n].clean?'Off-pace':'')};
 function showCorner(c){if(!c)return;if(!HAS_TEL){const r=$('corners');openDeep();r&&r.scrollIntoView();return}
   const a=TR['me'+c.best_lap]?'me'+c.best_lap:bestKey;let b=mainRef?mainRef.key:bestKey;if(b===a)b=pickMedianLap()||myKeys.find(x=>x!==a);openDeep();setPair(a,b);const j=SEG?SEG.names.indexOf(c.id):-1;state.seg=j>=0?j:null;
   if(typeof c.start_m==='number'&&typeof c.end_m==='number')zoom(Math.max(0,c.start_m-40),Math.min(L,c.end_m+40));renderSplits();$('compare').scrollIntoView()}
 safe('corners',()=>{const tb=$('cornerTable');const IN=isObj(D.insights)?D.insights:{};const tips=Object.assign({},isObj(IN.tips)?IN.tips:{});FIXES.forEach(f=>{if(Array.isArray(f.tips))tips[f.corner]=f.tips});
   const order={};FIXES.forEach((f,i)=>order[f.corner]=i);
-  if(!D.corners.length){$('cornerTable').closest('.panel').replaceChildren(h('p','note','No corners were found in this review.'));return}
+  if(!D.corners.length){$('cornerTable').closest('.panel').replaceChildren(h('p','note',(isObj(D.no_corners)&&typeof D.no_corners.note==='string')?D.no_corners.note:'No corners were found in this review.'));return}
   const cs=[...D.corners].sort((a,b)=>((a.id in order)?order[a.id]:99)-((b.id in order)?order[b.id]:99)||(b.avail||0)-(a.avail||0));const hasRef=!!mainRef;
   // 2.3: brake-point repeatability (D.brake_spread, old reviews get it on refresh); the column shows only when a corner has one
   const BS={};if(isObj(D.brake_spread)&&Array.isArray(D.brake_spread.corners))D.brake_spread.corners.forEach(x=>{if(isObj(x)&&x.id!=null&&fin(x.iqr_m))BS[x.id]=x});const hasBS=Object.keys(BS).length>0;
@@ -1128,7 +1132,11 @@ safe('notes',()=>{
   ['Source: Garage 61 laps and telemetry for this race, downloaded with your personal API token. Laps are resampled to a shared 5 m grid, so gaps are accurate to about ±0.05 s.',
    refs.length?'Comparison laps come only from your teammates and drivers you follow, because the Garage 61 API only shares those. Different cars have different gearing and brakes.':'No comparison laps: follow some drivers on Garage 61 or add teammates to get comparisons.',
    'Corners are found automatically from the speed trace of your fastest lap, so the numbering is Debrief’s, not the official turn numbers.',
-   'Coaching notes describe what tended to happen on your quicker laps. They are patterns in your data, not proof of cause.',
+   'Coaching notes describe what tended to happen on your quicker laps. They are patterns in your data, not proof of cause: the numbers quoted are what your quicker laps did, not targets.',
+   'Thresholds (off-pace, consistency, corner spread, traffic) are written for a 90 s lap and scaled to this track\u2019s median lap time; distance windows (corner zones, exit speed, the traffic window) scale with the lap length'+(isObj(D.scales)&&typeof D.scales.time==='number'&&isFinite(D.scales.time)?' (here: time \u00d7'+D.scales.time.toFixed(2)+', distance \u00d7'+(typeof D.scales.dist==='number'&&isFinite(D.scales.dist)?D.scales.dist.toFixed(2):'1.00')+')':'')+'.',
+   '\u201cBest sectors added up\u201d and the fuel-weight adjustment are estimates: the first adds pieces of different laps together, the second assumes about 0.03 s per kilogram on a 90 s lap.',
+   'Personal bests, progress and the skills profile in the library count race sessions only; a practice or qualifying review is listed but doesn\u2019t set a personal best unless you tick \u201cInclude practice and qualifying\u201d there.',
+   (D.counts&&Array.isArray(D.counts.traffic_possible)&&D.counts.traffic_possible.length)?'Single-class race: laps marked \u201cpossibly traffic\u201d lost their time in one short stretch your other laps didn\u2019t. That can be a lapped car or a mistake, so they stay in your off-pace numbers.':'',
    CH_MISSING.length?'This race’s telemetry had no '+andList(CH_MISSING)+' data, so the numbers that need '+(CH_MISSING.length===1?'it':'them')+' are left out (shown as –).':'',
    (()=>{const g=M.generated_at?new Date(M.generated_at):null;const when=g&&!isNaN(g)?'Generated '+g.toLocaleString():'Generated by an older version of Debrief';return when+(typeof M.requests==='number'?' using '+M.requests+' Garage 61 requests.':'.')})()].filter(Boolean).forEach(n=>$('notes').append(h('li',null,n)))});
 
@@ -1166,7 +1174,8 @@ safe('context chips',()=>{const host=$('ctxChips');const add=(txt,title,cls)=>{c
 safe('personal best',()=>{if(!PB||typeof D.best.t!=='number')return;const b=$('pbBanner');let cls='',badge='',main='',sub='';
   if(PB.first_time){cls='first';badge='First race here';main='This sets your benchmark: <b>'+fmt(D.best.t)+'</b>';sub='Your first review in the '+esc(carShort)+' at '+esc(trackShort)+'.'}
   else if(PB.is_pb){cls='pb';badge='New personal best';main='<b>'+fmt(D.best.t)+'</b>'+(num(PB.delta)?', '+ab(PB.delta,3)+' s quicker than before':'');sub=num(PB.previous_best)?'Previous best '+fmt(PB.previous_best)+(PB.previous_date?' on '+esc(dateShort(PB.previous_date)):''):''}
-  else if(num(PB.previous_best)){badge='Personal best '+fmt(PB.previous_best);main='<b>'+fmt(D.best.t)+'</b> today'+(num(PB.delta)?', '+ab(PB.delta,3)+' s off your best':'');sub=PB.previous_date?'Set on '+esc(dateShort(PB.previous_date)):''}
+  else if(num(PB.previous_best)){badge=(PB.session_excluded?'Race personal best ':'Personal best ')+fmt(PB.previous_best);main='<b>'+fmt(D.best.t)+'</b> today'+(num(PB.delta)?', '+(PB.delta<0?ab(PB.delta,3)+' s under':ab(PB.delta,3)+' s off')+' your race best':'');sub=(PB.previous_date?'Set on '+esc(dateShort(PB.previous_date))+'. ':'')+(PB.session_excluded?'Practice and qualifying laps don\u2019t set personal bests.':'')}
+  else if(PB.session_excluded){badge='Practice or qualifying';main='<b>'+fmt(D.best.t)+'</b> today';sub='Practice and qualifying laps don\u2019t set personal bests; your race reviews do.'}
   else return;
   b.className='pbbanner'+(cls?' '+cls:'');b.innerHTML='<span class="badge">'+esc(badge)+'</span><span class="main">'+main+'</span>'+(sub?'<span class="subt">'+sub+'</span>':'');b.hidden=false});
 
@@ -1289,7 +1298,7 @@ safe('consistency',()=>{if(!CONS||!num(CONS.score))return;$('consistency').hidde
   const sc=Math.max(0,Math.min(100,CONS.score));$('conScore').innerHTML='<span class="big">'+sc+'<small>/100</small></span><span class="lab">'+esc(CONS.label||'')+'</span>';
   const scl=$('conScale');const bands=[[0,35],[35,55],[55,75],[75,101]];bands.forEach(([a,b])=>{const d=h('div',sc>=a&&sc<b?'on':null);scl.append(d)});const mk=h('span','mk',String(sc));mk.style.left=sc+'%';scl.append(mk);
   const f=$('conFacts');const add=(k,v)=>{const sp=h('span');sp.append(document.createTextNode(k+' '),h('b',null,v));f.append(sp)};
-  if(num(CONS.std))add('Spread','±'+CONS.std.toFixed(2)+' s');if(num(CONS.within_05))add('Within 0.5 s of your best lap',Math.round(CONS.within_05)+'%');if(num(CONS.within_10))add('Within 1 s of your best lap',Math.round(CONS.within_10)+'%');if(num(CONS.n))add('Clean laps',String(CONS.n));
+  if(num(CONS.std))add('Spread','±'+CONS.std.toFixed(2)+' s');const wS=num(CONS.within_s)&&Math.abs(CONS.within_s-0.5)>0.005?CONS.within_s:null;if(num(CONS.within_05))add(wS?'Within '+wS.toFixed(1)+' s of your best lap':'Within 0.5 s of your best lap',Math.round(CONS.within_05)+'%');if(num(CONS.within_10))add(wS?'Within '+(2*wS).toFixed(1)+' s of your best lap':'Within 1 s of your best lap',Math.round(CONS.within_10)+'%');if(num(CONS.n))add('Clean laps',String(CONS.n));
   if(num(CONS.off_pace_n)&&CONS.off_pace_n>0)add('Off-pace laps',String(CONS.off_pace_n)+(num(CONS.n)?' of '+CONS.n:''));
   const host=$('conCorners');const bc=(CONS.by_corner||[]).filter(b=>num(b.iqr));if(!bc.length){host.append(h('p','note','Not enough clean laps per corner.'));return}
   const locked=bc.filter(b=>b.iqr<0.06);const show=bc.filter(b=>b.iqr>=0.06);
@@ -1469,6 +1478,7 @@ safe('what to work on',()=>{const IN=isObj(D.insights)?D.insights:null;
     items.forEach(it=>{const li=h('li');li.append(h('b',null,String(it.title||'')),h('span',null,String(it.text||'')));if(it.detail)li.append(h('span','det',String(it.detail)));lapLinks(li,it);ul.append(li)})};
   list('badList',IN.bad,'Nothing repeated that cost you time. Keep it up.');
   list('goodList',IN.good,'Not enough clean laps to say yet.');
+  if(Array.isArray(IN.look)&&IN.look.filter(isObj).length){$('lookPanel').hidden=false;list('lookList',IN.look,'')}
   const pl=$('plan');if(pl)pl.hidden=true;   // "Fix first" replaces the old practice plan
 },'coach');
 // ---------- 2.3: where in the corner (D.skills): typical laps against your own better laps, phase by phase
@@ -1585,6 +1595,9 @@ const RC_LAPS=(()=>{const by={};const get=n=>by[n]||(by[n]={n,t:null,lost:null,t
     lapNums(c.pit).forEach(n=>{if(int(n,1,2000)){const e=get(n);e.tags.add('pit');if(!lapBy[n])e.lost=null}});
     (Array.isArray(c.excluded_laps)?c.excluded_laps:[]).forEach(x=>{const n=typeof x==='number'?x:isObj(x)?x.n:null;if(!int(n,1,2000)||lapBy[n])return;const e=get(n);e.tags.add('excluded');e.lost=null;if(isObj(x)&&num(x.t))e.t=x.t})}
   (Array.isArray(c.traffic_detail)?c.traffic_detail:[]).forEach(x=>{if(isObj(x)&&by[x.n]&&num(x.at_m)&&by[x.n].at_m==null)by[x.n].at_m=x.at_m});
+  // 2.7: single-class "possibly traffic" laps (they stay off-pace laps; the tooltip says so)
+  (Array.isArray(c.traffic_possible_detail)?c.traffic_possible_detail:[]).forEach(x=>{if(isObj(x)&&by[x.n]){by[x.n].possible=true;if(num(x.at_m)&&by[x.n].at_m==null)by[x.n].at_m=x.at_m}});
+  lapNums(c.traffic_possible).forEach(n=>{if(by[n])by[n].possible=true});
   const maxN=Math.max(0,...Object.keys(by).map(Number));
   Object.keys(INC).forEach(k=>{const n=+k;if(n<=Math.max(maxN,1)+1)get(n).tags.add('incident')});
   return Object.values(by).sort((a,b)=>a.n-b.n)})();
@@ -1602,7 +1615,7 @@ const RC_ICONS=['best','unclean','traffic','pit','incident'];
 const rcFill=v=>{if(!num(v))return 'var(--band)';if(Math.abs(v)<0.1)return 'var(--mid)';const p=Math.round(Math.min(1,Math.abs(v)/2)*8)*10+15;return `color-mix(in oklab, var(${v>0?'--bad':'--good'}) ${Math.min(85,p)}%, var(--mid))`};
 function rcIncLine(n){const a=INC[n];if(!a)return '';return (a.length===1?'Incident you logged: ':'Incidents you logged: ')+a.map(x=>INC_KIND[x.kind]+(x.points!=null?' ('+x.points+'x)':'')).join(', ')}
 function rcTip(e){const lines=[];if(e.lost!=null&&Math.abs(e.lost)>=0.05)lines.push(sg(e.lost,1)+' s against your typical lap');
-  RC_TAGS.forEach(k=>{if(!e.tags.has(k))return;if(k==='incident')lines.push(rcIncLine(e.n));else if(k==='traffic')lines.push('Most likely traffic'+(num(e.at_m)?' around '+Math.round(wrapM(e.at_m)).toLocaleString('en-US')+' m':''));else lines.push(RC_LAB[k])});
+  RC_TAGS.forEach(k=>{if(!e.tags.has(k))return;if(k==='incident')lines.push(rcIncLine(e.n));else if(k==='traffic')lines.push('Most likely traffic'+(num(e.at_m)?' around '+Math.round(wrapM(e.at_m)).toLocaleString('en-US')+' m':''));else if(k==='slow'&&e.possible)lines.push('Off-pace: possibly traffic'+(num(e.at_m)?' around '+Math.round(wrapM(e.at_m)).toLocaleString('en-US')+' m':'')+', possibly a mistake');else lines.push(RC_LAB[k])});
   if(TR['me'+e.n])lines.push('Click to open this lap in Compare');
   const head=['Lap '+e.n];if(num(e.t))head.push(fmt1(e.t));if(e.lost!=null)head.push(sg(e.lost,1)+' s');
   const tl=[...e.tags].includes('traffic')?' · most likely traffic'+(num(e.at_m)?' around '+Math.round(wrapM(e.at_m)).toLocaleString('en-US')+' m':''):'';

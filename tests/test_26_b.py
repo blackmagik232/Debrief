@@ -95,7 +95,9 @@ def _uncached_rows(lib):
 
 
 def _apply_pbs_slow(rows):
-    """The 2.5 O(n²) PB pass, kept here as the reference for the one-pass version."""
+    """The 2.5 O(n²) PB pass, kept here as the reference for the one-pass version. 2.7: row["pb"] counts race
+    sessions only (a practice / qualifying row is session_excluded and measured against the race best) and
+    row["pb_all"] counts every session, the same rule as library._apply_pbs."""
     done = set()
     for r in rows:
         if id(r) in done:
@@ -103,7 +105,17 @@ def _apply_pbs_slow(rows):
         grp = sorted([x for x in rows if library.same_combo(x, r)], key=lambda x: (library._ts(x), x["dir"]))
         for i, x in enumerate(grp):
             done.add(id(x))
-            x["pb"] = library._pb_info(x["best"] if x.get("best_clean", True) else None, grp[:i])
+            best = x["best"] if x.get("best_clean", True) else None
+            x["pb_all"] = library._pb_info(best, grp[:i])
+            prev = [y for y in grp[:i] if library.is_race(y)]
+            if library.is_race(x):
+                x["pb"] = library._pb_info(best, prev)
+            else:
+                info = library._pb_info(None, prev)
+                info["best_clean"] = bool(x.get("best_clean", True))
+                info["session_excluded"] = True
+                info["delta"] = round(best - info["previous_best"], 3) if (best is not None and info["previous_best"] is not None) else None
+                x["pb"] = info
 
 
 def _canon(rows):
@@ -221,10 +233,12 @@ def test_one_pass_pbs_match_reference():
         rows.append({"dir": f"d{i:03d}", "track": t, "car": "car", "track_id": None, "car_id": None,
                      "started_at": f"2026-{1 + rng.randrange(12):02d}-{1 + rng.randrange(28):02d}T10:00:00+00:00",
                      "date": "", "best": round(80 + rng.random() * 2, 1),   # ties on purpose
-                     "best_clean": rng.random() > 0.2})
+                     "best_clean": rng.random() > 0.2,
+                     "session": rng.choice(["Race", "Race", None, "Practice", "Qualifying"])})   # 2.7: mixed sessions
     a = json.loads(json.dumps(rows))
     b = json.loads(json.dumps(rows))
     library._apply_pbs(a)
+    library._apply_pbs(a, include_practice=True, key="pb_all")
     _apply_pbs_slow(b)
     assert _canon(a) == _canon(b)
 

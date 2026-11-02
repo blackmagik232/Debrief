@@ -346,11 +346,12 @@ def test_racecraft_old_reviews():
 def test_insights_lap1_detail_from_racecraft():
     d = review()
     ins = insights.build(d)
-    it = next(i for i in ins["bad"] if i["key"] == "lap1")
+    # 2.7: the start type isn't known, so lap 1 is a "worth a look" note rather than a bad habit
+    it = next(i for i in ins["look"] if i["key"] == "lap1")
     assert "Most of it was in C1" in it["detail"] and "includes the start" in it["detail"], it
     assert it["corners"][0] == "C1" and {"key", "title", "text", "cost"} <= set(it)
     d.pop("racecraft")
-    it = next(i for i in insights.build(d)["bad"] if i["key"] == "lap1")
+    it = next(i for i in insights.build(d)["look"] if i["key"] == "lap1")
     assert "Most of it" not in it["detail"] and "corners" not in it
 
 

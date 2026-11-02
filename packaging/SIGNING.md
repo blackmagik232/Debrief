@@ -9,6 +9,15 @@ until you set a key. With no key, `RELEASE_PUBKEYS` in `debrief/updater.py` is e
 when their SHA-256 matches, as they always have. Once a key is set, every later update needs a valid
 `.sig` file, and one without it is refused.
 
+**What people see before and after the key (2.7.0).** The app never claims more than it checked.
+`updater.verification_level()` answers `"checksum"` while `RELEASE_PUBKEYS` is empty and `"signature"`
+once a key is set, and the window follows it. Before the key: **Settings > Updates** says "Updates are
+checked by SHA-256 checksum. Signed updates switch on once a signing key is published." and the update
+job's last line is "Checksum matched. Installing...". After the key: the note becomes "Updates are
+signature-verified." and the job says "Signature verified. Installing..." only after the Ed25519
+signature really verified. (`verification_level` is also in **About > Copy diagnostics**.) Nothing in
+the wording has to be edited when you publish the key: it changes on its own.
+
 | Piece | Where |
 |---|---|
 | Release assets | `Debrief-Setup-<v>.exe`, `Debrief-Setup-<v>.exe.sha256`, `Debrief-Setup-<v>.exe.sig` |

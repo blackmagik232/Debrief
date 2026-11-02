@@ -1012,6 +1012,8 @@ function fillSettings(v){
   $('aboutVersion').textContent='Debrief '+(v.version||'');
   $('aboutText').textContent=(installed?'Installed app. ':'Running from source. ')+'Your settings, the Garage 61 data Debrief has saved, and its log (debrief.log) are in this folder:';
   $('dataPath').textContent=v.data_folder||'';
+  $('secretsNote').textContent=v.secrets_at_rest==='dpapi'?'Your Garage 61 token and Discord webhook are stored there encrypted to your Windows account (DPAPI), so a copied settings.toml doesn\'t hold them in the clear.':'Your Garage 61 token and Discord webhook are stored there in settings.toml. Keep that file private.';
+  if(typeof v.verification_note==='string'&&v.verification_note)$('updVerify').textContent=v.verification_note;
   if(guideOn)updateGuide();
   const st=$('tokStatus');st.textContent=v.token_saved?'Token saved (ends in '+v.token_hint+')':'No token saved yet';
   st.className='pill '+(v.token_saved?'ok':'no');
@@ -1138,6 +1140,28 @@ $('fSync').addEventListener('submit',async e=>{e.preventDefault();setMsg('syncOp
   fillSettings(r.settings);setMsg('syncOptMsg','Saved.','ok')});
 $('btnFolder').addEventListener('click',async()=>{let r;try{r=await post('open-folder')}catch(e){connectionLost();return}
   setMsg('folderMsg',r.ok?'Opened in File Explorer.':r.error,r.ok?'ok':'')});
+
+/* ---------- diagnostics (About > Copy diagnostics) */
+function fmtBytes(n){if(!ok(n))return 'unknown';if(n<1024*1024)return Math.round(n/1024)+' KB';return (n/1048576).toFixed(1)+' MB'}
+function diagText(d){const L=[];
+  L.push('Debrief '+(d.version||'?')+' ('+(d.frozen?'installed':'from source')+')');
+  L.push('Platform: '+(d.platform||'?')+'; Python '+(d.python||'?'));
+  L.push('Updates checked by: '+(d.verification_level==='signature'?'Ed25519 signature':d.verification_level==='checksum'?'SHA-256 checksum':String(d.verification_level||'?')));
+  L.push('Reviews: '+(ok(d.reviews)?d.reviews:'unknown')+'; synced sessions: '+(ok(d.sessions)?d.sessions:'unknown')+'; cache: '+fmtBytes(d.cache_bytes));
+  L.push('Settings folder: '+(d.settings_folder||'?'));
+  if(d.library_folder)L.push('Library folder: '+d.library_folder);
+  L.push('');L.push('--- debrief.log (last '+((d.log||[]).length)+' lines; home folder, token, webhook and e-mail addresses removed) ---');
+  (d.log||[]).forEach(x=>L.push(String(x)));
+  return L.join('\n')+'\n'}
+async function copyText(t){
+  if(navigator.clipboard&&navigator.clipboard.writeText){try{await navigator.clipboard.writeText(t);return true}catch(e){}}
+  const ta=document.createElement('textarea');ta.value=t;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.left='-9999px';
+  document.body.appendChild(ta);ta.select();let done=false;try{done=document.execCommand('copy')}catch(e){}ta.remove();return done}
+$('btnDiag').addEventListener('click',async()=>{const b=$('btnDiag');b.disabled=true;setMsg('diagMsg','Collecting...');
+  let d;try{d=await api('diagnostics')}catch(e){b.disabled=false;setMsg('diagMsg','Couldn\'t read the diagnostics.','bad');return}
+  if(!d||!d.ok){b.disabled=false;setMsg('diagMsg',(d&&d.error)||'Couldn\'t read the diagnostics.','bad');return}
+  const okc=await copyText(diagText(d));b.disabled=false;
+  setMsg('diagMsg',okc?'Copied. Paste it wherever you\'re asking for help.':'Couldn\'t copy to the clipboard.',okc?'ok':'bad')});
 
 /* ---------- updates */
 let updInfo=null;

@@ -19,6 +19,10 @@ VERSION = re.search(r'^__version__\s*=\s*"([^"]+)"', (PKG / "__init__.py").read_
 # bundle root (sys._MEIPASS), where app.RES points when frozen.
 datas = [(str(p), "debrief/templates") for p in sorted((PKG / "templates").glob("*.html"))]
 datas += [(str(p), "debrief/desktop/ui") for p in sorted((PKG / "desktop" / "ui").iterdir()) if p.is_file()]
+# 2.7.0: the bundled fonts (ui/fonts/*.woff2, fonts.css, LICENSE.txt), so no page ever calls a font service
+datas += [(str(p), "debrief/desktop/ui/fonts") for p in sorted((PKG / "desktop" / "ui" / "fonts").iterdir()) if p.is_file()]
+if not any(d[1] == "debrief/desktop/ui/fonts" and d[0].endswith("fonts.css") for d in datas):
+    raise SystemExit("debrief/desktop/ui/fonts/fonts.css is missing: the fonts would be left out of the build")
 datas += [(str(PKG / "desktop" / "icon.png"), "debrief/desktop"),
           (str(PKG / "desktop" / "debrief.ico"), "debrief/desktop"),
           (str(ROOT / "settings.example.toml"), ".")]

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import re
 import subprocess
@@ -51,6 +52,45 @@ def _refresh_reviews():
         pass
     except Exception:  # noqa: BLE001
         app.say("ERROR refreshing saved reviews:\n" + traceback.format_exc())
+
+
+class SayHandler(logging.Handler):
+    """Sends the "debrief" loggers' records to app.say, so they land in debrief.log (2.7.0, H2).
+
+    sync.py, library.py and discord.py use logging for things worth knowing (a laps file set aside, the
+    skill profile failing, a Discord post). Nothing configured a handler, so those lines went to stderr,
+    which is /dev/null under pythonw: they were lost. Lines look like "[sync] WARNING: message". The
+    "set aside" lines in sync.py are WARNINGs, so WARNING and above is enough; discord's INFO "Posted"
+    line is already written by the server itself."""
+
+    def __init__(self, say=None, level=logging.WARNING):
+        super().__init__(level)
+        self.say = say
+
+    def emit(self, record):
+        try:
+            name = record.name.split(".", 1)[1] if "." in record.name else record.name
+            msg = record.getMessage()
+            if record.exc_info:
+                msg += "\n" + "".join(traceback.format_exception(*record.exc_info)).rstrip()
+            level = "" if record.levelno == logging.INFO else record.levelname + ": "
+            (self.say or app.say)(f"[{name}] {level}{msg}")
+        except Exception:  # noqa: BLE001  (a log line must never take anything down)
+            pass
+
+
+def attach_logging(say=None) -> SayHandler:
+    """Attach one SayHandler to the "debrief" logger (idempotent) and return it. The logger's own level
+    is set to INFO if it was unset, so records at WARNING and above always reach the handler."""
+    lg = logging.getLogger("debrief")
+    for h in lg.handlers:
+        if isinstance(h, SayHandler):
+            return h
+    h = SayHandler(say)
+    lg.addHandler(h)
+    if lg.level == logging.NOTSET or lg.level > logging.INFO:
+        lg.setLevel(logging.INFO)
+    return h
 
 
 _LOCK_PATH = re.compile(r"^/[A-Za-z0-9_-]{32}/$")
@@ -285,6 +325,7 @@ def main(argv=None):
     if sys.stderr is None:
         sys.stderr = open(os.devnull, "w")
     app.LOG_FILE = str(app.HERE / "debrief.log")
+    attach_logging()       # warnings from sync, library and discord reach debrief.log too (2.7.0)
     app.ensure_settings()  # installed app only: first start creates settings.toml for first-run setup
     if a.selftest:
         return selftest()
@@ -304,7 +345,9 @@ def main(argv=None):
                     return 0
         except Exception:  # noqa: BLE001  (stale lock from a crash: carry on)
             pass
-    app.say(f"--- {datetime.now().isoformat(timespec='seconds')} debrief desktop start (Python {sys.version.split()[0]})")
+    from .. import __version__
+    app.say(f"--- {datetime.now().isoformat(timespec='seconds')} debrief desktop start "
+            f"(Debrief {__version__}, Python {sys.version.split()[0]}, {'installed' if app.FROZEN else 'from source'})")
     try:
         from .server import DebriefServer
         srv = DebriefServer(heartbeat_timeout=a.heartbeat_timeout)

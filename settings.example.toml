@@ -2,6 +2,9 @@
 # Keep settings.toml private: it holds your Garage 61 token. Never share it or post it.
 
 # Your personal access token from https://garage61.net/developer (the developer app you set up there).
+# In the installed app (2.7.0 and later) the token and the Discord webhook are stored encrypted to your
+# Windows account instead: Settings writes them as  token_dpapi = "..."  and  discord_webhook_dpapi = "..."
+# and blanks the plain lines. A plain token here still works, and is rewritten that way on the next save.
 token = "PASTE-YOUR-GARAGE61-TOKEN-HERE"
 
 # Where reviews are saved. Leave as-is for Documents\Debrief Reviews.

@@ -4,8 +4,7 @@
 <meta name="referrer" content="no-referrer">
 <title>Debrief · Midfield Menace</title>
 <link rel="icon" type="image/png" href="static/icon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="static/fonts/fonts.css">
 <link rel="stylesheet" href="static/tokens.css">
 <link rel="stylesheet" href="static/app.css">
 <script>try{const t=localStorage.getItem('debrief-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
@@ -338,6 +337,7 @@
       <form class="panel" id="fUpdate">
         <div class="phead"><h3>Updates</h3><span class="pill" id="updPill">–</span></div>
         <p class="note" id="updNote">Debrief checks GitHub for a newer version once a day. Updating downloads the installer, checks it arrived intact, installs it and reopens Debrief. Your settings, reviews and history are kept.</p>
+        <p class="note" id="updVerify">Updates are checked by SHA-256 checksum. Signed updates switch on once a signing key is published.</p>
         <label class="check" for="updAuto"><input id="updAuto" type="checkbox"><span>Check for updates when Debrief opens</span></label>
         <div class="row"><button type="button" class="btn" id="btnUpdCheck">Check now</button><button type="button" class="btn primary" id="btnUpdNow" hidden>Update now</button><button type="submit" class="btn ghost">Save</button><span class="msg" id="updMsg" role="status"></span></div>
       </form>
@@ -402,6 +402,9 @@
         <div class="phead"><h3>About</h3><span class="pill" id="aboutVersion">Debrief</span></div>
         <p class="note" id="aboutText"></p>
         <p class="mono path" id="dataPath"></p>
+        <p class="note" id="secretsNote"></p>
+        <p class="note">Need help with a problem? Copy diagnostics puts Debrief's version, what it has saved and the end of its log on the clipboard, with your user name, token, webhook and any e-mail addresses taken out. Paste it to whoever is helping.</p>
+        <div class="row"><button type="button" class="btn" id="btnDiag">Copy diagnostics</button><span class="msg" id="diagMsg" role="status"></span></div>
       </div>
     </div>
   </section>

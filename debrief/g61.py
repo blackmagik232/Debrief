@@ -13,7 +13,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import tempfile
 import threading
 import time
 from email.utils import parsedate_to_datetime
@@ -58,21 +57,39 @@ class Interrupted(Exception):
 
 
 def _atomic_write(p: Path, text: str) -> None:
-    """Write a file so it's either the old or the new content, never half of either (temp file, flushed
-    to disk, then swapped in)."""
-    fd, tmp = tempfile.mkstemp(prefix=".tmp-", suffix=p.suffix, dir=p.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
-        fsutil.replace(tmp, p)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    """Write a file so it's either the old or the new content, never half of either (fsutil's one atomic
+    write: temp file, flushed to disk, then swapped in with the Windows retry)."""
+    fsutil.write_text(p, text, fsync=True)
+
+
+_LOOPBACK = ("127.0.0.1", "localhost", "::1")
+
+
+def no_network(url: str = "") -> bool:
+    """DEBRIEF_NO_NETWORK=1 (the test runner sets it): never make a real request; fail as if offline.
+    The tests' own servers on 127.0.0.1 / localhost are still allowed."""
+    if os.environ.get("DEBRIEF_NO_NETWORK", "").strip() in ("", "0"):
+        return False
+    host = (urlparse(url).hostname or "") if url else ""
+    return host not in _LOOPBACK
+
+
+def _is_timeout(e) -> bool:
+    """A requests error that is a timeout (the host answered nothing in time), including a ConnectionError
+    wrapping a timeout from urllib3 (ConnectTimeout, ReadTimeoutError)."""
+    import requests
+    if isinstance(e, requests.Timeout):
+        return True
+    seen = set()
+    cur = e
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        name = type(cur).__name__
+        if "Timeout" in name or "timed out" in str(cur).lower():
+            return True
+        cur = getattr(cur, "__cause__", None) or getattr(cur, "__context__", None) or \
+            (cur.args[0] if getattr(cur, "args", None) and isinstance(cur.args[0], BaseException) else None)
+    return False
 
 
 # Request pacing is shared by every Garage61 client in this process (the sync, a review and a Prep page can
@@ -86,6 +103,8 @@ class Garage61:
     # first wait (seconds) before retrying after a network error, 429 or 5xx; doubles each retry.
     # Tests set it to 0 (Garage61(..., backoff_base=0)) so retries don't sleep.
     BACKOFF_BASE = 5
+    # wait before the one retry after a connection/DNS failure (no network at all); never more than BACKOFF_BASE
+    OFFLINE_RETRY_S = 2
 
     def __init__(self, token: str, cache_dir: Path, min_gap_s: float = 1.0,
                  base_url: str = BASE, log=print, stop_event: "threading.Event | None" = None,
@@ -202,8 +221,12 @@ class Garage61:
             url += "?" + urlencode(params)
         where = "/" + path.lstrip("/") + (("?" + urlencode(params)) if params else "")   # for the log only
         import requests
+        if no_network(url):
+            self.log(f"  DEBRIEF_NO_NETWORK is set: not asking Garage 61 for {where}")
+            raise Garage61Error(MSG_OFFLINE)
         delay = self.BACKOFF_BASE
         r = None
+        down = 0   # connection / DNS failures in a row (Wi-Fi off): one quick retry, then MSG_OFFLINE
         for attempt in range(5):
             last = attempt == 4
             self._wait()
@@ -211,6 +234,17 @@ class Garage61:
             try:
                 r = self.s.get(url, timeout=30)
             except requests.RequestException as e:
+                # 2.7 (M1): a connection or DNS failure means there's no network, so a 5/10/20/40 s backoff
+                # only makes "Review last race" sit on "Connecting..." for 75 s with Wi-Fi off. One quick
+                # retry (OFFLINE_RETRY_S) and then the plain offline message. Timeouts and other errors keep
+                # the backoff: the host may answer the next time.
+                if isinstance(e, requests.ConnectionError) and not _is_timeout(e):
+                    down += 1
+                    if down >= 2 or last:
+                        self.log(f"  Garage 61 unreachable for {where}: {type(e).__name__}: {e}")
+                        raise Garage61Error(MSG_OFFLINE)
+                    self._sleep(min(self.OFFLINE_RETRY_S, self.BACKOFF_BASE) if self.BACKOFF_BASE else 0)
+                    continue
                 if last:
                     self.log(f"  Garage 61 unreachable for {where}: {type(e).__name__}: {e}")
                     raise Garage61Error(MSG_OFFLINE)

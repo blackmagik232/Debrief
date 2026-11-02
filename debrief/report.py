@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 TPL = Path(__file__).resolve().parent / "templates"
@@ -31,24 +32,36 @@ IF_ABSENT = (("strategy", "strategy", "block_from_review"),
 
 
 def _extras(data: dict, log=None) -> None:
+    """2.7 (M7): a derived key is replaced only when the renderer gives a value, and dropped only when it
+    was absent before. When a renderer fails (or answers None) on a review that already has that key, the
+    old value is kept and the reason logged: review.json is the only copy, so saved analysis is never
+    thrown away because new code couldn't redo it."""
     import importlib
     todo = list(EXTRAS) + [x for x in IF_ABSENT if data.get(x[0]) is None]
     for key, mod, fn in todo:
         name = f"{__package__}.{mod}"
+        had = key in data and data.get(key) is not None
+        failed = False
         try:
             val = getattr(importlib.import_module(name), fn)(data)
         except ModuleNotFoundError as e:   # a copy without that module (nothing to log on every write)
             val = None
+            failed = True
             if log and e.name != name:
                 log(f"  Couldn't work out {key}: {e}")
         except Exception as e:  # noqa: BLE001  (never worth losing the review over)
             val = None
+            failed = True
             if log:
-                log(f"  Couldn't work out {key}: {type(e).__name__}: {e}")
-        if val is None:
-            data.pop(key, None)
-        else:
+                log(f"  Couldn't work out {key}: {type(e).__name__}: {e}" +
+                    ("; keeping the saved one" if had else ""))
+        if val is not None:
             data[key] = val
+        elif had:
+            if not failed and log:
+                log(f"  {key} came back empty this time; keeping the saved one")
+        else:
+            data.pop(key, None)
 
 
 def sanitize(obj):
@@ -90,9 +103,119 @@ def write(out_dir: Path, data: dict, log=None) -> Path:
 
 
 def atomic_write(path: Path, text: str) -> None:
-    """Write text to path via a temp file in the same folder + fsutil.replace (never a half-written file)."""
+    """Write text to path via fsutil's one atomic write (temp file, flushed to disk, Windows replace retry)."""
     from . import fsutil
-    fsutil.atomic_write_text(path, text, fsync=True)
+    fsutil.write_text(path, text, fsync=True)
+
+
+# ---------------------------------------------------------------- 2.7 (M7): backups before a re-render
+BACKUP_DIR = ".backup"
+BACKUP_KEEP = 2   # newest backup sets kept (one per old layout version); older ones are pruned
+
+
+def _backup_sets(lib: Path) -> list:
+    """Backup sets in <library>/.backup, newest first (by modification time, then name)."""
+    root = lib / BACKUP_DIR
+    try:
+        sets = [d for d in root.iterdir() if d.is_dir()]
+    except OSError:
+        return []
+
+    def key(d):
+        try:
+            return d.stat().st_mtime
+        except OSError:
+            return 0.0
+    return sorted(sets, key=lambda d: (key(d), d.name), reverse=True)
+
+
+def backup_reviews(library_folder, version: str, log=None) -> int:
+    """Copy every reviews/*/review.json into <library>/.backup/<version>/<review-folder>/review.json before
+    the first rewrite of a new layout. version is the layout the reviews are in now (the old one), or
+    "unknown". Returns how many were copied. An existing set for that version is completed, not redone.
+    Keeps at most BACKUP_KEEP sets (the newest), pruning the rest."""
+    import shutil
+    lib = Path(library_folder)
+    version = _safe_version(version)
+    dest = lib / BACKUP_DIR / version
+    n = 0
+    for p in sorted((lib / "reviews").glob("*/review.json")):
+        target = dest / p.parent.name / "review.json"
+        if target.exists():
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(p, target)
+            n += 1
+        except OSError as e:
+            if log:
+                log(f"  Couldn't back up {p.parent.name}: {e}")
+    try:   # the set's time is when it was (last) written, so pruning keeps the newest
+        if dest.exists():
+            os.utime(dest, None)
+    except OSError:
+        pass
+    prune_backups(lib, keep=BACKUP_KEEP, log=log)
+    return n
+
+
+def _safe_version(version) -> str:
+    v = "".join(ch for ch in str(version or "").strip() if ch.isalnum() or ch in "._-") or "unknown"
+    return v.strip(".") or "unknown"
+
+
+def prune_backups(library_folder, keep: int = BACKUP_KEEP, log=None) -> int:
+    """Delete backup sets beyond the `keep` newest. Returns how many sets were removed."""
+    import shutil
+    lib = Path(library_folder)
+    gone = 0
+    for d in _backup_sets(lib)[max(0, int(keep)):]:
+        try:
+            shutil.rmtree(d)
+            gone += 1
+        except OSError as e:
+            if log:
+                log(f"  Couldn't remove the old backup {d.name}: {e}")
+    return gone
+
+
+def list_backups(library_folder) -> list:
+    """Backup set versions in <library>/.backup, newest first."""
+    return [d.name for d in _backup_sets(Path(library_folder))]
+
+
+def restore_backup(library_folder, version: str, log=None, rerender: bool = True) -> int:
+    """Put every review.json saved in <library>/.backup/<version> back in place (atomically), then re-render
+    each page from it. Returns how many reviews were restored. No requests. Raises FileNotFoundError when
+    there's no such backup set."""
+    lib = Path(library_folder)
+    src = lib / BACKUP_DIR / _safe_version(version)
+    if not src.is_dir():
+        raise FileNotFoundError(f"No backup set '{version}' in {lib / BACKUP_DIR}")
+    n = 0
+    for p in sorted(src.glob("*/review.json")):
+        out_dir = lib / "reviews" / p.parent.name
+        try:
+            text = p.read_text(encoding="utf-8")
+            data = json.loads(text)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            atomic_write(out_dir / "review.json", text)
+            if rerender and isinstance(data, dict):
+                html = fill((TPL / "review.html").read_text(encoding="utf-8"),
+                            {"/*DATA*/null": _embed(dict(data, brand=brand()))})
+                atomic_write(out_dir / "index.html", html)
+            n += 1
+        except (OSError, ValueError) as e:
+            if log:
+                log(f"  Couldn't restore {p.parent.name}: {e}")
+    if n:
+        try:
+            from . import library
+            library.rebuild(lib)
+        except Exception as e:  # noqa: BLE001
+            if log:
+                log(f"  Couldn't update the library page: {e}")
+    return n
 
 
 def refresh_all(library_folder, log=None, should_stop=None, done=None, progress=None) -> int:
@@ -103,8 +226,10 @@ def refresh_all(library_folder, log=None, should_stop=None, done=None, progress=
     progress(done_count, total) is called after each review (the window shows it on the Skills page)."""
     lib = Path(library_folder)
     marker = lib / ".layout"
+    old_layout = "unknown"
     try:
-        if marker.read_text(encoding="utf-8").strip() == LAYOUT:
+        old_layout = marker.read_text(encoding="utf-8").strip() or "unknown"
+        if old_layout == LAYOUT:
             return 0
     except OSError:
         pass
@@ -112,6 +237,14 @@ def refresh_all(library_folder, log=None, should_stop=None, done=None, progress=
     done = done if done is not None else set()
     todo = sorted((lib / "reviews").glob("*/review.json"))
     total = len(todo)
+    if todo and not all(p.parent.name in done for p in todo):
+        # 2.7 (M7): before the first rewrite, a copy of every review.json (the only copy of an analysed
+        # review) goes to .backup/<old layout>/; restore_backup() puts it back. At most 2 sets are kept.
+        try:
+            backup_reviews(lib, old_layout, log=log)
+        except Exception as e:  # noqa: BLE001  (a backup that can't be made mustn't stop the refresh)
+            if log:
+                log(f"  Couldn't back up the saved reviews before re-rendering: {e}")
     if progress:
         progress(sum(1 for p in todo if p.parent.name in done), total)
     for p in todo:

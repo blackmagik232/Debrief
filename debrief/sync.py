@@ -23,7 +23,6 @@ import hashlib
 import json
 import logging
 import os
-import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -135,22 +134,9 @@ def session_name(t) -> str:
 
 
 def _write_json(p: Path, obj) -> None:
-    """Durable write: a temp file in the same folder, flushed to disk, then swapped in. A power cut leaves
-    either the old file or the new one, never an empty or half-written one."""
-    p.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=p.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(json.dumps(obj, separators=(",", ":")))
-            f.flush()
-            os.fsync(f.fileno())
-        fsutil.replace(tmp, p)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    """Durable write: a temp file in the same folder, flushed to disk, then swapped in (fsutil's one atomic
+    write). A power cut leaves either the old file or the new one, never an empty or half-written one."""
+    fsutil.write_json(p, obj, fsync=True, mkdir=True)
 
 
 def _load(p: Path):

@@ -34,12 +34,16 @@ def replace(src, dst, tries: int = RETRIES) -> None:
             time.sleep(_delay(i))
 
 
-def atomic_write_text(path, text: str, fsync: bool = False, tries: int = RETRIES) -> None:
+def atomic_write_text(path, text: str, fsync: bool = False, tries: int = RETRIES, mkdir: bool = False) -> None:
     """Write text to path via a temp file in the same folder + replace(), so readers only ever see the old
-    file or the whole new one. fsync=True also flushes it to disk first (for files that are the only copy)."""
+    file or the whole new one. fsync=True also flushes it to disk first (for files that are the only copy).
+    mkdir=True creates the parent folder first. This is the one atomic write in Debrief (2.7): g61's cache,
+    the sync store, review.json and the pages all go through it."""
     import tempfile
     from pathlib import Path
     path = Path(path)
+    if mkdir:
+        path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".tmp", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
@@ -54,3 +58,17 @@ def atomic_write_text(path, text: str, fsync: bool = False, tries: int = RETRIES
         except OSError:
             pass
         raise
+
+
+def write_text(path, text: str, fsync: bool = False, mkdir: bool = False) -> None:
+    """atomic_write_text under its 2.7 name."""
+    atomic_write_text(path, text, fsync=fsync, mkdir=mkdir)
+
+
+def write_json(path, obj, fsync: bool = False, mkdir: bool = False, compact: bool = True, **dumps_kw) -> None:
+    """Write obj as JSON atomically (see atomic_write_text). compact=True writes it without spaces, as the
+    sync store does; dumps_kw goes to json.dumps (e.g. allow_nan=False)."""
+    import json
+    if compact and "separators" not in dumps_kw:
+        dumps_kw["separators"] = (",", ":")
+    atomic_write_text(path, json.dumps(obj, **dumps_kw), fsync=fsync, mkdir=mkdir)

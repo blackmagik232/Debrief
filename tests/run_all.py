@@ -6,7 +6,8 @@
 
 Each file still runs in its own Python process (exactly as `python tests/ci_run.py <file>`), with its own
 temp folder (TEMP/TMP/TMPDIR point at a fresh folder per file, so files never share temp files; servers in
-the tests bind port 0). A file's output is printed in one block when it finishes, inside a ::group:: so the
+the tests bind port 0) and offline (ci_run.offline_env: the updater's state file lives in that temp folder,
+never in the repo, and no test can reach the internet). A file's output is printed in one block when it finishes, inside a ::group:: so the
 log stays readable, and a failing file adds the same ::error annotations ci_run.py writes.
 
 A file that fails while others run beside it is run once more on its own: if it passes alone, that is

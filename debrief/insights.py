@@ -1,6 +1,6 @@
 """Turn a review's numbers into a short coaching summary, sorted the way a driver reads it:
 
-    verdict      2 lines: best lap, how consistent, how much time is realistically there
+    verdict      one sentence in words: what to work on (the figures are on the summary tiles)
     fix          up to 5 corners worth working on now: what to change, roughly what it's worth, and the
                  numbers behind it ("numbers": best / typical / comparison technique, "times": corner times)
     bad          habits that repeat across laps (only listed when they clear a threshold)
@@ -238,6 +238,32 @@ def _lap1_segments(data: dict) -> list:
     if not l1 or not l1.get("in_analysis"):
         return []
     return [s for s in l1.get("segments") or [] if isinstance(s, dict) and s.get("id") and _f(s.get("lost_s")) is not None][:2]
+
+
+STEADY_WORDS = {"Very consistent": "Your laps are very steady", "Consistent": "Your laps are steady",
+                "Up and down": "Your laps come and go", "Scattered": "Your laps vary a lot"}
+VERDICT_PHASES = {"braking": "under braking", "entry": "on the way into the corners",
+               "mid": "through the middle of the corners", "exit": "on the way out of the corners"}
+
+
+def _verdict_sentence(fix, con, skills) -> str:
+    """What to work on, as one sentence with no figures in it."""
+    if not fix:
+        return ("No corner stands out: your typical laps are already close to your best, so more pace will "
+                "come from new references (follow quicker drivers on Garage 61).")
+    where = " and ".join(str(x["corner"]) for x in fix[:2])
+    aim = f"finding the time in {where}" if fix[0].get("basis") == "ref" else f"matching your better laps through {where}"
+    lead = STEADY_WORDS.get(con.get("label"))
+    text = f"{lead}, so the quickest gain is {aim}" if lead else f"The quickest gain is {aim}"
+    phases = skills.get("phases") if isinstance(skills, dict) else None
+    if isinstance(phases, dict):
+        loss = {k: _f(v.get("loss_s")) or 0.0 for k, v in phases.items() if k in VERDICT_PHASES and isinstance(v, dict)}
+        total = sum(v for v in loss.values() if v > 0)
+        if total > 0:
+            top = max(loss, key=loss.get)
+            if loss[top] / total >= 0.5:
+                text += f", and across the lap most of the time goes {VERDICT_PHASES[top]}"
+    return text + "."
 
 
 def build(data: dict) -> dict:
@@ -532,24 +558,7 @@ def build(data: dict) -> dict:
                 "deliberate (trail-braking with throttle), it's time the car spends slowing and accelerating at once.",
                 detail=f"Both pedals above 10%: {mo:.1f} s on a typical clean lap.")
 
-    # ---------- verdict
-    bt = _f(best.get("t"))
-    if bt is not None:
-        line = f"Best lap {fmt_t(bt)}"
-        if main_ref and _f(main_ref.get("t")):
-            line += f", {bt - main_ref['t']:+.2f} s against {(main_ref.get('name') or 'the comparison lap').split(' ')[0]}"
-        label = con.get("label")
-        if label:
-            line += f". {label}" + (f" ({score:.0f}/100)" if score is not None else "")
-        out["verdict"].append(line + ".")
-    if out["fix"]:
-        tot = sum(x["gain"] for x in out["fix"])
-        out["verdict"].append(f"About {tot:.2f} s a lap is there, mostly in " +
-                              " and ".join(x["corner"] for x in out["fix"][:2]) + ".")
-    else:
-        out["verdict"].append("No corner stands out: your typical laps are already close to your best. "
-                              "More pace will come from new references (follow quicker drivers on Garage 61).")
-    if pit:
-        out["verdict"].append(f"Pit stop on {_laps(pit)}: left out of your pace numbers.")
+    # ---------- verdict: one sentence in words (the numbers are on the tiles right above it)
+    out["verdict"].append(_verdict_sentence(out["fix"], con, data.get("skills")))
     out["time_to_find"] = round(sum(x["gain"] for x in out["fix"]), 2)
     return out

@@ -47,7 +47,7 @@ def test_fix_first_ranked_with_tips():
     assert any("3 mph more" in t for t in c2["tips"])
     c3 = out["fix"][1]
     assert any("coasting" in t for t in c3["tips"]) and any("gear 3" in t for t in c3["tips"])
-    assert out["time_to_find"] == 0.3 and "0.30 s a lap" in out["verdict"][1]
+    assert out["time_to_find"] == 0.3 and len(out["verdict"]) == 1 and "matching your better laps through C2 and C3." in out["verdict"][0]
 
 
 def test_habits_need_thresholds():
@@ -72,7 +72,7 @@ def test_habits_need_thresholds():
 
 def test_nothing_to_fix_and_old_reviews():
     out = insights.build(base(corners=[corner("C1", 0.01), corner("C2", 0.02)]))
-    assert out["fix"] == [] and "No corner stands out" in out["verdict"][1]
+    assert out["fix"] == [] and "No corner stands out" in out["verdict"][0]
     # an old review with almost nothing in it still gives a summary instead of failing
     out = insights.build({"laps": [], "best": {"n": 1, "t": 80.0}})
     assert out["verdict"] and out["fix"] == [] and out["bad"] == []
@@ -83,7 +83,7 @@ def test_comparison_gap_used_when_bigger():
     d = base(refs=refs, corners=[corner("C1", 0.02, ref_gap=0.4), corner("C2", 0.21)])
     out = insights.build(d)
     assert out["fix"][0]["corner"] == "C1" and out["fix"][0]["basis"] == "ref" and "Ann" in out["fix"][0]["why"]
-    assert "+0.50 s against Ann" in out["verdict"][0]
+    assert len(out["verdict"]) == 1 and "finding the time in C1 and C2." in out["verdict"][0]
 
 
 def test_refresh_saved_reviews():

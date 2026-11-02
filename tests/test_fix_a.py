@@ -216,7 +216,7 @@ def test_H4_pit_laps_are_not_mistakes():
     assert any("Pit stop" in f and "10, 11" in f for f in d["findings"])
     ins = insights.build(d)
     assert "offpace" not in {b["key"] for b in ins["bad"]}
-    assert any("Pit stop" in v for v in ins["verdict"])
+    assert len(ins["verdict"]) == 1    # 2.8: one sentence; the pit stop is in d["findings"] and the race summary
     assert not any("10" in p["text"] for p in d["plan"] if p["title"] == "Look at your off laps")
 
 

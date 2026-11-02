@@ -1733,7 +1733,7 @@ safe('your race',()=>{const int=(v,lo,hi)=>typeof v==='number'&&Number.isInteger
   // verdict and timeline
   if(typeof R.verdict==='string'&&R.verdict)$('rlVerdict').textContent=R.verdict;
   const COL={made:'var(--good,#2e9e4f)',lost:'var(--bad,#c8312f)',incident:'#e07b00',pit:'#7b4fb0'};
-  const STATE={start:'Opening lap',pit:'Pit lap',incident:'Incident',fight:'Racing another car',close:'Close to another car',clear:'Clear air',unknown:'Not known'};
+  const STATE={start:'Opening lap',pit:'Pit lap',incident:'Incident',fight:'Racing another car',close:'Close to another car',traffic:'Traffic (a car on another lap)',clear:'Clear air',unknown:'Not known'};
   const V2=num(R.version)&&R.version>=2;if(!V2)$('rlLede').dataset.old='1';
   const pos=laps.filter(x=>num(x.pos));
   const detail=n=>{const host=$('rlLapDetail');host.replaceChildren();const r=laps.find(x=>x.lap===n);if(!r)return;

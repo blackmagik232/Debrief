@@ -183,11 +183,16 @@ def test_brief_saved_data_only_and_hides_what_is_missing():
         lib.add("spa", review("2026-10-09", 3, track="Spa", racecap=rc(3, fights=[{"other": "Spa Only", "seconds": 90.0}])))
         rows = library.race_rows(lib.rows())
         mine = [r for r in rows if r["track"].startswith("Circuit")]
+        two = prep.brief(rows, "Circuit Zolder (Grand Prix)", "McLaren 570S GT4", prep._history(mine), prep.weak_corners(mine))
+        assert two["rivals"] == []      # two scans at this track: too few to call anyone a rival
+        lib.add("c", review("2026-10-10", 4, best=91.7, racecap=rc(4, fights=fights[:1])))
+        rows = library.race_rows(lib.rows())
+        mine = [r for r in rows if r["track"].startswith("Circuit")]
         b = prep.brief(rows, "Circuit Zolder (Grand Prix)", "McLaren 570S GT4", prep._history(mine), prep.weak_corners(mine))
-    assert b["pace"]["best"] == 91.5 and b["pace"]["races"] == 2 and b["pace"]["other_car"] is None
-    assert [c["id"] for c in b["corners"]] == ["T1", "T2"] and b["corners"][0]["top3"] == 2
+    assert b["pace"]["best"] == 91.5 and b["pace"]["races"] == 3 and b["pace"]["other_car"] is None
+    assert [c["id"] for c in b["corners"]] == ["T1", "T2"] and b["corners"][0]["top3"] == 3
     assert [r["name"] for r in b["rivals"]] == ["Rival One"]     # the other track's rival and a 3 s brush aren't in
-    assert b["rivals"][0]["races"] == 2 and b["rivals"][0]["seconds"] == 60.0 and b["rivals"][0]["made"] == 1 and b["rivals"][0]["lost"] == 1
+    assert b["rivals"][0]["races"] == 3 and b["rivals"][0]["seconds"] == 90.0 and b["rivals"][0]["made"] == 1 and b["rivals"][0]["lost"] == 1
     assert b["note"]
 
 

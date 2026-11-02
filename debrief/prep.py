@@ -490,7 +490,8 @@ def brief(rows: list, track: str, car: str, hist: dict | None, weak: list) -> di
             a["races"] += 1
             for k in ("seconds", "fights", "made", "lost"):
                 a[k] += x.get(k) or 0
-    rivals = [a for a in who.values() if a["seconds"] >= 15 or a["made"] + a["lost"] >= 2]
+    # the same few cars in one race aren't rivals: like the racecraft profile, this waits for 3 scanned races
+    rivals = [a for a in who.values() if a["seconds"] >= 15 or a["made"] + a["lost"] >= 2] if len(scanned) >= 3 else []
     rivals.sort(key=lambda a: (-a["races"], -a["seconds"], -(a["made"] + a["lost"]), a["name"]))
     for a in rivals:
         a["seconds"] = round(a["seconds"], 1)

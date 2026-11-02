@@ -1028,7 +1028,7 @@ def prep_strategy(cfg, api, data) -> dict:
             from datetime import datetime, timezone
             wk = schedule.week_on(sched, datetime.now(timezone.utc).date())
             for ser in schedule.series_at(sched, data["track"], data["car"], datetime.now(timezone.utc).date()) if wk else []:
-                week = next((w for w in ser.get("weeks") or [] if w.get("week") == wk), None)
+                week = next((w for w in ser.get("weeks") or [] if w.get("season_week", w.get("week")) == wk), None)
                 if week:
                     break
         store = sync.Store.for_api(api) if api is not None else None

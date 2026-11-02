@@ -154,7 +154,7 @@ def _chosen(sched, mine_series):
 
 
 def _week(ser, wk):
-    return next((w for w in ser.get("weeks") or [] if w.get("week") == wk), None)
+    return next((w for w in ser.get("weeks") or [] if w.get("season_week", w.get("week")) == wk), None)
 
 
 def _window(w):

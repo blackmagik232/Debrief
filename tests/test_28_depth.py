@@ -239,8 +239,9 @@ def test_baseline_only_similar_conditions():
     b["conditions"] = WET
     for x in b["laps"]:
         x["t"] += 10.0
-    out = depth.baseline(me, [a, b])
-    assert out["n"] == 1 and abs(out["delta_s"] + 1.0) < 0.01 and "quicker" in out["sentence"], out
+    assert depth.baseline(me, [a, b]) is None      # one similar race isn't a baseline
+    out = depth.baseline(me, [a, copy.deepcopy(a), b])
+    assert out["n"] == 2 and abs(out["delta_s"] + 1.0) < 0.01 and "quicker" in out["sentence"], out
     assert out["left_out"][0]["why"] == "different conditions"
     only = depth.baseline(me, [b])
     assert only["n"] == 0 and "delta_s" not in only and "aren't compared" in only["sentence"]

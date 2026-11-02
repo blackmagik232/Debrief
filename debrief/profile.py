@@ -231,7 +231,7 @@ def _rivals_of(rc):
             r["seconds"] += _num(f.get("seconds")) or 0.0
             r["fights"] += 1
     for p in rc.get("passes") or []:
-        if isinstance(p, dict) and p.get("other") and p.get("how") == "on track":
+        if isinstance(p, dict) and p.get("other") and p.get("how") == "on track" and (p.get("lap") or 0) > 1:
             row(p["other"])["made" if p.get("made") else "lost"] += 1
     rows = sorted(who.values(), key=lambda r: (-r["seconds"], -(r["made"] + r["lost"]), r["name"]))[:12]
     for r in rows:
@@ -257,7 +257,7 @@ def racecap_row(d: dict) -> dict | None:
                for c in rc.get("pass_corners") or [] if isinstance(c, dict) and c.get("corner")]
     pit = rc.get("pit_cost") if isinstance(rc.get("pit_cost"), dict) else {}
     stops = [{"seconds": _num(p.get("seconds")), "places": p.get("places") if isinstance(p.get("places"), int) else None}
-             for p in pit.get("stops") or [] if isinstance(p, dict)]
+             for p in pit.get("stops") or [] if isinstance(p, dict) and p.get("kind", "stop") == "stop"]
     meta = d.get("meta") if isinstance(d.get("meta"), dict) else {}
     return {"v": v, "sub": str(rc.get("subsession") or ""), "grid": grid, "lap1_pos": first,
             "lap1": grid - first if grid and first else None,

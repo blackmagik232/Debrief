@@ -272,8 +272,9 @@ _RULES = re.compile(r"^(Min\s+entries|Drops?:|Penalty|Incident|No\s+incident|Fix
 _PAGE = re.compile(r"^(page\s*\d+(\s*(of|/)\s*\d+)?|\d+\s*(of|/)\s*\d+|\d{1,3})$", re.I)
 _FURNITURE = re.compile(r"\b(schedule|page\s*\d+)\b", re.I)
 _DATE_BITS = re.compile(r"\(\s*\d{4}-|\b\d{4}-\d{2}-\d{2}\b")
-MAX_WEEK_LINES = 3        # a week line plus at most 2 wrapped lines
-MAX_CAR_LINES = 3
+MAX_WEEK_LINES = 40
+MAX_SERIES_WEEKS = 60    # year-long tours exist in the real PDF
+MAX_CAR_LINES = 14
 
 
 def _pdf_lines(path) -> list[str]:
@@ -331,8 +332,38 @@ def _week_done(text: str) -> bool:
     return bool(m and _LENGTH.search(m.group(4)))
 
 
+_TOC = re.compile(r"\s*(?:\.\s){3,}\.?\s*\d*$")
+_SPLIT_LEN = re.compile(r"^(mins?|minutes?|laps?|hours?|hrs?)\b", re.I)
+
+
+def _toc_titles(lines: list[str]) -> set:
+    """The PDF's own table of contents lists every series title exactly, including titles with no season number."""
+    out = set()
+    for l in lines:
+        m = _TOC.search(l)
+        if m and not _CATEGORY.search(l):
+            t = l[:m.start()].strip()
+            if t and not t.isupper():     # 'SPORTS CAR' alone is a chapter heading
+                out.add(t)
+    return out
+
+
+def _title_name(title: str) -> str:
+    """'NASCAR iRacing Series - 2026 Season Fixed' -> 'NASCAR iRacing Series - Fixed'."""
+    t = re.sub(r"\s*[-–]?\s*\b20\d\d\s+Season(?:\s*\d)?\b\s*[-–]?\s*", " - ", title)
+    return " ".join(t.split()).strip(" -–:|")
+
+
 def parse_lines(lines: list[str]) -> dict:
     """Turn the PDF's text lines into a schedule dict (not yet checked; see check())."""
+    titles = _toc_titles(lines)
+    joined = []
+    for l in lines:      # a length split in its table cell: '180' / 'mins'
+        if joined and joined[-1].isdigit() and _SPLIT_LEN.match(l):
+            joined[-1] += " " + l
+        else:
+            joined.append(l)
+    lines = [l for l in joined if not _TOC.search(l)]
     season = None
     category = None
     series: list[dict] = []
@@ -356,6 +387,12 @@ def parse_lines(lines: list[str]) -> dict:
 
     for line in lines:
         prev_loose, loose = loose, None
+        if line in titles:
+            sm0 = _SEASON.search(line)
+            if sm0:
+                season = season or f"{sm0.group(1)} Season {sm0.group(2)}"
+            start_series(_title_name(line))
+            continue
         sm = _SEASON.search(line)
         wm = _WEEK.match(line)
         if not wm and _is_furniture(line, sm):
@@ -372,7 +409,8 @@ def parse_lines(lines: list[str]) -> dict:
         if wm:
             finish_week()
             if cur is not None:
-                pending_week = {"week": int(wm.group(1)), "start": wm.group(2), "text": wm.group(3), "lines": 1}
+                pending_week = {"week": int(wm.group(1)), "start": wm.group(2), "text": wm.group(3), "lines": 1,
+                                "track_only": wm.group(3) if cur["cars"] and str(cur["cars"][0]).lower().startswith("see race week") else None}
                 if _week_done(pending_week["text"]):
                     finish_week()
             else:
@@ -396,6 +434,8 @@ def parse_lines(lines: list[str]) -> dict:
                 finish_week()
                 diag["skipped_lines"] += 1
             continue
+        if line.isupper() and line in ("OVAL", "FORMULA CAR", "SPORTS CAR", "UNRANKED", "DIRT ROAD", "DIRT OVAL"):
+            continue
         if _LICENSE.search(line) or _FREQ.match(line) or _RULES.match(line):
             finish_week()   # never part of a track name
         if pending_week is not None:
@@ -418,7 +458,11 @@ def parse_lines(lines: list[str]) -> dict:
                 cur["_stage"] = "info"
                 continue
             if not (_FREQ.match(line) or _RULES.match(line)) and cur["_car_lines"] < MAX_CAR_LINES and not cur["weeks"]:
-                cur["cars"].extend(c.strip() for c in re.split(r",\s*(?![^()]*\))", line) if c.strip())
+                parts = [c.strip() for c in re.split(r",\s*(?![^()]*\))", line) if c.strip()]
+                if cur["cars"] and not cur.get("_car_comma") and parts:    # a car name wrapped: 'Aston' / 'Martin Vantage GT4'
+                    cur["cars"][-1] += " " + parts.pop(0)
+                cur["cars"].extend(parts)
+                cur["_car_comma"] = line.rstrip().endswith(",")
                 cur["_car_lines"] += 1
                 loose = (line, "cars")
                 continue
@@ -439,6 +483,7 @@ def parse_lines(lines: list[str]) -> dict:
             continue
         s.pop("_stage", None)
         s.pop("_car_lines", None)
+        s.pop("_car_comma", None)
         rules = " ".join(s.pop("rules")).lower()
         name_l = s["name"].lower()
         s["setup"] = "fixed" if ("fixed" in name_l or "fixed setup" in rules) else ("open" if "open setup" in rules or "open" in name_l.split() else None)
@@ -456,8 +501,13 @@ def parse_lines(lines: list[str]) -> dict:
     diag["weeks_without_race_time"] = sum(1 for s in out for w in s["weeks"] if not w.get("race_time"))
     diag["weeks_without_length"] = sum(1 for s in out for w in s["weeks"] if not w.get("length"))
     diag["series_without_license"] = sum(1 for s in out if not s.get("license"))
+    season_weeks = _season_weeks(out)
+    by_date = {w["start"]: w["week"] for w in season_weeks}
+    for s in out:         # a year-long tour's week 30 is still some week of this season, by date
+        for w in s["weeks"]:
+            w["season_week"] = by_date.get(w["start"])
     return {"schema": SCHEMA, "season": season, "year": year, "quarter": quarter,
-            "weeks": _season_weeks(out), "series": out, "diagnostics": diag}
+            "weeks": season_weeks, "series": out, "diagnostics": diag}
 
 
 def _length_text(lm) -> str:
@@ -490,20 +540,29 @@ def _week_from(w: dict) -> dict:
         if lm:
             out["length"] = _length_text(lm)
             out["track"] = text[:lm.start()].strip(" ,.")
+    if not out["length"]:      # heat races: 'H:10L C:10L F:20L', the feature is the race
+        fm = re.search(r"\bF:(\d+)L\b", rest)
+        if fm:
+            out["length"] = f"{fm.group(1)} laps"
     rest = re.sub(r"\s*,\s*,\s*", ", ", rest).strip(" ,.;")
     out["conditions"] = rest or None
+    if w.get("track_only"):      # 'See race week for cars': the lines under the track are that week's cars
+        out["cars_this_week"] = out["track"][len(w["track_only"]):].strip(" ,") or None
+        out["track"] = w["track_only"]
     out["track"] = out["track"][:160]
     return out
 
 
 def _season_weeks(series: list) -> list:
-    """The season's week start dates: the most common date for each week number."""
-    votes: dict = {}
-    for s in series:
-        for w in s["weeks"]:
-            votes.setdefault(w["week"], {}).setdefault(w["start"], 0)
-            votes[w["week"]][w["start"]] += 1
-    return [{"week": n, "start": max(d.items(), key=lambda kv: kv[1])[0]} for n, d in sorted(votes.items())]
+    """The season's own weeks. Most series run 12 weeks, but some 'Tour' series list a whole year, so a date only counts
+    when at least a third of the series race that week."""
+    seen = {}
+    for x in series:
+        for w in x["weeks"]:
+            seen[w["start"]] = seen.get(w["start"], 0) + 1
+    need = max(2, len(series) / 3)
+    starts = sorted(d for d, n in seen.items() if n >= need)
+    return [{"week": k + 1, "start": d} for k, d in enumerate(starts)]
 
 
 def _odd_track(t: str) -> str | None:
@@ -538,10 +597,11 @@ def check(sched: dict) -> list[str]:
     if nums != sorted(set(nums)):
         probs.append("the week numbers are out of order")
     merged, odd = [], []
-    max_weeks = max(len(weeks), 1)
     for s in all_series:
         wn = [w["week"] for w in s["weeks"]]
-        if len(wn) != len(set(wn)) or wn != sorted(wn) or len(wn) > max_weeks or len(wn) > 14:
+        dates = [w["start"] for w in s["weeks"]]
+        # a long 'Tour' series is fine (some list a whole year); glued series show as numbers or dates going backwards
+        if len(wn) != len(set(wn)) or wn != sorted(wn) or dates != sorted(dates) or len(dates) != len(set(dates)) or len(wn) > MAX_SERIES_WEEKS:
             merged.append(s["name"])
         for w in s["weeks"]:
             why = _odd_track(str(w.get("track") or ""))
@@ -681,10 +741,25 @@ def season_range(sched) -> tuple[date | None, date | None]:
     return min(starts), max(starts) + timedelta(days=7)
 
 
+def _bundled() -> list:
+    """Schedules that ship with Debrief, so nobody has to find the PDF. A saved one for the same season wins."""
+    out = []
+    try:
+        for p in sorted((Path(__file__).parent / "data").glob("schedule-*.json")):
+            d = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(d, dict) and d.get("series"):
+                out.append(d)
+    except (OSError, ValueError):
+        pass
+    return out
+
+
 def load_current(today: date | None = None) -> dict | None:
     """The saved season that covers today; else the next one to start; else the newest saved."""
     today = today or datetime.now(timezone.utc).date()
     seasons = saved()
+    have = {s.get("season") for s in seasons}
+    seasons = seasons + [s for s in _bundled() if s.get("season") not in have]
     for s in seasons:
         a, b = season_range(s)
         if a and a <= today < b:

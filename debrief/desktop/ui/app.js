@@ -590,7 +590,7 @@ $('btnPickSkip').addEventListener('click',async()=>{pickerOpen=false;renderPicke
 $('btnPickClose').addEventListener('click',()=>{pickerOpen=false;renderPicker.init=false;if(prepData&&prepData.chosen)$('seriesPicker').hidden=true});
 function weekBox(w,label,s,now){const box=h('div','wk'+(now?' now':''));
   box.append(h('span','wlab',label+' · Week '+w.week+' · '+dayRange(w.start)),h('span','wtrack',w.track));
-  const facts=[];if(w.length)facts.push(w.length);const rt=raceWhen(w.race_time);if(rt)facts.push('Race '+rt);
+  const facts=[];if(w.length)facts.push(w.length);const rt=raceWhen(w.race_time);if(rt)facts.push('In-game start '+rt);
   if(facts.length)box.append(h('span','sub2',facts.join(' · ')));
   if(w.conditions)box.append(h('span','sub2',w.conditions));
   const hs=w.history||{};
@@ -630,8 +630,8 @@ function renderMySeries(){const host=$('mySeries');host.replaceChildren();const 
     if(!s.this_week&&!s.next_week)wk.append(h('p','note','No race this week (off-week or season over).'));
     c.append(wk);
     if(s.season&&s.season.length){const d=h('details','sub');d.append(h('summary',null,'Whole season ('+s.season.length+' weeks)'));
-      const sl=h('div','seasonlist');s.season.forEach(w=>{const r=h('div',w.week===j.current_week?'now':null);
-        r.append(h('span','mono','Wk '+w.week),h('span','mono',fmtDate(w.start).replace(/, \d{4}$/,'')),h('span',null,w.track),h('span','sub2',w.has_notes?'Card ✓':(w.length||'')));sl.append(r)});
+      const sl=h('div','seasonlist');s.season.forEach(w=>{const r=h('div',(w.season_week||w.week)===j.current_week?'now':null);
+        r.append(h('span','mono','Wk '+w.week),h('span','mono',fmtDate(w.start).replace(/, \d{4}$/,'')),h('span',null,w.track),h('span','sub2',w.has_notes?'Card ✓':(w.length||'')));sl.append(r);if(Array.isArray(w.warmups)&&w.warmups.length){const u=h('div','sub2 warmups');u.style.gridColumn='1 / -1';u.textContent='Extra laps first: '+w.warmups.map(x=>String(x.series)+' ('+fmtDate(x.start).replace(/, \d{4}$/,'')+')').join(', ');sl.append(u)}});
       d.append(sl);c.append(d)}
     host.append(c)})}
 $('btnSchDl').addEventListener('click',async()=>{if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){banner('Debrief is busy. Wait for it to finish.',true);return}

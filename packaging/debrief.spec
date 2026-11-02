@@ -23,6 +23,7 @@ datas += [(str(p), "debrief/desktop/ui") for p in sorted((PKG / "desktop" / "ui"
 datas += [(str(p), "debrief/desktop/ui/fonts") for p in sorted((PKG / "desktop" / "ui" / "fonts").iterdir()) if p.is_file()]
 if not any(d[1] == "debrief/desktop/ui/fonts" and d[0].endswith("fonts.css") for d in datas):
     raise SystemExit("debrief/desktop/ui/fonts/fonts.css is missing: the fonts would be left out of the build")
+datas += [(str(p), "debrief/data") for p in sorted((PKG / "data").glob("*.json"))]   # the season schedule that ships with the app
 datas += [(str(PKG / "desktop" / "icon.png"), "debrief/desktop"),
           (str(PKG / "desktop" / "debrief.ico"), "debrief/desktop"),
           (str(ROOT / "settings.example.toml"), ".")]

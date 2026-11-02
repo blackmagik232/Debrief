@@ -386,6 +386,9 @@ def _typical(d):
     return float(np.median(ts)) if len(ts) >= MIN_BASELINE_LAPS else None
 
 
+MIN_BASELINE_RACES = 2
+
+
 def baseline(data, earlier):
     me = _typical(data)
     cond = data.get("conditions")
@@ -405,6 +408,8 @@ def baseline(data, earlier):
             return None
         return {"n": 0, "left_out": left_out, "sentence":
                 "No earlier race here was in conditions like this one, so your lap times aren't compared with them."}
+    if len(similar) < MIN_BASELINE_RACES:     # one earlier race says nothing about what's normal
+        return None
     delta = me - float(np.median([s["typical"] for s in similar]))
     n = len(similar)
     nwords = "race" if n == 1 else "races"

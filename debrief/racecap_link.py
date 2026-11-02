@@ -234,7 +234,7 @@ def build(scan: dict, me_car: dict, subsession, official: dict | None = None, co
         incidents.append({"t": _r(i.get("from")), "lap": i.get("lap") or lap(i.get("from") or 0), "level": i.get("level"),
                           "what": sorted((you.get("what") or {}).keys()), "others": [_who(c) for c in cs if c is not you],
                           "places_lost": you.get("places_lost"), "out": bool(you.get("out_of_race"))})
-    pits = [{"t": _r(p.get("in")), "lap": lap(p.get("in") or 0), "seconds": _r(p.get("seconds"), 1)} for p in scan.get("pit_stops") or []
+    pits = [{"t": _r(p.get("in")), "lap": race_analysis.lap_at_time(samples, me_car.get("car_idx"), p.get("in")) or lap(p.get("in") or 0), "seconds": _r(p.get("seconds"), 1)} for p in scan.get("pit_stops") or []
             if isinstance(p, dict) and str((p.get("car") or {}).get("number")) == me]
     positions = race_analysis.positions(samples, me_car)
     # The scan's grid only ranks the cars it could read at the green, so it isn't a position unless every car was read
@@ -287,7 +287,7 @@ def stories(rc: dict) -> list:
             beats.append({"role": "turn", "lap": p["lap"], "text": (f"You passed {f['other']}" if p["made"] else f"{f['other']} passed you")
                           + (f" for P{p['for_position']}" if p["for_position"] else "") + ("; it stuck." if p["stuck"] else "; it was swapped straight back.")})
         end = swaps[-1] if swaps else None
-        result = ("You came out ahead." if end["made"] else f"{f['other']} came out ahead.") if end else "No pass in this fight."
+        result = ("You were ahead when this fight ended." if end["made"] else f"{f['other']} was ahead when this fight ended.") if end else "No pass in this fight."
         cs = f.get("closest_s")
         closest = "" if cs is None else (" Side by side at the closest." if cs < 0.01 else f" Closest gap {cs:.2f} s.")
         beats.append({"role": "outcome", "lap": f["lap_to"], "text": result + closest})
@@ -348,6 +348,8 @@ def traffic_check(rc: dict, counts: dict | None, lap_map: dict | None = None) ->
         row = next((r for r in rc.get("laps") or [] if r.get("lap") == n), {})
         if not seen and (row.get("near_s") or 0) >= 2 and row.get("near"):
             seen = [f"within a second of {row['near']} for {row['near_s']:.0f} s"]
+        if not seen and (row.get("traffic_s") or 0) >= 2 and row.get("traffic"):
+            seen = [f"near {row['traffic']}, on a different lap, for {row['traffic_s']:.0f} s"]
         seen = list(dict.fromkeys(seen))[:3]
         out.append({"lap": n, "review_lap": yours, "confirmed": bool(seen), "text": ("The replay shows you " + " and ".join(seen) + ".") if seen
                     else "The replay shows no car close to you on this lap, so a mistake is more likely than traffic."})

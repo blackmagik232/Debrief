@@ -82,8 +82,20 @@ def _shared_count(cfg, track, me_slug) -> int:
         return 0
 
 
+def warmups(ser, week, starred) -> list:
+    """Your other starred series that race this track earlier: extra laps before this week's race. Latest first, at most 3."""
+    out = []
+    for o in starred:
+        if o.get("id") == ser.get("id") or o.get("name", "").replace(" - Fixed", "") == ser.get("name", "").replace(" - Fixed", ""):
+            continue
+        for w in o.get("weeks") or []:
+            if w.get("start") and w["start"] < week["start"] and schedule.same_track(w.get("track"), week.get("track")):
+                out.append({"series": o.get("name"), "start": w["start"]})
+    return sorted(out, key=lambda x: x["start"], reverse=True)[:3]
+
+
 def _week_view(ser, wk_no, sessions, library_folder, api, matcher=None, cfg=None, sched=None, me_slug=None):
-    w = next((w for w in ser["weeks"] if w["week"] == wk_no), None)
+    w = next((w for w in ser["weeks"] if w.get("season_week", w["week"]) == wk_no), None)
     if w is None:
         return None
     m = matcher or matcher_for(api)
@@ -117,6 +129,7 @@ def view(cfg: dict, api=None, sessions: list | None = None, today: date | None =
         wk = 1 if a and today < a else None
     me = notes.author_from_cache(cfg) if cfg.get("team_cards_folder") else None
     extra = {"cfg": cfg, "sched": sched, "me_slug": (me or {}).get("slug")}
+    others = [x for x in series.resolve(mine, sched) if not x.get("missing")]
     for s in series.resolve(mine, sched):
         row = {"id": s["id"], "name": s["name"], "missing": bool(s.get("missing"))}
         if not s.get("missing"):
@@ -125,13 +138,13 @@ def view(cfg: dict, api=None, sessions: list | None = None, today: date | None =
                         "setup": s.get("setup"), "frequency": s.get("frequency"),
                         "this_week": _week_view(s, wk, sessions, lib, api, m, **extra) if wk else None,
                         "next_week": _week_view(s, wk + 1, sessions, lib, api, m, **extra) if wk else None,
-                        "season": [{"week": w["week"], "start": w["start"], "track": w["track"],
+                        "season": [{"week": w["week"], "season_week": w.get("season_week", w["week"]), "start": w["start"], "track": w["track"], "warmups": warmups(s, w, others),
                                     "length": w.get("length"), "has_notes": notes.has_notes(notes.load(lib, w["track"]))}
                                    for w in s["weeks"]]})
         out["mine"].append(row)
     out["suggestions"] = series.suggest(sched, sessions, today, m)
     for s in sched.get("series") or []:
-        w = next((w for w in s["weeks"] if w["week"] == wk), None) if wk else None
+        w = next((w for w in s["weeks"] if w.get("season_week", w["week"]) == wk), None) if wk else None
         out["all"].append({"id": s["id"], "name": s["name"], "category": s.get("category"),
                            "license": s.get("license"), "cars": s.get("cars") or [],
                            "multiclass": s.get("multiclass", False), "setup": s.get("setup"),

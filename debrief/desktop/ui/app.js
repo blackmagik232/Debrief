@@ -558,7 +558,7 @@ function renderPrepare(){const j=prepData;if(!j)return;$('prepJoin').hidden=!not
   showWarnings('schWarn',sc&&sc.warnings,'Check the schedule:');
   const showPicker=!!sc&&(pickerOpen||!j.chosen);
   $('seriesPicker').hidden=!showPicker;if(showPicker)renderPicker();
-  renderMySeries()}
+  renderMySeries();renderPlan()}
 function serMeta(s){const bits=[];if(s.category)bits.push(s.category);if(s.license)bits.push(s.license.replace(/\s*-->\s*/,' → '));
   if(s.setup)bits.push(s.setup==='fixed'?'Fixed setup':'Open setup');return bits.join(' · ')}
 function pickRow(s,sub,checked){const lab=h('label','pick');const cb=document.createElement('input');cb.type='checkbox';cb.checked=checked;
@@ -635,6 +635,31 @@ function renderMySeries(){const host=$('mySeries');host.replaceChildren();const 
         r.append(h('span','mono','Wk '+w.week),h('span','mono',fmtDate(w.start).replace(/, \d{4}$/,'')),h('span',null,w.track),h('span','sub2',w.has_notes?'Card ✓':(w.length||'')));sl.append(r);if(Array.isArray(w.warmups)&&w.warmups.length){const u=h('div','sub2 warmups');u.style.gridColumn='1 / -1';u.textContent='Extra laps first: '+w.warmups.map(x=>String(x.series)+' ('+fmtDate(x.start).replace(/, \d{4}$/,'')+')').join(', ');sl.append(u)}});
       d.append(sl);c.append(d)}
     host.append(c)})}
+/* season plan: the rest of the season for your series. Facts only, worked out in prepare.plan. */
+function planRace(r){const d=h('div','gridf');d.style.gap='4px';d.style.marginTop='8px';
+  const top=h('div','phead');const nm=h('span',null);nm.append(h('b',null,r.track));nm.append(h('span','sub2',' · '+r.series+' week '+r.week));
+  const pl=h('span','pill '+(r.status==='raced'?'ok':r.flag?'no':''),r.status_text);top.append(nm,pl);d.append(top);
+  const facts=[r.length,r.rain,r.start_type].filter(Boolean);if(facts.length)d.append(h('span','sub2',facts.join(' · ')));
+  d.append(h('span','sub2',r.detail+(r.last?' Last there '+fmtDate(r.last)+'.':'')));
+  const P=r.pace;if(P){const bits=['Best '+fmtT(P.best)+(P.best_wet?' (wet)':'')];if(ok(P.typical))bits.push('typical '+fmtT(P.typical)+' over '+P.typical_races+(P.wet_races?' dry race':' race')+(P.typical_races===1?'':'s'));
+    if(P.wet_races&&ok(P.wet_best))bits.push('wet best '+fmtT(P.wet_best));d.append(h('span','sub2',bits.join(' · ')+(P.car?' in the '+P.car:'')))}
+  (r.warmups||[]).forEach(x=>d.append(h('span','sub2','Extra laps first: '+x.series+(x.week?' week '+x.week:'')+', from '+fmtDate(x.start).replace(/, \d{4}$/,'')+(x.same_cars?', same cars':', different cars'))));
+  if(r.flag_reason){const f=h('span','sub2');f.append(h('b',null,'Most prep: '),document.createTextNode(r.flag_reason));d.append(f)}
+  if(r.track_id!=null&&r.car_id!=null){const row=h('div','row');const bp=h('button','btn','Build prep page');bp.type='button';bp.style.padding='6px 11px';
+    bp.addEventListener('click',()=>startJob('prep',{track_id:r.track_id,car_id:r.car_id}));row.append(bp);d.append(row)}
+  return d}
+function renderPlan(){const panel=$('planPanel'),j=prepData,P=j&&j.schedule?j.plan:null;panel.hidden=!P;if(!P)return;
+  const host=$('planWeeks'),pill=$('planPill'),note=$('planNote'),notes=$('planNotes');host.replaceChildren();notes.replaceChildren();
+  const said=(P.series||[]).map(s=>s.note).filter(Boolean);if(P.note)said.push(P.note);notes.hidden=!said.length;said.forEach(t=>notes.append(h('li',null,t)));
+  const wks=P.weeks||[];pill.textContent=wks.length?wks.length+' week'+(wks.length===1?'':'s')+' left':'';
+  if(P.state==='error'){note.textContent='The season plan couldn\'t be worked out. The rest of this page is fine.';return}
+  if(P.state==='no_series'){note.textContent='Pick your series above and the rest of your season shows here.';return}
+  if(P.state==='season_over'){note.textContent='No race weeks left in this season for your series.';return}
+  const fl=P.flagged||[];
+  note.textContent='Week by week for the series you picked, from your saved reviews and synced sessions. It only knows laps those hold. '+
+    (fl.length?'Most prep: '+fl.map(f=>'week '+f.season_week+', '+f.track).join('; ')+'.':'No week stands out as needing more prep than the others.');
+  wks.forEach(w=>{const box=h('div','wk'+(w.now?' now':''));if(w.flag&&!w.now)box.style.borderLeft='4px solid var(--warn)';
+    box.append(h('span','wlab',(w.now?'This week · ':'')+'Week '+w.season_week+' · '+dayRange(w.start)));w.races.forEach(r=>box.append(planRace(r)));host.append(box)})}
 $('btnSchDl').addEventListener('click',async()=>{if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){banner('Debrief is busy. Wait for it to finish.',true);return}
   setMsg('schMsg','Starting...');schBusy(true);let r;try{r=await post('schedule',{action:'download'})}catch(e){connectionLost();return}
   if(!r.ok){schBusy(false);setMsg('schMsg',r.error,'bad');return}lastJob={state:'running',kind:'schedule',id:r.id};poll()});

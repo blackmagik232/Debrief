@@ -407,17 +407,30 @@ if(!raced)$('planlede').textContent='A starting plan for a track you haven\u2019
     const body=h('div');body.append(h('p',null,d.focus||''));if(d.evidence){const e=h('p','ev');e.append(h('b',null,'Why: '),document.createTextNode(d.evidence));body.append(e)}
     st.append(body);host.append(st)})})();
 
-// pre-race brief: saved reviews and scans only, and anything missing simply isn't shown
+// pre-race brief: saved reviews, scans and your series' schedule. It says plainly what isn't known.
 (function(){const B=D.brief&&typeof D.brief==='object'?D.brief:null;if(!B)return;const host=$('brief');
   const block=(title,fill)=>{const d=h('div','briefblock');d.append(h('h3',null,title));fill(d);host.append(d)};
+  const UP=Array.isArray(B.upcoming)?B.upcoming:[];
+  block('The race',d=>{UP.forEach(u=>{d.append(h('p',null,(u.this_week?'This week':fmtDate(u.start,false))+', '+u.series+(ok(u.week)?' week '+u.week:'')+'.'));
+      const bits=[u.length,u.rain,u.start_type,u.cautions].filter(Boolean);if(bits.length)d.append(h('p','note',bits.join(' · ')))});
+    if(B.upcoming_note)d.append(h('p','note',B.upcoming_note))});
+  if(B.no_history)block('Your history here',d=>d.append(h('p',null,B.no_history)));
   const P=B.pace&&typeof B.pace==='object'?B.pace:null;
-  if(P&&ok(P.best))block(P.other_car?'Your pace here in the '+P.other_car:'Your pace here',d=>{d.append(h('p',null,'Best '+fmt(P.best)+', set '+fmtDate(P.best_date)+'.'));
-    if(ok(P.typical))d.append(h('p',null,'Typical lap '+fmt(P.typical)+' over '+plural(P.races,'race')+'.'));if(P.last_date)d.append(h('p','note','Last raced '+fmtDate(P.last_date)+'.'))});
+  if(P&&ok(P.best))block(P.other_car?'Your pace here in the '+P.other_car:'Your pace here',d=>{d.append(h('p',null,'Best '+fmt(P.best)+(P.best_wet?' in the wet':'')+', set '+fmtDate(P.best_date)+'.'));
+    const n=ok(P.typical_races)?P.typical_races:P.races;
+    if(ok(P.typical))d.append(h('p',null,'Typical lap '+fmt(P.typical)+' over '+(P.typical_dry?plural(n,'dry race'):plural(n,'race'))+'.'));
+    if(ok(P.wet_races)&&P.wet_races>0)d.append(h('p',null,plural(P.wet_races,'wet race')+' here'+(ok(P.wet_best)?', best '+fmt(P.wet_best):'')+'. Left out of the typical lap.'));
+    if(P.last_date)d.append(h('p','note','Last raced '+fmtDate(P.last_date)+'.'))});
   const WC=Array.isArray(B.corners)?B.corners:[];
-  if(WC.length)block('Corners that keep costing you',d=>{const u=h('ul');WC.forEach(w=>u.append(h('li',null,w.id+': in your top three for time to find in '+w.top3+' of '+plural(w.races,'race')+', about '+(ok(w.avg_avail)?w.avg_avail.toFixed(2):'–')+' s a lap')));d.append(u)});
+  if(WC.length)block('Corners that keep costing you',d=>{const u=h('ul');WC.forEach(w=>u.append(h('li',null,w.id+': in your top three for time to find in '+w.top3+' of '+plural(w.races,'race')+', about '+(ok(w.avg_avail)?w.avg_avail.toFixed(2):'–')+' s a lap.'+(w.last_date&&ok(w.last_avail)?' Last cost about '+w.last_avail.toFixed(2)+' s a lap on '+fmtDate(w.last_date)+(w.last_wet?' (wet race)':'')+'.':''))));d.append(u)});
+  else if(P&&!P.other_car)block('Corners that keep costing you',d=>d.append(h('p','note','No corner has been in your top three in two or more races here yet.')));
+  const RC=B.racecraft&&typeof B.racecraft==='object'?B.racecraft:null;
+  if(RC)block('Your racecraft here',d=>{const L=RC.lap1,S=RC.passes;if(L&&ok(L.avg))d.append(h('p',null,'Lap 1: '+(L.avg>0?'+':'')+L.avg+' places on average over '+plural(L.races,'race')+'.'));
+    if(S)d.append(h('p',null,'Passes: you made '+S.made+', they made '+S.lost+' on you, over '+plural(RC.races,'scanned race')+'.'));if(B.note)d.append(h('p','note',B.note))});
+  else if(B.racecraft_wait)block('Your racecraft here',d=>d.append(h('p','note',B.racecraft_wait)));
   const RV=Array.isArray(B.rivals)?B.rivals:[];
   if(RV.length)block('Who you\u2019ve fought here',d=>{const u=h('ul');RV.forEach(r=>{const bits=[];if(ok(r.seconds)&&r.seconds>0)bits.push((r.seconds>=120?Math.round(r.seconds/60)+' min':Math.round(r.seconds)+' s')+' racing close');if(r.made)bits.push('you passed them '+r.made+(r.made===1?' time':' times'));if(r.lost)bits.push('they passed you '+r.lost+(r.lost===1?' time':' times'));
-      u.append(h('li',null,r.name+(r.races>1?' ('+r.races+' races)':'')+(bits.length?': '+bits.join(', '):'')))});d.append(u);if(B.note)d.append(h('p','note',B.note))});
+      u.append(h('li',null,r.name+(r.races>1?' ('+r.races+' races)':'')+(bits.length?': '+bits.join(', '):'')))});d.append(u);if(B.note&&!RC)d.append(h('p','note',B.note))});
   if(host.children.length)$('briefsec').classList.remove('hidden')})();
 
 // fuel for this race (2.4; D.strategy is the fuel planner's prefill, only when the app passes it)

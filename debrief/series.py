@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -154,3 +155,62 @@ def suggest(sched, sessions: list, today: date | None = None, matcher=None) -> l
         out.append(h)
     out.sort(key=lambda h: (not h["sure"], -h["races"], h["name"].lower()))
     return out
+
+
+# ---------------------------------------------------------------- what the schedule says about a week
+def week_facts(week: dict | None) -> dict:
+    """The race's length, rain, start type and cautions, in plain words, from the schedule's own text.
+    None means the schedule doesn't say: never read that as dry or as any particular start."""
+    text = str((week or {}).get("conditions") or "")
+    rain = None
+    m = re.search(r"\brain chance\s+(\d+)\s*%", text, re.I)
+    if re.search(r"\brain possible\b", text, re.I):
+        rain = "Rain possible"
+    elif m and int(m.group(1)) > 0:
+        rain = f"Rain chance {int(m.group(1))}%"
+    elif m or re.search(r"\brain chance none\b|\ball dry events\b", text, re.I):
+        rain = "No rain"
+    start = next((w for w in ("Rolling", "Standing") if re.search(rf"\b{w} start\b", text, re.I)), None)
+    cautions = next((label for pat, label in ((r"cautions disabled", "No cautions"),
+                                              (r"local enforced cautions", "Local enforced cautions"),
+                                              (r"local advisory cautions", "Local advisory cautions"),
+                                              (r"full course cautions", "Full course cautions"))
+                     if re.search(pat, text, re.I)), None)
+    return {"length": (week or {}).get("length"), "rain": rain, "start_type": f"{start} start" if start else None,
+            "cautions": cautions}
+
+
+def week_left(week: dict, current: int | None, today: date) -> bool:
+    """Is this week still to come, or running now? Series whose weeks start a day or two off the season's go by
+    the season week number; between seasons, by the dates. Weeks outside the season are never left."""
+    no = week.get("season_week", week.get("week"))
+    if not no:
+        return False
+    if current:
+        return no >= current
+    try:
+        return date.fromisoformat(str(week.get("start"))) + timedelta(days=7) > today
+    except ValueError:
+        return False
+
+
+def upcoming_at(sched, mine: dict, track: str, car: str, today: date, limit: int = 3) -> list:
+    """Your own series' weeks still to come at this track in this car, soonest first, with week_facts."""
+    if not sched:
+        return []
+    current = schedule.week_on(sched, today)
+    out = []
+    for ser in resolve(mine, sched):
+        if ser.get("missing"):
+            continue
+        for w in ser.get("weeks") or []:
+            if not week_left(w, current, today) or not schedule.same_track(track, w.get("track")):
+                continue
+            cars = schedule.week_cars(ser, w)
+            if cars and not any(schedule.same_car(car, c) for c in cars):
+                continue
+            no = w.get("season_week", w.get("week"))
+            out.append({"series": ser.get("name"), "week": w.get("week"), "start": w.get("start"),
+                        "this_week": bool(current) and no == current, **week_facts(w)})
+    out.sort(key=lambda x: str(x["start"]))
+    return out[:limit]

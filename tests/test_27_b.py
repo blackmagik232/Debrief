@@ -130,7 +130,7 @@ def test_connection_refused_fails_after_one_quick_retry():
         assert str(e) == g61.MSG_OFFLINE and e.status is None
     took = time.monotonic() - t0
     assert c.requests_made == 2, c.requests_made
-    assert took < 3, took
+    assert took < 10, took   # Windows spends ~2 s per refused connect; the old path took 75 s
     assert any("unreachable" in l and "/me" in l for l in logs), logs
 
 

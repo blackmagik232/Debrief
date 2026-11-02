@@ -423,7 +423,7 @@ def test_fonts_are_bundled_and_served():
     assert '"debrief/desktop/ui/fonts"' in spec
     # served by the window's server, with types Edge accepts and no secret involved
     code, h, body = get("static/fonts/fonts.css", header=False)
-    assert code == 200 and h["Content-Type"].startswith("text/css") and body.decode("utf-8") == css
+    assert code == 200 and h["Content-Type"].startswith("text/css") and body.decode("utf-8").replace("\r\n", "\n") == css  # CRLF checkout on Windows
     assert h.get("Cross-Origin-Resource-Policy") == "cross-origin"   # library pages are an opaque origin
     code, h, body = get("static/fonts/" + urls[0], header=False)
     assert code == 200 and h["Content-Type"] == "font/woff2" and body[:4] == b"wOF2"

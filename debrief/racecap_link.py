@@ -174,11 +174,33 @@ def _r(v, d=2):
     return round(float(v), d) if isinstance(v, (int, float)) and math.isfinite(v) else None
 
 
-def build(scan: dict, me_car: dict, subsession, official: dict | None = None, counts: dict | None = None) -> dict:
+def read_samples(race_dir: Path) -> dict | None:
+    """The scan's position readings, for where on the lap things happened. Optional."""
+    import gzip
+    try:
+        for f in (Path(race_dir) / "scan").glob("*.samples.json.gz"):
+            if f.stat().st_size <= MAX_SCAN_BYTES:
+                doc = json.loads(gzip.decompress(f.read_bytes()).decode("utf-8"))
+                return doc if isinstance(doc, dict) else None
+    except (OSError, ValueError, EOFError):
+        pass
+    return None
+
+
+def build(scan: dict, me_car: dict, subsession, official: dict | None = None, counts: dict | None = None, data: dict | None = None, samples: dict | None = None) -> dict:
     """The review's data["racecap"]. Facts only; "on the road" unless the official results say otherwise."""
     me = str(me_car.get("number"))
     green = _r(scan.get("green"), 3) or 0.0
     lap = lambda t: _lap_at(me_car, t)  # noqa: E731
+    # iRacing's running order isn't valid until the first line crossing: on lap 1 a pass or fight has no position
+    first_line = None
+    try:
+        first_line = float((me_car.get("line_crossings") or {}).get("1"))
+    except (TypeError, ValueError):
+        pass
+    # iRacing only gives live data for cars near the replay camera, so a place worked out mid-lap can't be trusted:
+    # positions come only from iRacing's own reading at the line (race_analysis.positions).
+    known = lambda t, v: None  # noqa: E731
     all_passes = [p for p in scan.get("passes") or [] if isinstance(p, dict) and isinstance(p.get("time"), (int, float))]
     mine = []
     for p in sorted(all_passes, key=lambda x: x["time"]):
@@ -188,14 +210,14 @@ def build(scan: dict, me_car: dict, subsession, official: dict | None = None, co
         back = any(str((q.get("passer") or {}).get("number")) == b and str((q.get("passed") or {}).get("number")) == a
                    and 0 < q["time"] - p["time"] <= STUCK_S for q in all_passes)
         mine.append({"t": _r(p["time"], 2), "lap": lap(p["time"]), "made": a == me, "other": _who(p.get("passed" if a == me else "passer")),
-                     "for_position": p.get("for_position"), "how": p.get("how") or "on track", "stuck": not back})
+                     "for_position": known(p["time"], p.get("for_position")), "how": p.get("how") or "on track", "stuck": not back})
     fights = []
     for b in scan.get("battles") or []:
         if not isinstance(b, dict) or me not in (str((b.get("ahead") or {}).get("number")), str((b.get("behind") or {}).get("number"))):
             continue
         ahead = str((b.get("ahead") or {}).get("number")) == me
         fights.append({"from": _r(b.get("from")), "to": _r(b.get("to")), "lap_from": lap(b.get("from") or 0), "lap_to": lap(b.get("to") or 0),
-                       "seconds": _r(b.get("seconds"), 1), "for_position": b.get("for_position"), "other": _who(b.get("behind" if ahead else "ahead")),
+                       "seconds": _r(b.get("seconds"), 1), "for_position": known(b.get("from"), b.get("for_position")), "other": _who(b.get("behind" if ahead else "ahead")),
                        "you_ahead_at_start": ahead, "closest_s": _r(b.get("closest_gap_s")), "passes": len(b.get("passes") or [])})
     incidents = []
     for i in scan.get("incidents") or []:
@@ -210,12 +232,8 @@ def build(scan: dict, me_car: dict, subsession, official: dict | None = None, co
                           "places_lost": you.get("places_lost"), "out": bool(you.get("out_of_race"))})
     pits = [{"t": _r(p.get("in")), "lap": p.get("lap"), "seconds": _r(p.get("seconds"), 1)} for p in scan.get("pit_stops") or []
             if isinstance(p, dict) and str((p.get("car") or {}).get("number")) == me]
-    positions = []
-    obl = scan.get("order_by_lap") or {}
-    for k in sorted(obl, key=lambda x: int(x) if str(x).isdigit() else 0):
-        order = obl.get(k)
-        if isinstance(order, list) and me in [str(x) for x in order] and str(k).isdigit():
-            positions.append({"lap": int(k), "pos": [str(x) for x in order].index(me) + 1})
+    from . import race_analysis
+    positions = race_analysis.positions(samples, me_car)
     grid, finish = me_car.get("grid"), me_car.get("finish")
     is_official = False
     if official:
@@ -226,15 +244,22 @@ def build(scan: dict, me_car: dict, subsession, official: dict | None = None, co
         if isinstance(st, int):
             grid = st
     start_type = scan.get("start_type") if scan.get("start_type") in ("standing", "rolling") else None
-    out = {"version": 1, "subsession": str(subsession), "track": scan.get("track"), "number": me, "name": _who(me_car),
+    out = {"version": 2, "subsession": str(subsession), "track": scan.get("track"), "number": me, "name": _who(me_car),
            "green": green, "start_type": start_type, "grid": grid, "finish": finish, "official": is_official, "cars": len(scan.get("cars") or []),
            "ended": (me_car.get("ended") or {}).get("how"), "pos_after_lap1": next((x["pos"] for x in positions if x["lap"] == 1), None),
            "positions": positions, "passes": mine, "fights": fights, "incidents": incidents, "pits": pits,
            "field": {"passes": len(all_passes), "battles": len(scan.get("battles") or []),
                      "incidents": sum(1 for i in scan.get("incidents") or [] if isinstance(i, dict) and i.get("level") != "trivial"),
                      "pit_stops": len(scan.get("pit_stops") or [])}}
+    by_lap = {x["lap"]: x["pos"] for x in positions}
+    for i in incidents:         # places from iRacing's positions either side of the lap, not from the mid-lap estimate
+        before = by_lap.get((i["lap"] or 1) - 1, grid if (i["lap"] or 1) == 1 else None)
+        after = next((by_lap[n] for n in range((i["lap"] or 1) + 1, (i["lap"] or 1) + 3) if n in by_lap), by_lap.get(i["lap"]))
+        i["places_lost"] = after - before if isinstance(before, int) and isinstance(after, int) else None
     out["stories"] = stories(out)
-    out["traffic_check"] = traffic_check(out, counts)
+    story = race_analysis.build(scan, me_car, out, data or {}, samples)
+    out.update(story)
+    out["traffic_check"] = traffic_check(out, counts, story["lap_map"])
     return out
 
 
@@ -245,20 +270,22 @@ def stories(rc: dict) -> list:
     on_track = [p for p in rc["passes"] if p.get("how") == "on track"]
     made = [p for p in on_track if p["made"]]
     last_lap = rc["positions"][-1]["lap"] if rc["positions"] else None
+    made = [p for p in made if (p.get("lap") or 0) > 1]
+    on_track = [p for p in on_track if (p.get("lap") or 0) > 1]
     for f in sorted(rc["fights"], key=lambda x: (-(x.get("passes") or 0), -(x.get("seconds") or 0))):
         if not f.get("passes") and (f.get("seconds") or 0) < 30:
             continue
         swaps = [p for p in rc["passes"] if p["other"] == f["other"] and f["from"] - 1 <= p["t"] <= f["to"] + 1]
-        beats = [{"role": "setup", "lap": f["lap_from"], "text": f"Within a second of {f['other']}, fighting for P{f['for_position']}."}]
+        beats = [{"role": "setup", "lap": f["lap_from"], "text": f"Within a second of {f['other']}" + (f", fighting for P{f['for_position']}." if f["for_position"] else ".")}]
         for p in swaps[:4]:
             beats.append({"role": "turn", "lap": p["lap"], "text": (f"You passed {f['other']}" if p["made"] else f"{f['other']} passed you")
-                          + f" for P{p['for_position']}" + ("; it stuck." if p["stuck"] else "; it was swapped straight back.")})
+                          + (f" for P{p['for_position']}" if p["for_position"] else "") + ("; it stuck." if p["stuck"] else "; it was swapped straight back.")})
         end = swaps[-1] if swaps else None
         result = ("You came out ahead." if end["made"] else f"{f['other']} came out ahead.") if end else "No pass in this fight."
         cs = f.get("closest_s")
         closest = "" if cs is None else (" Side by side at the closest." if cs < 0.01 else f" Closest gap {cs:.2f} s.")
         beats.append({"role": "outcome", "lap": f["lap_to"], "text": result + closest})
-        out.append({"id": f"fight-{f['from']}", "title": f"You and {f['other']} for P{f['for_position']}", "beats": beats})
+        out.append({"id": f"fight-{f['from']}", "title": f"You and {f['other']}" + (f" for P{f['for_position']}" if f["for_position"] else (f" on lap {f['lap_from']}" if f["lap_from"] == f["lap_to"] else f", laps {f['lap_from']} to {f['lap_to']}")), "beats": beats})
         if sum(1 for s in out if s["id"].startswith("fight")) >= 3:
             break
     for i in rc["incidents"]:
@@ -284,7 +311,7 @@ def stories(rc: dict) -> list:
         if rc.get("pos_after_lap1"):
             beats.append({"role": "turn", "lap": 1, "text": f"P{rc['pos_after_lap1']} after lap 1."})
         n_made, n_lost = len(made), len(on_track) - len(made)
-        beats.append({"role": "turn", "lap": None, "text": f"{n_made} on-track pass{'es' if n_made != 1 else ''} made, {n_lost} suffered."})
+        beats.append({"role": "turn", "lap": None, "text": f"After lap 1: {n_made} on-track pass{'es' if n_made != 1 else ''} made, {n_lost} suffered."})
         beats.append({"role": "outcome", "lap": last_lap, "text": f"Finished P{fin} {where}."})
         out.append({"id": "climb" if up else "slide", "title": f"P{grid} to P{fin}", "beats": beats})
     seen = {}
@@ -297,7 +324,7 @@ def stories(rc: dict) -> list:
     return out
 
 
-def traffic_check(rc: dict, counts: dict | None) -> list:
+def traffic_check(rc: dict, counts: dict | None, lap_map: dict | None = None) -> list:
     """For each lap the analysis suspects of traffic: what the scan recorded on it. It labels, it never changes pace numbers."""
     counts = counts if isinstance(counts, dict) else {}
     laps = set()
@@ -306,12 +333,14 @@ def traffic_check(rc: dict, counts: dict | None) -> list:
             if isinstance(n, int):
                 laps.add(n)
     out = []
-    for n in sorted(laps):
-        seen = [f"fighting {f['other']} for P{f['for_position']}" for f in rc["fights"]
-                if (f.get("lap_from") or 0) <= n <= (f.get("lap_to") or 0)]
+    for yours in sorted(laps):
+        n = (lap_map or {}).get(str(yours))
+        if n is None:       # this lap couldn't be lined up with the replay: say nothing rather than check the wrong lap
+            continue
+        seen = [f"fighting {f['other']}" for f in rc["fights"] if (f.get("lap_from") or 0) <= n <= (f.get("lap_to") or 0)]
         seen += [("passing " if p["made"] else "passed by ") + p["other"] for p in rc["passes"] if p["lap"] == n]
         seen = list(dict.fromkeys(seen))[:3]
-        out.append({"lap": n, "confirmed": bool(seen), "text": ("The replay shows you " + " and ".join(seen) + ".") if seen
+        out.append({"lap": n, "review_lap": yours, "confirmed": bool(seen), "text": ("The replay shows you " + " and ".join(seen) + ".") if seen
                     else "The replay shows no fight or pass of yours on this lap, so traffic is less likely; it can't rule out a car you didn't race."})
     return out
 
@@ -398,7 +427,7 @@ def prepare(folder, event_id, track, started_at, name, api, subsession=None, log
 
 def attach(data: dict, found: dict) -> None:
     """Put the race log on a review dict: no requests, and the review's own numbers don't change."""
-    rc = build(found["scan"], found["car"], found["subsession"], found["official"], data.get("counts"))
+    rc = build(found["scan"], found["car"], found["subsession"], found["official"], data.get("counts"), data, read_samples(found["dir"]))
     data["racecap"] = rc
     meta = data.get("meta")
     if rc.get("start_type") and isinstance(meta, dict):
@@ -427,6 +456,21 @@ def link_review(folder, review_dir, cfg_folder, api, subsession=None, log=None) 
     from . import library
     library.rebuild(folder)
     return {"subsession": found["subsession"], "name": clean_name(found["car"].get("name"))}
+
+
+def refresh_saved(library_folder, data: dict) -> bool:
+    """Rework a review's race log from its saved scan (no requests, no iRacing), so new analysis reaches old reviews."""
+    from . import replay_scan
+    meta = data.get("meta") or {}
+    own = replay_scan.find_for_event(library_folder, meta.get("event_id"))
+    if own is None:
+        return False
+    scan = read_scan(own)
+    car = find_me(scan["cars"], meta.get("driver")) if scan else None
+    if car is None:
+        return False
+    attach(data, {"dir": own, "subsession": str(scan.get("subsession")), "scan": scan, "car": car, "official": read_official(own, scan.get("subsession"))})
+    return True
 
 
 def valid_folder(v) -> bool:

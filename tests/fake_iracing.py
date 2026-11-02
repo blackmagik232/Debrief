@@ -162,6 +162,9 @@ class FakeSim:
     def seek(self, session_num, t):
         self.calls.append(("seek", session_num, t)); self.pending = [session_num, t, 0.5]
 
+    def focus(self, number):
+        self.calls.append(("focus", number))
+
     def set_speed(self, speed):
         self.speed = speed
 

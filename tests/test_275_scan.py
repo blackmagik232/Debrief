@@ -79,6 +79,18 @@ def test_scan_adds_the_race_log_and_changes_no_numbers():
     assert folder and rl.read_scan(folder)["subsession"] == 89056204 and rs.find_for_event(lib, "NOPE") is None
 
 
+def test_saved_reviews_get_new_analysis_from_their_saved_scan():
+    lib, d = review()
+    run(lib, d, api=Api("EV1"))
+    data = json.loads((d / "review.json").read_text(encoding="utf-8"))
+    laps = data["laps"][0]["t"]
+    data.pop("racecap")
+    assert rl.refresh_saved(lib, data) and data["racecap"]["version"] == 2 and data["racecap"]["positions"] and data["laps"][0]["t"] == laps
+    data["meta"]["event_id"] = "OTHER"
+    data.pop("racecap")
+    assert not rl.refresh_saved(lib, data) and "racecap" not in data
+
+
 def test_wrong_replay_is_refused_before_anything_plays():
     lib, d = review()
     refused(lib, d, "isn't this review's race", api=Api("OTHER"))

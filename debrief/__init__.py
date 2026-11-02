@@ -1,3 +1,3 @@
 """Debrief: Garage 61 race reviews."""
 
-__version__ = "2.7.6"
+__version__ = "2.8.0"

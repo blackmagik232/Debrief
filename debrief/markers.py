@@ -32,10 +32,10 @@ def items(data: dict) -> tuple[list, bool]:
         at = lambda t: t - g  # noqa: E731
         for p in rc.get("passes") or []:
             out.append((at(p["t"]), "pass" if p["made"] else "lost",
-                        (f"Passed {p['other']}" if p["made"] else f"Passed by {p['other']}") + f" for P{p['for_position']}"))
+                        (f"Passed {p['other']}" if p["made"] else f"Passed by {p['other']}") + (f" for P{p['for_position']}" if p.get("for_position") else "")))
         for f in rc.get("fights") or []:
             if f.get("from") is not None:
-                out.append((at(f["from"]), "fight", f"Fight with {f['other']} for P{f['for_position']} starts"))
+                out.append((at(f["from"]), "fight", f"Fight with {f['other']}" + (f" for P{f['for_position']}" if f.get("for_position") else "") + " starts"))
         for i in rc.get("incidents") or []:
             others = " with " + ", ".join(i["others"]) if i.get("others") else ""
             out.append((at(i["t"]), "incident", (", ".join(i.get("what") or []) or "Incident") + others))

@@ -49,8 +49,8 @@ def test_csv_refuses_other_files():
 
 
 def car(n, name, grid, fin):
-    return {"number": n, "name": name, "grid": grid, "finish": fin,
-            "line_crossings": {str(k): 100.0 + 90 * k for k in range(7)}}
+    return {"number": n, "name": name, "grid": grid, "finish": fin, "car_idx": int(n),
+            "line_crossings": {str(k): 100.0 + 90 * k for k in range(7)}, "lap_times": {str(k): 90.0 for k in range(1, 7)}}
 
 
 def scan():
@@ -71,16 +71,37 @@ def scan():
 
 def test_build_is_factual_names_both_drivers_and_labels_the_road():
     s = scan()
-    r = rl.build(s, s["cars"][1], 555, None, {"traffic": [3], "traffic_possible": [6]})
-    assert r["pos_after_lap1"] == 3 and r["start_type"] == "rolling" and not r["official"]
+    r = rl.build(s, s["cars"][1], 555, None, {"traffic": [3], "traffic_possible": [6]}, {"laps": [{"n": n + 2, "t": 90.0} for n in range(1, 7)]})
+    assert r["lap_map"]["5"] == 3 and r["laps"][1]["review_lap"] == 4
+    assert r["start_type"] == "rolling" and not r["official"] and r["pos_after_lap1"] is None   # no readings given here
     first, second, third = r["passes"]
     assert first["made"] and not first["stuck"] and not second["made"] and third["stuck"]
     assert len(r["incidents"]) == 1 and r["incidents"][0]["others"] == ["C Slow"]
     titles = [x["title"] for x in r["stories"]]
-    assert "You and C Slow for P2" in titles and "Setback and recovery" not in titles and "Setback" in titles and "P8 to P2" in titles
+    assert any(t.startswith("You and C Slow") for t in titles) and "P8 to P2" in titles
     assert "on the road" in json.dumps(r["stories"])
-    tc = {t["lap"]: t for t in r["traffic_check"]}
-    assert tc[3]["confirmed"] and not tc[6]["confirmed"]
+    tc = {t["review_lap"]: t for t in r["traffic_check"]}
+    assert tc[3]["lap"] == 1 and tc[6]["lap"] == 4
+
+
+def test_positions_come_from_iracing_not_the_partial_lap_order():
+    from debrief import race_analysis as ra
+    s = scan()
+    me = s["cars"][1]
+    samples = {"idxs": [1, 7, 3], "samples": [[t, 4, None, None, None, [1, 2 if t > 300 else 9, 3], None, None] for t in range(100, 800, 5)]}
+    got = {x["lap"]: x["pos"] for x in ra.positions(samples, me)}
+    assert got[1] == 9 and got[3] == 2      # settles after the line; not the order_by_lap list
+    r = rl.build(s, me, 555, None, None, {"laps": []}, samples)
+    assert r["pos_after_lap1"] == 9 and r["laps"][2]["pos"] == 2 and r["laps"][2]["ahead"] == "A Fast" and r["laps"][2]["gap_ahead"] == 0.0
+    assert all(p["for_position"] is None for p in r["passes"])
+    assert r["pit_cost"]["total_s"] == 30.0 and isinstance(r["pits"], list)
+
+
+def test_clear_air_compare_stops_at_a_long_stop():
+    from debrief import race_analysis as ra
+    assert ra.align_laps([{"n": 3, "t": 90.0}, {"n": 4, "t": 91.0}, {"n": 5, "t": 80.0}], {"lap_times": {"1": 90.01, "2": 90.99, "7": 80.02}}) == {3: 1, 4: 2, 5: 7}
+    assert ra._corner_context([{"id": "C1", "avail": 0.2, "per_lap": {"1": {"t": 10.0}, "2": {"t": 10.0}, "3": {"t": 10.5}, "4": {"t": 10.5}}}], {1: 1, 2: 2, 3: 3, 4: 4},
+                              {1: "clear", 2: "clear", 3: "fight", 4: "fight"})["C1"]["kind"] == "racecraft"
 
 
 def test_official_results_win_over_the_road():
@@ -173,7 +194,7 @@ def test_markers_exact_and_approximate():
     s = scan()
     d = {"meta": {"track": "Test Track"}, "racecap": rl.build(s, s["cars"][1], 555)}
     text = markers.edl(d)
-    assert markers.items(d)[1] and "Passed C Slow for P2" in text and "01:01:40:00" in text and "ResolveColor" in text
+    assert markers.items(d)[1] and "Passed C Slow" in text and "01:01:40:00" in text and "ResolveColor" in text
     d2 = {"meta": {"track": "T|x"}, "laps": [{"n": 1, "t": 90.0}, {"n": 2, "t": 90.0}],
           "racecraft": {"timeline": [{"n": 2, "tags": ["best"]}]}}
     assert not markers.items(d2)[1] and "approximate" in markers.edl(d2) and "01:01:30:00" in markers.edl(d2)

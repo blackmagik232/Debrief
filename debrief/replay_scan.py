@@ -192,7 +192,7 @@ def _slim(info):
     return {"subsession": info.get("subsession"), "track": info.get("track"), "track_length_m": info.get("track_length_m"),
             "sessions": info.get("sessions"),
             "drivers": {str(i): {"number": d["number"], "name": d["name"], "team": d.get("team", ""),
-                                 "pace_car": d["pace_car"], "spectator": d["spectator"]} for i, d in info["drivers"].items()}}
+                                 "car_class": d.get("car_class"), "car": d.get("car"), "pace_car": d["pace_car"], "spectator": d["spectator"]} for i, d in info["drivers"].items()}}
 
 
 # ---------------------------------------------------------------- analyse
@@ -886,7 +886,8 @@ class RealSim:
         drivers = {}
         for d in (self._get("DriverInfo") or {}).get("Drivers", []) or []:
             drivers[int(d["CarIdx"])] = {"number": str(d.get("CarNumber", "")).strip('"'), "name": d.get("UserName", ""),
-                                         "team": d.get("TeamName", ""), "pace_car": bool(d.get("CarIsPaceCar", 0)),
+                                         "team": d.get("TeamName", ""), "car_class": d.get("CarClassID"),
+                                         "car": d.get("CarScreenName", ""), "pace_car": bool(d.get("CarIsPaceCar", 0)),
                                          "spectator": bool(d.get("IsSpectator", 0))}
         sessions = [{"num": int(s["SessionNum"]), "type": s.get("SessionType", ""), "name": s.get("SessionName", "")}
                     for s in (self._get("SessionInfo") or {}).get("Sessions", []) or []]
@@ -914,6 +915,10 @@ class RealSim:
                     "car_flags": arr("CarIdxSessionFlags")}
         finally:
             self.ir.unfreeze_var_buffer_latest()
+
+    def focus(self, car_number):
+        """Point the replay camera at this car: iRacing only gives live track data for cars near the camera."""
+        self.ir.cam_switch_num(str(car_number), int(self._get("CamGroupNumber") or 1), 0)
 
     def seek(self, session_num, t):
         self.ir.replay_search_session_time(int(session_num), int(round(t * 1000)))
@@ -969,7 +974,7 @@ def find_for_event(library_folder, event_id) -> Path | None:
     return None
 
 
-def laps_agree(review_laps, car, within=0.6, share=0.7) -> bool:
+def laps_agree(review_laps, car, within=0.25, share=0.7) -> bool:
     """Without Garage 61's word, the race must show itself: most of the review's laps appear in the scan at about that time."""
     left = sorted(float(v) for v in (car.get("lap_times") or {}).values() if isinstance(v, (int, float)))
     if not review_laps or not left:
@@ -1028,6 +1033,12 @@ def for_review(library_folder, review_dir, api=None, progress=None, should_stop=
                 confirmed = None
         if confirmed is False:
             raise SystemExit(wrong)
+        mine = racecap_link.find_me(cars, meta.get("driver"))
+        try:        # the data is best around the camera's car, so that's your car
+            if hasattr(sim, "focus"):
+                sim.focus(mine["number"])
+        except Exception:  # noqa: BLE001
+            pass
         say(0.05, "Scanning the replay. Leave iRacing alone until it finishes; nothing is recorded.")
         laps = [l.get("t") for l in data.get("laps") or [] if isinstance(l, dict) and isinstance(l.get("t"), (int, float))]
         total = (sum(laps) + 180.0) if laps else None
@@ -1055,6 +1066,10 @@ def for_review(library_folder, review_dir, api=None, progress=None, should_stop=
         if hasattr(sim, "close"):
             sim.close()
     say(0.93, "Working out the race log...")
+    for c in result["cars"]:     # class comes from iRacing's driver list (a scan doesn't need it, the analysis does)
+        drv = raw["info"]["drivers"].get(str(c.get("car_idx"))) or {}
+        if drv.get("car_class") is not None:
+            c["car_class"], c["car"] = drv["car_class"], drv.get("car")
     car = racecap_link.find_me(result["cars"], meta.get("driver"))
     if car is None:
         raise SystemExit("The scan finished but couldn't place you in the race.")

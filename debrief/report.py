@@ -16,7 +16,7 @@ def _embed(obj) -> str:
             .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
 
 
-LAYOUT = "2.7.0"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
+LAYOUT = "2.8.0"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
 
 # Review-dict extras worked out on every write (so saved reviews get them when refresh_all re-renders them),
 # in this order, before insights.build (which reads them): (key, module, function). Each is guarded: a module
@@ -299,6 +299,12 @@ def refresh_all(library_folder, log=None, should_stop=None, done=None, progress=
             data = json.loads(p.read_text(encoding="utf-8"))
             if isinstance(data, dict) and data.get("laps"):
                 if p.stat().st_mtime_ns == before:   # a review saved meanwhile is already in the new layout
+                    try:      # 2.8: new race analysis reaches reviews that already have a saved scan
+                        from . import racecap_link
+                        racecap_link.refresh_saved(lib, data)
+                    except Exception as e:  # noqa: BLE001
+                        if log:
+                            log(f"  Couldn't update {p.parent.name}'s race log: {e}")
                     write(p.parent, data, log=log)
                     n += 1
             done.add(p.parent.name)

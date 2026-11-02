@@ -262,6 +262,7 @@ def racecap_row(d: dict) -> dict | None:
     return {"v": v, "sub": str(rc.get("subsession") or ""), "grid": grid, "lap1_pos": first,
             "lap1": grid - first if grid and first else None,
             "finish": _pos_int(rc.get("finish")), "official": bool(rc.get("official")),
+            "class_finish": _pos_int(rc.get("class_finish")), "class_size": _pos_int(rc.get("class_size")),
             "made": int(_num(craft.get("made")) or 0), "lost": int(_num(craft.get("lost")) or 0),
             "stuck": int(_num(craft.get("stuck")) or 0), "fights": int(_num(craft.get("fights")) or 0),
             "incidents": int(_num(craft.get("incidents")) or 0), "corners": corners,
@@ -319,6 +320,29 @@ def _best_corners(scanned):
     return out[:6]
 
 
+def _craft_note(n_official: int, n_races: int) -> str:
+    if not n_official:
+        return RACECRAFT_NOTE
+    where = "official" if n_official == n_races else f"official in {n_official} of {n_races} races and on the road in the rest"
+    return RACECRAFT_NOTE.split(" Positions ")[0] + f" Positions are {where}."
+
+
+def _craft_summary(out: dict) -> list:
+    """What your scanned races say about you, in sentences. Only your own numbers, and only facts the page also shows."""
+    said = []
+    avg, n = out["lap1"]["avg"], out["n"]
+    if avg is not None:
+        a = abs(avg)
+        said.append("On lap 1 you hold your place on average." if a < 0.5
+                    else f"On lap 1 you {'gain' if avg > 0 else 'lose'} about {a:g} place{'' if a == 1 else 's'} on average.")
+    pr = out["passes"]
+    said.append(f"Each race you make about {pr['made'] / n:.1f} on-track passes and suffer about {pr['lost'] / n:.1f}, among the cars the replay showed.")
+    best = next((c for c in out["corners"] if c["made"] > c["lost"]), None)
+    if best:
+        said.append(f"Your best passing corner is {best['corner']} at {best['track']}: {best['made']} made, {best['lost']} suffered.")
+    return said
+
+
 def racecraft(rows: list) -> dict:
     """Racecraft over your scanned races for the Skills tab. Below RACECRAFT_MIN_RACES only the counts come back,
     and the page asks for more scans: one or two races aren't a habit."""
@@ -349,9 +373,12 @@ def racecraft(rows: list) -> dict:
         "pits": {"stops": len(stops), "seconds": _r(_median([x["seconds"] for x in stops if x["seconds"] is not None]), 1),
                  "places": _r(_median([x["places"] for x in stops if x["places"] is not None]), 1)},
         "multiclass": sum(1 for rc in rcs if rc.get("multiclass")),
+        "official": sum(1 for rc in rcs if rc.get("official")),
         "races": [{"date": r.get("date"), "track": r.get("track_short"), "car": r.get("car"), "path": r.get("path"),
-                   **{k: r["racecap"].get(k) for k in ("grid", "finish", "official", "lap1", "made", "lost", "stuck", "incidents")}}
+                   **{k: r["racecap"].get(k) for k in ("grid", "finish", "class_finish", "class_size", "official", "lap1", "made", "lost", "stuck", "incidents")}}
                   for r in reversed(scanned)]})
+    out["note"] = _craft_note(out["official"], out["n"])
+    out["summary"] = _craft_summary(out)
     return out
 
 

@@ -173,11 +173,18 @@ def _group(key, label, items):
     return {"key": key, "label": label, "races": len(items), "phases": phases}
 
 
-def build(rows: list) -> dict:
+def build(rows: list, include_practice: bool = False) -> dict:
     """Profile for the library Skills tab (see spec 1.3). Never raises on odd rows; empty input gives
-    {"groups": [], "weakest": None, "n_races": 0}."""
+    {"groups": [], "weakest": None, "n_races": 0}.
+    2.7: race sessions only (library.is_race) unless include_practice; practice laps have no fuel load or
+    traffic, so they would make every race look like a step back. "sessions" says which rule was used."""
+    from . import library
     items = []
+    n_skipped = 0
     for row in rows or []:
+        if not include_practice and isinstance(row, dict) and not library.is_race(row):
+            n_skipped += 1
+            continue
         s = _usable(row)
         if s is None:
             continue
@@ -191,7 +198,8 @@ def build(rows: list) -> dict:
                       "trend_min_days": TREND_MIN_DAYS, "trend_min_change_pm": TREND_MIN_CHANGE_PM,
                       "trend_method": "theil_sen", "trend_test": TREND_TEST, "trend_max_p": TREND_MAX_P,
                       "weakest_last": WEAKEST_LAST},
-           "groups": [], "weakest": None, "n_races": len(items)}
+           "groups": [], "weakest": None, "n_races": len(items),
+           "sessions": "all" if include_practice else "race", "n_practice_skipped": n_skipped}
     if not items:
         return out
     out["groups"].append(_group("all", "All cars", items))

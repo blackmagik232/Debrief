@@ -1,4 +1,23 @@
-"""Review library: one folder per race plus a home page with progress over time."""
+"""Review library: one folder per race plus a home page with progress over time.
+
+Practice / qualifying vs race (2.7, "Trust")
+--------------------------------------------
+Every row carries ``session`` from the review's meta ("Race", "Practice", "Qualifying", None on reviews
+older than 2.3). The rule, used everywhere a number is worked out ACROSS reviews:
+
+  * Personal bests, progress trends, recurring weak corners, the season summary, goals and the skills
+    profile use RACE sessions only by default (``is_race``: session None or starting with "race";
+    an unknown session counts as a race, as strategy._is_race always did).
+  * Practice and qualifying rows are kept in the library and on the library page (the Races table
+    shows them with a session chip) but don't set or compare against a personal best unless the caller
+    asks: ``include_practice=True`` on list_reviews / pb_for / prep.build / profile.build, which the
+    library page's "Include practice and qualifying" checkbox reads as the rows' ``pb_all``.
+  * A qualifying lap may count as a "best lap" ONLY when explicitly included that way.
+
+Reasons: a practice session has no fuel load, no traffic and no pressure, so its best lap would make
+every race look like a step back; and a trend fitted through a mix of practice and race laps measures
+the mix, not the driver.
+"""
 from __future__ import annotations
 
 import json
@@ -348,6 +367,18 @@ def _row_from(d, p: Path) -> dict | None:
 
 # ---------------------------------------------------------------- combos + personal bests
 
+def is_race(row) -> bool:
+    """True for a race review (session None or "Race..."); False for practice / qualifying rows. The rule
+    is in the module docstring."""
+    s = (row or {}).get("session") if isinstance(row, dict) else None
+    return s is None or str(s).strip().lower().startswith("race")
+
+
+def race_rows(rows: list, include_practice: bool = False) -> list:
+    """The rows cross-review numbers (PBs, trends, weak corners, profile, season) are worked out on."""
+    return list(rows) if include_practice else [r for r in rows if is_race(r)]
+
+
 def _norm(s) -> str:
     return re.sub(r"\s+", " ", str(s or "")).strip().lower()
 
@@ -403,11 +434,16 @@ def _pb_info(best: float, previous: list) -> dict:
             "previous_date": pb.get("date") or None, "delta": delta, "races_at_combo": len(prev) + 1}
 
 
-def _apply_pbs(rows: list) -> None:
-    """Fill row["pb"] = PB status at the time of that race (only earlier races count).
+def _apply_pbs(rows: list, include_practice: bool = False, key: str = "pb") -> None:
+    """Fill row[key] = PB status at the time of that race (only earlier races count).
 
     Same result as calling _pb_info(best, grp[:i]) for each race of a combo, but worked out in one pass
-    (running count + running quickest), with each row's timestamp parsed once: O(n) per combo, not O(n²)."""
+    (running count + running quickest), with each row's timestamp parsed once: O(n) per combo, not O(n²).
+
+    2.7: by default only race rows set or compare against a PB (module docstring). A practice / qualifying
+    row then gets {"is_pb": False, "first_time": False, "session_excluded": True, ...} with the race PB it
+    would have been measured against; include_practice=True counts every row (written to `key`, which the
+    library page uses as "pb_all")."""
     ts = {id(x): _ts(x) for x in rows}
     done = set()
     for r in rows:
@@ -417,8 +453,16 @@ def _apply_pbs(rows: list) -> None:
         n_prev, pb = 0, None          # earlier clean rows with a best, and the quickest of them (first on ties)
         for x in grp:
             done.add(id(x))
+            counts = include_practice or is_race(x)
             best = x["best"] if x.get("best_clean", True) else None
-            x["pb"] = _pb_from(best, n_prev, pb)
+            if not counts:
+                info = _pb_from(None, n_prev, pb)
+                info["best_clean"] = bool(x.get("best_clean", True))
+                info["session_excluded"] = True
+                info["delta"] = round(best - pb[0]["best"], 3) if (best is not None and pb) else None
+                x[key] = info
+                continue
+            x[key] = _pb_from(best, n_prev, pb)
             if _num(x.get("best")) is not None and x.get("best_clean", True):
                 if pb is None or (x["best"], ts[id(x)]) < (pb[0]["best"], pb[1]):
                     pb = (x, ts[id(x)])
@@ -468,11 +512,12 @@ def _data_as_row(data: dict) -> dict:
     best = clean_best(data)
     return {"track": str(m.get("track") or ""), "car": str(m.get("car") or ""),
             "track_id": _int(ids.get("track_id")), "car_id": _int(ids.get("car_id")),
-            "best": best, "started_at": str(m.get("started_at") or ""),
+            "best": best, "started_at": str(m.get("started_at") or ""), "session": m.get("session"),
             "date": local_day(m.get("started_at")), "event_id": str(m.get("event_id") or "")}
 
 
-def pb_for(folder, data: dict, exclude_dir: str | None = None, rows: list | None = None) -> dict:
+def pb_for(folder, data: dict, exclude_dir: str | None = None, rows: list | None = None,
+           include_practice: bool = False) -> dict:
     """Personal-best status of a freshly analysed review against the library.
 
     Returns {"first_time", "is_pb", "previous_best", "previous_date", "delta", "races_at_combo"}.
@@ -485,6 +530,10 @@ def pb_for(folder, data: dict, exclude_dir: str | None = None, rows: list | None
       * a race whose best isn't clean (see clean_best) is never a PB or a first-time benchmark:
         {"is_pb": False, "first_time": False, "best_clean": False, "delta": None, ...}; earlier
         races with unclean bests don't count as the previous best either
+      * 2.7: only RACE reviews set or compare against a PB (module docstring). A practice / qualifying
+        review gets {"is_pb": False, "first_time": False, "session_excluded": True, "previous_best": the
+        race PB, "delta": its gap to that}, and earlier practice rows never count as the previous best,
+        unless include_practice=True.
     rows: library rows already in hand (list_reviews output, with or without PBs); None reads them (from the
     row index, so this is cheap even on a big library).
     """
@@ -500,17 +549,25 @@ def pb_for(folder, data: dict, exclude_dir: str | None = None, rows: list | None
             continue
         if t_me is not None and r.get("started_at") and _ts(r) >= t_me:
             continue
+        if not include_practice and not is_race(r):
+            continue
         prev.append(r)
+    if not include_practice and not is_race(me):
+        info = _pb_info(None, prev)
+        info["best_clean"] = me["best"] is not None
+        info["session_excluded"] = True
+        info["delta"] = round(me["best"] - info["previous_best"], 3) if (me["best"] is not None and info["previous_best"] is not None) else None
+        return info
     return _pb_info(me["best"], prev)
 
 
 # ---------------------------------------------------------------- season summary
 
-def season_summary(rows: list) -> dict:
+def season_summary(rows: list, include_practice: bool = False) -> dict:
     """Per-season totals for the Season tab. Seasons come from Garage 61 (`season`) or, for old
-    reviews, are estimated from the race date (estimated=True)."""
+    reviews, are estimated from the race date (estimated=True). 2.7: race rows only unless include_practice."""
     seasons = {}
-    for r in sorted(rows, key=_ts):
+    for r in sorted(race_rows(rows, include_practice), key=_ts):
         s = r.get("season") or {"name": "Unknown season", "shortName": "?", "estimated": True}
         k = s["name"]
         e = seasons.setdefault(k, {"key": k, "name": s["name"], "shortName": s.get("shortName"),
@@ -548,7 +605,7 @@ def season_summary(rows: list) -> dict:
                   "irating_change_entered": sum(irc) if irc else None})
         out.append(e)
     out.sort(key=lambda e: e["last"], reverse=True)
-    return {"seasons": out}
+    return {"seasons": out, "sessions": "all" if include_practice else "race"}
 
 
 # ---------------------------------------------------------------- row index (2.6)
@@ -682,13 +739,17 @@ def review_summaries(folder) -> list[dict]:
     return [dict(e["sum"], dir=n) for n, e in _scan(folder) if isinstance(e.get("sum"), dict)]
 
 
-def list_reviews(folder, _pbs: bool = True) -> list[dict]:
-    """All reviews in the library folder as row dicts, newest first. Unreadable files are skipped.
-    Rows come from the row index (.rows.json), worked out again only for reviews that changed."""
+def list_reviews(folder, _pbs: bool = True, include_practice: bool = False) -> list[dict]:
+    """All reviews in the library folder as row dicts, newest first (practice and qualifying rows included:
+    filter with race_rows / is_race). Unreadable files are skipped.
+    Rows come from the row index (.rows.json), worked out again only for reviews that changed.
+    row["pb"]: PB status counting race sessions only (2.7 rule, module docstring), or every session when
+    include_practice=True. row["pb_all"]: always the every-session version, for the library page's toggle."""
     rows = [e["row"] for _, e in _scan(folder) if e.get("row")]
     _unify_combo_keys(rows)
     if _pbs:
-        _apply_pbs(rows)
+        _apply_pbs(rows, include_practice=include_practice)
+        _apply_pbs(rows, include_practice=True, key="pb_all")
     rows.sort(key=lambda r: (r["date"], r["started_at"], r["dir"]), reverse=True)
     return rows
 
@@ -718,18 +779,24 @@ def rebuild(folder, rows: list | None = None) -> Path:
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     rows = list_reviews(folder) if rows is None else rows
+    races = race_rows(rows)   # 2.7: goals, the season summary and the skills profile count race sessions only
     try:
-        gp = goals.progress(folder, rows=rows)
+        gp = goals.progress(folder, rows=races)
     except Exception:  # a damaged goals.json must never stop the library page
         gp = []
     try:
         from . import profile
-        sk = profile.build(rows)
+        sk = profile.build(races)
     except Exception as e:  # a skills problem must never stop the library page
         import logging
         logging.getLogger("debrief.library").exception("Skill profile failed: %s", e)
         sk = None
     extra = {"goals": gp, "season": season_summary(rows), "skills": sk,
+             "sessions_rule": "Personal bests, progress, weak corners, the season summary, goals and the skills "
+                              "profile count race sessions only; practice and qualifying reviews are listed but "
+                              "don't set or compare against a personal best unless you tick \"Include practice "
+                              "and qualifying\".",
+             "n_practice": len(rows) - len(races),
              "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     html = report.render_library(rows, extra)
     out = folder / "index.html"

@@ -284,15 +284,35 @@ def smooth(x, k=5):
     return np.convolve(np.pad(x, (k // 2, k // 2), mode="edge"), w, mode="valid")
 
 
-def detect_corners(R: dict, min_drop_mph=6.0, window_m=150, merge_m=120):
+# Corner-detection windows, written for a ~4 km lap (2.7 M4: multiplied by analysis_plus.dist_scale(L),
+# 0.6..1.5, so a short street circuit gets tighter windows and a long road course slightly wider ones)
+CORNER_MIN_DROP_MPH = 6.0   # speed must fall this much from the peaks either side (not scaled: it's a speed)
+CORNER_WINDOW_M = 150.0     # a local speed minimum over this window either side
+CORNER_LOOK_M = 400.0       # how far either side the speed peaks are looked for
+CORNER_MERGE_M = 120.0      # minima closer than this are one corner
+ZONE_BEFORE_M = 350.0       # corner zone: at most this far before the apex ...
+ZONE_AFTER_M = 250.0        # ... and this far after it (always cut at the speed peak between corners)
+EXIT_AT_M = 150.0           # exit speed is read this far past the apex, capped at EXIT_FRAC of the way to the
+EXIT_FRAC = 0.6             # corner's end so the window never reaches the next corner (2.7)
+
+
+def detect_corners(R: dict, min_drop_mph=CORNER_MIN_DROP_MPH, window_m=None, merge_m=None, L=None):
     """Corners from one lap's speed trace. The lap is treated as a loop: the first corner's zone may
     start before the line (start_m < 0) and the last one's may end after it (end_m > L), so a braking
-    zone that crosses start/finish isn't cut off."""
+    zone that crosses start/finish isn't cut off.
+
+    2.7: the distance windows scale with the lap length (analysis_plus.dist_scale: lap / 4 km, clamped
+    0.6..1.5) unless given. Returns [] when no speed minimum drops min_drop_mph below the peaks either
+    side (an oval or a flat-out track): the caller then falls back to sector-based analysis."""
     v = smooth(R["v"], 7)
     d = R["d"]
     n = len(v)
-    w = int(window_m / STEP)
-    look = int(400 / STEP)
+    ds = analysis_plus.dist_scale(L or n * STEP)
+    L = float(n * STEP)   # the loop length on this grid (the wrap below)
+    window_m = CORNER_WINDOW_M * ds if window_m is None else window_m
+    merge_m = CORNER_MERGE_M * ds if merge_m is None else merge_m
+    w = max(1, int(window_m / STEP))
+    look = max(2, int(CORNER_LOOK_M * ds / STEP))
     vv = np.concatenate([v, v, v])   # circular view for the look-back/ahead windows
     mins = []
     for i in range(n):
@@ -314,7 +334,6 @@ def detect_corners(R: dict, min_drop_mph=6.0, window_m=150, merge_m=120):
             mins.pop(0)
     if not mins:
         return []
-    L = float(n * STEP)
     # zone boundaries at the speed peak between neighbouring corners (going round the loop)
     bounds = []
     for a, b in zip(mins, mins[1:]):
@@ -326,10 +345,18 @@ def detect_corners(R: dict, min_drop_mph=6.0, window_m=150, merge_m=120):
     hi = bounds + [wrap]
     corners = []
     for k, i in enumerate(mins):
-        start = max(lo[k], float(d[i]) - 350.0)
-        end = min(hi[k], float(d[i]) + 250.0)
-        corners.append({"id": f"C{k + 1}", "apex_m": float(d[i]), "start_m": start, "end_m": end})
+        start = max(lo[k], float(d[i]) - ZONE_BEFORE_M * ds)
+        end = min(hi[k], float(d[i]) + ZONE_AFTER_M * ds)
+        corners.append({"id": f"C{k + 1}", "apex_m": float(d[i]), "start_m": start, "end_m": end,
+                        "exit_at_m": exit_offset_m(float(d[i]), end, ds)})
     return corners
+
+
+def exit_offset_m(apex_m: float, end_m: float, ds: float = 1.0) -> float:
+    """How far past the apex the exit speed is read: 150 m (x the distance scale), but never more than
+    EXIT_FRAC of the way from the apex to the corner's end, so the window never crosses into the next
+    corner (the end is cut at the speed peak between corners). At least 20 m."""
+    return max(20.0, min(EXIT_AT_M * ds, EXIT_FRAC * max(0.0, end_m - apex_m)))
 
 
 BRAKE_ON_PCT = 5.0   # pedal above this counts as braking
@@ -398,7 +425,8 @@ def corner_metrics(R, c):
     post = idx[d[idx] > d[i_min]]
     ft = next((i for i in post if X["th"][i] > 95), None) if pedals else None
     cell_t = np.diff(X["tt"], append=X["tt"][-1])
-    i_exit = min(len(d) - 1, i_min + int(150 / STEP))
+    exit_m = float(c.get("exit_at_m") or exit_offset_m(apex, b))
+    i_exit = min(len(d) - 1, i_min + int(round(exit_m / STEP)))
     miss = R.get("_missing") or []
     return {
         "t": float(np.interp(b, d, X["tt"]) - np.interp(a, d, X["tt"])),
@@ -523,15 +551,33 @@ def lap_style(R):
 
 
 # ---------------------------------------------------------------- main
-def detect_traffic(clean: list, median: float, window_m: float = 400.0) -> list:
+TRAFFIC_MIN_EXCESS_S = 0.3   # a lap must be this far off the median (on a 90 s lap) to be considered
+TRAFFIC_MIN_LOST_S = 0.25    # ... and have lost at least this much (on a 90 s lap) in the one stretch
+TRAFFIC_MAD_FLOOR_S = 0.03   # noise floor for the window's spread across laps (on a 90 s lap)
+
+
+def detect_traffic(clean: list, median: float, window_m: float | None = None, strict: bool = False,
+                   L: float | None = None) -> list:
     """Clean laps that lost their time in one short stretch of track, in a way your other clean laps
-    didn't: in a multi-class race that's usually traffic (lifting for a faster class, or stuck behind
-    a slower one), not your driving. Returns [{"n", "at_m", "lost"}].
-    Needs at least 5 clean laps; a lap must be at least 0.3 s off the median to be considered."""
+    didn't. In a multi-class race that's usually traffic (lifting for a faster class, or stuck behind
+    a slower one), not your driving; in a single-class race it can still be a lapped car or a slower
+    one ahead, so the detector runs there too with a stricter gate (strict=True) and the laps are
+    labelled "possibly traffic" rather than "most likely traffic" (and, unlike multi-class traffic, stay
+    in the off-pace list and the pace numbers: a guess doesn't take a lap out of your consistency).
+    Returns [{"n", "at_m", "lost", "possible"}]. Needs at least 5 clean laps.
+
+    2.7 (M4): the window is a tenth of the lap (200..1500 m; 400 m on a 4 km lap) and the time gates
+    scale with the median lap (0.3 s / 0.25 s / 0.03 s on a 90 s lap). The stretch must hold at least
+    half the lap's lost time (strict: 70%) and stand 4 (strict: 6) spreads above what the other laps
+    lost there; strict also needs the loss to be sporadic (fewer than a quarter of the clean laps lost
+    big in that same stretch: the same loss lap after lap is a habit, not traffic)."""
     if len(clean) < 5:
         return []
     TT = np.array([x["R"]["tt"] for x in clean], dtype=float)
     ref = np.median(TT, axis=0)
+    ts = analysis_plus.time_scale(median)
+    if window_m is None:
+        window_m = analysis_plus.traffic_window_m(L if L else TT.shape[1] * STEP)
     w = max(2, int(window_m / STEP))
     if TT.shape[1] <= w + 1:
         return []
@@ -539,15 +585,20 @@ def detect_traffic(clean: list, median: float, window_m: float = 400.0) -> list:
     W = D[:, w:] - D[:, :-w]           # time lost inside each window_m stretch
     med_w = np.median(W, axis=0)
     mad = np.median(np.abs(W - med_w), axis=0)
+    share, sigmas = (0.7, 6.0) if strict else (0.5, 4.0)
     out = []
     for i, x in enumerate(clean):
         excess = x["t"] - median
-        if excess < 0.3:
+        if excess < TRAFFIC_MIN_EXCESS_S * ts:
             continue
         j = int(np.argmax(W[i]))
         top = float(W[i][j])
-        if top >= max(0.25, 0.5 * excess) and top > med_w[j] + 4 * max(float(mad[j]), 0.03):
-            out.append({"n": x["n"], "at_m": float(x["R"]["d"][j + w // 2]), "lost": round(top, 2)})
+        floor = max(float(mad[j]), TRAFFIC_MAD_FLOOR_S * ts)
+        if top >= max(TRAFFIC_MIN_LOST_S * ts, share * excess) and top > med_w[j] + sigmas * floor:
+            if strict and np.sum(W[:, j] > med_w[j] + 3 * floor) * 4 > len(clean):
+                continue   # a quarter or more of your laps lost big here: a habit, not a car in the way
+            out.append({"n": x["n"], "at_m": float(x["R"]["d"][j + w // 2]), "lost": round(top, 2),
+                        "possible": bool(strict)})
     return out
 
 
@@ -693,9 +744,15 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
     median = float(np.median(times))
     slow_cut = slow_cut_for(median)
     unclean = [x["n"] for x in laps if not x["clean"]]
-    # multi-class races: a "clean" lap can still have lost time to traffic. Checked on every clean lap
-    # (before the off-pace cut), so a lap that lost more than the cut to one lapping car is traffic, not a mistake.
-    traffic = detect_traffic([x for x in laps if x["clean"]], median) if meta.get("multiclass") else []
+    # a "clean" lap can still have lost time to traffic. Checked on every clean lap (before the off-pace
+    # cut), so a lap that lost more than the cut to one lapping car is traffic, not a mistake. Multi-class:
+    # "most likely traffic"; single-class (2.7): a stricter gate, and the laps are only "possibly traffic".
+    multiclass = bool(meta.get("multiclass"))
+    hits = detect_traffic([x for x in laps if x["clean"]], median, strict=not multiclass, L=L)
+    # multi-class hits are traffic and leave the pace numbers; single-class hits are only "possibly traffic":
+    # those laps stay off-pace laps (and in the consistency numbers), with the label on them
+    traffic = hits if multiclass else []
+    possible = [] if multiclass else hits
     tn = {t["n"] for t in traffic}
     slow = [x["n"] for x in laps if x["clean"] and x["t"] > median + slow_cut and x["n"] not in tn]
     outlier = sorted(set(unclean) | set(slow) | tn)
@@ -735,8 +792,9 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
             pts = [(x["n"], sectors[x["n"]][i]) for x in clean if sectors.get(x["n"])]
             if len(pts) >= 5:
                 sec_fade[nm] = float(np.polyfit([p[0] for p in pts], [p[1] for p in pts], 1)[0] * 10)
-    # best possible lap from sectors: the same laps as the segments' best possible lap (Garage 61 clean,
-    # not traffic), so the two numbers agree on which laps count
+    # "best sectors added up" (the old "best possible lap": physically unachievable, since the sectors came
+    # from different laps): the same laps as the segments' version (Garage 61 clean, not traffic), so the
+    # two numbers agree on which laps count
     optimal = None
     if sec_names:
         valid = [sectors[x["n"]] for x in (pace or clean) if sectors.get(x["n"])]
@@ -745,8 +803,8 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
             if optimal >= best["t"] - 0.005:
                 optimal = None
 
-    # corners
-    corners = detect_corners(best["R"])
+    # corners (2.7: [] on an oval or a flat-out track; the review then works by sector, see below)
+    corners = detect_corners(best["R"], L=L)
     per = {c["id"]: {} for c in corners}
     for x in laps:
         for c in corners:
@@ -884,9 +942,29 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
     if traffic:
         findings.insert(1, "Multi-class race: lap(s) " + ", ".join(f"{t['n']} (~{t['lost']:.2f}s around {t['at_m']:.0f} m)" for t in traffic) +
                         " lost time in one short stretch, most likely traffic, so they're left out of your pace and consistency numbers.")
+    if possible:
+        where = ", ".join(f"{t['n']} (~{t['lost']:.2f}s around {t['at_m']:.0f} m)" for t in possible)
+        findings.insert(1, f"Lap(s) {where} lost time in one short stretch that your other laps didn't: possibly "
+                           "traffic (a lapped or slower car), possibly a mistake. They stay in your off-pace and "
+                           "consistency numbers; check them in Compare laps.")
     plan = build_plan(ranked, sl, span, slow, ref_out, unclean=unclean_all)
 
     segments = build_segments(corner_out, laps, ref_out, L, eligible_ns=[x["n"] for x in pace])
+    no_corners = None
+    if not corner_out:
+        # 2.7: no distinct braking zones (an oval, or a track driven flat out). The review still works by
+        # sector: official sectors when Garage 61 has them, else three equal thirds of the lap, so splits,
+        # "best sectors added up" and the race story all have something to show.
+        if sec_names and sec_cuts:
+            seg_names, seg_cuts, basis = list(sec_names), list(sec_cuts), "official sectors"
+        else:
+            seg_names, seg_cuts, basis = ["S1", "S2", "S3"], [L / 3.0, 2.0 * L / 3.0], "equal thirds"
+        segments = build_segments([], laps, ref_out, L, eligible_ns=[x["n"] for x in pace],
+                                  names=seg_names, cuts=seg_cuts)
+        no_corners = {"note": "No distinct braking zones were found on your fastest lap (that's normal on an "
+                              "oval or a track driven flat out), so there is no corner-by-corner coaching. "
+                              f"The lap is compared by {basis} instead.", "basis": basis}
+        findings.insert(1, no_corners["note"])
 
     trace = lambda R: {"tt":[round(v, 2) for v in R["tt"][::2]], "v": [int(round(v)) for v in R["v"][::2]],
                        "b": [int(round(v)) for v in R["b"][::2]], "th": [int(round(v)) for v in R["th"][::2]],
@@ -914,10 +992,14 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
                   "main": r["main"], "style": r["style"]} for i, r in enumerate(ref_out)],
         "counts": {"analysed": len(laps), "clean": len(clean), "unclean": unclean_all, "slow": slow, "excluded": excluded,
                    "excluded_laps": excluded_laps, "pit": pit,
-                   "traffic": [t["n"] for t in traffic], "traffic_detail": traffic, "multiclass": bool(meta.get("multiclass")),
+                   "traffic": [t["n"] for t in traffic], "traffic_detail": traffic, "multiclass": multiclass,
+                   # 2.7: single-class laps that look like a hold-up (stricter gate); they stay in "slow"
+                   "traffic_possible": [t["n"] for t in possible], "traffic_possible_detail": possible,
                    "partial": flagged + partial},
         "findings": findings, "plan": plan,
-        "segments": segments,
+        "segments": segments, "no_corners": no_corners,
+        # 2.7: the scales the thresholds in this review were multiplied by (median lap / 90 s, L / 4 km)
+        "scales": {"time": round(analysis_plus.time_scale(median), 3), "dist": round(analysis_plus.dist_scale(L), 3)},
     }
     # v2 extras (stint, technique, consistency, best vs worst, race context); guarded inside
     try:
@@ -929,7 +1011,7 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
     return data
 
 
-def build_segments(corner_out, laps, ref_out, L, eligible_ns=None):
+def build_segments(corner_out, laps, ref_out, L, eligible_ns=None, names=None, cuts=None):
     """Split the lap into one contiguous segment per corner so segment times add up to the lap time.
 
     Additive output (schema key `segments`):
@@ -938,17 +1020,27 @@ def build_segments(corner_out, laps, ref_out, L, eligible_ns=None):
       laps{n: [t...]}    your segment times per lap
       refs{refK: [t...]} comparison laps' segment times
       eligible[]         lap numbers Garage 61 marked clean, minus traffic laps (eligible_ns when given),
-                         used for the best possible lap
+                         used for the "best sectors added up" lap
       best[{t, lap}]     fastest segment among eligible laps and which lap it came from
-      possible           sum of best segments (None if fewer than 2 eligible laps)
+      possible           sum of best segments (None if fewer than 2 eligible laps). Physically this lap can't
+                         be driven: each segment's best came from a different lap and segments depend on
+                         each other, so it's a guide, not a target (the page calls it "Best sectors added up")
+      basis              "corners" or, with no corners (2.7), "official sectors" / "equal thirds"
+    names/cuts (2.7): segment names and the inner cut distances to use instead of the corners (no corners found).
     """
-    if not corner_out:
-        return None
-    cs = sorted(corner_out, key=lambda c: c["apex_m"])
-    cuts = [0.0]
-    for a, b in zip(cs, cs[1:]):
-        cuts.append(float(min(max((a["end_m"] + b["start_m"]) / 2, 0.0), L)))
-    cuts.append(float(L))
+    basis = "corners"
+    if names and cuts is not None and len(cuts) == len(names) - 1:
+        cs = [{"id": n} for n in names]
+        cuts = [0.0] + [float(min(max(c, 0.0), L)) for c in cuts] + [float(L)]
+        basis = "sectors"
+    else:
+        if not corner_out:
+            return None
+        cs = sorted(corner_out, key=lambda c: c["apex_m"])
+        cuts = [0.0]
+        for a, b in zip(cs, cs[1:]):
+            cuts.append(float(min(max((a["end_m"] + b["start_m"]) / 2, 0.0), L)))
+        cuts.append(float(L))
 
     def split(R):
         tt = [tt_at(R, d) for d in cuts]
@@ -984,7 +1076,7 @@ def build_segments(corner_out, laps, ref_out, L, eligible_ns=None):
     if len(eligible) >= 2:
         possible = round(sum(b["t"] for b in best), 3)
     return {"names": [c["id"] for c in cs], "cuts": cuts, "laps": per, "refs": refs,
-            "eligible": eligible, "best": best, "possible": possible}
+            "eligible": eligible, "best": best, "possible": possible, "basis": basis}
 
 
 # ---------------------------------------------------------------- words
@@ -998,17 +1090,20 @@ def coaching_text(c, summ, drivers, refs, iqr=None):
     apex = float(c.get("apex_m") or 0.0)   # brake points are given as metres before the apex (a corner just
     # past the line brakes before it, where the lap distance is negative)
     tend = "On your quicker laps here you tended to"
+    exit_at = float(c.get("exit_at_m") or EXIT_AT_M)
+    # 2.7: the numbers are what your quicker quarter of laps did (p75 / p25), described as such, never as a
+    # target to aim for: the link is correlational (see pattern()), not proof that the number causes the time
     phr = {
-        "min_mph": lambda z: (f"{tend} carry more minimum speed (r {z['r']:+.2f}). You reached {z['p75']:.0f} mph on a quarter of your laps; aim for that."
-                              if z["r"] < 0 else f"{tend} carry a little less minimum speed (r {z['r']:+.2f}), which usually means a tidier entry. Try about {z['p25']:.0f} mph."),
-        "exit_mph": lambda z: (f"{tend} come out faster (r {z['r']:+.2f}). Aim for {z['p75']:.0f} mph 150 m past the apex."
+        "min_mph": lambda z: (f"{tend} carry more minimum speed (r {z['r']:+.2f}): your quicker laps were around {z['p75']:.0f} mph here."
+                              if z["r"] < 0 else f"{tend} carry a little less minimum speed (r {z['r']:+.2f}), which usually means a tidier entry: your quicker laps were around {z['p25']:.0f} mph."),
+        "exit_mph": lambda z: (f"{tend} come out faster (r {z['r']:+.2f}): your quicker laps were around {z['p75']:.0f} mph {exit_at:.0f} m past the apex."
                                if z["r"] < 0 else f"Laps with more exit speed weren't quicker here (r {z['r']:+.2f}); on your quicker laps the time came from earlier in the corner."),
-        "peak_brake": lambda z: (f"{tend} brake more lightly (r {z['r']:+.2f}). Try capping the pedal near {z['p25']:.0f}% instead of {z['median']:.0f}%."
-                                 if z["r"] > 0 else f"{tend} brake a bit harder (r {z['r']:+.2f}), around {z['p75']:.0f}% peak."),
-        "brake_on": lambda z: (f"{tend} brake later (r {z['r']:+.2f}). Try braking about {apex - z['p75']:.0f} m before the apex "
+        "peak_brake": lambda z: (f"{tend} brake more lightly (r {z['r']:+.2f}): your quicker laps peaked near {z['p25']:.0f}% on the pedal instead of {z['median']:.0f}%."
+                                 if z["r"] > 0 else f"{tend} brake a bit harder (r {z['r']:+.2f}): your quicker laps peaked around {z['p75']:.0f}%."),
+        "brake_on": lambda z: (f"{tend} brake later (r {z['r']:+.2f}): your quicker laps braked about {apex - z['p75']:.0f} m before the apex "
                                f"instead of {apex - z['median']:.0f} m."
-                               if z["r"] < 0 else f"{tend} brake a little earlier (r {z['r']:+.2f}), about {apex - z['p25']:.0f} m before the apex."),
-        "full_thr": lambda z: (f"{tend} reach full throttle sooner (r {z['r']:+.2f}). Try to be flat by about {z['p25']:.0f} m."
+                               if z["r"] < 0 else f"{tend} brake a little earlier (r {z['r']:+.2f}): your quicker laps braked about {apex - z['p25']:.0f} m before the apex."),
+        "full_thr": lambda z: (f"{tend} reach full throttle sooner (r {z['r']:+.2f}): your quicker laps were flat by about {z['p25']:.0f} m."
                                if z["r"] > 0 else f"{tend} pick up full throttle a little later and more cleanly (r {z['r']:+.2f})."),
         "abs_s": lambda z: (f"{tend} spend less time on ABS (r {z['r']:+.2f}). Ease the peak pressure so it barely triggers."
                             if z["r"] > 0 else f"Laps with more time on ABS weren't slower here (r {z['r']:+.2f})."),
@@ -1047,7 +1142,8 @@ def build_findings(laps, best, median, unclean, slow, excluded, sl, span, optima
         which = f" (lap(s) {', '.join(map(str, excluded_laps))})" if excluded_laps else ""
         f.append(f"{excluded} lap(s){which} were left out as tow or spin laps (more than 25% off the median).")
     if optimal:
-        f.append(f"Your best sectors from clean laps add up to {fmt_t(optimal)}, {best['t'] - optimal:.2f}s under your best lap.")
+        f.append(f"Your best sectors from clean laps add up to {fmt_t(optimal)}, {best['t'] - optimal:.2f}s under your best lap "
+                 "(a guide, not a lap anyone can drive: the sectors came from different laps).")
     if unclean:
         f.append(f"Flagged unclean by Garage 61 (track limits or incident): lap(s) {', '.join(map(str, unclean))}.")
     if slow:

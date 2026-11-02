@@ -5,7 +5,11 @@ session) is passed too, so a lap 1 the analysis left out (a tow or a big moment,
 median) still gets its time. report.write calls build(data) for older reviews.
 
 Everything is factual and correlational. Lap 1 "includes the start": we never say standing or rolling
-(Debrief doesn't know which). Traffic is "most likely traffic", as the engine calls it.
+unless the review was told (2.7: lap1.start_type, from result.start_type or meta.start_type, "standing" /
+"rolling", else None; Garage 61 doesn't say). Traffic is "most likely traffic" (multi-class, counts.traffic:
+left out of the pace numbers) or, in a single-class race, "possibly traffic" (2.7, counts.traffic_possible:
+the engine's stricter detector; those laps stay off-pace laps and get traffic_possible=True on the
+timeline), as the engine calls it.
 Manual incidents (result.incident_laps) are merged by the page, never stored here.
 """
 from __future__ import annotations
@@ -64,6 +68,17 @@ def _raw_lap1_t(raw_laps):
     return None
 
 
+def start_type(data) -> str | None:
+    """"standing" / "rolling" when the review says so (result.start_type, typed in with the result, or
+    meta.start_type), else None. Nothing is guessed."""
+    for src in (data.get("result"), data.get("meta")):
+        if isinstance(src, dict):
+            v = str(src.get("start_type") or "").strip().lower()
+            if v in ("standing", "rolling"):
+                return v
+    return None
+
+
 def _lap1_segments(data, clean_ns):
     seg = data.get("segments") if isinstance(data.get("segments"), dict) else None
     if not seg:
@@ -114,6 +129,15 @@ def build(data: dict, raw_laps: list | None = None) -> dict | None:
                 pass
     for n in _int_list(counts.get("traffic")):
         traffic.setdefault(n, {"n": n})
+    possible = {}   # 2.7: single-class "possibly traffic" laps (they stay in `slow`)
+    for t in counts.get("traffic_possible_detail") or []:
+        if isinstance(t, dict) and t.get("n") is not None:
+            try:
+                possible[int(t["n"])] = t
+            except (TypeError, ValueError):
+                pass
+    for n in _int_list(counts.get("traffic_possible")):
+        possible.setdefault(n, {"n": n})
     raw_t = {}
     if raw_laps:
         from .engine import _lap_numbers
@@ -129,15 +153,16 @@ def build(data: dict, raw_laps: list | None = None) -> dict | None:
 
     # ---------- lap 1
     lap1 = None
+    st_type = start_type(data)
     if 1 in by_n:
         segs = _lap1_segments(data, clean_ns)
         lap1 = {"n": 1, "t": _r(by_n[1], 3), "vs_median_s": _r(by_n[1] - median, 1), "in_analysis": True,
-                "segments": segs, "note": LAP1_NOTE}
+                "segments": segs, "note": LAP1_NOTE, "start_type": st_type}
     else:
         t1 = raw_t.get(1) or _raw_lap1_t(raw_laps)
         if t1:
             lap1 = {"n": 1, "t": _r(t1, 3), "vs_median_s": _r(t1 - median, 1), "in_analysis": False,
-                    "segments": [], "note": LAP1_NOTE}
+                    "segments": [], "note": LAP1_NOTE, "start_type": st_type}
 
     # ---------- timeline: one entry per lap with something to say
     rows = {}
@@ -169,7 +194,12 @@ def build(data: dict, raw_laps: list | None = None) -> dict | None:
         if lost is not None:
             r["traffic_s"] = round(lost, 2)
     for n in sorted(slow):
-        tag(n, "slow")
+        r = tag(n, "slow")
+        if n in possible:
+            r["traffic_possible"] = True
+            at = _num(possible[n].get("at_m"))
+            if at is not None:
+                r["at_m"] = round(at, 1)
     for n in sorted(pit):
         tag(n, "pit")
     for n in sorted(excluded):
@@ -205,6 +235,11 @@ def build(data: dict, raw_laps: list | None = None) -> dict | None:
     elif traffic:
         summary.append("Lap" + ("s " if len(traffic) > 1 else " ") + _and([str(n) for n in sorted(traffic)])
                        + " lost time in one short stretch, most likely traffic.")
+    if possible and len(summary) < MAX_SUMMARY:
+        p = sorted(n for n in possible if n in slow or n in by_n)
+        if p:
+            summary.append("Lap" + ("s " if len(p) > 1 else " ") + _and([str(n) for n in p])
+                           + " lost time in one short stretch your other laps didn't: possibly traffic, possibly a mistake.")
     if unclean and len(summary) < MAX_SUMMARY:
         u = sorted(unclean)
         lost = [by_n[n] - median for n in u if n in by_n]

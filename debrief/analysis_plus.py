@@ -27,6 +27,33 @@ import numpy as np
 VERSION = 2
 METRICS = ("brake_on", "peak_brake", "min_mph", "full_thr", "coast_s", "exit_mph", "gear")
 
+# 2.7 (M4): every threshold written in seconds was tuned on a ~90 s lap and every one in metres on a ~4 km
+# lap. They are now fractions of the median lap time / the track length, anchored so that a 90 s, 4 km lap
+# gets exactly the old numbers. Lap-time scale is clamped 0.25..6 (a 25 s oval .. a 9 min lap); the distance
+# scale is clamped 0.6..1.5 because corner spacing on a real track doesn't grow with its length (a 20 km lap
+# still has corners 200 m apart), so the corner windows only stretch a little.
+REF_LAP_S = 90.0
+REF_LAP_M = 4000.0
+
+
+def time_scale(median) -> float:
+    """Multiplier for thresholds in seconds: median lap / 90 s, clamped 0.25..6. 1.0 when unknown."""
+    m = _num(median)
+    return min(6.0, max(0.25, m / REF_LAP_S)) if m and m > 0 else 1.0
+
+
+def dist_scale(L) -> float:
+    """Multiplier for thresholds in metres: lap length / 4 km, clamped 0.6..1.5. 1.0 when unknown."""
+    v = _num(L)
+    return min(1.5, max(0.6, v / REF_LAP_M)) if v and v > 0 else 1.0
+
+
+def traffic_window_m(L) -> float:
+    """The stretch of track a traffic hold-up is looked for in: a tenth of the lap, 200..1500 m (400 m on a
+    4 km lap, as before)."""
+    v = _num(L)
+    return min(1500.0, max(200.0, 0.1 * v)) if v and v > 0 else 400.0
+
 # Fuel-weight estimate (see fuel_effect_s_per_lap). Petrol is about 0.745 kg per litre, and a common
 # sim/real rule of thumb is ~0.03 s of lap time per kg on a ~90 s lap. We scale that by lap length in
 # time, i.e. 0.03 * (lap_time / 90) seconds per kg. It's an estimate, not a measurement: the true
@@ -177,13 +204,29 @@ def stint_summary(deg, fuel_deg, fuel_fx, drift, n_clean):
     else:
         parts.append(f"Your clean laps got about {abs(deg):.2f} s {'slower' if deg > 0 else 'quicker'} per lap as the race went on.")
     if fuel_deg is not None:
-        parts.append(f"Allowing for the car getting lighter as fuel burns (an estimate of {fuel_fx:.2f} s a lap), "
+        parts.append(f"Allowing for the car getting lighter as fuel burns (a fuel-weight estimate of {fuel_fx:.2f} s a lap, "
+                     "not a measurement: the real figure depends on the car), "
                      f"that's roughly {abs(fuel_deg):.2f} s a lap {'slower' if fuel_deg > 0 else 'quicker'} (tyres, track and driving all feed into that).")
     worst = max(drift, key=lambda d: d["delta_t"], default=None)
     if worst and worst["delta_t"] >= 0.05:
         parts.append(f"{worst['id']} faded the most: {worst['delta_t']:.2f} s slower late on"
                      + (f", with {abs(worst['delta_mph']):.0f} mph less at the slowest point." if worst["delta_mph"] <= -1 else "."))
     return " ".join(parts)
+
+
+def fuel_corrected_trend(data):
+    """{"per10", "total", "fuel_s_per_lap", "corrected": True} from the review's raw trend and the stint's fuel
+    estimate (None without fuel data). Fuel burning off makes later laps quicker, so the corrected trend is the
+    raw trend PLUS the fuel gain per lap (same sign convention: positive = getting slower)."""
+    st_ = data.get("stint") if isinstance(data.get("stint"), dict) else None
+    fx = _num((st_ or {}).get("fuel_s_per_lap"))
+    per10 = _num(data.get("trend_per10"))
+    total = _num(data.get("trend_total"))
+    if fx is None or per10 is None or total is None:
+        return None
+    span = total / (per10 / 10.0) if per10 else 0.0   # laps from first to last clean lap
+    return {"per10": _r(per10 + 10.0 * fx, 4), "total": _r(total + fx * span, 3), "fuel_s_per_lap": _r(fx, 4),
+            "corrected": True}
 
 
 # ---------------------------------------------------------------- technique
@@ -304,20 +347,29 @@ def iqr(vals):
     return float(np.percentile(vals, 75) - np.percentile(vals, 25))
 
 
-def iqr_label(v):
-    if v < 0.05:
+IQR_LOCKED_S, IQR_STEADY_S, IQR_VARIES_S = 0.05, 0.12, 0.25   # corner-time IQR labels, on a 90 s lap
+STD_ZERO_S = 1.2        # clean-lap std that scores zero, on a 90 s lap
+WITHIN_S = 0.5          # "within half a second of your best", on a 90 s lap
+
+
+def iqr_label(v, scale: float = 1.0):
+    """Label for a corner's time spread (IQR). The cut-offs (0.05 / 0.12 / 0.25 s) are for a 90 s lap and
+    are multiplied by `scale` (time_scale(median)), so the same relative scatter gets the same word on a
+    30 s oval and a 7 minute lap."""
+    if v < IQR_LOCKED_S * scale:
         return "Locked in"
-    if v < 0.12:
+    if v < IQR_STEADY_S * scale:
         return "Steady"
-    if v < 0.25:
+    if v < IQR_VARIES_S * scale:
         return "Varies"
     return "All over"
 
 
-def consistency_score(std, within_05):
-    """0-100. 60% from the spread of clean laps (0 s std = full marks, 1.2 s or more = none)
-    plus 40% from the share of clean laps within 0.5 s of your best."""
-    s_std = max(0.0, 1.0 - std / 1.2)
+def consistency_score(std, within_05, scale: float = 1.0):
+    """0-100. 60% from the spread of clean laps (0 s std = full marks, 1.2 s x scale or more = none)
+    plus 40% from the share of clean laps within 0.5 s x scale of your best (`within_05` is that share,
+    already worked out with the scaled window). scale = time_scale(median lap), 1.0 on a 90 s lap."""
+    s_std = max(0.0, 1.0 - std / (STD_ZERO_S * scale))
     return int(round(100 * (0.6 * s_std + 0.4 * within_05 / 100.0)))
 
 
@@ -344,26 +396,32 @@ def consistency(clean, corners, per, pace=None, slow_cut=1.0):
         return None
     best = min(ts)
     med = float(np.median(ts))
+    # 2.7 (M4): the windows (0.5 s / 1 s / 1.2 s std / corner IQR labels) are for a 90 s lap and scale with it
+    k = time_scale(med)
+    w_s = WITHIN_S * k
     std = float(np.std(ts, ddof=1))
-    w05 = 100.0 * sum(t - best <= 0.5 for t in ts) / len(ts)
-    w10 = 100.0 * sum(t - best <= 1.0 for t in ts) / len(ts)
+    w05 = 100.0 * sum(t - best <= w_s for t in ts) / len(ts)
+    w10 = 100.0 * sum(t - best <= 2 * w_s for t in ts) / len(ts)
     off = sorted(x["n"] for x in pool if x["t"] > med + slow_cut)
-    score = consistency_score(std, w05)
+    score = consistency_score(std, w05, k)
     clean_ns = {x["n"] for x in clean}
     by_corner = []
     for c in corners:
         vals = [m["t"] for n, m in (per.get(c["id"]) or {}).items() if n in clean_ns]
         if len(vals) >= 3:
             v = iqr(vals)
-            by_corner.append({"id": c["id"], "iqr": _r(v), "label": iqr_label(v)})
+            by_corner.append({"id": c["id"], "iqr": _r(v), "label": iqr_label(v, k)})
     label = score_label(score)
     loose = sorted(by_corner, key=lambda b: -b["iqr"])[:2]
-    summ = (f"{label}: {len(ts)} clean laps spread by ±{std:.2f} s, and {w05:.0f}% of them were within half a second of your best.")
+    within_txt = "half a second" if abs(w_s - 0.5) < 0.005 else f"{w_s:.1f} s"
+    summ = (f"{label}: {len(ts)} clean laps spread by ±{std:.2f} s, and {w05:.0f}% of them were within {within_txt} of your best.")
     if off:
         summ += f" {len(off)} of {len(ts)} were more than {slow_cut:.1f} s off your typical lap."
-    if loose and loose[0]["iqr"] >= 0.12:
-        summ += " You varied most in " + _and([b["id"] for b in loose if b["iqr"] >= 0.12]) + "."
+    vary_s = IQR_STEADY_S * k
+    if loose and loose[0]["iqr"] >= vary_s:
+        summ += " You varied most in " + _and([b["id"] for b in loose if b["iqr"] >= vary_s]) + "."
     return {"score": score, "std": _r(std), "within_05": _r(w05, 1), "within_10": _r(w10, 1), "label": label,
+            "within_s": round(w_s, 3), "scale": round(k, 3),
             "by_corner": by_corner, "summary": summ, "n": len(ts), "off_pace": off, "off_pace_n": len(off)}
 
 
@@ -472,6 +530,9 @@ def extend(data, *, laps, clean, best, corners, per, refs, raw_laps, log=None, p
         data["combo_ids"], data["irating"], data["season"], data["conditions"] = ctx
     clean_ns = {x["n"] for x in clean}
     data["stint"] = guard("stint", lambda: stint(laps, clean, per, [c["id"] for c in corners]))
+    # 2.7: the fade trend (trend_per10 / trend_total, raw lap time vs lap number) corrected for the fuel the car
+    # burned, when the laps carry fuel data. insights quotes this one when it exists and says so when it doesn't.
+    data["trend_fuel"] = guard("fuel-corrected trend", lambda: fuel_corrected_trend(data))
     data["technique"] = guard("technique", lambda: technique(corners, per, clean_ns, best["n"], refs))
     data["consistency"] = guard("consistency", lambda: consistency(clean, corners, per, pace, slow_cut))
     if pace is not None and len(pace) > 2:   # spread of every Garage 61-clean lap (mistake laps included)

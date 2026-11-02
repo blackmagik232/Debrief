@@ -554,11 +554,21 @@ def test_l4_week_box_uses_race_length_not_prefill():
 def test_l5_lap1_insight_wording():
     import samples
     d = json.loads(json.dumps(samples.engine_review(), default=float))
+    # 2.7: without a known start type lap 1 is a neutral "worth a look" note, not a bad habit
     for data in (d, {k: v for k, v in d.items() if k != "racecraft"}):
-        it = next(i for i in insights.build(data)["bad"] if i["key"] == "lap1")
-        assert re.fullmatch(r"Lap 1 was \d+\.\d s slower than your typical lap \(that includes the start\)\.", it["text"]), it
+        out = insights.build(data)
+        assert not [i for i in out["bad"] if i["key"] == "lap1"]
+        it = next(i for i in out["look"] if i["key"] == "lap1")
+        assert re.match(r"Lap 1 was \d+\.\d s slower than your typical lap \(that includes the start\)\. ", it["text"]), it
         for word in ("standing", "rolling", "caution", "moment", "because"):
             assert word not in it["text"].lower(), it["text"]
+    # with the start type typed in with the result, race craft passes it on and lap 1 becomes a habit
+    d["result"] = {"finish_pos": 5, "start_type": "standing"}
+    from debrief import racecraft
+    d["racecraft"] = racecraft.build(d)
+    assert d["racecraft"]["lap1"]["start_type"] == "standing"
+    it = next(i for i in insights.build(d)["bad"] if i["key"] == "lap1")
+    assert "standing start" in it["text"] and not [i for i in insights.build(d)["look"] if i["key"] == "lap1"]
     assert "Some of that is the standing" not in (ROOT / "debrief" / "insights.py").read_text(encoding="utf-8")
 
 

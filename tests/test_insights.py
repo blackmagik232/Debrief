@@ -62,8 +62,12 @@ def test_habits_need_thresholds():
                               counts={"unclean": [5, 7], "slow": [1, 9, 11], "traffic": [4], "clean": 9},
                               consistency={"score": 30, "label": "Scattered", "by_corner": []}))
     bad = {b["key"] for b in out["bad"]}
-    assert {"unclean", "lap1", "offpace", "traffic", "fade", "scattered"} <= bad, bad
+    assert {"unclean", "offpace", "traffic", "fade", "scattered"} <= bad, bad
+    assert "lap1" in {b["key"] for b in out["look"]} and "lap1" not in bad   # 2.7: start type unknown
     assert "clean" not in {g["key"] for g in out["good"]}
+    # a known start type makes a slow lap 1 a bad habit
+    out = insights.build(base(laps=laps, racecraft={"lap1": {"n": 1, "start_type": "rolling"}}))
+    assert "lap1" in {b["key"] for b in out["bad"]}
 
 
 def test_nothing_to_fix_and_old_reviews():

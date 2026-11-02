@@ -411,37 +411,60 @@ def review_path(folder, laps, track_name, car_name, suffix: str = "") -> Path:
     return Path(folder) / "reviews" / (f"{day}_{slugify(track_name)}_{slugify(car_name)}_{ev}" + (f"_{suffix}" if suffix else ""))
 
 
-def retire_legacy_mixed(race_dir, log=None) -> list:
+def retire_legacy_mixed(race_dir, race_start=None, log=None) -> list:
     """Before a race review is written to race_dir: an older review of the same event saved as "Session" in a
-    _practice / _qualifying folder (2.1.0-2.7.0 with practice included) is the same race reviewed together
-    with its practice laps. If race_dir doesn't exist yet the old folder is renamed to it (keeping a typed-in
-    result.json); otherwise the old folder is moved to .backup/replaced/, so the race is never listed twice.
-    Returns the folders moved."""
+    _practice / _qualifying folder (2.1.0-2.7.0 with practice included) may be the same race reviewed together
+    with its practice laps. It is only treated so when one of its laps started at or after race_start (the
+    epoch seconds of the new race's first lap); otherwise it was a practice-only review and is relabelled
+    Practice / Qualifying and left in place. A mixed one is first copied to .backup/replaced/, then renamed to
+    race_dir when that doesn't exist yet (keeping a typed-in result.json) or removed when it does, so the race
+    is never listed twice and a wrong guess never loses a review. Returns the folders retired."""
     race_dir = Path(race_dir)
     moved = []
     for suf in ("_practice", "_qualifying"):
         old = race_dir.with_name(race_dir.name + suf)
         try:
-            meta = json.loads((old / "review.json").read_text(encoding="utf-8")).get("meta") or {}
+            d = json.loads((old / "review.json").read_text(encoding="utf-8"))
+            meta = d.get("meta") or {}
         except Exception:  # noqa: BLE001  (missing or unreadable: not ours to touch)
             continue
         if str(meta.get("session") or "").strip().lower() not in ("", "session"):
+            continue
+        starts = [float(l["start"]) for l in (d.get("laps") or [])
+                  if isinstance(l, dict) and isinstance(l.get("start"), (int, float))]
+        holds_race = race_start is None or not starts or max(starts) >= float(race_start) - 1
+        if not holds_race:
+            # a practice-only review from before 2.7.0: say what it is, and leave it where it is
+            try:
+                meta["session"] = "Practice" if suf == "_practice" else "Qualifying"
+                d["meta"] = meta
+                fsutil.write_text(old / "review.json", json.dumps(d, ensure_ascii=False, allow_nan=False),
+                                  fsync=True)
+            except (OSError, ValueError) as e:
+                if log:
+                    log(f"  Couldn't relabel the older review {old.name}: {e}")
+            continue
+        dest = race_dir.parent.parent / ".backup" / "replaced" / old.name
+        try:
+            if dest.exists():
+                shutil.rmtree(dest, ignore_errors=True)
+            shutil.copytree(old, dest)          # a copy first, so nothing is ever lost
+        except OSError as e:
+            if log:
+                log(f"  Couldn't back up the older mixed review {old.name}, so it was left as it is: {e}")
             continue
         try:
             if not race_dir.exists():
                 old.rename(race_dir)
             else:
-                dest = race_dir.parent.parent / ".backup" / "replaced" / old.name
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                if dest.exists():
-                    shutil.rmtree(dest, ignore_errors=True)
-                shutil.move(str(old), str(dest))
+                shutil.rmtree(old)
             moved.append(old.name)
             if log:
-                log(f"  Replaced an older review of this event that mixed practice and race laps ({old.name}).")
+                log(f"  Replaced an older review of this event that mixed practice and race laps ({old.name}; "
+                    "a copy is in .backup/replaced).")
         except OSError as e:
             if log:
-                log(f"  Couldn't tidy the older mixed review {old.name}: {e}")
+                log(f"  Couldn't tidy the older mixed review {old.name} (a copy is in .backup/replaced): {e}")
     return moved
 
 

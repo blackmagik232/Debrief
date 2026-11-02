@@ -871,7 +871,9 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     step("Saving the review and updating the library...", 0.95)
     # a practice or qualifying review of the same event gets its own folder, next to the race's
     if chosen_kind in (3, None) and hasattr(library, "retire_legacy_mixed"):
-        library.retire_legacy_mixed(library.review_path(cfg["library_folder"], laps, track_name, car_name), log=say)
+        starts = [dt.timestamp() for dt in (lap_start_dt(l) for l in laps) if dt]
+        library.retire_legacy_mixed(library.review_path(cfg["library_folder"], laps, track_name, car_name),
+                                    race_start=min(starts) if starts else None, log=say)
     out_dir = library.review_dir(cfg["library_folder"], laps, track_name, car_name,
                                  suffix={1: "practice", 2: "qualifying"}.get(
                                      chosen_kind, ""))

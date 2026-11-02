@@ -47,12 +47,19 @@ def _review(kinds, lib):
     return json.loads((page.parent / "review.json").read_text(encoding="utf-8")), page, logs
 
 
-def _make_legacy(lib, race_name, suffix="_practice"):
-    """A 2.6/2.7.0-style mixed review: meta.session "Session" in a _practice folder, with a typed-in result."""
+RACE_T0 = 1792526400.0 + 12 * 60     # test_271._MixedApi: 2026-10-20 20:00Z, a lap every 2 min; race from lap 6
+
+
+def _make_legacy(lib, race_name, suffix="_practice", starts=None):
+    """A 2.6/2.7.0-style review saved as meta.session "Session" in a _practice folder, with a typed-in result.
+    starts: its laps' start times (default: practice and race laps together, i.e. a mixed review)."""
+    if starts is None:
+        starts = [RACE_T0 - 12 * 60 + 120 * i for i in range(14)]
     old = Path(lib) / "reviews" / (race_name + suffix)
     old.mkdir(parents=True)
     (old / "review.json").write_text(json.dumps({"meta": {"session": "Session", "track": "x", "car": "y"},
-                                                 "laps": []}), encoding="utf-8")
+                                                 "laps": [{"n": i + 1, "t": 99.5, "start": t}
+                                                          for i, t in enumerate(starts)]}), encoding="utf-8")
     (old / "result.json").write_text(json.dumps({"finish": 7}), encoding="utf-8")
     return old
 
@@ -76,6 +83,27 @@ def test_reviewing_the_race_renames_the_old_mixed_review_instead_of_duplicating(
     assert folders == [race_name], folders
     assert json.loads((page.parent / "result.json").read_text(encoding="utf-8")) == {"finish": 7}
     assert any("mixed practice and race" in m for m in logs), logs
+    assert (Path(lib) / ".backup" / "replaced" / old.name / "result.json").is_file()   # copied before reuse
+
+
+def test_a_practice_only_session_review_is_relabelled_and_kept():
+    """2.6-2.7.0 also saved "Session" + _practice for a practice-only review: its laps all start before the
+    race, so it is relabelled Practice and left where it is, with nothing moved."""
+    for race_exists in (False, True):
+        lib = _newdir() / "lib"
+        _, page, _ = _review([1] * 6 + [3] * 8, lib)
+        race_name = page.parent.name
+        if not race_exists:
+            shutil.rmtree(page.parent)
+        old = _make_legacy(lib, race_name, starts=[RACE_T0 - 12 * 60 + 120 * i for i in range(6)])
+        _review([1] * 6 + [3] * 8, lib)
+        assert old.is_dir() and (old / "result.json").is_file(), race_exists
+        meta = json.loads((old / "review.json").read_text(encoding="utf-8"))["meta"]
+        assert meta["session"] == "Practice", meta
+        assert not library.is_race({"session": meta["session"]})
+        assert not (Path(lib) / ".backup" / "replaced").exists()
+        folders = sorted(p.name for p in (Path(lib) / "reviews").iterdir() if p.is_dir())
+        assert folders == sorted([race_name, old.name]), folders
 
 
 def test_when_the_race_folder_exists_the_old_mixed_one_moves_to_backup():

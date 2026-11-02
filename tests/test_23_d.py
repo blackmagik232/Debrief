@@ -493,7 +493,18 @@ def test_window_skills_nav_opens_library_skills():
                 pg.wait_for_timeout(100)
             assert frame and frame.url.endswith("#skills"), frame and frame.url
             # with 23-C's library page (it has the Skills tab), the tab is what shows in the frame
-            tab = frame.evaluate("() => { const t = document.getElementById('tab-skills'); return t ? !t.hidden : null }")
+            deadline = time.time() + 10
+            while True:   # the page's own script shows the tab once it has loaded
+                try:
+                    frame = next(f for f in pg.frames if "lib/index.html" in f.url)
+                    tab = frame.evaluate("() => document.readyState === 'complete' ? (() => {"
+                                         " const t = document.getElementById('tab-skills');"
+                                         " return t ? !t.hidden : null })() : false")
+                except Exception:          # caught mid-navigation; look again
+                    tab = False
+                if tab in (True, None) or time.time() > deadline:
+                    break
+                pg.wait_for_timeout(100)
             assert tab in (True, None), tab
             if tab is None:
                 print("  (library page without the Skills tab yet: tab check skipped)")

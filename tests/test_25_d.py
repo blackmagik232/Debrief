@@ -1037,8 +1037,9 @@ def test_window_team_view_weekly_estimate():
         pg, ctx, errs = r
         try:
             pg.click(".navbtn[data-nav=team]")
-            pg.wait_for_function("() => !document.getElementById('vTeam').hidden", timeout=30000)
-            pg.wait_for_function("() => document.getElementById('weeklyNote').textContent.includes('About')", timeout=30000)
+            # 60 s: under a parallel run the team view can take over 30 s to appear (2.7, task 6b)
+            pg.wait_for_function("() => !document.getElementById('vTeam').hidden", timeout=60000)
+            pg.wait_for_function("() => document.getElementById('weeklyNote').textContent.includes('About')", timeout=60000)
             assert pg.evaluate("() => document.getElementById('weeklyNote').textContent") == (
                 "This week's leaderboards for your series. About 3 Garage 61 requests (1 per series, 2 if a lap needs "
                 "a second look).")

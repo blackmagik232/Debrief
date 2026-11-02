@@ -15,11 +15,40 @@ def _esc(s: str) -> str:
     return s.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
 
 
+# A test must never reach the internet or write into the repo (2.7, task 6a): the updater's state file
+# defaults to <repo>/update.json and the update check is a real GitHub request unless a test fakes it.
+# DEBRIEF_NO_NETWORK makes the Garage 61 client refuse to ask; the proxy variables point every other HTTP
+# library (requests, urllib) at a port nothing listens on, so a real request fails at once instead of
+# going out. NO_PROXY keeps the tests' own 127.0.0.1 servers reachable.
+DEAD_PROXY = "http://127.0.0.1:9"
+LOCAL_ONLY = "127.0.0.1,localhost"
+
+
+def offline_env(tmp: str) -> dict:
+    """Environment for one test file: the updater's state inside tmp, no network."""
+    return {"DEBRIEF_UPDATE_STATE": os.path.join(tmp, "update.json"), "DEBRIEF_NO_NETWORK": "1",
+            "HTTPS_PROXY": DEAD_PROXY, "HTTP_PROXY": DEAD_PROXY, "https_proxy": DEAD_PROXY, "http_proxy": DEAD_PROXY,
+            "NO_PROXY": LOCAL_ONLY, "no_proxy": LOCAL_ONLY}
+
+
 def run_file(path: str, env_extra: dict | None = None) -> tuple[int, str]:
-    """Run one test file; returns (exit code, its output followed by ::error annotations when it failed)."""
-    env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1", **(env_extra or {}))
-    p = subprocess.run([sys.executable, path], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                       encoding="utf-8", errors="replace")
+    """Run one test file; returns (exit code, its output followed by ::error annotations when it failed).
+    The file runs with its own temp folder (TEMP/TMP/TMPDIR, unless env_extra sets them) and offline_env()."""
+    import shutil
+    import tempfile
+    extra = dict(env_extra or {})
+    own_tmp = None
+    if not any(k in extra for k in ("TEMP", "TMP", "TMPDIR")):
+        own_tmp = tempfile.mkdtemp(prefix=os.path.splitext(os.path.basename(path))[0] + "-")
+        extra.update(TEMP=own_tmp, TMP=own_tmp, TMPDIR=own_tmp)
+    tmp = extra.get("TEMP") or extra.get("TMP") or extra.get("TMPDIR")
+    env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1", **offline_env(tmp), **extra)
+    try:
+        p = subprocess.run([sys.executable, path], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           encoding="utf-8", errors="replace")
+    finally:
+        if own_tmp:
+            shutil.rmtree(own_tmp, ignore_errors=True)
     out = p.stdout or ""
     if p.returncode == 0:
         return 0, out

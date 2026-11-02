@@ -585,6 +585,14 @@ def find_last_event(api, sessions, cache_dir=None, library_folder=None):
     return g(best, "event"), _id(g(best, "track_id", "trackId", "track")), _id(g(best, "car_id", "carId", "car"))
 
 
+TEL_FAIL_RUN = 3   # telemetry downloads failing in a row before the review stops asking (as sync.TEL_FAIL_RUN)
+TEL_GIVING_UP = "Garage 61 isn't sending telemetry right now; reviewing with the laps already downloaded"
+TEL_NONE_MSG = ("Garage 61 isn't sending telemetry right now, and none of this race's laps had been downloaded "
+                "yet. Wait a few minutes and try the review again, or run Check connection (Settings).")
+BROKEN_SPEED_MSG = ("One lap's telemetry looks broken (no speed data). Try the review again later, or review a "
+                    "different session.")
+
+
 def _stepper(progress):
     """say() plus an optional progress(fraction or None, message) callback for the desktop app."""
     def step(msg, frac=None):
@@ -636,17 +644,35 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     # skip telemetry for laps the analysis will drop anyway (pit/tow/spin laps)
     wanted = [l for l in timed if lap_time(l) < med * 1.25]
     step(f"{len(laps)} laps found. Downloading telemetry for {len(wanted)} (already-saved laps are skipped)...", 0.24)
-    tel, refused = {}, 0
+    tel, refused, skipped = {}, 0, 0
+    run_fail = 0   # 2.7 (M2): Garage61Errors in a row from telemetry downloads; TEL_FAIL_RUN stops asking
     for i, l in enumerate(wanted):
         if progress:
             progress(0.24 + 0.46 * i / max(1, len(wanted)), f"Telemetry for lap {i + 1} of {len(wanted)}...")
-        csv = api.lap_csv(g(l, "id"))
+        try:
+            csv = api.lap_csv(g(l, "id"))
+        except Garage61Error as e:
+            if getattr(e, "fatal", False) or getattr(e, "status", None) == 401 or e.status is None:
+                raise   # the token was rejected, or Garage 61 can't be reached at all: nothing else will work
+            run_fail += 1
+            skipped += 1
+            say(f"  Telemetry for lap {g(l, 'id')} failed: {e}")
+            if run_fail >= TEL_FAIL_RUN:
+                skipped += len(wanted) - i - 1
+                if tel:
+                    step(TEL_GIVING_UP)
+                    break
+                raise SystemExit(TEL_NONE_MSG)
+            continue
+        run_fail = 0
         if csv:
             tel[g(l, "id")] = csv
         else:
             refused += 1
-    if refused:
-        step(f"  {refused} lap(s) had no telemetry available.")
+    if refused or skipped:
+        step(f"  {len(tel)} lap(s) with telemetry" +
+             (f", {refused} with none available" if refused else "") +
+             (f", {skipped} skipped (Garage 61 errors)" if skipped else "") + ".")
     if len(tel) < 2:
         raise SystemExit("Garage 61 didn't return telemetry for this race. Run Check connection (Settings) to see what your account can access.")
     with_tel = [l for l in laps if g(l, "id") in tel]
@@ -696,6 +722,12 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
         data = engine.analyze(meta, laps, tel, refs, ref_tel, track_length=track_length(api, track), log=say)
     except ValueError as e:
         raise SystemExit(f"Couldn't build the review: {e}")
+    except IndexError:
+        # 2.7 (M5): a zero/garbage Speed channel makes the lap's distance grid empty and the engine's resample
+        # fails on an empty array; never Python's own words to the user
+        import traceback
+        say("  The engine couldn't place a lap on the track (broken speed channel?):\n" + traceback.format_exc())
+        raise SystemExit(BROKEN_SPEED_MSG)
     data["on_track"] = others
     data["meta"]["requests"] = api.requests_made
     step("Saving the review and updating the library...", 0.95)

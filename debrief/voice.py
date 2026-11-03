@@ -1,4 +1,4 @@
-"""Speaking short coaching cues out loud on Windows, offline, without PowerShell (2.13).
+"""Speaking short coaching cues out loud on Windows, offline, without PowerShell (2.12).
 
 Windows has a speech engine built in (SAPI, the "Microsoft David / Zira" voices), reached over COM: through pywin32
 (win32com, late-bound so no generated wrapper files are needed, which suits the frozen app) or, when pywin32 is
@@ -12,6 +12,10 @@ the rendered audio sits in temp files rather than memory). A phrase that was not
 falls back to SAPI's own asynchronous Speak. A newer, more important cue cuts off one still being spoken; cancel()
 stops everything at once (a car alongside). The WAV lengths are known, so the coach can time cues exactly
 (duration(text)). An optional short tone (beep) is a pre-made WAV too.
+
+Volume is Debrief's own, not SAPI's: phrases are rendered at full volume and then scaled (scale_wav), so a pre-made
+phrase and the beep are exactly as loud as the setting, and a volume change only re-scales the saved audio (a
+speed change has to render again).
 
 All COM work happens on the voice's own threads (COM objects belong to the thread that made them). Nothing
 Windows-only is imported when this module is imported.
@@ -78,6 +82,29 @@ def write_tone(path, freq: float = 880.0, seconds: float = 0.12, rate: int = 220
         w.setframerate(rate)
         w.writeframes(bytes(frames))
     return path
+
+
+def scale_wav(src, dst, volume: int):
+    """Copy a 16-bit PCM WAV with every sample scaled by volume/100 (0..100; clipped, never louder than the
+    original). Other sample sizes are copied unchanged. Returns dst."""
+    import array
+    vol = _clamp(volume, 0, 100, 100) / 100.0
+    with wave.open(str(src), "rb") as r:
+        params = r.getparams()
+        frames = r.readframes(r.getnframes())
+    if params.sampwidth == 2 and vol != 1.0:
+        a = array.array("h")
+        a.frombytes(frames[:len(frames) - len(frames) % 2])
+        if sys.byteorder == "big":
+            a.byteswap()
+        a = array.array("h", (max(-32768, min(32767, int(round(x * vol)))) for x in a))
+        if sys.byteorder == "big":
+            a.byteswap()
+        frames = a.tobytes()
+    with wave.open(str(dst), "wb") as w:
+        w.setparams(params)
+        w.writeframes(frames)
+    return dst
 
 
 class NullVoice:
@@ -231,7 +258,11 @@ class SapiVoice:
         self._busy_until = -1e9
         self._last_pri = -1
         self._dir = None
-        self._wavs: dict = {}            # text -> (path, seconds), filled by the render thread
+        self._wavs: dict = {}            # text -> (path, seconds) at the current volume, filled by the render thread
+        self._raw: dict = {}             # text -> path rendered at full volume (scaled into _wavs)
+        self._vol_gen = 0
+        self._scale_thread = None
+        self._beep_raw = None
         self._wlock = threading.Lock()
         self._render_gen = 0
         self._render_thread = None
@@ -277,20 +308,50 @@ class SapiVoice:
         self._put(("beep", None, False))
 
     def set(self, volume=None, rate=None):
-        changed = False
+        vol_changed = rate_changed = False
         if volume is not None:
             v = _clamp(volume, 0, 100, self.volume)
-            changed |= v != self.volume
+            vol_changed = v != self.volume
             self.volume = v
         if rate is not None:
             r = _clamp(rate, -10, 10, self.rate)
-            changed |= r != self.rate
+            rate_changed = r != self.rate
             self.rate = r
         self._put(("set", None, False))
-        if changed and self._phrases:            # rendered audio has the old volume/rate baked in
+        if rate_changed and self._phrases:       # the speed is baked into the audio: render again (at this volume)
             with self._wlock:
-                self._wavs = {}
+                self._wavs, self._raw = {}, {}
             self.prepare(self._phrases)
+        elif vol_changed:                        # the volume is not: scale the full-volume audio again
+            self._rescale()
+
+    def _rescale(self):
+        self._vol_gen += 1
+        self._scale_thread = threading.Thread(target=self._rescale_run, args=(self._vol_gen,),
+                                              name="debrief-voice-volume", daemon=True)
+        self._scale_thread.start()
+
+    def _scaled_path(self, raw: str, vol: int) -> str:
+        return str(raw)[:-len(".raw.wav")] + f"_v{vol}.wav" if str(raw).endswith(".raw.wav") else f"{raw}_v{vol}.wav"
+
+    def _rescale_run(self, gen: int):
+        vol = self.volume
+        try:
+            if self._beep_raw:
+                self._beep_path = str(scale_wav(self._beep_raw, self._scaled_path(self._beep_raw, vol), vol))
+            with self._wlock:
+                todo = list(self._raw.items())
+            for text, raw in todo:
+                if gen != self._vol_gen or self._stop.is_set():
+                    return
+                dst = self._scaled_path(raw, vol)
+                if not Path(dst).exists():
+                    scale_wav(raw, dst, vol)
+                with self._wlock:
+                    if self._raw.get(text) == raw and text in self._wavs:
+                        self._wavs[text] = (dst, self._wavs[text][1])
+        except Exception as e:  # noqa: BLE001
+            self._log(f"voice: the new volume could not be applied to the prepared phrases ({e.__class__.__name__})")
 
     def _drain(self):
         try:
@@ -335,23 +396,28 @@ class SapiVoice:
         uninit = None
         try:
             sp, backend, uninit = _com_object("SAPI.SpVoice")
-            sp.Volume, sp.Rate = self.volume, self.rate
+            sp.Volume, sp.Rate = 100, self.rate                 # full volume: Debrief scales it (scale_wav)
             for i, text in enumerate(phrases):
                 if gen != self._render_gen or self._stop.is_set():
                     return
-                path = Path(self._dir) / f"g{gen}_{i}.wav"
+                raw = Path(self._dir) / f"g{gen}_{i}.raw.wav"
                 fs = _new_com("SAPI.SpFileStream", backend)
-                fs.Open(str(path), SSFM_CREATE_FOR_WRITE, False)
+                fs.Open(str(raw), SSFM_CREATE_FOR_WRITE, False)
                 try:
                     sp.AudioOutputStream = fs
                     sp.Speak(text, 0)                        # synchronous, into the file
                 finally:
                     fs.Close()
-                secs = wav_seconds(path)
+                secs = wav_seconds(raw)
                 if secs:
+                    vol = self.volume
+                    path = scale_wav(raw, self._scaled_path(str(raw), vol), vol)
                     with self._wlock:
                         if gen == self._render_gen:
+                            self._raw[text] = str(raw)
                             self._wavs[text] = (str(path), secs)
+                    if vol != self.volume:                   # changed while this phrase was being scaled
+                        self._rescale()
                 time.sleep(0.005)                            # stay light next to iRacing
         except Exception as e:  # noqa: BLE001
             self._log(f"voice: phrases could not be prepared, speaking live instead ({e.__class__.__name__})")
@@ -380,7 +446,9 @@ class SapiVoice:
                 import winsound
                 ws = winsound
                 self._dir = tempfile.mkdtemp(prefix="debrief-voice-")
-                self._beep_path = str(write_tone(Path(self._dir) / "beep.wav"))
+                self._beep_raw = str(write_tone(Path(self._dir) / "beep.raw.wav"))
+                self._beep_path = str(scale_wav(self._beep_raw, self._scaled_path(self._beep_raw, self.volume),
+                                                self.volume))
             except Exception as e:  # noqa: BLE001
                 ws = None
                 self._log(f"voice: no pre-rendered sound, speaking live ({e.__class__.__name__})")

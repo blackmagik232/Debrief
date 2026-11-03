@@ -583,6 +583,39 @@ finally:
     sys.modules.pop("irsdk", None)
 
 # ---------------------------------------------------------------- voice
+import array as _array  # noqa: E402
+import wave as _wave  # noqa: E402
+
+
+def _peak(path):
+    with _wave.open(str(path), "rb") as w:
+        a = _array.array("h")
+        a.frombytes(w.readframes(w.getnframes()))
+        n = w.getnframes()
+    return max(abs(x) for x in a), n
+
+
+wdir = TMP / "wav"
+wdir.mkdir()
+src_w = vc.write_tone(wdir / "tone.raw.wav", level=0.6)
+p100, n0 = _peak(src_w)
+p50, n50 = _peak(vc.scale_wav(src_w, wdir / "t50.wav", 50))
+p0, _n = _peak(vc.scale_wav(src_w, wdir / "t0.wav", 0))
+check(abs(p50 - p100 / 2) <= 1 and n50 == n0 and p0 == 0, f"volume scales the samples (peak {p100} -> {p50} at 50%, 0 at 0%)")
+check(_peak(vc.scale_wav(src_w, wdir / "t100.wav", 100))[0] == p100 and _peak(vc.scale_wav(src_w, wdir / "t150.wav", 150))[0] == p100,
+      "100% is unchanged and nothing gets louder than the original")
+sv = vc.SapiVoice(volume=100)                # off Windows it goes quiet, but its volume logic still runs
+sv.wait_ready(5)
+sv._raw = {"Brake marker, T3": str(src_w)}
+sv._wavs = {"Brake marker, T3": (str(src_w), 0.12)}
+sv._beep_raw = str(src_w)
+sv.set(volume=40)
+sv._scale_thread.join(5)
+path40 = sv._wavs["Brake marker, T3"][0]
+check(path40.endswith("_v40.wav") and abs(_peak(path40)[0] - round(p100 * 0.4)) <= 1 and sv._beep_path.endswith("_v40.wav"),
+      f"a volume change re-scales the prepared phrases and the beep, no new rendering ({Path(path40).name})")
+check(sv._raw == {"Brake marker, T3": str(src_w)}, "the full-volume audio is kept for the next change")
+sv.close()
 nv = vc.make_voice() if sys.platform != "win32" else vc.NullVoice("test")
 check(isinstance(nv, vc.NullVoice) and nv.say("hello") is False and nv.status()["available"] is False,
       "off Windows the voice is a silent stand-in")

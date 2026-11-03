@@ -4,5 +4,5 @@ tomli>=2.0; python_version < "3.11"
 pypdf>=4.0
 pyirsdk>=1.3
 PyYAML>=6
-# 2.13 live coach: Windows speech (SAPI) through COM; Windows only, so CI on Linux skips it
+# 2.12 live coach: Windows speech (SAPI) through COM; Windows only, so CI on Linux skips it
 pywin32>=306; sys_platform == "win32"

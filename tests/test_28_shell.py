@@ -292,7 +292,7 @@ def test_sidebar_owns_navigation_keys_and_loading_bar():
         pg.goto(srv().url)
         pg.wait_for_function("() => !document.getElementById('vFrame').hidden")
         names = pg.evaluate("() => [...document.querySelectorAll('.nav .navbtn')].map(b => b.textContent.trim())")
-        assert names == ["Progress", "Season", "Skills", "Goals", "All sessions", "Practice", "Prepare", "Team", "Setup Lab", "Coach", "Settings", "Help"], names
+        assert names == ["Progress", "Season", "Skills", "Goals", "All sessions", "Practice", "Racing", "Prepare", "Team", "Setup Lab", "Coach", "Settings", "Help"], names
         wait_nav(pg, "library")
         # the page's own tabs are gone inside the window...
         fr = frame_of(pg)

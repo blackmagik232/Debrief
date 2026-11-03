@@ -2429,7 +2429,7 @@ function rcGrid(t){const cells={};(t.cells||[]).forEach(c=>{cells[c.zone+'|'+c.t
   const body=h('tbody');
   (t.by_zone||[]).forEach(b=>{const tr=h('tr',b.events?null:'rcnone');const th=h('th',null,cap(b.label));tr.append(th);
     ['own','contact','caught_up'].forEach(k=>{const c=cells[b.zone+'|'+k],td=h('td','num rccell');
-      if(c&&c.events){td.textContent=c.events+(c.points?' · '+rcPts(c.points):'');td.style.setProperty('--heat',String(Math.round(c.events/max*100))+'%');td.classList.add('hot');
+      if(c&&c.events){td.textContent=c.events+(c.points?' · '+rcPts(c.points):'');td.style.background='color-mix(in srgb,var(--lose) '+Math.round(8+c.events/max*30)+'%,var(--panel))';td.classList.add('hot');
         td.title=plural(c.events,'incident')+(c.points?', '+c.points+' points':'')+' at '+b.label+': '+RC_KIND_LONG[k].toLowerCase()}
       tr.append(td)});
     tr.append(h('td','num',b.lap1?String(b.lap1):''),h('td','num',b.events?b.events+(b.points?' · '+rcPts(b.points):''):''));body.append(tr)});
@@ -2439,7 +2439,7 @@ function rcIncList(t){const d=h('details','rcincs');d.append(h('summary',null,'E
   ['When','Session','Lap','Where','Points','What','Kind','How sure','With','Why'].forEach(x=>hr.append(h('th',null,x)));const hd=h('thead');hd.append(hr);tb.append(hd);
   const body=h('tbody');(t.list||[]).slice().reverse().forEach(r=>{const tr=h('tr');
     tr.append(rcWhenCell(r),h('td',null,RC_SESS[r.kind_of_session]||cap(r.session_type||'')),
-      h('td','num',r.before_green?'Pace lap':(r.lap!=null?String(r.lap):'')),h('td',null,cap(r.where||'')),
+      h('td','num',r.before_green?'Pace lap':(r.lap===0?'Before lap 1':(r.lap!=null?String(r.lap):''))),h('td',null,cap(r.where||'')),
       h('td','num',r.points!=null?rcPts(r.points)+(r.at_once?' at once':''):'Not known'),h('td',null,cap(r.what||'')),
       h('td',null,RC_KIND_LONG[r.type]||''),h('td',null,cap(r.sure||'')),h('td',null,(r.with||[]).join(', ')),h('td','rcwhy',r.why||''));
     body.append(tr)});

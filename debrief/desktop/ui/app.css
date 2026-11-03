@@ -606,7 +606,6 @@ kbd{font-family:var(--mono);font-size:11.5px;border:1px solid var(--axis);border
 .rctbl tbody tr:not(.rcsub) td{border-bottom:0}
 .rcgrid th,.rcgrid td{text-align:right}
 .rcgrid thead th:first-child,.rcgrid tbody th{text-align:left;padding-left:0;white-space:nowrap}
-.rcgrid td.rccell.hot{background:color-mix(in srgb,var(--lose) var(--heat,0%),transparent);background:color-mix(in srgb,var(--lose) calc(var(--heat,0%) * .35),var(--panel))}
 .rcgrid tr.rcnone th{color:var(--muted);font-weight:400}
 .rclist td.rcwhy{white-space:normal;min-width:200px;font-size:12.5px;color:var(--fg2)}
 td.rcwhen span,td.rcwhen .linkbtn{display:block}

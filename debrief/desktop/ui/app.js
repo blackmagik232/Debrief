@@ -1607,7 +1607,7 @@ async function loadPractice(){let j;try{j=await api('sessions-ibt')}catch(e){con
   if(!j.ok){setMsg('prMsg',j.error||'Practice didn\'t load.','bad');return}
   pr.data=j;renderPrTel();if(j.running&&!polling)poll();
   if(pr.sel){openPrSession(pr.sel);return}
-  renderPrList();loadPlan()}
+  renderPrList();ptLoad()}
 function renderPrTel(){const j=pr.data;if(!j)return;const run=!!j.running||(lastJob&&lastJob.state==='running'&&lastJob.kind==='setuplab'),pill=$('prPill'),n=(j.sessions||[]).length;
   $('prFolderSet').hidden=!!j.folder_ok;$('prRead').disabled=!j.folder_ok||run;
   if(run){pill.className='pill';pill.textContent='Reading'}
@@ -1757,12 +1757,12 @@ const PT_CONF=Object.assign({},CC_CONF,{unclear:['Experiment','no','No clear pat
 // "T4" -> "Turn 4" in window text (the spoken name stays T4 in the coach's own phrases)
 const turnWords=t=>String(t||'').replace(/\bT(\d+)\b/g,'Turn $1');
 const VERDICT_PILL={worth:['Quicker','ok'],slower:['Not quicker yet','no'],unclear:['No clear difference',''],too_few:['Too few laps to tell',''],never:['Not measured','no']};
-function planCq(){const j=pt.j;return j&&j.car_path?{car:j.car_path,track:j.track_code}:pt.combo?{car:pt.combo.car_path,track:pt.combo.track_code}:null}
-async function loadPlan(){const seq=++pt.seq,q=pt.combo?'?'+new URLSearchParams({car:pt.combo.car_path,track:pt.combo.track_code}):'';
-  if(!pt.j)renderPlanBusy('Picking one thing for your next session...');
+function ptQuery(){const j=pt.j;return j&&j.car_path?{car:j.car_path,track:j.track_code}:pt.combo?{car:pt.combo.car_path,track:pt.combo.track_code}:null}
+async function ptLoad(){const seq=++pt.seq,q=pt.combo?'?'+new URLSearchParams({car:pt.combo.car_path,track:pt.combo.track_code}):'';
+  if(!pt.j)ptRenderBusy('Picking one thing for your next session...');
   let j;try{j=await api('plan'+q)}catch(e){connectionLost();return}
-  if(seq!==pt.seq)return;pt.j=j;renderPlan()}
-function renderPlanBusy(t){const box=$('prPlan');box.hidden=false;$('ptBody').replaceChildren(h('p','note',t));$('ptActs').hidden=true;$('ptLast').replaceChildren();$('ptHist').hidden=true;$('ptConf').textContent=''}
+  if(seq!==pt.seq)return;pt.j=j;ptRender()}
+function ptRenderBusy(t){const box=$('prPlan');box.hidden=false;$('ptBody').replaceChildren(h('p','note',t));$('ptActs').hidden=true;$('ptLast').replaceChildren();$('ptHist').hidden=true;$('ptConf').textContent=''}
 function hitDots(rows){const d=h('span','ptdots');(rows||[]).forEach(r=>{if(r.hit==null)return;const i=h('i',r.hit?'hit':'miss');i.title='Lap '+r.lap+': '+(r.hit?'hit':'missed')+(r.value!=null?' ('+r.value+')':'');d.append(i)});d.setAttribute('aria-hidden','true');return d}
 function scoreBlock(plan,next){const sc=plan&&plan.score;const box=h('div','ptscore');if(!sc)return box;
   const top=h('div','pthead');top.append(h('b','ptres',sc.text||''));const vp=VERDICT_PILL[sc.verdict];if(vp)top.append(h('span','pill'+(vp[1]?' '+vp[1]:''),vp[0]));box.append(top);
@@ -1772,7 +1772,7 @@ function scoreBlock(plan,next){const sc=plan&&plan.score;const box=h('div','ptsc
   if(act==='keep')nx='Next: keep this until it is a habit (7 laps out of 10).';
   else if(act==='next')nx=next&&next.corner&&next.corner!==plan.corner?'Next: move to '+turnWords(next.corner)+'.':'Next: move on to the next thing.';
   if(nx)box.append(h('p','ptnext',nx));return box}
-function planBody(P){const f=document.createDocumentFragment();
+function ptBodyEl(P){const f=document.createDocumentFragment();
   f.append(h('p','ptmain',turnWords(P.text)));
   const row=(k,v,cls)=>{if(!v)return;const q=h('p',cls||null);q.append(h('b',null,k+': '),document.createTextNode(turnWords(cap(v))));f.append(q)};
   if(FOCUS_KINDS.includes(P.kind)){row('How',P.how);row('The check',P.check);
@@ -1780,7 +1780,7 @@ function planBody(P){const f=document.createDocumentFragment();
     if(P.reason)f.append(h('p','note',turnWords(P.reason)))}
   else if(P.check)f.append(h('p','note',P.check));
   return f}
-function renderPlan(){const j=pt.j,box=$('prPlan');box.hidden=false;const body=$('ptBody');
+function ptRender(){const j=pt.j,box=$('prPlan');box.hidden=false;const body=$('ptBody');
   const sel=$('ptCombo'),C=(j&&j.combos)||[];$('ptComboWrap').hidden=C.length<2;
   if(C.length>1){sel.replaceChildren(...C.map((c,i)=>{const o=h('option',null,(c.track||c.track_code)+' · '+(c.car||c.car_path));o.value=String(i);
     if(j.car_path&&c.car_path===j.car_path&&c.track_code===j.track_code)o.selected=true;return o}))}
@@ -1789,18 +1789,18 @@ function renderPlan(){const j=pt.j,box=$('prPlan');box.hidden=false;const body=$
   const P=j.plan;$('ptLast').replaceChildren();
   if(!P){body.replaceChildren(h('p','note',j.message||'Nothing to plan yet.'));$('ptActs').hidden=true;$('ptHist').hidden=true;return}
   const where=h('p','note ptwhere',(j.track||'')+' · '+(j.car||''));
-  body.replaceChildren(where,planBody(P));
+  body.replaceChildren(where,ptBodyEl(P));
   const focus=FOCUS_KINDS.includes(P.kind);$('ptActs').hidden=!focus;$('ptCoach').disabled=false;$('ptAnother').disabled=false;
   if(focus){const c=PT_CONF[P.confidence]||null;if(c){pill.className='pill'+(c[1]?' '+c[1]:'');pill.textContent=c[0];pill.title=c[2]}}
   const L=j.last;if(L&&L.score){const lb=h('div','ptlast');lb.append(h('h4',null,'Last session'+(L.score.session_date?', '+slWhen(L.score.session_date):'')),h('p','note','The one thing: '+turnWords(L.text)),scoreBlock(L,P));$('ptLast').replaceChildren(lb)}
   const H=(j.history||[]).filter(x=>x.score);const hl=$('ptHistList');$('ptHist').hidden=!H.length;
   hl.replaceChildren(...H.map(x=>{const li=h('li');const sc=x.score;li.append(h('span','num pthd',fmtDate(String(sc.session_date||x.made||'').slice(0,10))),h('b',null,turnWords(x.corner||'')||'Laps'),
     h('span','sub2',turnWords(x.text)),h('span','num pthr',sc.measured?sc.hits+' of '+sc.measured:'not measured'));return li}))}
-$('ptCombo').addEventListener('change',()=>{const C=(pt.j&&pt.j.combos)||[];pt.combo=C[+$('ptCombo').value]||null;pt.j=null;loadPlan()});
-$('ptAnother').addEventListener('click',async()=>{const q=planCq();if(!q)return;$('ptAnother').disabled=true;setMsg('ptMsg','Picking another...');let r;
+$('ptCombo').addEventListener('change',()=>{const C=(pt.j&&pt.j.combos)||[];pt.combo=C[+$('ptCombo').value]||null;pt.j=null;ptLoad()});
+$('ptAnother').addEventListener('click',async()=>{const q=ptQuery();if(!q)return;$('ptAnother').disabled=true;setMsg('ptMsg','Picking another...');let r;
   try{r=await post('plan/new',q)}catch(e){connectionLost();return}
   $('ptAnother').disabled=false;if(!r.ok){setMsg('ptMsg',r.error||'That didn\'t work.','bad');return}
-  const before=pt.j&&pt.j.plan&&pt.j.plan.id;pt.j=r;renderPlan();
+  const before=pt.j&&pt.j.plan&&pt.j.plan.id;pt.j=r;ptRender();
   setMsg('ptMsg',r.plan&&r.plan.id===before?'Nothing else stands out yet, so it\'s the same corner.':'A different one from your latest laps.','ok')});
 $('ptCoach').addEventListener('click',()=>{const j=pt.j;if(!j||!j.plan)return;openCoach({car_path:j.car_path,track_code:j.track_code})});
 // the session page's "Your one thing": the plan scored on this session

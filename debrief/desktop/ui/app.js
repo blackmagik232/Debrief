@@ -2560,6 +2560,10 @@ if(typeof HELP==='object'){
     ['Your own, Contact, Caught up','What kind an incident probably was. Contact: iRacing counted contact (4x) or another car was within 10 m. Caught up: another car\'s trouble started first in the same spot. Your own: no other car near. Each says how sure it is (sure, probably, possibly).'],
     ['Incident points','iRacing counts 1x off track, 2x loss of control and 4x contact. Two at once (say 4 and 1) are split. Points added while no telemetry was recording can\'t be placed on the track.'],
     ['Pattern (Racing)','Said only when at least 3 races show it and a fair test says chance alone would show it less than 1 time in 20, counting every corner tested. With fewer races the page only says what happened.'])}
+if(typeof HELP==='object'){
+  HELP.tour.push(['Car vs car','Which car of a class is quicker at a track for drivers of similar iRating, from the iRacing results files you add to your reviews, and where each car is faster from your own telemetry. It only says one car is quicker when there are enough drivers and chance can\'t explain the gap.']);
+  HELP.words.push(['Similar drivers (Car vs car)','Each driver\'s lap time with their iRating taken into account: the time drivers gain per 1000 iRating is taken off, and cars are only compared inside the same iRating band.'],
+    ['Not enough to tell','Shown instead of a verdict when a car has fewer than 15 drivers with an iRating, or when the gap could be chance (a shuffle test over every pair of cars at once).'])}
 /* ---------- 2.18 Car vs car: which car of a class is quicker at a track, for drivers of similar iRating, and where
    each car is faster in his own telemetry (api/carcompare, read only, nothing fetched) */
 let cc={data:null,pick:'',seq:0};

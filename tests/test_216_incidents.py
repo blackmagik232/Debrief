@@ -104,11 +104,15 @@ def test_near_cars_and_classification_from_the_scan():
     far = im.near_cars(raw, fx.ME, t_alone, L_M, im._names(scan), within_m=5.0)
     assert far["readable"] and far["cars"] == [], far
     c = im.classify({"parts": [4], "near": near})
-    assert c["type"] == "contact" and c["sure"] == "sure" and c["with"] == ["Driver E"] and "probably with them" in c["why"], c
+    assert c["type"] == "contact" and c["sure"] == "sure" and c["closest"]["name"] == "Driver E", c
+    assert "Closest car: Driver E, " in c["why"] and "along the track" in c["why"], c
+    assert "probably with" not in c["why"] and "with them" not in c["why"], "a 4x step never says who you hit"
     c = im.classify({"parts": [1], "off": True, "near": far})
     assert c["type"] == "own" and c["sure"] == "probably", c
     c = im.classify({"parts": [1], "off": True, "near": {"readable": False, "cars": []}})
-    assert c["type"] == "own" and c["sure"] == "possibly" and "no replay scan" in c["why"], c
+    assert c["type"] == "unknown" and c["sure"] == "not known" and "no replay scan" in c["why"], "nothing shows: not 'your own mistake'"
+    c = im.classify({"parts": [1], "off": True, "alongside": False})
+    assert c["type"] == "own" and c["sure"] == "probably" and "spotter" in c["why"], c
     c = im.classify({"parts": [2], "spun": True, "near": near})
     assert c["type"] == "contact" and c["sure"] == "possibly" and "tap" in c["why"], c
     c = im.classify({"parts": [1], "alongside": True})
@@ -117,7 +121,7 @@ def test_near_cars_and_classification_from_the_scan():
     grp = im.scan_group(scan, me["number"], GREEN + 104.0)
     assert grp and grp["first"] == "Driver C" and grp["lead_s"] >= 1.0, grp
     c = im.classify({"parts": [1], "off": True, "group": grp, "near": far})
-    assert c["type"] == "caught_up" and c["sure"] == "probably" and "Driver C" in c["why"], c
+    assert c["type"] == "caught_up" and c["sure"] == "possibly" and "Driver C" in c["why"] and "may have been caught up" in c["why"], c
     c = im.classify({"parts": [4], "slowed": True, "near": {"readable": True, "cars": [{"name": "A", "metres": 3}, {"name": "B", "metres": 6}]}})
     assert c["type"] == "caught_up" and c["sure"] == "possibly", c
     for e in (c,):
@@ -167,50 +171,122 @@ def test_map_counts_and_plain_words():
     assert any(c["zone"] == "C1" and c["type"] == "contact" and c["events"] == 2 for c in m["cells"]), m["cells"]
 
 
+def _field(outs, spots, cars=20, seed=5):
+    """Give each race a stand-in replay scan: `cars` other cars, each with one incident at a lap position drawn from
+    spots [(pct, lap)] or spots(race) -> (pct, lap) (the rest of the field's incidents), and your car (number 99)."""
+    rng = random.Random(seed)
+    for o in outs:
+        if o["kind"] != "race":
+            continue
+        incs = []
+        for c in range(cars):
+            pct, lap = spots(o) if callable(spots) else rng.choice(spots)
+            incs.append({"from": 100.0 + c, "to": 101.0 + c, "lap": lap, "track_pct": pct, "level": "minor",
+                         "cars": [{"number": str(c), "name": f"Driver {c}", "from": 100.0 + c, "what": {"off track": 1.0}}]})
+        o["scan"] = {"scan": {"incidents": incs, "cars": [{"number": str(c), "car_idx": c} for c in range(cars)]}}
+        o["me_car"] = {"number": "99", "car_idx": 99}
+    return outs
+
+
+EVEN = [((i + 0.5) / 40, 2 + i % 9) for i in range(40)]          # the field's incidents spread round the lap, later laps
+
+
 def test_a_real_hot_corner_is_found_and_two_sessions_are_not_enough():
     zs = im.zones(fx.CORNERS, L_M)
-    outs = [_outing(i, [(0.12, 4, 1 + i, "contact"), (0.6 + 0.03 * i, 1, 4, "own")]) for i in range(2)]
+    outs = _field([_outing(i, [(0.12, 4, 1 + i, "contact"), (0.6 + 0.03 * i, 1, 4, "own")]) for i in range(2)], EVEN)
     m = _map(outs, zs)
     assert not m["patterns"] and "only says what happened" in " ".join(m["sentences"]), m["sentences"]
-    outs = [_outing(i, [(0.12 + 0.01 * (i % 3), 4, 2 + i, "contact")]) for i in range(6)] + [_outing(9, [(0.7, 1, 3, "own")])]
-    m = _map(outs, zs)
-    hot = [p for p in m["patterns"] if p["kind"] == "corner"]
-    assert hot and hot[0]["zone"] == "C1" and hot[0]["p"] < 0.05 and hot[0]["sessions"] == 6, m["patterns"]
-    assert any("Turn 1 is a pattern" in s for s in m["sentences"])
+    hot = [_outing(i, [(0.12 + 0.01 * (i % 3), 4, 2 + i, "contact")]) for i in range(6)] + [_outing(9, [(0.7, 1, 3, "own")])]
+    m = _map(_field(hot, EVEN), zs)
+    found = [p for p in m["patterns"] if p["kind"] == "corner"]
+    assert found and found[0]["zone"] == "C1" and found[0]["p"] < 0.05 and found[0]["sessions"] == 6, m["patterns"]
+    assert any("Turn 1 is a pattern" in s and "rest of the field" in s for s in m["sentences"]), m["sentences"]
+    # the same incidents without a replay scan: nothing to compare with, so only facts
+    m = _map([_outing(i, [(0.12 + 0.01 * (i % 3), 4, 2 + i, "contact")]) for i in range(6)] + [_outing(9, [(0.7, 1, 3, "own")])], zs)
+    assert not m["patterns"] and any("no replay scan of a race at" in s for s in m["sentences"]), m["sentences"]
+
+
+def test_a_corner_that_catches_out_everyone_is_no_pattern():
+    """Turn 1 holds most of your incidents, and most of everyone else's too: not a pattern of yours (the 2.16 test
+    against the share of the lap called it one)."""
+    zs = im.zones(fx.CORNERS, L_M)
+    t1 = [(0.10 + 0.005 * k, 2 + k % 9) for k in range(12)] + EVEN[:6]       # the field: two thirds at Turn 1
+    outs = [_outing(i, [(0.12 + 0.01 * (i % 3), 4, 2 + i, "contact")] + ([(0.7, 1, 3, "own")] if i % 3 == 0 else [])) for i in range(8)]
+    m = _map(_field(outs, t1), zs)
+    assert not m["patterns"], m["patterns"]
+    assert any("against the rest of the field" in s for s in m["sentences"]), m["sentences"]
 
 
 def test_lap1_pattern():
     zs = im.zones(fx.CORNERS, L_M)
-    outs = [_outing(i, [(0.1 + 0.15 * (i % 5), 4, 1, "contact")], laps=15) for i in range(5)]
+    outs = _field([_outing(i, [(0.1 + 0.15 * (i % 5), 4, 1, "contact"), (0.5, 1, 6, "own")], laps=15) for i in range(6)], EVEN)
     m = _map(outs, zs)
     assert any(p["kind"] == "lap1" for p in m["patterns"]), m["patterns"]
+    # lap 1 catches out the whole field just as much: no pattern
+    lap1_heavy = [(p, 1 if k % 2 else 4) for k, (p, _l) in enumerate(EVEN)]
+    m = _map(_field([_outing(i, [(0.1 + 0.15 * (i % 5), 4, 1, "contact"), (0.5, 1, 6, "own")], laps=15) for i in range(6)], lap1_heavy), zs)
+    assert not any(p["kind"] == "lap1" for p in m["patterns"]), m["patterns"]
 
 
 def test_false_positive_rate_on_random_incidents():
-    """Incidents anywhere on the lap, on any lap: any pattern claim is a false positive. Two kinds of noise: even over
-    the lap's distance (the test's own assumption) and even over the corners (corner zones of different lengths)."""
+    """You and the field spread incidents the same way round the lap and over the laps (each corner its own risk,
+    not its share of the lap; lap 1 riskier for everyone): any pattern claim is a false positive. With the 2.16 test
+    (share of the lap, share of the laps) up to 52% of such datasets made a claim; it must be at most 5%."""
     zs = im.zones(fx.CORNERS, L_M)
     rng = random.Random(2161)
-    for how in ("distance", "corner"):
-        hits, datasets = 0, 300
+    for how in ("even", "uneven"):
+        hits, datasets, kinds = 0, 200, set()
         for _ in range(datasets):
+            w = [z["share"] * (1.0 if how == "even" else rng.lognormvariate(0, 1.0)) for z in zs]
+            lap1w = 1.0 if how == "even" else 3.0
+
+            def spot(laps):
+                z = rng.choices(zs, weights=w)[0]
+                p = (z["lo"] + rng.random() * z["share"]) % 1.0
+                lap = 1 if rng.random() < lap1w / (lap1w + laps - 1) else rng.randint(2, laps)
+                return p, lap
             outs = []
             for i in range(rng.randint(3, 15)):
                 laps = rng.randint(5, 25)
-                evs = []
-                for _k in range(rng.randint(1, 6)):
-                    if how == "distance":
-                        p = rng.random()
-                    else:
-                        z = rng.choice(zs)
-                        p = (z["lo"] + rng.random() * z["share"]) % 1.0
-                    evs.append((p, rng.choice([1, 2, 4]), rng.randint(1, laps), rng.choice(["own", "contact", "caught_up"])))
-                outs.append(_outing(i, evs, laps=laps))
-            if _map(outs, zs)["patterns"]:
+                evs = [(*spot(laps), rng.choice(["own", "contact", "caught_up"])) for _k in range(rng.randint(1, 6))]
+                outs.append(_outing(i, [(p, rng.choice([1, 2, 4]), lap, typ) for p, lap, typ in evs], laps=laps))
+            _field(outs[:rng.randint(1, len(outs))], lambda o: spot(o["laps"]), cars=rng.randint(8, 25))
+            pats = _map(outs, zs)["patterns"]
+            if pats:
                 hits += 1
+                kinds.update(p["kind"] for p in pats)
         rate = hits / datasets
-        print(f"  incident map false positives on random data (even by {how}): {hits}/{datasets} = {rate:.1%}")
+        print(f"  incident map false positives, you and the field alike ({how} risk): {hits}/{datasets} = {rate:.1%} {sorted(kinds)}")
         assert rate <= 0.05, (how, rate)
+
+
+def test_review_is_matched_by_subsession_then_utc_lap_times():
+    """2.17: a race's saved review. Telemetry's start date and Garage 61's lap times are both UTC. On the owner's
+    files the 2026-11-02 race matched to 0.4 s; the 2026-11-01 review that looked "1 to 2 h off" was another race
+    (its laps were 110 to 112 s, the telemetry races' 98 to 101 s and a 2 lap file): it must not be matched."""
+    base = 1_793_648_957.4
+    g = {"kind": "race", "subsession": 89828494, "when": base - 330, "lap1_end_utc": base}
+    same = {"dir": "same", "lap_starts": [base - 110.0, base + 0.4, base + 100.0], "started_at": "2026-11-02T19:43:35+00:00"}
+    hour = {"dir": "hour", "lap_starts": [base + 3600 + 11, base + 3713], "started_at": "2026-11-02T20:43:10+00:00"}
+    assert im.review_by_time(g, [hour, same])["dir"] == "same"
+    assert im.review_by_time(g, [hour]) is None, "an hour apart is another race, whatever the time zone"
+    assert im.review_by_time(g, [dict(same, subsession="1")]) is None, "a review of another subsession is never matched by time"
+    old = {"dir": "old", "started_at": "2026-11-02T19:50:00"}             # no zone written: UTC, not this PC's time
+    assert im._when_iso(old["started_at"]) == im._when_iso("2026-11-02T19:50:00+00:00")
+    assert im.review_by_time(g, [old])["dir"] == "old"
+    assert im.review_by_time(g, [old, dict(old, dir="old2")]) is None, "two candidates: none"
+    # the subsession comes first, even when another review's lap times fit
+    src = {"telemetry": [{"ok": True, "file": "r.ibt", "subsession": 7, "when": base - 330, "track": "T",
+                          "sessions": [{"num": 2, "type": "Race", "kind": "race", "inc_first": 0, "inc_last": 0, "laps": 3,
+                                        "events": [], "lap1_end_utc": base, "green": 10.0}]}],
+           "reviews": [dict(same, session="Race", track="T", event_id="a", subsession=None),
+                       {"dir": "by-sub", "session": "Race", "track": "T", "event_id": "b", "subsession": "7", "lap_starts": [], "started_at": ""}],
+           "scans": []}
+    o = next(x for x in im.outings(src) if x["kind"] == "race")
+    assert o["review"]["dir"] == "by-sub" and o["review_by"] == "subsession", o["review"]
+    src["reviews"][1]["subsession"] = None
+    o = next(x for x in im.outings(src) if x["kind"] == "race")
+    assert o["review"]["dir"] == "same" and o["review_by"] == "time", o["review"]
 
 
 def test_statistics_helpers():
@@ -241,7 +317,7 @@ def test_bad_or_missing_data_never_raises():
     assert im.read_ibt(TMP / "missing.ibt")["ok"] is False
     assert im.near_cars(None, 3, 10, 4000)["cars"] == [] and im.near_cars({"idxs": [3], "samples": "x"}, 3, 10, None)["readable"] is False
     assert im.scan_group(None, "1", 5) is None and im.scan_group({"incidents": ["x", {"from": "a"}]}, "1", 5) is None
-    assert im.classify({})["type"] == "own"
+    assert im.classify({})["type"] == "unknown"
     out = im.build(library_folder=TMP / "none", telemetry_folder=TMP / "none2")
     assert out["events"] == 0 and isinstance(out["tracks"], list)
     out = im.build(src={"telemetry": [{"sessions": [{"num": 1, "events": "junk"}]}], "scans": None})
@@ -268,7 +344,8 @@ def test_end_to_end_folders():
     t = m["tracks"][0]
     lst = {(r["kind_of_session"], r["points"]): r for r in t["list"]}
     hit = lst[("race", 4)]
-    assert hit["type"] == "contact" and hit["with"] == ["Driver E"] and hit["where"] == "Turn 1" and hit["lap1"], hit
+    assert hit["type"] == "contact" and hit["closest"].startswith("Driver E, ") and hit["where"] == "Turn 1" and hit["lap1"], hit
+    assert "with" not in hit, "no 'with': the replay can't show who touched whom"
     assert lst[("race", 1)]["type"] == "own" and lst[("practice", 2)]["kind_of_session"] == "practice"
     assert m["steps_seen"] == [1, 2, 4] and "1x, 2x, 4x" in m["steps_note"]
     json.dumps(m)

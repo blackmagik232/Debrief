@@ -11,14 +11,16 @@ Per race
     leave each corner) is ahead of you or behind; a car that changed sides between two checkpoints passed you or was
     passed there. Only cars in view of the replay camera can be counted, so these are "places seen changing", and the
     report says when they don't add up to the official change.
-  - Incidents on lap 1 and whether you were in contact (incidentmap.py).
+  - Incidents on lap 1 and contact: "contact (4x)" only when iRacing counted it, with the closest car named only as
+    "closest car: X, N m away" (incidentmap.py); "possibly" when another car was close; not known without telemetry.
 
 Across races (per track and overall): average places gained or lost on lap 1 by grid band (thirds of your class's
 field, or P1 to P5 / P6 to P15 / P16 and back when the field size isn't known), which corners the changes happen at,
 and the trend over time (only with TREND_MIN races or more). Facts ("in 4 of 5 races you lost places at Turn 1") are
 always given with their counts; a PATTERN ("you lose places at Turn 1") needs at least MIN_RACES races showing it and
 a sign-flip test across races (every sign flip up to EXACT_MAX races, else PERM_N with a fixed seed, family-wise over
-every corner or band tested) below ALPHA. With 1 or 2 races it only says what happened.
+every corner or band tested) below ALPHA, and must go against what the grid alone gives (_gate). A trend isn't called
+one when the grid places moved the same way. With 1 or 2 races it only says what happened.
 
 Never raises on bad or missing data; JSON-ready dicts; read only.
 """
@@ -29,12 +31,14 @@ import math
 
 from . import incidentmap as im
 
-VERSION = 1
+VERSION = 2                 # 2: careful wording; no habit in the direction the grid alone gives
 SETTLE_S = im.SETTLE_S
 SWAP_MAX = 0.25             # two cars further apart than this share of the lap can't have swapped places
 VIEW_TOL_S = 1.0            # a checkpoint uses the replay reading this close in time
 BAND_FIXED = ((1, 5, "front", "P1 to P5"), (6, 15, "middle", "P6 to P15"), (16, 10 ** 6, "back", "P16 and back"))
 MIN_FIELD_FOR_THIRDS = 6
+GRID_TREND_P = 0.2          # your grid places moving this clearly over time: no lap 1 trend in the same direction
+REL_SIDE = 0.0              # races started on average behind (ahead of) the middle of the grid: no "gain" ("lose") habit
 MIN_RACES, ALPHA, TREND_MIN = im.MIN_RACES, im.ALPHA, im.TREND_MIN
 LINE_KEY = "line"
 
@@ -178,7 +182,7 @@ def lap1_scan(scan, samples, me_car, zs, classes=None) -> dict | None:
             elif a > 0 > b:
                 gained += 1
         segs.append({"key": key, "corner": corner, "label": label, "from_t": round(float(ta), 2), "to_t": round(float(tb), 2),
-                     "gained": gained, "lost": lost, "net": gained - lost, "cars_seen": seen})
+                     "gained": gained, "lost": lost, "net": gained - lost, "cars_seen": seen})       # places SEEN changing
     return {"segments": segs, "seen_net": sum(s["net"] for s in segs), "in_class": bool(my_cls),
             "first_corner": cps[0][1]["label"] if cps else None}
 
@@ -246,38 +250,47 @@ def _race_row(o, zs) -> dict:
         field = len(racing) or None
     # ---- corners
     corners = lap1_scan(scan, samples, me, zs, classes if multiclass else None) if scan and me else None
-    if corners and start:
-        pos = start
-        for sg in corners["segments"]:
-            pos -= sg["net"]
-            sg["est_pos"] = max(1, pos)
     # ---- incidents and contact on lap 1
     evs = [e for e in o.get("_events") or [] if e.get("lap1")]
     pts = sum(e.get("points") or 0 for e in evs)
-    contact, contact_why = None, None
-    if any(im.POINTS_CONTACT in (e.get("parts") or []) for e in evs):
-        contact, contact_why = "yes", "iRacing counted contact (4x) on lap 1."
+    contact, contact_why = None, "Not known: there's no telemetry of lap 1 with iRacing's incident count."
+    four = [e for e in evs if im.POINTS_CONTACT in (e.get("parts") or [])]
+    if four:
+        cl = next((e.get("class") or {} for e in four if (e.get("class") or {}).get("closest")), {})
+        contact, contact_why = "contact_4x", "iRacing counted contact (4x) on lap 1." + (
+            " " + im.closest_words(cl["closest"]) if cl.get("closest") else "")
     elif any((e.get("class") or {}).get("type") in ("contact", "caught_up") for e in evs):
         e = next(e for e in evs if (e.get("class") or {}).get("type") in ("contact", "caught_up"))
-        contact, contact_why = (e.get("class") or {}).get("sure", "possibly"), (e.get("class") or {}).get("why")
-    elif o.get("files"):
-        contact, contact_why = "no", "No contact counted by iRacing on lap 1."
+        contact, contact_why = "possibly", (e.get("class") or {}).get("why")
+    elif o.get("files") and o.get("lap1_end") is not None and o.get("green") is not None:
+        contact, contact_why = "no_4x", "iRacing counted no contact (4x) on lap 1. Light contact counts 0x and can't be seen."
     elif scan and me:
-        contact, contact_why = ("no", "The replay shows no incident of yours on lap 1.") if not evs else ("no", "The replay shows no other car in your lap 1 incident.")
+        contact, contact_why = None, "Not known: without telemetry only the replay is there, and it shows where cars were, not contact."
     row = {"id": o.get("id"), "ok": True, "track": o.get("track"), "subsession": o.get("subsession"), "when": o.get("when"),
            "review": str(rev.get("dir") or "") or None,
            "multiclass": multiclass, "in_class": multiclass, "field": field,
            "start": start, "start_from": start_src, "start_words": START_WORDS.get(start_src),
            "lap1_pos": lap1, "lap1_from": lap1_src, "lap1_words": LAP1_WORDS.get(lap1_src), "change": change,
-           "band": band(start, field), "start_type": (scan or {}).get("start_type"),
+           "band": band(start, field), "rel_start": rel_start(start, field), "start_type": (scan or {}).get("start_type"),
            "corners": corners["segments"] if corners else [], "seen_net": corners["seen_net"] if corners else None,
            "incidents": [{"where": e.get("where"), "zone": e.get("zone"), "points": e.get("points"), "parts": e.get("parts") or [],
                           "type": (e.get("class") or {}).get("type"), "sure": (e.get("class") or {}).get("sure"),
+                          "closest": im.closest_words((e.get("class") or {}).get("closest")) or None,
                           "why": (e.get("class") or {}).get("why"), "t": e.get("t")} for e in evs],
            "incident_points": pts if o.get("files") else None, "contact": contact, "contact_why": contact_why,
            "sources": [x for x, ok in (("telemetry", bool(o.get("files"))), ("replay scan", bool(scan)), ("results", bool(res))) if ok]}
     row["sentences"] = race_sentences(row)
     return row
+
+
+def rel_start(start, field) -> float | None:
+    """Where in the grid you started, -0.5 (pole) to +0.5 (last): from the field's size, else the fixed bands' middles."""
+    start, f = _int(start), _int(field)
+    if not start:
+        return None
+    if f and f > 1 and start <= f:
+        return round((start - 1) / (f - 1) - 0.5, 3)
+    return -0.3 if start <= 5 else (0.0 if start <= 15 else 0.3)
 
 
 def band(start, field) -> dict | None:
@@ -316,18 +329,32 @@ def race_sentences(r) -> list:
             bits.append(f"{part} {_where(s['label'])}")
         out.append("Places seen changing on lap 1: " + "; ".join(bits) + ".")
         if r["change"] is not None and r["seen_net"] is not None and r["seen_net"] != r["change"]:
-            out.append(f"The replay only shows cars near you, so these add up to {r['seen_net']:+d} while your position changed by {r['change']:+d}.")
+            out.append(f"These are only the cars the replay saw near you: they add up to {r['seen_net']:+d}, while your "
+                       f"position changed by {r['change']:+d} ({_short_src(r)}).")
     elif r["corners"]:
-        out.append("The replay shows no place changing near you on lap 1.")
+        out.append("The replay saw no place change near you on lap 1.")
     if r["incidents"]:
         pts = r["incident_points"]
         out.append(f"{_plural(len(r['incidents']), 'incident')} on lap 1" + (f" ({pts}x)" if pts else "") + ": "
-                   + "; ".join(f"{i['where']}, {im.TYPE_WORDS.get(i['type'], 'incident')} ({i['sure']})" for i in r["incidents"]) + ".")
-    if r["contact"] == "yes":
-        out.append("You were in contact on lap 1.")
-    elif r["contact"] in ("probably", "possibly"):
-        out.append(f"You were {r['contact']} in contact on lap 1.")
+                   + "; ".join(_inc_words(i) for i in r["incidents"]) + ".")
+    if r["contact"] == "contact_4x":
+        out.append(r["contact_why"])
+    elif r["contact"] == "possibly":
+        out.append("You may have been in contact on lap 1 (another car was close; the replay can't show who touched whom).")
     return out
+
+
+def _inc_words(i) -> str:
+    if i.get("type") == "unknown" or not i.get("type"):
+        return f"{i['where']}, kind not known"
+    return f"{i['where']}, {im.TYPE_WORDS.get(i['type'], 'incident')} ({i['sure']})"
+
+
+def _short_src(r) -> str:
+    a = {"official": "official start", "racecap_results": "start from RaceCap's results", "telemetry": "telemetry",
+         "replay": "replay", "estimate": "guessed start"}.get(r.get("start_from"), "")
+    b = {"saved": "your saved result", "telemetry": "telemetry", "replay": "replay"}.get(r.get("lap1_from"), "")
+    return a if a == b or not b else f"{a}, then {b}" if a else b
 
 
 # ---------------------------------------------------------------- across races
@@ -345,14 +372,17 @@ def report(rows, tracks_zones=None) -> dict:
 
 
 HOW = (f"Places gained or lost on lap 1 are your start position minus your position after lap 1 (in class in a multi-class "
-       f"race). A habit is only called one when at least {MIN_RACES} races show it and shuffling which races went which "
-       f"way (every combination, or {im.PERM_N} with a fixed seed) makes it look that strong less than {ALPHA:.0%} of the "
-       f"time across everything tested. A trend over time needs {TREND_MIN} races.")
+       f"race), each from the source the race names. Corner by corner only counts the cars the replay saw near you. A habit "
+       f"is only called one when at least {MIN_RACES} races show it, shuffling which races went which way (every "
+       f"combination, or {im.PERM_N} with a fixed seed) makes it look that strong less than {ALPHA:.0%} of the time across "
+       f"everything tested, and it goes against what your grid places alone would give (from the back anyone tends to "
+       f"gain places on lap 1, from the front to lose them). A trend over time needs {TREND_MIN} races, and isn't called "
+       f"one when your grid places moved the same way.")
 
 
 def thresholds() -> dict:
     return {"min_races": MIN_RACES, "alpha": ALPHA, "trend_min": TREND_MIN, "perm_n": im.PERM_N, "perm_seed": im.PERM_SEED,
-            "exact_max": im.EXACT_MAX, "swap_max_lap": SWAP_MAX, "settle_s": SETTLE_S, "bands_fixed": [b[3] for b in BAND_FIXED]}
+            "exact_max": im.EXACT_MAX, "swap_max_lap": SWAP_MAX, "rel_side": REL_SIDE, "grid_trend_p": GRID_TREND_P, "settle_s": SETTLE_S, "bands_fixed": [b[3] for b in BAND_FIXED]}
 
 
 def _facts(values) -> dict:
@@ -361,15 +391,25 @@ def _facts(values) -> dict:
             "avg": round(sum(v) / len(v), 2) if v else None, "total": sum(v) if v else 0}
 
 
-def _gate(test, facts) -> str | None:
-    """"gain" / "lose" when the claim passes every gate, else None."""
+def _gate(test, facts, rel=None) -> str | None:
+    """"gain" / "lose" when the claim passes every gate, else None. rel: the races' average place on the grid
+    (rel_start). From the back anyone gains places on lap 1 more often than not, and from the front anyone loses them
+    (cars ahead have trouble, there's only one way to go): a null simulation (24 equal cars, a few lap 1 incidents)
+    called "you usually gain from the back" a habit in 30% of datasets. So a claim in the direction the grid alone
+    would give is never made (REL_SIDE), whatever the test says."""
     if test["p"] >= ALPHA or facts["n"] < MIN_RACES:
         return None
+    rel = _num(rel)
     if facts["lost"] >= MIN_RACES and facts["lost"] * 2 > facts["n"] and test["sum"] < 0:
-        return "lose"
+        return None if rel is None or rel < -REL_SIDE else "lose"
     if facts["gained"] >= MIN_RACES and facts["gained"] * 2 > facts["n"] and test["sum"] > 0:
-        return "gain"
+        return None if rel is None or rel > REL_SIDE else "gain"
     return None
+
+
+def _mean_rel(rows) -> float | None:
+    v = [x for x in (_num(r.get("rel_start")) for r in rows) if x is not None]
+    return sum(v) / len(v) if len(v) * 2 > len(rows) and v else None
 
 
 def _group(name, rs, zs, corners=True) -> dict:
@@ -385,7 +425,9 @@ def _group(name, rs, zs, corners=True) -> dict:
         f = _facts(col)
         if not f["n"]:
             continue
-        bands.append({"band": k, "label": "all races" if k == "all" else f"started in the {k}", **f, "p": t["p"], "pattern": _gate(t, f)})
+        rel = _mean_rel([r for r, v in zip(with_change, col) if v is not None])
+        bands.append({"band": k, "label": "all races" if k == "all" else f"started in the {k}", **f, "p": t["p"],
+                      "pattern": _gate(t, f, rel)})
     out["bands"] = bands
     out["band_rule"] = sorted({(r.get("band") or {}).get("rule") for r in with_change if r.get("band")})
     # corners on lap 1
@@ -414,12 +456,22 @@ def _group(name, rs, zs, corners=True) -> dict:
             f = _facts(col)
             if not f["n"]:
                 continue
-            out["corners"].append({"key": k, "label": first.get(k) or labels[k], **f, "p": t["p"], "pattern": _gate(t, f)})
+            rel = _mean_rel([r for r, v in zip(seg_rows, col) if v is not None])
+            out["corners"].append({"key": k, "label": first.get(k) or labels[k], **f, "p": t["p"], "pattern": _gate(t, f, rel)})
     # trend over time
     tr = im.kendall_trend([r["change"] for r in with_change])
-    tr["direction"] = None
+    tr["direction"], tr["grid_moved"] = None, False
     if tr["p"] is not None and tr["p"] < ALPHA and tr["tau"]:
         tr["direction"] = "better" if tr["tau"] > 0 else "worse"
+        # starting further back over time gains places by itself (and further forward loses them): a trend the
+        # grid alone could give isn't called one (null simulation: 7.5% false trends with a drifting grid, 20 races)
+        rels = [r.get("rel_start") for r in with_change]
+        if all(x is not None for x in rels):
+            g = im.kendall_trend(rels)
+            if g["p"] is not None and g["p"] < GRID_TREND_P and g["tau"] and (g["tau"] > 0) == (tr["tau"] > 0):
+                tr["direction"], tr["grid_moved"] = None, True
+        else:
+            tr["direction"], tr["grid_moved"] = None, True
     out["trend"] = tr
     out["sentences"] = group_sentences(out)
     return out
@@ -462,9 +514,9 @@ def group_sentences(g) -> list:
             continue
         verb, k = ("lost", c["lost"]) if c["lost"] >= c["gained"] else ("gained", c["gained"])
         if c["n"] == 1:
-            out.append(f"In your one scanned race{at} you {verb} places {_where(c['label'])} on lap 1.")
+            out.append(f"In your one scanned race{at} the replay saw you {'lose' if verb == 'lost' else 'gain'} places {_where(c['label'])} on lap 1.")
         else:
-            out.append(f"In {k} of {_plural(c['n'], 'race')}{at} you {verb} places {_where(c['label'])} on lap 1.")
+            out.append(f"In {k} of {_plural(c['n'], 'scanned race')}{at} the replay saw you {'lose' if verb == 'lost' else 'gain'} places {_where(c['label'])} on lap 1.")
     for b in g["bands"]:
         if b["band"] == "all" or not b["n"]:
             continue
@@ -473,7 +525,7 @@ def group_sentences(g) -> list:
     for c in pats:
         verb = "lose" if c["pattern"] == "lose" else "gain"
         if "key" in c:
-            out.append(f"This looks like a habit, not chance: you usually {verb} places {_where(c['label'])} on lap 1.")
+            out.append(f"This looks like a habit, not chance: the replay usually sees you {verb} places {_where(c['label'])} on lap 1.")
         elif c["band"] == "all":
             out.append(f"This looks like a habit, not chance: you usually {verb} places on lap 1{at}.")
         else:
@@ -485,8 +537,13 @@ def group_sentences(g) -> list:
             out.append("Not enough races yet to call any of this a habit rather than chance.")
     tr = g["trend"]
     if tr["n"] >= TREND_MIN:
-        out.append(f"Over time your lap 1 is getting {tr['direction']} (over {tr['n']} races)." if tr["direction"]
-                   else f"No clear trend over time in your lap 1 yet ({tr['n']} races).")
+        if tr["direction"]:
+            out.append(f"Over time your lap 1 is getting {tr['direction']} (over {tr['n']} races).")
+        elif tr.get("grid_moved"):
+            out.append(f"Your lap 1 changed over time ({tr['n']} races), but so did where you start, so it can't be "
+                       "told apart from your grid places.")
+        else:
+            out.append(f"No clear trend over time in your lap 1 yet ({tr['n']} races).")
     return out
 
 

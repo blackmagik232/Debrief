@@ -14,12 +14,20 @@ Where the incidents come from
     scan's off-track and stopped-on-track moments of your car instead (no points known).
 
 What kind it probably was (classify): "contact" when iRacing counted contact (4x) or another car was close,
-"caught_up" when another car's trouble started first in the same spot, "own" when nothing shows another car near.
-Each comes with how sure it is ("sure", "probably", "possibly") and why, in plain words.
+"caught_up" when another car's trouble started first in the same spot (only ever "possibly"), "own" when the replay
+or the spotter shows no other car near, "unknown" when nothing shows either way. Each comes with how sure it is and
+why, in plain words. Another driver is only ever named as the closest car and how far away (the replay shows where
+cars were, not who touched whom); names stay on this PC.
 
-Patterns ("Turn 1 is where your incidents keep happening") are only said with at least MIN_RACES sessions showing it
-and an exact test (Poisson-binomial tail, Bonferroni over every corner tested) below ALPHA; with fewer sessions the
-map only describes what happened. The same module holds the statistics the start report (startreport.py) uses.
+Patterns ("Turn 1 is where your incidents keep happening") are judged against the rest of the field's incidents in
+your replay-scanned races at that track, never against a share of the lap: some corners, and lap 1, catch out
+everyone (a null simulation with uneven corner risk gave false patterns in up to 52% of datasets with the share of
+the lap as yardstick). See patterns(). With fewer than MIN_RACES sessions, or no field to compare with, the map only
+describes what happened. The same module holds the statistics the start report (startreport.py) uses.
+
+Saved reviews are joined to telemetry races by subsession first (a review linked to a race scan knows it), then by
+the scan's link, then by time in UTC: a lap of the review must start within LAP_MATCH_S of your telemetry's lap 1
+line crossing (review_by_time).
 
 Nothing here raises on bad or missing data, writes anything, or makes a request. Outputs are JSON-ready dicts.
 """
@@ -34,7 +42,7 @@ from pathlib import Path
 
 import numpy as np
 
-VERSION = 1
+VERSION = 2                 # 2: careful wording, field baseline for patterns, UTC lap match for reviews
 
 # ---------------------------------------------------------------- iRacing's incident points
 POINTS_OFF, POINTS_LOSS, POINTS_CONTACT = 1, 2, 4
@@ -59,12 +67,15 @@ RACING = 4                  # iRacing's session state while racing (green flag)
 # ---------------------------------------------------------------- statistics (shared with startreport.py)
 MIN_RACES = 3               # a pattern needs at least this many races (or sessions) showing it
 ALPHA = 0.05                # family-wise chance that noise alone makes a pattern claim
-EFFECT = 2.0                # ...and the hot spot must hold at least twice its fair share
+EFFECT = 2.0                # ...and your share there must be at least twice the rest of the field's
+FIELD_MIN_UNITS = 10        # a pattern is judged against at least this many other cars with incidents (replay scans)
 PERM_N = 2000               # shuffles when there are too many races to try every sign flip
 PERM_SEED = 216
 EXACT_MAX = 12              # up to this many races every sign flip is tried (2^12 = 4096)
 TREND_MIN = 5               # a trend over time needs at least this many races
 MAX_FILE_BYTES = 2 * 1024 ** 3
+LAP_MATCH_S = 5.0           # a review's lap starts this close to your telemetry's lap 1 line crossing: the same race
+REVIEW_WINDOW_S = 1800      # older reviews without lap times: started this close to the telemetry file
 MAX_SCAN_BYTES = 80 * 1024 * 1024
 
 HOW_SURE = ("sure", "probably", "possibly")
@@ -349,6 +360,8 @@ def _read_open(ib, p: Path) -> dict:
                 x1 = next((j for j in range(max(g, a + 1), b) if lap[j] >= 2 and lap[j - 1] < 2), None)
                 if x1 is not None:
                     S["lap1_end"] = _r(time[x1], 2)
+                    if ib.start_date:       # the moment you crossed the line, as UTC seconds (start_date is UTC)
+                        S["lap1_end_utc"] = round(int(ib.start_date) + float(time[x1] - time[0]), 1)
                     k = min(b - 1, x1 + int(SETTLE_S * rate))
                     if k > x1 + rate and pos[k] > 0:
                         S["lap1_pos"] = int(pos[k])
@@ -488,45 +501,71 @@ def _name(c) -> str:
 
 
 # ---------------------------------------------------------------- what kind of incident
+def _closest(near) -> dict | None:
+    return {"name": near[0]["name"], "metres": near[0]["metres"]} if near else None
+
+
+def closest_words(c) -> str:
+    """"Closest car: Driver E, 5 m away along the track." (names are shown on this PC only). The replay gives each
+    car's place along the lap, not across it, so "level with you" can be side by side or nose to tail on the line."""
+    if not c:
+        return ""
+    m = _num(c.get("metres"))
+    far = "level with you along the track" if m is not None and m < 1 else f"{m:.0f} m away along the track" if m is not None else "near"
+    return f"Closest car: {c.get('name')}, {far}."
+
+
 def classify(ev: dict) -> dict:
-    """{"type": own / contact / caught_up, "sure": sure / probably / possibly, "why": plain words, "with": [names]}.
+    """{"type": own / contact / caught_up / unknown, "sure": sure / probably / possibly / not known, "why": plain words,
+    "closest": {"name", "metres"} or None, "others": [names in the same replay incident]}.
     ev: an event (points/parts/off/spun/slowed/alongside) with "near" (near_cars) and "group" (scan_group) when a scan
-    covers it."""
+    covers it. The replay only shows where cars were, never who touched whom: another driver is named only as the
+    closest car and how far away, never as the one you hit. Without a replay scan or spotter data nothing shows whether
+    another car was near, so the kind is "unknown" (not "your own mistake")."""
     parts = ev.get("parts") or []
     near = (ev.get("near") or {}).get("cars") or []
     readable = bool((ev.get("near") or {}).get("readable"))
     grp = ev.get("group") or None
-    names = [c["name"] for c in near]
     lead = (grp or {}).get("lead_s")
     contact = POINTS_CONTACT in parts
+    closest = _closest(near)
+    others = list((grp or {}).get("others") or [])
+    counted = "iRacing counted contact (4x). " if contact else ""
+    near_txt = (" " + closest_words(closest)) if closest else ""
     if grp and grp.get("first") and lead is not None and lead >= CAUGHT_LEAD_S and (contact or near or ev.get("slowed") or ev.get("off") or ev.get("source") == "scan"):
         what = " and ".join(grp.get("first_what") or []) or "in trouble"
-        return {"type": "caught_up", "sure": "probably", "with": grp.get("others") or names,
-                "why": f"{grp['first']} was {what} about {lead:.0f} s before you in the same spot, so you were probably caught up in it."}
+        return {"type": "caught_up", "sure": "possibly", "closest": closest, "others": others,
+                "why": f"{counted}On the replay {grp['first']} was {what} about {lead:.0f} s before you in the same spot, "
+                       f"so you may have been caught up in it.{near_txt}"}
     if contact:
         if len(near) >= CAUGHT_CARS and ev.get("slowed"):
-            return {"type": "caught_up", "sure": "possibly", "with": names,
-                    "why": f"iRacing counted contact, {_plural(len(near), 'other car')} were within {NEAR_M:.0f} m and you slowed suddenly, so it may have been a pile up."}
+            return {"type": "caught_up", "sure": "possibly", "closest": closest, "others": others,
+                    "why": f"iRacing counted contact (4x), {_plural(len(near), 'other car')} were within {NEAR_M:.0f} m and you slowed "
+                           f"suddenly, so it may have been a pile up.{near_txt}"}
         if near:
-            return {"type": "contact", "sure": "sure", "with": names[:1],
-                    "why": f"iRacing counted contact (4x). The closest car was {near[0]['name']}, {near[0]['metres']:.0f} m away, so probably with them."}
-        return {"type": "contact", "sure": "sure", "with": [],
-                "why": "iRacing counted contact (4x). " + ("The replay showed no car within "
-                       f"{NEAR_M:.0f} m, so it may have been light contact a moment earlier." if readable else "Who with isn't known without a replay scan.")}
+            return {"type": "contact", "sure": "sure", "closest": closest, "others": others,
+                    "why": f"iRacing counted contact (4x).{near_txt} The replay can't show who touched whom."}
+        return {"type": "contact", "sure": "sure", "closest": None, "others": others,
+                "why": "iRacing counted contact (4x). " + (f"The replay showed no car within {NEAR_M:.0f} m then, so who with "
+                       "isn't known." if readable else "Who with isn't known without a replay scan.")}
     if near or ev.get("alongside"):
-        who = f"{near[0]['name']} was {near[0]['metres']:.0f} m away" if near else "the spotter showed a car alongside"
         if ev.get("source") == "scan" and grp and grp.get("others"):
-            return {"type": "contact", "sure": "possibly", "with": grp["others"],
-                    "why": f"The replay shows {', '.join(grp['others'][:3])} in trouble in the same spot at the same time."}
-        return {"type": "contact", "sure": "possibly", "with": names[:1],
-                "why": f"{who.capitalize() if not near else who}, so it may have been a tap or a squeeze rather than your own mistake."}
+            return {"type": "contact", "sure": "possibly", "closest": closest, "others": others,
+                    "why": f"The replay shows {', '.join(grp['others'][:3])} in trouble in the same spot at the same time, "
+                           f"so it may have been contact.{near_txt}"}
+        who = closest_words(closest)[:-1] if closest else "The spotter showed a car alongside"
+        return {"type": "contact", "sure": "possibly", "closest": closest, "others": others,
+                "why": f"{who}, so it may have been a tap or a squeeze rather than your own mistake."}
     what = "spin" if ev.get("spun") else (POINT_WORDS.get(max(parts)) if parts else ("off track moment" if ev.get("off") else "incident"))
     what = "off track moment" if what == "off track" else what
-    if readable or ev.get("alongside") is False:
-        return {"type": "own", "sure": "probably", "with": [],
-                "why": f"No other car was close, so this {what} was probably your own mistake."}
-    return {"type": "own", "sure": "possibly", "with": [],
-            "why": f"Nothing shows another car near this {what}, but there's no replay scan or spotter data to be sure."}
+    if readable:
+        return {"type": "own", "sure": "probably", "closest": None, "others": others,
+                "why": f"The replay shows no other car within {NEAR_M:.0f} m, so this {what} was probably your own mistake."}
+    if ev.get("alongside") is False:
+        return {"type": "own", "sure": "probably", "closest": None, "others": others,
+                "why": f"The spotter showed no car alongside, so this {what} was probably your own mistake."}
+    return {"type": "unknown", "sure": "not known", "closest": None, "others": others,
+            "why": f"Nothing here shows whether another car was near this {what}: there's no replay scan or spotter data for it."}
 
 
 # ---------------------------------------------------------------- finding everything on this PC
@@ -592,10 +631,14 @@ def _read_review(p: Path) -> dict | None:
             res = None
     corners = [{"id": c.get("id"), "start_m": c.get("start_m"), "end_m": c.get("end_m"), "apex_m": c.get("apex_m")}
                for c in d.get("corners") or [] if isinstance(c, dict) and c.get("id")]
+    rc = d.get("racecap") if isinstance(d.get("racecap"), dict) else {}
+    sub = next((str(v) for v in (m.get("subsession"), rc.get("subsession"), (res or {}).get("subsession"))
+                if str(v or "").strip().isdigit()), None)
+    starts = sorted(x for x in (_num(l.get("start")) for l in d.get("laps") or [] if isinstance(l, dict)) if x)
     out = {"dir": p.parent.name, "track": str(m.get("track") or ""), "driver": str(m.get("driver") or ""),
            "event_id": str(m.get("event_id") or ""), "started_at": str(m.get("started_at") or ""),
            "session": str(m.get("session") or ""), "result": res, "corners": corners, "L": _num(d.get("L")),
-           "multiclass": bool(m.get("multiclass"))}
+           "multiclass": bool(m.get("multiclass")), "subsession": sub, "lap_starts": starts}
     _REVIEW_MEMO[key] = out
     while len(_REVIEW_MEMO) > 2000:
         _REVIEW_MEMO.pop(next(iter(_REVIEW_MEMO)))
@@ -603,11 +646,14 @@ def _read_review(p: Path) -> dict | None:
 
 
 def _when_iso(s) -> float | None:
-    from datetime import datetime
+    """UTC seconds. A time written without a zone is UTC (as Debrief writes Garage 61's lap times), never this PC's
+    local time."""
+    from datetime import datetime, timezone
     try:
-        return datetime.fromisoformat(str(s).replace("Z", "+00:00")).timestamp()
+        dt = datetime.fromisoformat(str(s).replace("Z", "+00:00"))
     except ValueError:
         return None
+    return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).timestamp()
 
 
 class _Tracks:
@@ -627,9 +673,11 @@ class _Tracks:
 
 
 def collect(library_folder=None, telemetry_folder=None, racecap_folder=None, driver=None, telemetry_files=None,
-            max_files=400) -> dict:
+            max_files=400, telemetry=None, corners_of=None) -> dict:
     """Everything both racing pages read, found once: replay scans (own and RaceCap's), telemetry files and saved
-    reviews (for official results and each track's corners). Read only; never raises.
+    reviews (for official results and each track's corners). Read only; never raises. telemetry: the files' readings
+    already made (read_ibt results, e.g. from the window's cache) instead of reading telemetry_files here;
+    corners_of(reading): a remembered _corners_from_ibt.
     {"scans": [...], "telemetry": [read_ibt...], "reviews": [...], "corners": {track: {"corners", "L", "from"}},
      "driver", "notes": [plain words]}."""
     notes = []
@@ -664,6 +712,11 @@ def collect(library_folder=None, telemetry_folder=None, racecap_folder=None, dri
     except Exception as e:  # noqa: BLE001
         notes.append(f"Saved reviews couldn't all be read ({type(e).__name__}).")
     try:
+        for x in telemetry or []:
+            if x.get("ok"):
+                out["telemetry"].append(x)
+            else:
+                notes.append(f"{x.get('file')}: {x.get('why')}")
         files = [Path(f) for f in telemetry_files or []]
         if telemetry_folder and Path(telemetry_folder).is_dir():
             files += sorted(Path(telemetry_folder).glob("*.ibt"), key=lambda f: f.stat().st_mtime, reverse=True)[:max_files]
@@ -681,11 +734,11 @@ def collect(library_folder=None, telemetry_folder=None, racecap_folder=None, dri
         notes.append(f"The telemetry folder couldn't all be read ({type(e).__name__}).")
     if not out["driver"]:
         out["driver"] = next((r["driver"] for r in out["reviews"] if r.get("driver")), "")
-    out["corners"] = _corner_maps(out)
+    out["corners"] = _corner_maps(out, corners_of)
     return out
 
 
-def _corner_maps(src) -> dict:
+def _corner_maps(src, corners_of=None) -> dict:
     """{track: {"corners", "L", "from"}}: each track's corners from its newest race review (so every race at a track
     is placed on the same corners), else from the best clean lap in a telemetry file there (engine.detect_corners)."""
     tracks = _Tracks()
@@ -700,7 +753,7 @@ def _corner_maps(src) -> dict:
         k = tracks.key(f.get("track"))
         if k in maps:
             continue
-        got = _corners_from_ibt(f.get("path"))
+        got = corners_of(f) if corners_of else _corners_from_ibt(f.get("path"))
         if got:
             maps[k] = {"corners": got[0], "L": got[1], "from": f"telemetry {f.get('file')}"}
     src["_tracks"] = tracks
@@ -774,7 +827,7 @@ def outings(src) -> list:
             g["files"].append(f.get("file"))
             g["laps"] = max(g["laps"], S.get("laps") or 0)
             g["events"] += [dict(e, file=f.get("file")) for e in S.get("events") or []]
-            for k in ("green", "start_pos", "start_class_pos", "lap1_pos", "lap1_class_pos", "lap1_end"):
+            for k in ("green", "start_pos", "start_class_pos", "lap1_pos", "lap1_class_pos", "lap1_end", "lap1_end_utc"):
                 if S.get(k) is not None and g.get(k) is None:
                     g[k] = S[k]
     out = []
@@ -791,24 +844,60 @@ def outings(src) -> list:
                     "not_recorded": 0, "L": sc.get("track_length_m"), "classes": {}, "multiclass": None,
                     "class_size": None, "driver": names, "me_idx": None, "laps": sc.get("laps") or 0, "scan": s,
                     "has_spotter": False, "green": sc.get("green")})
-    revs = (src or {}).get("reviews") or []
-    for g in out:
+    revs = [r for r in (src or {}).get("reviews") or [] if session_kind(r.get("session")) == "race"]
+    used = set()
+    for g in out:              # 1) the same race for sure: the subsession, or the scan's link to the review
         s = g.get("scan")
+        rev = None
+        if g["kind"] == "race" and g.get("subsession") is not None:
+            rev = next((r for r in revs if r.get("subsession") and r["subsession"] == str(g["subsession"])), None)
+        if rev is None and s and s.get("event_id"):
+            rev = next((r for r in revs if r.get("event_id") == s.get("event_id")), None)
         if s:
             g["me_car"] = find_me_in_scan(s["scan"], g.get("me_idx"), g.get("driver") or names)
             if not g.get("classes"):
                 g["classes"] = {str(c.get("car_idx")): c.get("car_class") for c in s["scan"].get("cars") or []
                                 if isinstance(c, dict) and c.get("car_class") is not None}
-            rev = next((r for r in revs if s.get("event_id") and r.get("event_id") == s.get("event_id")), None)
             if g.get("when") is None:
                 g["when"] = _when_iso((rev or {}).get("started_at")) or _dir_time(s.get("dir"))
-            g["review"] = rev
-        if g["kind"] == "race" and g.get("review") is None and g.get("when"):
-            g["review"] = next((r for r in revs if session_kind(r.get("session")) == "race" and r.get("started_at")
-                                and abs((_when_iso(r["started_at"]) or 0) - g["when"]) <= 1800
-                                and track_key(src, r.get("track")) == g["track"]), None)
+        g["review"] = rev
+        g["review_by"] = ("subsession" if rev.get("subsession") else "scan") if rev else None
+        if rev is not None:
+            used.add(rev["dir"])
+    for g in out:              # 2) else by time: a lap of the review starting when your telemetry crossed the line
+        if g["kind"] != "race" or g.get("review") is not None:
+            continue
+        rev = review_by_time(g, [r for r in revs if r["dir"] not in used and track_key(src, r.get("track")) == g["track"]])
+        if rev is not None:
+            g["review"], g["review_by"] = rev, "time"
+            used.add(rev["dir"])
     out.sort(key=lambda g: (g.get("when") or 0, str(g["id"])))
     return out
+
+
+def review_by_time(g, revs):
+    """The saved review of this race when only times can tell. Every time here is UTC seconds: telemetry's start
+    date is UTC and so are Garage 61's lap times, whatever this PC's time zone or daylight saving. A review that knows
+    its own subsession is never matched by time to another one. With the review's lap times: one of its laps must
+    start within LAP_MATCH_S of the moment your telemetry crossed the line at the end of lap 1 (two races at the
+    same track an hour apart never match). Without them (older reviews): the only one starting within
+    REVIEW_WINDOW_S."""
+    sub = g.get("subsession")
+    revs = [r for r in revs or [] if not (r.get("subsession") and sub is not None and r["subsession"] != str(sub))]
+    t1 = _num(g.get("lap1_end_utc"))
+    if t1 is not None:
+        hits = [r for r in revs if r.get("lap_starts")
+                and min(abs(x - t1) for x in r["lap_starts"]) <= LAP_MATCH_S]
+        if len(hits) == 1:
+            return hits[0]
+        if hits:
+            return None
+    when = _num(g.get("when"))
+    if when is None:
+        return None
+    hits = [r for r in revs if not r.get("lap_starts") and r.get("started_at")
+            and abs((_when_iso(r["started_at"]) or 0) - when) <= REVIEW_WINDOW_S]
+    return hits[0] if len(hits) == 1 else None
 
 
 def _dir_time(d):
@@ -890,7 +979,9 @@ def _pct_at(samples, idx, t, fallback=None):
 
 
 # ---------------------------------------------------------------- the map
-TYPE_WORDS = {"own": "your own mistake", "contact": "contact", "caught_up": "caught up in someone else's incident"}
+TYPE_WORDS = {"own": "your own mistake", "contact": "contact", "caught_up": "caught up in someone else's incident",
+              "unknown": "kind not known"}
+KINDS = ("own", "contact", "caught_up", "unknown")
 
 
 def build(src=None, **find) -> dict:
@@ -905,14 +996,18 @@ def build(src=None, **find) -> dict:
 
 
 HOW = (f"Incidents come from your telemetry's incident count (iRacing's usual points: 1 off track, 2 loss of control, "
-       f"4 contact) and, for scanned races, the replay shows which cars were within {NEAR_M:.0f} m. A corner is only called a "
-       f"pattern when at least {MIN_RACES} sessions had an incident there, it holds at least {EFFECT:.0f} times its fair "
-       f"share of the lap, and an exact test says noise alone would do that less than {ALPHA:.0%} of the time over every "
-       f"corner tested.")
+       f"4 contact) and, for scanned races, the replay shows which cars were within {NEAR_M:.0f} m (where cars were, never "
+       f"who touched whom). Without a replay scan or the spotter, an incident's kind isn't known. A corner (or lap 1) is "
+       f"only called a pattern when at least {MIN_RACES} sessions had an incident there, your share there is at least "
+       f"{EFFECT:.0f} times the rest of the field's in your scanned races at that track (at least {FIELD_MIN_UNITS} other "
+       f"cars with incidents), and shuffling which incidents were yours ({PERM_N} times, fixed seed) makes a gap that big "
+       f"less than {ALPHA:.0%} of the time over everything tested. Some corners, and lap 1, catch out everyone, so a share "
+       f"of the lap is never the yardstick.")
 
 
 def thresholds() -> dict:
     return {"min_races": MIN_RACES, "alpha": ALPHA, "effect": EFFECT, "near_m": NEAR_M, "spin_yaw_rad_s": SPIN_YAW,
+            "field_min_cars": FIELD_MIN_UNITS, "lap_match_s": LAP_MATCH_S,
             "caught_lead_s": CAUGHT_LEAD_S, "perm_n": PERM_N, "perm_seed": PERM_SEED, "exact_max": EXACT_MAX,
             "trend_min": TREND_MIN}
 
@@ -943,7 +1038,9 @@ def _event_row(o, e) -> dict:
             "t": e.get("t"), "lap": e.get("lap"), "lap1": bool(e.get("lap1")), "before_green": bool(e.get("before_green")),
             "pct": e.get("pct"), "zone": e.get("zone"), "where": e.get("where"), "points": e.get("points"),
             "parts": e.get("parts") or [], "at_once": bool(e.get("at_once")), "what": _what(e), "source": e.get("source"),
-            "type": c.get("type"), "sure": c.get("sure"), "why": c.get("why"), "with": c.get("with") or [],
+            "type": c.get("type"), "sure": c.get("sure"), "why": c.get("why"),
+            "closest": closest_words(c.get("closest"))[len("Closest car: "):-1] or None,
+            "others": list(c.get("others") or [])[:6],
             "near": [dict(x) for x in e.get("near") or []][:4], "spun": e.get("spun"), "off": e.get("off"),
             "slowed": e.get("slowed")}
 
@@ -959,7 +1056,7 @@ def track_map(track, outs) -> dict:
     rows = [_event_row(o, e) for o in outs for e in o.get("_events") or []]
     cells = {}
     by_zone = {z["key"]: {"zone": z["key"], "label": z["label"], "share": round(z["share"], 3), "events": 0, "points": 0,
-                          "lap1": 0, "race": 0, "qualifying": 0, "practice": 0, "own": 0, "contact": 0, "caught_up": 0,
+                          "lap1": 0, "race": 0, "qualifying": 0, "practice": 0, "own": 0, "contact": 0, "caught_up": 0, "unknown": 0,
                           "sessions": 0} for z in zs}
     sess_in_zone = {z["key"]: set() for z in zs}
     for r in rows:
@@ -971,7 +1068,7 @@ def track_map(track, outs) -> dict:
         b["points"] += r["points"] or 0
         b["lap1"] += 1 if r["lap1"] else 0
         b[r["kind_of_session"]] = b.get(r["kind_of_session"], 0) + 1
-        if r["type"] in ("own", "contact", "caught_up"):
+        if r["type"] in KINDS:
             b[r["type"]] += 1
         cell = cells.setdefault(f"{z}|{r['type']}", {"zone": z, "type": r["type"], "events": 0, "points": 0})
         cell["events"] += 1
@@ -992,47 +1089,129 @@ def track_map(track, outs) -> dict:
            "lap1": {"events": sum(1 for r in rows if r["lap1"]), "points": sum(r["points"] or 0 for r in rows if r["lap1"]),
                     "later": sum(1 for r in rows if r["kind_of_session"] == "race" and not r["lap1"] and not r["before_green"]),
                     "before_green": sum(1 for r in rows if r["before_green"])},
-           "types": {k: sum(1 for r in rows if r["type"] == k) for k in ("own", "contact", "caught_up")}}
+           "types": {k: sum(1 for r in rows if r["type"] == k) for k in KINDS},
+           "field_cars": len(field_units(outs, zs)), "scanned_races": sum(1 for o in races if (o.get("scan") or {}).get("scan"))}
     out["patterns"] = patterns(outs, zs, rows)
     out["sentences"] = sentences(out)
     return out
 
 
-def patterns(outs, zs, rows) -> list:
-    """Corners where incidents keep happening, and lap 1, each only with the gates in the module docstring."""
+def field_units(outs, zs) -> list:
+    """The rest of the field's incidents in your scanned races (the baseline patterns are judged against): one unit
+    per other car per race with at least one incident the scan didn't call trivial, {"session", "zones": [zone keys],
+    "lap1": [on lap 1?]}. A race whose scan doesn't show which car is yours is left out (you'd be your own baseline)."""
+    units = []
+    for o in outs or []:
+        scan = (o.get("scan") or {}).get("scan")
+        me = o.get("me_car") or {}
+        if o.get("kind") != "race" or not isinstance(scan, dict) or not me:
+            continue
+        cars = {str(c.get("number")): c for c in scan.get("cars") or [] if isinstance(c, dict)}
+        per = {}
+        for i in scan.get("incidents") or []:
+            if not isinstance(i, dict) or i.get("level") == "trivial":
+                continue
+            z = locate(i.get("track_pct"), zs)
+            for c in i.get("cars") or []:
+                num = str((c or {}).get("number")) if isinstance(c, dict) else None
+                if num is None or num == str(me.get("number")):
+                    continue
+                t = _num(c.get("from")) if _num(c.get("from")) is not None else _num(i.get("from"))
+                lap = _my_lap(cars.get(num) or {}, t) or i.get("lap")
+                u = per.setdefault(num, {"session": o.get("id"), "zones": [], "lap1": []})
+                if z:
+                    u["zones"].append(z["key"])
+                u["lap1"].append(lap == 1)
+        units += list(per.values())
+    return units
+
+
+def label_test(D, F, seed=PERM_SEED) -> list:
+    """Is your share higher than the field's? D: one row per incident of yours, F: one row per incident of the rest
+    of the field; each row is 1 in the column it falls in (a corner, or lap 1). Statistic per column: Welch's t of
+    your share minus the field's (one-sided). Under "you spread your incidents like the field does" which incidents
+    are yours is exchangeable, so the p of a column is the share of PERM_N relabelings (fixed seed) in which ANY
+    column's t reaches the observed one: family-wise over every column, and the field's own noise counts too (a
+    small field gives wide margins). Per incident, not per session: per-session shares made sessions with many
+    incidents and field cars with one look different under no real difference (false patterns up to 16% in the null
+    simulation). Returns [{"p", "t", "mine", "field"}]."""
+    D = np.asarray(D, dtype=float).reshape(len(D), -1) if len(D) else np.zeros((0, 0))
+    F = np.asarray(F, dtype=float).reshape(len(F), -1) if len(F) else np.zeros((0, 0))
+    nd, nf = len(D), len(F)
+    if nd < 2 or nf < 2 or D.shape[1] != F.shape[1]:
+        k = D.shape[1] if nd else (F.shape[1] if nf else 0)
+        return [{"p": 1.0, "t": 0.0, "mine": None, "field": None} for _ in range(k)]
+    X = np.vstack([D, F])
+    n = nd + nf
+
+    def tstat(sd, qd, tot, totq):
+        md, mf = sd / nd, (tot - sd) / nf
+        vd = np.maximum(qd - nd * md ** 2, 0.0) / (nd - 1)
+        vf = np.maximum((totq - qd) - nf * mf ** 2, 0.0) / (nf - 1)
+        return (md - mf) / np.sqrt(vd / nd + vf / nf + 1e-12)
+    tot, totq = X.sum(axis=0), (X ** 2).sum(axis=0)
+    obs = tstat(D.sum(axis=0), (D ** 2).sum(axis=0), tot, totq)
+    rng = np.random.default_rng(seed)
+    M = (np.argsort(rng.random((PERM_N, n)), axis=1) < nd).astype(np.float32)     # each row: which units are "yours"
+    X32 = X.astype(np.float32)
+    T = tstat((M @ X32).astype(float), (M @ (X32 ** 2)).astype(float), tot, totq)
+    null_max = T.max(axis=1)
+    out = []
+    for j in range(X.shape[1]):
+        p = (1 + int((null_max >= obs[j] - 1e-9).sum())) / (1 + PERM_N)
+        out.append({"p": round(float(p), 4), "t": round(float(obs[j]), 3), "mine": float(D[:, j].mean()), "field": float(F[:, j].mean())})
+    return out
+
+
+def patterns(outs, zs, rows, field=None) -> list:
+    """Corners where your incidents keep happening, and lap 1, each judged against the rest of the field in your
+    scanned races at this track (some corners, and lap 1, catch out everyone: a share of the lap or of the laps is no
+    baseline). A claim needs: at least MIN_RACES of your sessions showing it, at least FIELD_MIN_UNITS other cars with
+    incidents to compare with, your share at least EFFECT times the field's, and label_test's family-wise p below
+    ALPHA, doubled for the two families (corners, lap 1). With no replay scan here: no pattern, only facts."""
     found = []
     if not zs:
         return found
+    field = field_units(outs, zs) if field is None else field
+    keys = [z["key"] for z in zs]
     sess = {}
     for r in rows:
         if r["zone"] is not None and not r["before_green"]:
             sess.setdefault(r["session"], []).append(r)
-    per = [(sid, evs) for sid, evs in sess.items()]
-    n_sess = len([o for o in outs])
-    tests = len(zs) + 1
-    for z in zs:
-        hit = sum(1 for _sid, evs in per if any(e["zone"] == z["key"] for e in evs))
-        probs = [1 - (1 - z["share"]) ** len(evs) for _sid, evs in per]
-        expected = sum(probs)
-        if hit < MIN_RACES or hit < EFFECT * expected:
-            continue
-        p = min(1.0, poisson_binomial_tail(probs, hit) * tests)
-        if p < ALPHA:
-            found.append({"kind": "corner", "zone": z["key"], "label": z["label"], "sessions": hit, "of": n_sess,
-                          "expected": round(expected, 2), "p": round(p, 4),
-                          "text": f"{z['label']} is a pattern: you had an incident there in {hit} of {_plural(n_sess, 'session')}, "
-                                  f"about {hit / max(expected, 1e-9):.1f} times what an even spread round the lap would give."})
-    race = [(o, [r for r in rows if r["session"] == o["id"] and not r["before_green"]]) for o in outs if o["kind"] == "race"]
-    race = [(o, evs) for o, evs in race if evs and (o.get("laps") or 0) >= 2]
-    hit = sum(1 for _o, evs in race if any(e["lap1"] for e in evs))
-    probs = [1 - (1 - 1.0 / o["laps"]) ** len(evs) for o, evs in race]
-    expected = sum(probs)
-    if hit >= MIN_RACES and hit >= EFFECT * expected:
-        p = min(1.0, poisson_binomial_tail(probs, hit) * tests)
-        if p < ALPHA:
-            found.append({"kind": "lap1", "sessions": hit, "of": len(race), "expected": round(expected, 2), "p": round(p, 4),
-                          "text": f"Lap 1 is a pattern: {hit} of your {len(race)} races with incidents had one on lap 1, "
-                                  f"about {hit / max(expected, 1e-9):.1f} times what an even spread over the laps would give."})
+    n_sess = len(outs)
+    # corners
+    fz = [u for u in field if u.get("zones")]
+    mine = [evs for evs in sess.values()]
+    if len(fz) >= FIELD_MIN_UNITS and len(mine) >= MIN_RACES:
+        # one count per corner per session (or per other car): a bad day at one corner counts once
+        D = [[float(x == k) for k in keys] for evs in mine for x in sorted({e["zone"] for e in evs})]
+        F = [[float(x == k) for k in keys] for u in fz for x in sorted(set(u["zones"]))]
+        for z, t in zip(zs, label_test(D, F)):
+            hit = sum(1 for evs in mine if any(e["zone"] == z["key"] for e in evs))
+            base = (t["field"] * len(fz) + z["share"]) / (len(fz) + 1)
+            p = min(1.0, t["p"] * 2)
+            if hit >= MIN_RACES and t["mine"] >= EFFECT * base and p < ALPHA:
+                found.append({"kind": "corner", "zone": z["key"], "label": z["label"], "sessions": hit, "of": n_sess,
+                              "share": round(t["mine"], 3), "field_share": round(t["field"], 3), "field_cars": len(fz), "p": round(p, 4),
+                              "text": f"{z['label']} is a pattern: you had an incident there in {hit} of {_plural(n_sess, 'session')}, and "
+                                      f"{t['mine']:.0%} of your incidents were there against {t['field']:.0%} for the rest of the field in "
+                                      f"your scanned races. Chance doesn't explain a gap that big."})
+    # lap 1: only your scanned races, so you and the field share the same races
+    scanned = {o["id"] for o in outs if o.get("kind") == "race" and (o.get("scan") or {}).get("scan") and o.get("me_car")}
+    mine1 = [[bool(e["lap1"]) for e in sess.get(sid, [])] for sid in scanned]
+    mine1 = [m for m in mine1 if m]
+    f1 = [u["lap1"] for u in field if u.get("lap1")]
+    hit = sum(1 for m in mine1 if any(m))
+    if len(f1) >= FIELD_MIN_UNITS and len(mine1) >= MIN_RACES and hit >= MIN_RACES:
+        t = label_test([[float(x)] for m in mine1 for x in m], [[float(x)] for u in f1 for x in u])[0]
+        base = (t["field"] * len(f1) + 0.1) / (len(f1) + 1)
+        p = min(1.0, t["p"] * 2)
+        if t["mine"] >= EFFECT * base and p < ALPHA:
+            found.append({"kind": "lap1", "sessions": hit, "of": len(mine1), "share": round(t["mine"], 3),
+                          "field_share": round(t["field"], 3), "field_cars": len(f1), "p": round(p, 4),
+                          "text": f"Lap 1 is a pattern: {hit} of your {_plural(len(mine1), 'scanned race')} with incidents had one on "
+                                  f"lap 1, and {t['mine']:.0%} of your incidents in them came on lap 1 against {t['field']:.0%} for the "
+                                  f"rest of the field. Chance doesn't explain a gap that big."})
     return found
 
 
@@ -1051,7 +1230,7 @@ def sentences(m) -> list:
         out.append(f"{_plural(ev, 'incident')} at {track} over {_plural(n, 'session')}" + (f", {pts} points where telemetry shows them." if pts else "."))
     top = sorted(m["by_zone"], key=lambda b: (-(b["points"] if m["points_known"] else b["events"]), -b["events"]))[0]
     if top["events"]:
-        kinds = sorted(((top[k], k) for k in ("contact", "own", "caught_up")), reverse=True)
+        kinds = sorted(((top[k], k) for k in ("contact", "own", "caught_up")), reverse=True)     # "not known" is never "mostly"
         main = kinds[0][1] if kinds[0][0] else None
         lap1 = top["lap1"]
         tail = ""
@@ -1066,9 +1245,9 @@ def sentences(m) -> list:
         else:
             out.append(f"{top['events']} of your {ev} incidents at {track} came {at_zone(top['label'])}{tail}.")
     t = m["types"]
-    bits = [f"{t[k]} {TYPE_WORDS[k]}" for k in ("own", "contact", "caught_up") if t[k]]
+    bits = [f"{t[k]} {TYPE_WORDS[k]}" for k in KINDS if t.get(k)]
     if bits:
-        out.append("Most likely kinds: " + ", ".join(bits) + ".")
+        out.append("What kind, as far as the data shows: " + ", ".join(bits) + ".")
     if m["lap1"]["events"]:
         out.append(f"{_plural(m['lap1']['events'], 'incident')} on lap 1 and {m['lap1']['later']} later in races.")
     if m["lap1"]["before_green"]:
@@ -1079,6 +1258,11 @@ def sentences(m) -> list:
         out += [p["text"] for p in m["patterns"]]
     elif n < MIN_RACES:
         out.append(f"With {_plural(n, 'session')} this only says what happened, not a pattern.")
+    elif m.get("field_cars", 0) < FIELD_MIN_UNITS:
+        out.append("This only says what happened, not a pattern: some corners, and lap 1, catch out everyone, and "
+                   + (f"there's no replay scan of a race at {track}" if not m.get("scanned_races") else
+                      f"your replay scans at {track} show too few of the other cars' incidents")
+                   + " to compare yours with.")
     else:
-        out.append("No corner stands out more than chance would explain yet.")
+        out.append("No corner stands out against the rest of the field more than chance would explain yet.")
     return out

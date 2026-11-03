@@ -12,14 +12,23 @@ Where the data comes from (all read only):
 
 The answer is cached (memory, then a file in the cache folder) under a key made of every input file's name, size and
 change time and Debrief's and both modules' versions, so a new scan, review or telemetry file works it out again and
-nothing else does. Two requests at once work it out once (carsetup.cached). It is worked out on the request: about a
-second for a few races; the telemetry reader keeps each file's reading in memory, so a new race only reads the new
-file. The answer holds file and folder names only, never a full path.
+nothing else does. Two requests at once work it out once (carsetup.cached).
+
+Telemetry is the slow part: each .ibt is read through once (about 0.05 to 0.6 s a file on the owner's PC, ~0.2 s on
+average, so 400 files would take over a minute). So each file's reading (incidentmap.read_ibt, without its path, plus
+the track's corners when they were worked out from it) is kept in its own cache file (FILES_CACHE, by name, size and
+change time): after the first time a cold open reads none of them. A request reads new files for at most BUDGET_S;
+the rest are read on a background thread (daemon, never waited for: closing or updating Debrief stops it between two
+files) and the answer says "pending" so the page asks again. A partial answer is never cached. The answer and the
+caches hold file and folder names only, never a full path; other drivers' names stay on this PC.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import os
+import threading
+import time
 from pathlib import Path
 
 from .. import app
@@ -29,6 +38,180 @@ VERSION = 1                 # bump when the answer's shape changes
 CACHE = "racing"            # folder in the cache folder
 MAX_FILES = 400             # newest telemetry files read (the same as incidentmap.collect's default)
 GET_ROUTES = ("api/racing",)
+FILES_CACHE = "racing-files"    # folder in the cache folder: one reading per telemetry file
+BUDGET_S = 3.0              # a request reads new telemetry files for at most this long; the rest in the background
+SAVE_EVERY_S = 5.0          # the background reader saves what it has read this often
+
+
+class Readings:
+    """Each telemetry file's reading, kept in memory and in the cache folder, and the background reader."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.lock = threading.Lock()
+        self.recs = None            # key -> reading (loaded from the cache folder on first use)
+        self.dirty = False
+        self.thread = None
+        self.left = 0               # files the background reader still has to read
+        self.total = 0
+
+    def load(self):
+        with self.lock:
+            if self.recs is not None:
+                return
+            recs = {}
+            try:
+                raw = json.loads(self.path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict) and raw.get("version") == _file_version():
+                    recs = {k: v for k, v in (raw.get("files") or {}).items() if isinstance(v, dict)}
+            except (OSError, ValueError):
+                recs = {}
+            self.recs = recs
+
+    def save(self, keep=None):
+        with self.lock:
+            if not self.dirty or self.recs is None:
+                return
+            if keep is not None:            # files no longer in the folder are dropped
+                self.recs = {k: v for k, v in self.recs.items() if k in keep or self.thread is not None}
+            data = {"version": _file_version(), "files": dict(self.recs)}
+            self.dirty = False
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, allow_nan=False), encoding="utf-8")
+            os.replace(tmp, self.path)
+        except (OSError, ValueError) as e:
+            app.say(f"Racing: couldn't save the telemetry readings ({type(e).__name__}).")
+
+    def get(self, key):
+        with self.lock:
+            return (self.recs or {}).get(key)
+
+    def put(self, key, rec):
+        with self.lock:
+            if self.recs is None:
+                self.recs = {}
+            self.recs[key] = rec
+            self.dirty = True
+
+
+_R_LOCK = threading.Lock()
+
+
+def _file_version():
+    im = app.optional_module("incidentmap")
+    return [1, getattr(im, "VERSION", None)]
+
+
+def readings(server, cache_dir) -> Readings:
+    with _R_LOCK:
+        r = getattr(server, "_racing_readings", None)
+        path = Path(cache_dir) / FILES_CACHE / "files.json"
+        if r is None or r.path != path:
+            r = Readings(path)
+            server._racing_readings = r
+        return r
+
+
+def file_key(f: Path):
+    try:
+        st = f.stat()
+    except OSError:
+        return None
+    return f"{f.name}|{st.st_size}|{st.st_mtime_ns}"
+
+
+def _stopping(server) -> bool:
+    ev = getattr(server, "stopping", None)
+    return bool(getattr(server, "closing", False)) or bool(ev is not None and ev.is_set())
+
+
+def read_one(f: Path) -> dict:
+    """One file's reading for the cache: no path in it."""
+    im = app.optional_module("incidentmap")
+    rec = dict(im.read_ibt(f))
+    rec.pop("path", None)
+    return rec
+
+
+def telemetry(server, cache_dir, files, budget=None) -> tuple:
+    """(readings of the files in order, files not read yet). Reads new files for at most `budget` seconds and starts
+    the background reader for the rest. Never raises for one bad file."""
+    R = readings(server, cache_dir)
+    R.load()
+    budget = BUDGET_S if budget is None else budget
+    t0 = time.monotonic()
+    out, missing, keys = [], [], set()
+    for f in files:
+        k = file_key(f)
+        if k is None:
+            continue
+        keys.add(k)
+        rec = R.get(k)
+        if rec is None:
+            if time.monotonic() - t0 >= budget or _stopping(server):
+                missing.append(f)
+                continue
+            rec = read_one(f)
+            R.put(k, rec)
+        out.append(dict(rec, path=str(f)))         # the path only in memory, for the corners
+    R.save(keep=keys)
+    if missing:
+        start_reader(server, R, missing)
+    return out, missing
+
+
+def start_reader(server, R: Readings, files):
+    with R.lock:
+        if R.thread is not None and R.thread.is_alive():
+            return
+        R.left, R.total = len(files), len(files)
+        t = threading.Thread(target=_reader, args=(server, R, list(files)), daemon=True, name="racing-telemetry")
+        R.thread = t
+    t.start()
+
+
+def _reader(server, R: Readings, files):
+    last = time.monotonic()
+    try:
+        for f in files:
+            if _stopping(server):
+                break
+            k = file_key(f)
+            if k is not None and R.get(k) is None:
+                R.put(k, read_one(f))
+            with R.lock:
+                R.left = max(0, R.left - 1)
+            if time.monotonic() - last >= SAVE_EVERY_S:
+                R.save()
+                last = time.monotonic()
+    except Exception:  # noqa: BLE001  (the next request reads what's left)
+        import traceback
+        app.say("ERROR reading telemetry for Racing:\n" + traceback.format_exc())
+    finally:
+        with R.lock:
+            R.thread = None
+            R.left = 0
+        R.save()
+
+
+def _corners_of(server, cache_dir):
+    """incidentmap's corners for a track from one telemetry file, remembered with that file's reading."""
+    im = app.optional_module("incidentmap")
+    R = readings(server, cache_dir)
+
+    def get(rec):
+        p = rec.get("path")
+        k = file_key(Path(p)) if p else None
+        old = R.get(k) if k else None
+        if old is not None and "corners_found" in old:
+            return old["corners_found"] or None
+        got = im._corners_from_ibt(p) if p else None
+        if old is not None and k:
+            R.put(k, dict(old, corners_found=[got[0], got[1]] if got else False))
+        return got
+    return get
 
 
 def _versions() -> list:
@@ -129,15 +312,19 @@ def cache_key(inp: dict) -> str:
     return "racing-" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:24]
 
 
-def work_out(inp: dict) -> dict:
-    """Both reports from one look at the files. Paths never reach the answer."""
+def work_out(inp: dict, tel=None, corners_of=None) -> dict:
+    """Both reports from one look at the files. Paths never reach the answer. tel: the telemetry files' readings
+    (telemetry()); without it every file is read here."""
     im = app.optional_module("incidentmap")
     sr = app.optional_module("startreport")
     if im is None or sr is None:
         raise ValueError("The racing pages aren't available right now. Details were saved to debrief.log in "
                          + app.data_folder_label() + ".")
-    src = im.collect(library_folder=inp["library"], racecap_folder=inp["racecap"], telemetry_files=inp["files"],
-                     max_files=MAX_FILES)
+    if tel is None:
+        src = im.collect(library_folder=inp["library"], racecap_folder=inp["racecap"], telemetry_files=inp["files"],
+                         max_files=MAX_FILES)
+    else:
+        src = im.collect(library_folder=inp["library"], racecap_folder=inp["racecap"], telemetry=tel, corners_of=corners_of)
     found = {"scans": len(src.get("scans") or []), "telemetry": len(src.get("telemetry") or []),
              "reviews": len(src.get("reviews") or [])}
     starts = sr.build(src)
@@ -179,12 +366,37 @@ def get_racing(h, q):
             (Path(cfg["cache_dir"]) / CACHE / (key + ".json")).unlink()
         except OSError:
             pass
-    val, hit = carsetup.cached(h.server, cfg["cache_dir"], key, lambda: work_out(inp), folder_name=CACHE)
     paths = [p for p in (inp["library"], inp["telemetry_folder"], inp["racecap"]) if p]
+    st = carsetup.state(h.server)
+    with st.lock:
+        known = key in st.mem
+    pending = None
+    if not known and not (Path(cfg["cache_dir"]) / CACHE / (key + ".json")).is_file():
+        tel, missing = telemetry(h.server, cfg["cache_dir"], inp["files"])
+        if missing:         # some files are still being read: a partial answer, never cached
+            R = readings(h.server, cfg["cache_dir"])
+            with R.lock:
+                left, total = (R.left or len(missing)), (R.total or len(missing))
+            pending = {"left": left, "total": max(total, left), "files": len(inp["files"])}
+            val, hit = _scrub(work_out(inp, tel, _corners_of(h.server, cfg["cache_dir"])), paths), False
+        else:
+            val, hit = carsetup.cached(h.server, cfg["cache_dir"], key,
+                                       lambda: _scrub(work_out(inp, tel, _corners_of(h.server, cfg["cache_dir"])), paths),
+                                       folder_name=CACHE)
+            readings(h.server, cfg["cache_dir"]).save()
+    else:
+        val, hit = carsetup.cached(h.server, cfg["cache_dir"], key,
+                                   lambda: _scrub(work_out(inp, *_tel_now(h.server, cfg, inp)), paths), folder_name=CACHE)
     where = {"library": bool(inp["library"]), "telemetry": bool(inp["telemetry_folder"]), "racecap": bool(inp["racecap"]),
              "racecap_set": bool(str(cfg.get("racecap_library") or "").strip()),
              "telemetry_name": Path(inp["telemetry_folder"]).name if inp["telemetry_folder"] else None}
-    return h._json(_scrub({"ok": True, "cached": hit, "where": where, "counts": inp["counts"], **val}, paths))
+    return h._json(_scrub({"ok": True, "cached": hit, "pending": pending, "where": where, "counts": inp["counts"], **val}, paths))
+
+
+def _tel_now(server, cfg, inp):
+    """Readings for a cache miss that raced a cache hit: read whatever is left now (rare)."""
+    tel, _missing = telemetry(server, cfg["cache_dir"], inp["files"], budget=1e9)
+    return tel, _corners_of(server, cfg["cache_dir"])
 
 
 def get(h, r, q):

@@ -199,7 +199,8 @@ def test_lap1_corner_by_corner():
     row = sr.race_row(o)
     assert row["start"] == 4 and row["start_from"] == "replay", row
     assert row["lap1_pos"] == 5 and row["change"] == -1 and row["seen_net"] == -1, row
-    assert [s["est_pos"] for s in row["corners"]][:3] == [6, 6, 5], row["corners"]
+    assert all("est_pos" not in s for s in row["corners"]), "no made-up position per corner: only places seen changing"
+    assert row["contact"] is None and "Not known" in row["contact_why"], "no telemetry: contact isn't known"
     text = " ".join(row["sentences"])
     assert "lost 1 place" in text and "lost 2 between the start and Turn 1" in text and "gained 1 at Turn 3" in text, text
     json.dumps(row)
@@ -213,7 +214,7 @@ def test_cars_out_of_view_are_not_counted_and_the_gap_is_said():
     seg = {s["key"]: s for s in row["corners"]}
     assert seg["C3"]["gained"] == 0, seg["C3"]
     assert row["change"] == -1 and row["seen_net"] == -2, row
-    assert any("only shows cars near you" in s for s in row["sentences"]), row["sentences"]
+    assert any("only the cars the replay saw near you" in s and "+-2" not in s and "-2" in s and "-1" in s for s in row["sentences"]), row["sentences"]
 
 
 def test_other_class_cars_do_not_count_in_a_multiclass_race():
@@ -262,7 +263,8 @@ def _row(i, change, start=10, field=30, segs=None, track=TRACK):
     corners = [{"key": k, "label": ("the start to Turn 1" if k == "C1" else im.corner_label(k)), "gained": max(v, 0),
                 "lost": max(-v, 0), "net": v} for k, v in (segs or {}).items()]
     return {"id": f"r{i}", "ok": True, "track": track, "when": 1000.0 + i, "change": change, "start": start,
-            "lap1_pos": start - change if change is not None else None, "band": sr.band(start, field), "corners": corners}
+            "lap1_pos": start - change if change is not None else None, "band": sr.band(start, field),
+            "rel_start": sr.rel_start(start, field), "corners": corners}
 
 
 def test_one_or_two_races_only_describe():
@@ -271,20 +273,62 @@ def test_one_or_two_races_only_describe():
     assert not any(c["pattern"] for c in g["corners"]) and not any(b["pattern"] for b in g["bands"])
     text = " ".join(g["sentences"])
     assert "only says what happened" in text and "habit, not chance" not in text, text
-    assert "In 2 of 2 races at Test Raceway you lost places between the start and Turn 1 on lap 1." in text, text
+    assert "In 2 of 2 scanned races at Test Raceway the replay saw you lose places between the start and Turn 1 on lap 1." in text, text
 
 
 def test_a_real_habit_is_found():
-    rows = [_row(i, -2 - (i % 2), segs={"C1": -2 - (i % 2), "C2": (1 if i % 3 == 0 else (-1 if i % 3 == 1 else 0))}) for i in range(7)]
+    # starting P20 of 30 (behind the middle) and losing places anyway: against what the grid alone gives
+    rows = [_row(i, -2 - (i % 2), start=20, segs={"C1": -2 - (i % 2), "C2": (1 if i % 3 == 0 else (-1 if i % 3 == 1 else 0))}) for i in range(7)]
     rep = sr.report(rows)
     g = rep["tracks"][0]
     c1 = next(c for c in g["corners"] if c["key"] == "C1")
     assert c1["pattern"] == "lose" and c1["p"] < 0.05 and c1["lost"] == 7, c1
     assert not next(c for c in g["corners"] if c["key"] == "C2")["pattern"]
     text = " ".join(g["sentences"])
-    assert "you usually lose places between the start and Turn 1 on lap 1" in text, text
-    assert "In 7 of 7 races at Test Raceway you lost places between the start and Turn 1" in text, text
+    assert "the replay usually sees you lose places between the start and Turn 1 on lap 1" in text, text
+    assert "In 7 of 7 scanned races at Test Raceway the replay saw you lose places between the start and Turn 1" in text, text
     assert any(b["band"] == "all" and b["pattern"] == "lose" for b in g["bands"]), g["bands"]
+
+
+def test_no_habit_where_the_grid_alone_gives_it():
+    """From the back anyone tends to gain on lap 1 and from the front to lose: those are never called habits."""
+    back = sr.report([_row(i, 3 + (i % 2), start=26, segs={"C1": 2 + (i % 2)}) for i in range(8)])["tracks"][0]
+    assert not any(c["pattern"] for c in back["corners"]) and not any(b["pattern"] for b in back["bands"]), back
+    assert not any("habit, not chance" in s for s in back["sentences"]), back["sentences"]
+    front = sr.report([_row(i, -2, start=2, segs={"C1": -2}) for i in range(8)])["tracks"][0]
+    assert not any(c["pattern"] for c in front["corners"]) and not any(b["pattern"] for b in front["bands"]), front
+    # ...the other way round they are: gaining from the front, losing from the back
+    good = sr.report([_row(i, 2, start=3, segs={"C1": 2}) for i in range(8)])["tracks"][0]
+    assert any(c["pattern"] == "gain" for c in good["corners"]) and any(b["pattern"] == "gain" for b in good["bands"]), good
+    # the start position isn't known: no habit at all
+    rows = [dict(_row(i, -2, start=20, segs={"C1": -2}), rel_start=None) for i in range(8)]
+    assert not any(c["pattern"] for c in sr.report(rows)["tracks"][0]["corners"])
+
+
+def test_false_positive_rate_with_equal_cars():
+    """24 equal cars: lap 1 shuffles them a little and a few lose a lot (incidents). Nothing here is a habit, but
+    from the back you gain more often than not and from the front you lose. Before 2.17's fix 30% of datasets of
+    a driver starting at the back made a "habit"; any band, corner or trend claim counts as a false positive."""
+    rng = random.Random(2171)
+
+    def lap1(f, s):
+        perf = [i + 1 + rng.gauss(0, 3.0) + (rng.uniform(5, 20) if rng.random() < 0.08 else 0.0) for i in range(f)]
+        return sorted(range(f), key=lambda i: perf[i]).index(s - 1) + 1
+    for where in ("back", "front", "drift"):
+        hits, datasets = 0, 150
+        for _ in range(datasets):
+            n, f, rows = rng.randint(8, 20), 24, []
+            for i in range(n):
+                s_ = {"back": rng.randint(17, 24), "front": rng.randint(1, 7),
+                      "drift": max(1, min(f, round(f * (0.2 + 0.7 * i / (n - 1)) + rng.gauss(0, 2))))}[where]
+                ch = s_ - lap1(f, s_)
+                rows.append(_row(i, ch, start=s_, field=f, segs={"C1": ch}))
+            g = sr.report(rows)["overall"]
+            t = sr.report(rows)["tracks"][0]
+            if any(b["pattern"] for b in g["bands"]) or any(c["pattern"] for c in t["corners"]) or g["trend"]["direction"]:
+                hits += 1
+        print(f"  start report false positives with equal cars starting {where}: {hits}/{datasets} = {hits / datasets:.1%}")
+        assert hits / datasets <= 0.05, (where, hits)
 
 
 def test_two_lucky_races_never_make_a_habit_even_when_strong():
@@ -300,6 +344,11 @@ def test_trend_needs_five_races_and_is_found_when_clear():
     tr = sr.report(rows)["overall"]["trend"]
     assert tr["direction"] == "better" and tr["p"] < 0.05, tr
     assert any("getting better" in s for s in sr.report(rows)["overall"]["sentences"])
+    # the same trend while you started further back each race: the grid alone could give it
+    rows = [_row(i, i - 4, start=3 + 3 * i) for i in range(9)]
+    tr = sr.report(rows)["overall"]["trend"]
+    assert tr["direction"] is None and tr["grid_moved"], tr
+    assert any("so did where you start" in s for s in sr.report(rows)["overall"]["sentences"])
 
 
 def test_false_positive_rate_on_random_data():
@@ -360,7 +409,8 @@ def test_end_to_end_with_scan_telemetry_and_review():
     assert out["races"] == 1, out
     r = out["list"][0]
     assert r["start"] == 4 and r["start_from"] == "telemetry" and r["lap1_pos"] == 5 and r["lap1_from"] == "telemetry", r
-    assert r["contact"] == "yes" and r["incident_points"] == 4, r
+    assert r["contact"] == "contact_4x" and r["incident_points"] == 4 and "counted contact (4x)" in r["contact_why"], r
+    assert not any("You were in contact" in x or "probably with" in x for x in r["sentences"]), r["sentences"]
     assert r["incidents"][0]["type"] == "contact" and r["incidents"][0]["where"] == "Turn 1", r["incidents"]
     assert {s["key"] for s in r["corners"]} >= {"C1", "C3"}, r["corners"]
     assert r["sources"] == ["telemetry", "replay scan"], r["sources"]

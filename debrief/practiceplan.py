@@ -23,9 +23,16 @@ A plan (JSON-ready):
     success_rule: {"key": phase key (cornercoach.phases), "op": "<=" | ">=" | "between", "value" | "lo"/"hi"}
         tested against that lap's phase number for the plan's corner.
 
-Honesty rules: a plan only from a card with a measurable target (best laps clearly better than typical); a time
-gain is only claimed with >= MIN_EACH laps that hit and >= MIN_EACH that missed AND a difference beyond the
-lap-to-lap noise (cornercoach.diff_test, z >= cornercoach.Z_LIKELY). Otherwise "not enough laps to tell yet".
+Honesty rules (2.14, after the 2.13 corner coach review):
+  - a "focus" plan only from a corner coach card, and only on a number that card's rule was tested on (the
+    permutation test) and that itself passed the noise gate (z >= cornercoach.Z_LIKELY); never more confident
+    than its card (a plan from a card's second rule is at most "likely").
+  - a corner with no card ("no clear pattern yet") only gives a "consistency" plan, worded as an experiment
+    ("Try this and see"), confidence "unclear", experiment True. A kept focus whose card is gone today is
+    marked the same way.
+  - a time difference between laps that hit and laps that missed is only talked about with >= MIN_EACH of each
+    AND a shuffle test (hit / miss labels shuffled SHUFFLE_N times, fixed seed): p < SHUFFLE_P. It describes
+    those laps; it never promises lap time. Otherwise "not enough laps to tell yet" / "no clear difference".
 Nothing here raises for bad input; corrupt plan files are set aside (renamed .bad) and never stop anything.
 """
 from __future__ import annotations
@@ -42,11 +49,15 @@ import numpy as np
 from . import cornercoach as cc
 from . import fsutil
 
-VERSION = 1
+VERSION = 2                  # 2.14: plans follow the 2.13 review corner coach (tested metrics, experiments)
 KEEP_BELOW = 0.70            # hit on fewer than 70% of measured laps: keep the same focus next session
 MIN_EACH = 3                 # hit laps and missed laps needed before a time difference is talked about
 WANT_LAPS = 10               # "drive 10 clean laps first"
 MAX_HISTORY = 50             # plans kept per car + track
+SHUFFLE_N = 400              # score_plan's time verdict: hit / miss labels shuffled this many times ...
+SHUFFLE_SEED = 214           # ... with a fixed seed (the same laps always give the same verdict)
+SHUFFLE_P = 0.05             # ... and a difference this rare among the shuffles counts as real
+MIN_GAIN_S = 0.03            # ... and at least this big (median through the corner) to be talked about
 
 # tolerances (how close counts as hitting the target)
 TOL_BRAKE_M = 5.0            # brake point: +/- 5 m
@@ -64,14 +75,16 @@ NEED_COAST = 0.15
 NEED_PICKUP_M = 10.0
 NEED_MIN_KMH = 2.0
 
-# which number each corner-coach rule is measured by (first that gives a usable target wins)
+# which number each corner-coach rule is measured by (first that gives a usable target wins). Only numbers the corner
+# coach tests that rule on (cornercoach.DIRECTION): a plan never aims at a number the card's test didn't look at.
 RULE_METRICS = {"brake_later": ("brake_point",), "brake_earlier": ("brake_point",), "lighter": ("peak_brake",),
-                "lock": ("peak_brake",), "trail": ("trail", "coast"), "coast": ("coast", "trail"),
-                "release": ("trail", "coast"), "throttle": ("throttle_point",), "carry": ("min_speed",),
-                "spin": ()}
+                "trail": ("trail", "coast"), "coast": ("coast",), "throttle": ("throttle_point",),
+                "carry": ("min_speed",), "lock": (), "spin": (), "release": ()}
 METRIC_KEY = {"brake_point": "brake_m", "peak_brake": "peak_pct", "trail": "trail_pct", "coast": "coast_s",
               "throttle_point": "pickup_m", "min_speed": "min_kmh", "corner_time": "t"}
 CONF_ORDER = {"clear": 0, "likely": 0, "thin": 1}
+CONF_RANK = {"unclear": 0, "thin": 1, "likely": 2, "clear": 3}
+EXPERIMENT = "Try this and see"
 
 
 # ---------------------------------------------------------------- helpers
@@ -100,6 +113,20 @@ def _nums(card, key):
     n = ((card or {}).get("numbers") or {}).get(key) or {}
     b, t = _num(n.get("best")), _num(n.get("typical"))
     return (b, t) if b is not None and t is not None else (None, None)
+
+
+def _tested(card, key) -> bool:
+    """The card's number passed the corner coach's noise gate (z >= Z_LIKELY). A card without z (old caches) is
+    taken as it is."""
+    n = ((card or {}).get("numbers") or {}).get(key) or {}
+    z = _num(n.get("z"))
+    return z is None or z >= cc.Z_LIKELY
+
+
+def _cap(conf, most):
+    """The lower of two confidences."""
+    c = conf if conf in CONF_RANK else "thin"
+    return c if CONF_RANK[c] <= CONF_RANK.get(most, 0) else most
 
 
 def _where(m: int) -> str:
@@ -143,7 +170,10 @@ def measure(plan: dict, lap_phases: dict | None):
 
 # ---------------------------------------------------------------- targets from one card
 def _target(metric: str, card: dict, T: str):
-    """The plan fields for one metric from a card's numbers, or None when they don't give a clear target."""
+    """The plan fields for one metric from a card's numbers, or None when they don't give a clear target (or the
+    number didn't pass the corner coach's noise gate)."""
+    if metric in METRIC_KEY and not _tested(card, METRIC_KEY[metric]):
+        return None
     if metric == "brake_point":
         b, t = _nums(card, "brake_m")
         if b is None:
@@ -255,7 +285,7 @@ def _base(report, kind, car=None, track=None) -> dict:
             "zone": None, "lost_s": None, "confidence": None, "evidence": None, "repeat": False, "reason": ""}
 
 
-def _from_card(report, card, metric, car=None, track=None):
+def _from_card(report, card, metric, car=None, track=None, second=False):
     T = card.get("corner") or ""
     tg = _target(metric, card, T)
     zone = _zone(report, card.get("id"))
@@ -263,11 +293,17 @@ def _from_card(report, card, metric, car=None, track=None):
         return None
     p = _base(report, "focus", car, track)
     p.update(tg)
+    conf = card.get("confidence") if card.get("confidence") in CONF_RANK else "thin"
+    if second:                                      # the card's confidence is its main rule's
+        conf = _cap(conf, "likely")
     p.update({"corner": T, "id": card.get("id"), "metric": metric, "how": card.get("how"), "why": card.get("why"),
-              "zone": zone, "lost_s": _num(card.get("lost_s")), "confidence": card.get("confidence"),
-              "evidence": card.get("evidence")})
-    p["reason"] = (f"{T} is where your typical lap loses the most time against your own best laps "
-                   f"(about {p['lost_s']:.2f} s), with a clear difference in how you drive it."
+              "zone": zone, "lost_s": _num(card.get("lost_s")), "gap_s": _num(card.get("gap_s")),
+              "confidence": conf, "evidence": card.get("evidence"), "group": card.get("group"),
+              "p_value": _num(card.get("p_value")), "experiment": False, "from_rule": "second" if second else "main"})
+    if conf == "thin":
+        p["text"] += " (from only a few laps so far)"
+    p["reason"] = (f"In {T} your best laps were about {p['lost_s']:.2f} s quicker than your typical ones, and the "
+                   f"corner coach found one clear thing they do differently."
                    if p["lost_s"] is not None else f"{T} shows the clearest difference in how you drive it.")
     return p
 
@@ -275,9 +311,9 @@ def _from_card(report, card, metric, car=None, track=None):
 def _card_plans(report, card, car=None, track=None):
     """Plans from one card, its main rule first, then its second one."""
     out = []
-    for rule in (card.get("rule"), card.get("secondary")):
+    for k, rule in enumerate((card.get("rule"), card.get("secondary"))):
         for m in RULE_METRICS.get(rule or "", ()):
-            p = _from_card(report, card, m, car, track)
+            p = _from_card(report, card, m, car, track, second=k == 1)
             if p is not None and all(q["metric"] != m for q in out):
                 out.append(p)
     return out
@@ -299,21 +335,23 @@ def _consistency(report, car=None, track=None):
         T = u.get("corner") or ""
         tgt = round(b + lost / 2.0, 2)
         p = _base(report, "consistency", car, track)
+        grp = f" ({u['group']})" if u.get("group") else ""
         p.update({"corner": T, "id": cid, "metric": "corner_time", "unit": "s", "target": tgt, "tolerance": 0.0,
                   "now": {"typical": round(t, 2), "best": round(b, 2)},
-                  "text": f"{T}: drive it the same way every lap. Your best laps take {b:.2f} s through here, a "
-                          f"typical lap {t:.2f} s",
+                  "text": f"{EXPERIMENT}: drive {T} the same way every lap. Your best laps take {b:.2f} s through "
+                          f"here, a typical lap {t:.2f} s",
                   "voice": f"{T}: same every lap",
-                  "how": "pick your braking marker, turn-in point and the place you go back to full throttle, and "
+                  "how": "Pick your braking marker, turn-in point and the place you go back to full throttle, and "
                          "use the same ones every lap. Don't try anything new here; just repeat.",
-                  "why": ("There's no single thing your best laps do differently here, so the time comes from "
-                          "doing it the same way each lap."),
+                  "why": ("The corner coach found no clear thing your best laps do differently here, so this is an "
+                          "experiment, not a known fix: see whether doing it the same way each lap helps."),
                   "check": f"We'll count laps where {T} takes {tgt:.2f} s or less",
                   "success_rule": {"key": "t", "op": "<=", "value": tgt},
-                  "zone": zone, "lost_s": lost, "confidence": "thin",
-                  "evidence": f"{u.get('best_laps')} best laps vs {u.get('typical_laps')} typical laps.",
-                  "reason": f"{T} varies the most from lap to lap (about {lost:.2f} s between your best and typical "
-                            f"laps) and no single difference explains it."})
+                  "zone": zone, "lost_s": lost, "gap_s": _num(u.get("gap_s")), "confidence": "unclear",
+                  "experiment": True, "group": u.get("group"),
+                  "evidence": f"{u.get('best_laps')} best laps vs {u.get('typical_laps')} typical laps{grp}.",
+                  "reason": f"In {T} your best laps were about {lost:.2f} s quicker than your typical ones, but there's "
+                            f"no clear pattern in what you do differently, so it may be lap-to-lap scatter."})
         return p
     return None
 
@@ -354,8 +392,13 @@ def _make_plan(report, history, car, track):
     laps = int(report.get("laps") or 0)
     if not report.get("ok") or laps < cc.MIN_LAPS:
         p = _base(report, "laps_first", car, track)
+        groups = [g for g in report.get("groups") or [] if isinstance(g, dict)]
+        n_all = sum(int(g.get("laps") or 0) for g in groups) if groups else laps
+        mixed = len(groups) > 1 and n_all >= cc.MIN_LAPS
+        p["from_laps"] = n_all
         p["text"] = (f"Drive {WANT_LAPS} clean laps first. Then Debrief can pick one thing for you to work on."
-                     + (f" So far: {laps} clean lap{'s' if laps != 1 else ''}." if laps else ""))
+                     + (f" So far: {n_all} clean lap{'s' if n_all != 1 else ''}" if n_all else "")
+                     + (", but not enough of the same kind on the same setup." if mixed else "." if n_all else ""))
         p["voice"] = None
         p["reason"] = f"the corner coach needs at least {cc.MIN_LAPS} clean laps"
         p["check"] = f"We'll count your clean laps (aim for {WANT_LAPS})."
@@ -368,14 +411,22 @@ def _make_plan(report, history, car, track):
     if last is not None and ((last["score"].get("next") or {}).get("action")) == "keep":
         card = next((c for c in cards if c.get("id") == last.get("id")), None)
         p = _from_card(report, card, last.get("metric"), car, track) if card else None
-        if p is None:
+        gone = p is None
+        if gone:
             p = {k: v for k, v in last.items() if k != "score"}
             p.update({"plan_id": uuid.uuid4().hex[:12], "made": _now(), "from_laps": laps})
+            if p.get("kind") == "focus":          # today's laps don't back it up: say so, never more sure than that
+                p["confidence"] = "unclear"
+                p["experiment"] = True
+                txt = str(p.get("text") or "").replace(" (from only a few laps so far)", "")
+                p["text"] = txt if txt.startswith(EXPERIMENT) else f"{EXPERIMENT}: {txt}"
         sc = last["score"]
         p["repeat"] = True
         p["reason"] = (f"Same focus as last time: you hit it on {sc.get('hits', 0)} of {sc.get('measured', 0)} "
                        f"laps, so it isn't a habit yet." if sc.get("measured") else
                        "Same focus as last time: there were no clean laps through this corner to score.")
+        if gone and p.get("kind") == "focus":
+            p["reason"] += " Your latest laps don't show a clear pattern here any more, so treat it as an experiment."
         return p
 
     done = _done_corners(history)
@@ -392,8 +443,8 @@ def _make_plan(report, history, car, track):
     if p is not None:
         return p
     p = _base(report, "none", car, track)
-    p["text"] = ("Every corner looks steady: no corner shows a clear thing to change. Keep driving clean laps and "
-                 "Debrief will look again.")
+    p["text"] = ("Every corner looks steady so far: no clear thing to change and no corner varies much. Drive more "
+                 "laps and Debrief will look again.")
     p["reason"] = "no corner coach card and no corner varies much from lap to lap"
     return p
 
@@ -432,8 +483,9 @@ def score_plan(plan: dict, session_laps_phases, report: dict | None = None) -> d
 
     {"plan_id", "corner", "metric", "laps", "measured", "hits", "misses", "hit_share", "per_lap": [{"lap", "file",
      "value", "hit", "t"}], "text", "time_hit", "time_miss", "gain_s", "z", "verdict": "worth" | "slower" | "unclear"
-     | "too_few" | "never" | "n/a", "verdict_text", "next": {"action": "keep" | "next", "text"}, "next_plan"
-     (with report), "scored"}"""
+     | "too_few" | "never" | "n/a", "verdict_text", "p" (shuffle test), "shuffles", "next": {"action": "keep" |
+     "next", "text"}, "next_plan" (with report), "scored"}
+    "z" is kept as None for older readers (2.14 uses the shuffle test, shuffle_test)."""
     try:
         return _score(plan or {}, list(session_laps_phases or []), report)
     except Exception as e:  # noqa: BLE001
@@ -441,6 +493,30 @@ def score_plan(plan: dict, session_laps_phases, report: dict | None = None) -> d
                 "hit_share": None, "per_lap": [], "verdict": "never",
                 "text": "Debrief couldn't score this session.", "verdict_text": f"({str(e)[:120]})",
                 "next": {"action": "keep", "text": "Keep the same focus next session."}, "scored": _now()}
+
+
+def shuffle_test(hit_times, miss_times, n: int = SHUFFLE_N, seed: int = SHUFFLE_SEED) -> dict | None:
+    """Are laps that hit the plan quicker through the corner than laps that missed? The hit / miss labels are shuffled
+    n times (fixed seed, at least 200) and each time the share of (hit lap, missed lap) pairs where the hit lap was
+    quicker is worked out (ties count half; ranks, so one slow lap can't swing it, and with 4 laps a side a 3-and-1
+    split never looks as clear as a clean one, which a difference of medians would). p = share of shuffles at least
+    as far from an even split either way (two-sided, counting the real split). gain = median of the missed laps
+    minus median of the hit laps (positive = hits quicker). None with fewer than MIN_EACH of either."""
+    a = np.asarray([v for v in (_num(x) for x in hit_times or []) if v is not None], float)
+    b = np.asarray([v for v in (_num(x) for x in miss_times or []) if v is not None], float)
+    if len(a) < MIN_EACH or len(b) < MIN_EACH:
+        return None
+    n = max(200, int(n))
+    pool = np.concatenate([a, b])
+    rng = np.random.default_rng(int(seed))
+    idx = np.vstack([np.arange(len(pool))[None, :], rng.permuted(np.tile(np.arange(len(pool)), (n, 1)), axis=1)])
+    H, M = pool[idx[:, :len(a)]], pool[idx[:, len(a):]]
+    d = M[:, None, :] - H[:, :, None]                      # > 0: the hit lap was quicker
+    auc = ((d > 0) + 0.5 * (d == 0)).mean(axis=(1, 2))
+    far = np.abs(auc - 0.5)
+    p = (1.0 + float(np.sum(far[1:] >= far[0] - 1e-12))) / (n + 1.0)
+    return {"gain": float(np.median(b) - np.median(a)), "auc": float(auc[0]), "p": p, "n": n,
+            "n_hit": int(len(a)), "n_miss": int(len(b))}
 
 
 def _score(plan, items, report):
@@ -458,7 +534,8 @@ def _score(plan, items, report):
         rows.append({"lap": lap, "file": f, "value": _fmt_val(plan, val), "hit": hit, "t": None if t is None else round(t, 3)})
     out = {"plan_id": plan.get("plan_id"), "corner": plan.get("corner"), "id": plan.get("id"),
            "metric": plan.get("metric"), "laps": len(rows), "per_lap": rows, "scored": _now(),
-           "time_hit": None, "time_miss": None, "gain_s": None, "z": None}
+           "time_hit": None, "time_miss": None, "gain_s": None, "z": None, "p": None, "shuffles": None,
+           "confidence": plan.get("confidence"), "experiment": bool(plan.get("experiment"))}
     measured = [r for r in rows if r["hit"] is not None]
     hits = [r for r in measured if r["hit"]]
     misses = [r for r in measured if not r["hit"]]
@@ -498,17 +575,24 @@ def _score(plan, items, report):
         out["verdict_text"] = (f"Not enough laps to tell yet whether it's quicker: Debrief needs at least {MIN_EACH} "
                                f"laps that hit it and {MIN_EACH} that didn't ({len(th)} and {len(tm)} this time).")
     else:
-        d = cc.diff_test(th, tm, "t")
-        out["gain_s"] = round(-d["diff"], 3)
-        out["z"] = round(d["z"], 2)
-        if d["z"] >= cc.Z_LIKELY and d["diff"] < 0:
+        d = shuffle_test(th, tm)
+        gain = d["gain"]
+        out["gain_s"] = round(gain, 3)
+        out["p"] = round(d["p"], 4)
+        out["shuffles"] = d["n"]
+        if abs(gain) < MIN_GAIN_S:
+            out["verdict"] = "unclear"
+            out["verdict_text"] = (f"No real time difference between laps that hit it and laps that didn't "
+                                   f"(under {MIN_GAIN_S:.2f} s through {T}, {len(th)} vs {len(tm)} laps); that is "
+                                   f"lap-to-lap scatter.")
+        elif d["p"] < SHUFFLE_P and gain > 0:
             out["verdict"] = "worth"
-            out["verdict_text"] = (f"It's worth about {-d['diff']:.2f} s a lap when you hit it (median time through "
-                                   f"{T}: {len(th)} laps that hit it vs {len(tm)} that didn't).")
-        elif d["z"] >= cc.Z_LIKELY:
+            out["verdict_text"] = (f"Your laps that hit it were about {gain:.2f} s quicker through {T} (median, "
+                                   f"{len(th)} laps that hit it vs {len(tm)} that didn't).")
+        elif d["p"] < SHUFFLE_P:
             out["verdict"] = "slower"
             out["verdict_text"] = (f"So far your laps that hit it were not quicker through {T} (about "
-                                   f"{d['diff']:.2f} s slower, {len(th)} vs {len(tm)} laps). It can take a few "
+                                   f"{-gain:.2f} s slower, {len(th)} vs {len(tm)} laps). It can take a few "
                                    f"sessions to feel natural.")
         else:
             out["verdict"] = "unclear"

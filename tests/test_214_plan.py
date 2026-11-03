@@ -95,7 +95,26 @@ cards = [card("C1", "spin", {"spin_share": (0.0, 0.3)}, lost=0.4),
          card("C3", "release", {"coast_s": (0.4, 0.9)}, lost=0.2),
          card("C4", "lighter", {"peak_pct": (86.0, 100.0)}, lost=0.1)]
 p = pp.make_plan(report(cards))
-check(p["id"] == "C3" and p["metric"] == "coast", "spin has no target (skipped), thin waits, release -> coast")
+check(p["id"] == "C4" and p["metric"] == "peak_brake",
+      "spin and release have no tested target (skipped), thin waits: the next card with a tested number")
+p = pp.make_plan(report([card("C3", "coast", {"coast_s": (0.4, 0.9)}, conf="clear", secondary="trail")]))
+check(p["confidence"] == "clear" and p["from_rule"] == "main" and not p["experiment"], "main rule: the card's confidence")
+c2 = card("C2", "brake_later", {"brake_m": (-138.0, -140.0), "peak_pct": (80.0, 100.0)}, conf="clear",
+          secondary="lighter")
+p = pp.make_plan(report([c2]))
+check(p["metric"] == "peak_brake" and p["confidence"] == "likely" and p["from_rule"] == "second",
+      "second rule: never more than likely")
+p = pp.make_plan(report([card("C4", "lighter", {"peak_pct": (86.0, 100.0)}, conf="thin")]))
+check(p["confidence"] == "thin" and "few laps" in p["text"], f"thin card: said in the text ({p['text']})")
+untested = card("C3", "trail", {"trail_pct": (22.7, 0.0), "coast_s": (0.6, 1.2)})
+untested["numbers"]["trail_pct"]["z"] = 1.2
+p = pp.make_plan(report([untested]))
+check(p["metric"] == "coast", "a number that didn't pass the noise gate is never a target")
+untested["numbers"]["coast_s"]["z"] = 0.5
+p = pp.make_plan(report([untested]))
+check(p["kind"] != "focus", f"no tested number: no focus plan ({p['kind']})")
+lockc = card("C4", "lock", {"peak_pct": (80.0, 100.0)})
+check(pp.make_plan(report([lockc]))["kind"] != "focus", "lock-up card: peak brake wasn't its test, no focus plan")
 p = pp.make_plan(report([card("C2", "brake_later", {"brake_m": (-125.0, -140.0)}, conf="thin")]))
 check(p["id"] == "C2", "a thin card when nothing else")
 p = pp.make_plan(report([card("C2", "brake_later", {"brake_m": (-138.0, -140.0)}, secondary="lighter")
@@ -110,11 +129,18 @@ p = pp.make_plan(report([], uncl, per_corner=pc))
 check(p["kind"] == "consistency" and p["id"] == "C3" and p["metric"] == "corner_time" and p["target"] == 9.05,
       f"no card: the most variable corner ({p['id']}, {p['target']})")
 check(p["voice"] == "T3: same every lap", "consistency voice")
+check(p["text"].startswith("Try this and see") and p["experiment"] and p["confidence"] == "unclear",
+      f"unclear corner: worded as an experiment ({p['text']})")
+check("not a known fix" in p["why"] and "scatter" in p["reason"], "experiment: why and reason say so")
 p = pp.make_plan(report([]))
 check(p["kind"] == "none" and "steady" in p["text"], "no card, nothing variable: none")
 p = pp.make_plan(report([], laps=3, ok=False))
 check(p["kind"] == "laps_first" and p["text"].startswith("Drive 10 clean laps first") and "3 clean laps" in p["text"],
       f"too few laps: {p['text']}")
+mixed = dict(report([], laps=0, ok=False), groups=[{"label": "race laps only", "laps": 5}, {"label": "practice", "laps": 4}])
+p = pp.make_plan(mixed)
+check(p["kind"] == "laps_first" and "9 clean laps" in p["text"] and "same kind" in p["text"],
+      f"laps of mixed kinds: said ({p['text']})")
 for bad in (None, {}, {"ok": True, "laps": 20, "cards": "x"}, {"ok": True, "laps": 20, "cards": [None, 3]}, 7):
     p = pp.make_plan(bad)
     check(isinstance(p, dict) and p["kind"] in ("laps_first", "none"), f"bad report {str(bad)[:30]}: no crash")
@@ -130,6 +156,8 @@ check(p["id"] == "C1" and p["repeat"] and "3 of 10" in p["reason"] and p["plan_i
 gone = pp.make_plan(report([card("C2", "brake_later", {"brake_m": (-125.0, -140.0)})]), history=[kept])
 check(gone["id"] == "C1" and gone["metric"] == "min_speed" and gone["target"] == 120,
       "keep when the card is gone: the old target is kept")
+check(gone["experiment"] and gone["confidence"] == "unclear" and gone["text"].startswith("Try this and see")
+      and "experiment" in gone["reason"], f"... but as an experiment now ({gone['text']})")
 moved = dict(first, score={"hits": 8, "measured": 10, "next": {"action": "next"}})
 p = pp.make_plan(rep, history=[moved])
 check(p["id"] == "C2" and not p["repeat"], "move on: the next card")
@@ -152,8 +180,14 @@ laps = [ph(84 + rng.normal(0, 1), 10.20 + rng.normal(0, 0.01)) for _ in range(7)
 s = pp.score_plan(plan, laps)
 check(s["hits"] == 7 and s["misses"] == 3 and s["measured"] == 10 and s["text"] == "You hit it on 7 of 10 laps.",
       f"hit/miss counts: {s['text']}")
-check(s["verdict"] == "worth" and 0.15 <= s["gain_s"] <= 0.21 and "worth about 0.1" in s["verdict_text"],
-      f"worth it: {s['verdict_text']}")
+check(s["verdict"] == "worth" and 0.15 <= s["gain_s"] <= 0.21 and "quicker through T4" in s["verdict_text"]
+      and "a lap" not in s["verdict_text"], f"worth it, no lap-time promise: {s['verdict_text']}")
+check(s["shuffles"] >= 200 and s["p"] is not None and s["p"] < pp.SHUFFLE_P, f"shuffle test: p {s['p']}, {s['shuffles']}")
+check(pp.score_plan(plan, laps)["p"] == s["p"], "fixed seed: the same laps give the same p")
+r = pp.shuffle_test([1, 1, 1], [1, 1])
+check(r is None, "shuffle test: fewer than 3 misses, no verdict")
+r = pp.shuffle_test([10.0, 10.1, 10.2, 10.3], [10.05, 10.15, 10.25, 10.35], n=50)
+check(r["n"] >= 200 and r["p"] > 0.3, f"shuffle test: at least 200 shuffles, overlapping laps not significant ({r['p']:.2f})")
 check(s["next"]["action"] == "next" and "move on" in s["next"]["text"], "70% or more: move on")
 spread = (10.22, 10.30, 10.38, 10.26, 10.34, 10.30)
 same = [ph(84, x) for x in spread[:4]] + [ph(100, x) for x in spread]

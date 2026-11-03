@@ -182,9 +182,23 @@ def ph(peak, t):
     return {"peak_pct": peak, "t": t}
 
 
+def mix(a, b):
+    """Hit and missed laps spread through the session in turn (2.14 review: laps are only compared with laps from
+    the same part of the session), the longer list's extra laps spread evenly."""
+    out, i, j = [], 0, 0
+    while i < len(a) or j < len(b):
+        if j >= len(b) or (i < len(a) and i * len(b) <= j * len(a)):
+            out.append(a[i])
+            i += 1
+        else:
+            out.append(b[j])
+            j += 1
+    return out
+
+
 rng = np.random.default_rng(5)
-laps = [ph(84 + rng.normal(0, 1), 10.20 + rng.normal(0, 0.01)) for _ in range(7)] + \
-       [ph(100, 10.38 + rng.normal(0, 0.01)) for _ in range(3)]
+laps = mix([ph(84 + rng.normal(0, 1), 10.20 + rng.normal(0, 0.01)) for _ in range(7)],
+           [ph(100, 10.38 + rng.normal(0, 0.01)) for _ in range(3)])
 s = pp.score_plan(plan, laps)
 check(s["hits"] == 7 and s["misses"] == 3 and s["measured"] == 10 and s["text"] == "You hit it on 7 of 10 laps.",
       f"hit/miss counts: {s['text']}")
@@ -198,16 +212,16 @@ r = pp.shuffle_test([10.0, 10.1, 10.2, 10.3], [10.05, 10.15, 10.25, 10.35], n=50
 check(r["n"] >= 200 and r["p"] > 0.3, f"shuffle test: at least 200 shuffles, overlapping laps not significant ({r['p']:.2f})")
 check(s["next"]["action"] == "next" and "move on" in s["next"]["text"], "70% or more: move on")
 spread = (10.22, 10.30, 10.38, 10.26, 10.34, 10.30)
-same = [ph(84, x) for x in spread[:4]] + [ph(100, x) for x in spread]
+same = mix([ph(84, x) for x in spread[:4]], [ph(100, x) for x in spread])
 s = pp.score_plan(plan, same)
 check(s["verdict"] == "unclear" and "scatter" in s["verdict_text"], f"same times: no gain claimed (noise gate): {s['verdict']}")
 check(s["next"]["action"] == "keep", "under 70%: keep the focus")
-tiny = [ph(84, 10.2 - 0.001 * k) for k in range(4)] + [ph(100, 10.21 + 0.001 * k) for k in range(4)]
+tiny = mix([ph(84, 10.2 - 0.001 * k) for k in range(4)], [ph(100, 10.21 + 0.001 * k) for k in range(4)])
 s = pp.score_plan(plan, tiny)
 check(s["verdict"] != "worth", f"0.01 s difference with no scatter is under the noise floor ({s['verdict']})")
 s = pp.score_plan(plan, [ph(84, 10.2), ph(84, 10.2), ph(100, 10.4), ph(100, 10.4), ph(100, 10.4)])
 check(s["verdict"] == "too_few" and "Not enough laps to tell yet" in s["verdict_text"], "2 hits: not enough laps")
-slow = [ph(84, 10.5 + rng.normal(0, 0.01)) for _ in range(4)] + [ph(100, 10.2 + rng.normal(0, 0.01)) for _ in range(4)]
+slow = mix([ph(84, 10.5 + rng.normal(0, 0.01)) for _ in range(6)], [ph(100, 10.2 + rng.normal(0, 0.01)) for _ in range(6)])
 s = pp.score_plan(plan, slow)
 check(s["verdict"] == "slower" and "not quicker" in s["verdict_text"], "hits slower: said honestly")
 s = pp.score_plan(plan, [])
@@ -216,7 +230,8 @@ check(s["verdict"] == "never" and "didn't get a clean lap through T4" in s["text
 s = pp.score_plan(plan, [{"lap": 3, "phases": None}, {"lap": 4, "phases": {"t": 10.0}}])
 check(s["verdict"] == "never" and s["laps"] == 2 and s["measured"] == 0, "laps where the corner couldn't be read")
 s = pp.score_plan(plan, [{"lap": 7, "file": "x.ibt", "phases": ph(80, 10.2)}])
-check(s["per_lap"][0] == {"lap": 7, "file": "x.ibt", "value": 80, "hit": True, "t": 10.2}, "per lap row")
+check(s["per_lap"][0] == {"lap": 7, "file": "x.ibt", "value": 80, "hit": True, "t": 10.2, "t_long": None},
+      "per lap row")
 bp = pp.make_plan(report([card("C2", "brake_later", {"brake_m": (-125.0, -140.0)})]))
 s = pp.score_plan(bp, [{"brake_m": -124.0, "t": 9}, {"brake_m": -140.0, "t": 9}, {"brake_m": -118.0, "t": 9},
                        {"brake_m": None, "t": 9}])

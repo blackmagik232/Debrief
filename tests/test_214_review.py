@@ -297,5 +297,70 @@ check(coach4.focus_corner is None, "no reference yet: no match")
 coach4.set_reference(ref)
 check(coach4.focus_corner is not None and coach4.focus_corner.num == target.num, "matched once a reference is set")
 
+
+# ---------------------------------------------------------------- S5: the time verdict and session drift
+print("== S5: hit and missed laps compared within runs of consecutive laps")
+rows = [{"file": "a"}] * 14 + [{"file": "b"}] * 7
+bl = pp.lap_blocks(rows)
+sizes = [bl.count(k) for k in sorted(set(bl))]
+check(sizes == [5, 5, 4, 4, 3] or all(3 <= x <= pp.BLOCK_LAPS for x in sizes), f"blocks of up to 6 laps: {sizes}")
+check(len(set(bl[:14]) & set(bl[14:])) == 0, "a new file starts a new block")
+check(pp.lap_blocks([]) == [], "no laps: no blocks")
+pk = {"kind": "focus", "metric": "peak_brake", "corner": "T4", "plan_id": "x", "target": 85, "tolerance": 3,
+      "success_rule": {"key": "peak_pct", "op": "<=", "value": 88.0}}
+
+
+def drift_rate(n, drift, nsim, effect=0.0, seed=2140):
+    rng = np.random.default_rng(seed)
+    worth = 0
+    for _ in range(nsim):
+        i = np.arange(n)
+        hit = rng.random(n) < 0.15 + 0.7 * i / (n - 1)        # he hits it more often as the session goes on
+        t = 9.0 + drift * i + rng.normal(0, 0.05, n) - effect * hit
+        items = [{"lap": k + 1, "file": "s.ibt", "phases": {"peak_pct": 84.0 if h else 95.0, "t": float(x)}}
+                 for k, (h, x) in enumerate(zip(hit, t))]
+        worth += pp.score_plan(pk, items)["verdict"] == "worth"
+    return worth / nsim
+
+
+for n, drift in ((12, -0.02), (20, -0.02), (20, -0.03)):
+    r = drift_rate(n, drift, 300)
+    check(r <= 0.05, f"{n} laps getting {-drift:.2f} s quicker each lap, no real effect: 'quicker' in {100 * r:.1f}% "
+                     f"of sessions (at most 5%)")
+r = drift_rate(20, 0.0, 200, effect=0.10)
+check(r >= 0.5, f"a real 0.10 s effect over 20 laps is still found ({100 * r:.0f}% of sessions)")
+# the first 7 laps all hit, the last 3 all miss: the same part of the session never has both
+early = [{"peak_pct": 84.0, "t": 10.2}] * 7 + [{"peak_pct": 99.0, "t": 10.4}] * 3
+sc = pp.score_plan(pk, early)
+check(sc["verdict"] == "too_few" and "same part of the session" in sc["verdict_text"],
+      f"hits all early, misses all late: not compared ({sc['verdict_text']})")
+
+print("== S5: min speed timed past the exit, corner time without the circular sentence")
+ms = {"kind": "focus", "metric": "min_speed", "corner": "T3", "plan_id": "m", "target": 120, "tolerance": 2,
+      "success_rule": {"key": "min_kmh", "op": ">=", "value": 118.0}}
+rng = np.random.default_rng(9)
+items = []
+for k in range(12):
+    hit = k % 2 == 0
+    t = 8.0 - (0.15 if hit else 0.0) + rng.normal(0, 0.01)     # quicker through the corner zone ...
+    tl = 14.0 + (0.10 if hit else 0.0) + rng.normal(0, 0.01)   # ... but slower by 150 m past it
+    items.append({"lap": k + 1, "file": "s.ibt", "phases": {"min_kmh": 121.0 if hit else 115.0, "t": t, "t_long": tl}})
+sc = pp.score_plan(ms, items)
+check(sc["verdict"] == "slower" and "150 m past it" in sc["verdict_text"] and sc["timed"] == "long",
+      f"min speed: judged to 150 m past the corner ({sc['verdict']}: {sc['verdict_text']})")
+sc = pp.score_plan(ms, [dict(x, phases={k: v for k, v in x["phases"].items() if k != "t_long"}) for x in items])
+check(sc["verdict"] == "too_few", "min speed without the longer time: no verdict")
+ct = {"kind": "consistency", "metric": "corner_time", "corner": "T5", "plan_id": "c", "target": 8.9, "tolerance": 0.0,
+      "now": {"typical": 9.05, "best": 8.8}, "success_rule": {"key": "t", "op": "<=", "value": 8.9}}
+sc = pp.score_plan(ct, [{"t": 8.85}, {"t": 8.95}, {"t": 8.80}, {"t": 9.1}])
+check(sc["verdict"] == "n/a" and "laps that hit it took" not in sc["verdict_text"] and
+      sc["verdict_text"] == "Median through T5 this session: 8.90 s, against your typical 9.05 s before.",
+      f"corner time: the session's median against the typical time ({sc['verdict_text']})")
+laps1, _ = cc.load_laps([fA])
+plan_ms = {"zone": {k: CF[2][k] for k in ("id", "apex_m", "start_m", "end_m")}}
+sp = pp.session_phases(laps1, plan_ms)
+tl = [x["phases"]["t_long"] for x in sp if x["phases"]]
+check(tl and all(t_ > x["phases"]["t"] for t_, x in zip(tl, sp)), "session laps carry the time to 150 m past the corner")
+
 print(f"\n{'all passed' if not fails else str(fails) + ' FAILED'}")
 sys.exit(1 if fails else 0)

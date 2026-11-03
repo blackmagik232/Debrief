@@ -31,8 +31,12 @@ Honesty rules (2.14, after the 2.13 corner coach review):
     ("Try this and see"), confidence "unclear", experiment True. A kept focus whose card is gone today is
     marked the same way.
   - a time difference between laps that hit and laps that missed is only talked about with >= MIN_EACH of each
-    AND a shuffle test (hit / miss labels shuffled SHUFFLE_N times, fixed seed): p < SHUFFLE_P. It describes
-    those laps; it never promises lap time. Otherwise "not enough laps to tell yet" / "no clear difference".
+    in runs of BLOCK_LAPS consecutive laps that have both, AND a shuffle test within those runs (labels shuffled
+    SHUFFLE_N times, fixed seed): p < SHUFFLE_P. Laps are only compared with laps from the same part of the session,
+    so drift over the session cancels. Min speed plans are timed from the corner's start to LONG_M past its end;
+    corner time plans get no hit-vs-miss verdict (a hit IS a quicker pass), only the session's median against the
+    typical time before. It describes those laps; it never promises lap time. Otherwise "not enough laps to tell yet"
+    / "no clear difference".
 Nothing here raises for bad input; corrupt plan files are set aside (renamed .bad) and never stop anything.
 """
 from __future__ import annotations
@@ -58,6 +62,11 @@ SHUFFLE_N = 400              # score_plan's time verdict: hit / miss labels shuf
 SHUFFLE_SEED = 214           # ... with a fixed seed (the same laps always give the same verdict)
 SHUFFLE_P = 0.05             # ... and a difference this rare among the shuffles counts as real
 MIN_GAIN_S = 0.03            # ... and at least this big (median through the corner) to be talked about
+BLOCK_LAPS = 6               # 2.14 review: hit and missed laps are only compared within runs of this many consecutive
+                             # laps (and shuffled only within them), so the session getting quicker (track, fuel)
+                             # while he hits it more often doesn't look like the plan working
+LONG_M = 150.0               # min speed plans: time from the corner's start to this far past its end (carrying
+                             # more speed can cost the exit, so the corner zone alone isn't the whole story)
 
 # tolerances (how close counts as hitting the target)
 TOL_BRAKE_M = 5.0            # brake point: +/- 5 m
@@ -472,9 +481,23 @@ def session_phases(laps, plan) -> list:
         med = float(np.median([x["time"] for x in laps]))
         laps = [x for x in laps if x["time"] <= med * cc.OFFPACE_FRAC]
     for x in laps:
-        out.append({"file": x.get("file"), "lap": x.get("lap"), "time": _num(x.get("time")),
-                    "phases": cc.phases(x["R"], zone)})
+        ph = cc.phases(x["R"], zone)
+        if isinstance(ph, dict):
+            ph["t_long"] = _long_time(x["R"], zone)
+        out.append({"file": x.get("file"), "lap": x.get("lap"), "time": _num(x.get("time")), "phases": ph})
     return out
+
+
+def _long_time(R, zone):
+    """Time from the corner zone's start to LONG_M past its end (s), or None."""
+    try:
+        X = cc._loop(R)
+        a0, a1 = float(zone["start_m"]), float(zone["end_m"]) + LONG_M
+        if a1 > float(X["d"][-1]):
+            return None
+        return float(np.interp(a1, X["d"], X["tt"]) - np.interp(a0, X["d"], X["tt"]))
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _fmt_val(plan, v):
@@ -529,6 +552,65 @@ def shuffle_test(hit_times, miss_times, n: int = SHUFFLE_N, seed: int = SHUFFLE_
             "n_hit": int(len(a)), "n_miss": int(len(b))}
 
 
+def lap_blocks(rows) -> list:
+    """A block number for each row (in session order): rows of one file are cut into runs of about BLOCK_LAPS
+    consecutive laps (5 or 6 at most, as even as possible); a new file starts a new block."""
+    out, start, nb = [], 0, 0
+    rows = list(rows)
+    while start < len(rows):
+        end = start
+        while end < len(rows) and rows[end].get("file") == rows[start].get("file"):
+            end += 1
+        n = end - start
+        k = max(1, int(math.ceil(n / float(BLOCK_LAPS))))
+        for part in np.array_split(np.arange(n), k):
+            out += [nb] * len(part)
+            nb += 1
+        start = end
+    return out
+
+
+def block_test(times, hits, blocks, n: int = SHUFFLE_N, seed: int = SHUFFLE_SEED) -> dict:
+    """shuffle_test within blocks of consecutive laps: only (hit lap, missed lap) pairs from the same block are
+    compared (ties count half), and the labels are shuffled only within each block, so a session that gets quicker
+    while he hits the plan more often can't make it look like it works. {"n_hit", "n_miss"} (laps in blocks that
+    have both) always; with >= MIN_EACH of each also "gain" (median of the paired differences, missed minus hit:
+    positive = hits quicker), "auc", "p" (two-sided), "n" (shuffles)."""
+    t = np.asarray([_num(x) for x in times], dtype=float)
+    h = np.asarray([bool(x) for x in hits])
+    b = np.asarray(blocks)
+    ok = np.isfinite(t)
+    groups = []
+    for blk in dict.fromkeys(b[ok].tolist()):
+        m = ok & (b == blk)
+        th, tm = t[m & h], t[m & ~h]
+        if len(th) and len(tm):
+            groups.append((np.concatenate([th, tm]), len(th)))
+    n_hit = sum(k for _g, k in groups)
+    n_miss = sum(len(g) - k for g, k in groups)
+    out = {"n_hit": int(n_hit), "n_miss": int(n_miss)}
+    if n_hit < MIN_EACH or n_miss < MIN_EACH:
+        return out
+    n = max(200, int(n))
+    rng = np.random.default_rng(int(seed))
+    wins = np.zeros(n + 1)
+    pairs = 0
+    diffs = []
+    for g, k in groups:
+        m = len(g)
+        idx = np.vstack([np.arange(m)[None, :], rng.permuted(np.tile(np.arange(m), (n, 1)), axis=1)])
+        H, M = g[idx[:, :k]], g[idx[:, k:]]
+        d = M[:, None, :] - H[:, :, None]                  # > 0: the hit lap was quicker
+        wins += ((d > 0) + 0.5 * (d == 0)).sum(axis=(1, 2))
+        pairs += k * (m - k)
+        diffs += (g[k:][None, :] - g[:k][:, None]).ravel().tolist()
+    auc = wins / pairs
+    far = np.abs(auc - 0.5)
+    p = (1.0 + float(np.sum(far[1:] >= far[0] - 1e-12))) / (n + 1.0)
+    out.update({"gain": float(np.median(diffs)), "auc": float(auc[0]), "p": p, "n": n})
+    return out
+
+
 def _score(plan, items, report):
     T = plan.get("corner") or "that corner"
     rows = []
@@ -541,7 +623,9 @@ def _score(plan, items, report):
             lap = tag[1] if isinstance(tag, (list, tuple)) and len(tag) == 2 else k + 1
         val, hit = measure(plan, ph) if isinstance(ph, dict) else (None, None)
         t = _num((ph or {}).get("t")) if isinstance(ph, dict) else None
-        rows.append({"lap": lap, "file": f, "value": _fmt_val(plan, val), "hit": hit, "t": None if t is None else round(t, 3)})
+        tl = _num((ph or {}).get("t_long")) if isinstance(ph, dict) else None
+        rows.append({"lap": lap, "file": f, "value": _fmt_val(plan, val), "hit": hit, "t": None if t is None else round(t, 3),
+                     "t_long": None if tl is None else round(tl, 3)})
     out = {"plan_id": plan.get("plan_id"), "corner": plan.get("corner"), "id": plan.get("id"),
            "metric": plan.get("metric"), "laps": len(rows), "per_lap": rows, "scored": _now(),
            "time_hit": None, "time_miss": None, "gain_s": None, "z": None, "p": None, "shuffles": None,
@@ -571,43 +655,53 @@ def _score(plan, items, report):
         out["next"] = {"action": "keep", "text": f"Keep the same focus next session. {plan.get('text')}."}
         return _with_next_plan(out, plan, report)
     out["text"] = f"You hit it on {len(hits)} of {len(measured)} lap{'s' if len(measured) != 1 else ''}."
-    th = [r["t"] for r in hits if r["t"] is not None]
-    tm = [r["t"] for r in misses if r["t"] is not None]
+    long_ = plan.get("metric") == "min_speed"           # timed to LONG_M past the corner (see the module text)
+    tkey = "t_long" if long_ else "t"
+    where = f"from the start of {T} to {LONG_M:.0f} m past it" if long_ else f"through {T}"
+    th = [r[tkey] for r in hits if r[tkey] is not None]
+    tm = [r[tkey] for r in misses if r[tkey] is not None]
     out["time_hit"] = round(float(np.median(th)), 3) if th else None
     out["time_miss"] = round(float(np.median(tm)), 3) if tm else None
+    out["timed"] = "long" if long_ else "corner"
     if plan.get("metric") == "corner_time":
+        # a hit IS a quicker pass, so hit-vs-miss times say nothing: the session against the typical time before
         out["verdict"] = "n/a"
-        out["verdict_text"] = (f"Through {T} your laps that hit it took {out['time_hit']:.2f} s (median)"
-                               + (f", the others {out['time_miss']:.2f} s." if out["time_miss"] is not None else ".")
-                               if out["time_hit"] is not None else "")
-    elif len(th) < MIN_EACH or len(tm) < MIN_EACH:
-        out["verdict"] = "too_few"
-        out["verdict_text"] = (f"Not enough laps to tell yet whether it's quicker: Debrief needs at least {MIN_EACH} "
-                               f"laps that hit it and {MIN_EACH} that didn't ({len(th)} and {len(tm)} this time).")
+        ts = [r["t"] for r in measured if r["t"] is not None]
+        typ = _num((plan.get("now") or {}).get("typical"))
+        out["verdict_text"] = (f"Median through {T} this session: {float(np.median(ts)):.2f} s, against your typical "
+                               f"{typ:.2f} s before." if ts and typ is not None else "")
     else:
-        d = shuffle_test(th, tm)
-        gain = d["gain"]
-        out["gain_s"] = round(gain, 3)
-        out["p"] = round(d["p"], 4)
-        out["shuffles"] = d["n"]
-        if abs(gain) < MIN_GAIN_S:
-            out["verdict"] = "unclear"
-            out["verdict_text"] = (f"No real time difference between laps that hit it and laps that didn't "
-                                   f"(under {MIN_GAIN_S:.2f} s through {T}, {len(th)} vs {len(tm)} laps); that is "
-                                   f"lap-to-lap scatter.")
-        elif d["p"] < SHUFFLE_P and gain > 0:
-            out["verdict"] = "worth"
-            out["verdict_text"] = (f"Your laps that hit it were about {gain:.2f} s quicker through {T} (median, "
-                                   f"{len(th)} laps that hit it vs {len(tm)} that didn't).")
-        elif d["p"] < SHUFFLE_P:
-            out["verdict"] = "slower"
-            out["verdict_text"] = (f"So far your laps that hit it were not quicker through {T} (about "
-                                   f"{-gain:.2f} s slower, {len(th)} vs {len(tm)} laps). It can take a few "
-                                   f"sessions to feel natural.")
+        mm = [r for r in measured if r[tkey] is not None]
+        d = block_test([r[tkey] for r in mm], [r["hit"] for r in mm], lap_blocks(mm))
+        nh, nm = d["n_hit"], d["n_miss"]
+        if "p" not in d:
+            out["verdict"] = "too_few"
+            out["verdict_text"] = (f"Not enough laps to tell yet whether it's quicker: Debrief compares laps that hit it "
+                                   f"with laps that didn't from the same part of the session, and needs at least "
+                                   f"{MIN_EACH} of each ({nh} and {nm} this time).")
         else:
-            out["verdict"] = "unclear"
-            out["verdict_text"] = (f"No clear time difference yet between laps that hit it and laps that didn't "
-                                   f"({len(th)} vs {len(tm)} laps); the gap is within the lap-to-lap scatter.")
+            gain = d["gain"]
+            out["gain_s"] = round(gain, 3)
+            out["p"] = round(d["p"], 4)
+            out["shuffles"] = d["n"]
+            if abs(gain) < MIN_GAIN_S:
+                out["verdict"] = "unclear"
+                out["verdict_text"] = (f"No real time difference between laps that hit it and laps that didn't "
+                                       f"(under {MIN_GAIN_S:.2f} s {where}, {nh} vs {nm} laps); that is lap-to-lap "
+                                       f"scatter.")
+            elif d["p"] < SHUFFLE_P and gain > 0:
+                out["verdict"] = "worth"
+                out["verdict_text"] = (f"Your laps that hit it were about {gain:.2f} s quicker {where} than laps that "
+                                       f"didn't from the same part of the session ({nh} laps that hit it, {nm} that "
+                                       f"didn't).")
+            elif d["p"] < SHUFFLE_P:
+                out["verdict"] = "slower"
+                out["verdict_text"] = (f"So far your laps that hit it were not quicker {where} (about {-gain:.2f} s "
+                                       f"slower, {nh} vs {nm} laps). It can take a few sessions to feel natural.")
+            else:
+                out["verdict"] = "unclear"
+                out["verdict_text"] = (f"No clear time difference yet between laps that hit it and laps that didn't "
+                                       f"({nh} vs {nm} laps); the gap is within the lap-to-lap scatter.")
     share = len(hits) / len(measured)
     if share < KEEP_BELOW:
         out["next"] = {"action": "keep",

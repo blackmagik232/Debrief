@@ -20,9 +20,12 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 
 from . import fsutil
+
+_LOCK = threading.Lock()                   # mark(): one read-change-write of the state file at a time
 
 STATE_FILE = "firstrun.json"
 SETUPLAB_CACHE = "setuplab-index.json"     # the server's SETUPLAB_CACHE, in the cache folder
@@ -113,9 +116,10 @@ def mark(name: str, path=None, value: bool = True) -> bool:
     """Remember a flag ("voice_tested", "dismissed"). False when it can't be saved."""
     if name not in ("voice_tested", "dismissed"):
         return False
-    d = load_state(path)
-    d[name] = bool(value)
-    return _save_state(d, path)
+    with _LOCK:                            # two flags set at once (Test voice and Hide) both stay set
+        d = load_state(path)
+        d[name] = bool(value)
+        return _save_state(d, path)
 
 
 def dismiss(path=None) -> bool:

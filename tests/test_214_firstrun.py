@@ -107,5 +107,21 @@ check(fr.mark("voice_tested", path=own / "fr.json") and fr.load_state(own / "fr.
 f = fr.gather(raw_settings={}, cache_file=TMP / "none.json", state_path=own / "fr.json", folder=TMP / "missing")
 check(f["voice_tested"] and not f["folder"] and f["files"] == 0, "explicit inputs")
 
+# 2.14 review N7: two flags set at the same moment both stay set
+import threading  # noqa: E402
+
+lost = 0
+for k in range(30):
+    sp = TMP / "race" / f"fr{k}.json"
+    a = threading.Thread(target=fr.mark, args=("voice_tested",), kwargs={"path": sp})
+    b = threading.Thread(target=fr.mark, args=("dismissed",), kwargs={"path": sp})
+    a.start()
+    b.start()
+    a.join()
+    b.join()
+    st_ = fr.load_state(sp)
+    lost += not (st_.get("voice_tested") and st_.get("dismissed"))
+check(lost == 0, f"marks made at the same moment are both kept ({lost} of 30 lost)")
+
 print(f"\n{'all passed' if not fails else str(fails) + ' FAILED'}")
 sys.exit(1 if fails else 0)

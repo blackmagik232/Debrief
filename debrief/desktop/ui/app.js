@@ -1753,7 +1753,8 @@ function coPlanShow(on){co.planHide=!on;if(co.planRep)$('coPlan').hidden=!on}
 /* ---------- Practice loop (2.14): one thing this session, scored afterwards, watched by the coach */
 let pt={j:null,combo:null,seq:0};
 const FOCUS_KINDS=['focus','consistency'];
-const PT_CONF=Object.assign({},CC_CONF,{unclear:['Experiment','no','No clear pattern in your laps here: try it and see whether it helps']});
+// the plan's pill reads as a label, not a button ("Clear" looked like one): Clear pattern, Likely, Few laps, Experiment
+const PT_CONF=Object.assign({},CC_CONF,{clear:['Clear pattern','ok',CC_CONF.clear[2]],unclear:['Experiment','no','No clear pattern in your laps here: try it and see whether it helps']});
 // "T4" -> "Turn 4" in window text (the spoken name stays T4 in the coach's own phrases)
 const turnWords=t=>String(t||'').replace(/\bT(\d+)\b/g,'Turn $1');
 const VERDICT_PILL={worth:['Quicker','ok'],slower:['Not quicker yet','no'],unclear:['No clear difference',''],too_few:['Too few laps to tell',''],never:['Not measured','no']};

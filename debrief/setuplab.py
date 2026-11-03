@@ -58,8 +58,10 @@ TRAFFIC_SIDE = 0.10            # a lap with a car alongside (CarLeftRight not cl
 MAX_TEMP_GAP = 6.0             # deg C of track surface temperature: more and the comparison is confounded
 MAX_FUEL_GAP = 15.0            # litres of average fuel load: more and the comparison is confounded
 MIN_DIFF = 0.10                # s a lap: a smaller gap is never called a difference
-BOOT_N = 2000                  # bootstrap resamples for the 90% interval of the median difference
+BOOT_N = 2000                  # bootstrap resamples for the interval of the median difference
 BOOT_SEED = 212
+BLOCK_STINTS = 3               # with this many stints on each setup, whole stints are resampled (block bootstrap)
+SMALL_N = 10                   # fewer counted laps than this on a setup: a 95% interval instead of 90%
 MAX_MORE_LAPS = 60             # beyond this "more laps would tell" is not a useful answer
 
 # Tyre temperature targets for GT cars (carcass temps at a pit stop, stint of >= 5 laps): the inner edge hotter than
@@ -725,14 +727,28 @@ def _fmt_s(x: float) -> str:
     return f"{x:.1f}" if x >= 0.095 else f"{x:.2f}"
 
 
-def _boot_ci(ta: list, tb: list) -> tuple[float, float]:
-    """90% bootstrap interval of median(a) - median(b) (fixed seed, so the same laps always give the same answer)."""
+def _boot_ci(ta: list, tb: list, sa: list | None = None, sb: list | None = None) -> tuple[float, float, int, str]:
+    """Bootstrap interval of median(a) - median(b) (fixed seed, so the same laps always give the same answer).
+
+    sa / sb: the same laps grouped by stint. When each setup has at least BLOCK_STINTS stints, whole stints are
+    resampled (a block bootstrap: laps in one stint share its fuel, tyres and rubber, so they are not independent)
+    and the interval is 90%. Otherwise laps are resampled, and with fewer than SMALL_N laps on either setup the
+    interval is widened to 95%. Returns (lo, hi, level %, "stints" | "laps")."""
     rng = np.random.default_rng(BOOT_SEED)
-    a, b = np.asarray(ta, float), np.asarray(tb, float)
-    ma = np.median(a[rng.integers(0, len(a), (BOOT_N, len(a)))], axis=1)
-    mb = np.median(b[rng.integers(0, len(b), (BOOT_N, len(b)))], axis=1)
-    lo, hi = np.percentile(ma - mb, [5, 95])
-    return float(lo), float(hi)
+    if sa and sb and len(sa) >= BLOCK_STINTS and len(sb) >= BLOCK_STINTS:
+        def meds(stints):
+            arrs = [np.asarray(x, float) for x in stints]
+            pick = rng.integers(0, len(arrs), (BOOT_N, len(arrs)))
+            return np.array([np.median(np.concatenate([arrs[j] for j in row])) for row in pick])
+        ma, mb, level, how = meds(sa), meds(sb), 90, "stints"
+    else:
+        a, b = np.asarray(ta, float), np.asarray(tb, float)
+        ma = np.median(a[rng.integers(0, len(a), (BOOT_N, len(a)))], axis=1)
+        mb = np.median(b[rng.integers(0, len(b), (BOOT_N, len(b)))], axis=1)
+        level, how = (95 if min(len(a), len(b)) < SMALL_N else 90), "laps"
+    tail = (100 - level) / 2
+    lo, hi = np.percentile(ma - mb, [tail, 100 - tail])
+    return float(lo), float(hi), level, how
 
 
 def _more_laps(ta: list, tb: list, d: float) -> int:
@@ -746,10 +762,60 @@ def _more_laps(ta: list, tb: list, d: float) -> int:
     return max(1, int(np.ceil(need - min(len(ta), len(tb)))))
 
 
-def _pair(a: dict, b: dict) -> dict:
+def lap_trend(stints: list) -> dict | None:
+    """How lap times moved within a run: a Theil-Sen slope (median of every pairwise slope inside each stint,
+    pooled over stints, so the gaps between stints and days never count) with Sen's 90% interval from Kendall's
+    S. stints: [(xs, ys)], xs = lap order, ys = lap times; stints under 3 laps are skipped.
+    Returns {"slope", "lo", "hi" (s per lap; negative = getting quicker), "stints", "pairs"} or None."""
+    slopes, var, used = [], 0.0, 0
+    for xs, ys in stints:
+        n = len(xs)
+        if n < 3:
+            continue
+        used += 1
+        var += n * (n - 1) * (2 * n + 5) / 18.0
+        for i in range(n):
+            for j in range(i + 1, n):
+                if xs[j] != xs[i]:
+                    slopes.append((ys[j] - ys[i]) / (xs[j] - xs[i]))
+    if len(slopes) < 3:
+        return None
+    slopes.sort()
+    N = len(slopes)
+    c = 1.645 * float(np.sqrt(var))
+    lo_i, hi_i = max(0, int(np.floor((N - c) / 2))), min(N - 1, int(np.ceil((N + c) / 2)))
+    return {"slope": round(float(np.median(slopes)), 4), "lo": round(slopes[lo_i], 4), "hi": round(slopes[hi_i], 4),
+            "stints": used, "pairs": N}
+
+
+def _lap_order(recs: list) -> dict:
+    """Every timed lap of this car + track numbered in the order he drove them: {(file, lap): n}."""
+    xmap, k = {}, 0
+    for r in sorted(recs, key=lambda r: (r.get("sort") or 0, r["file"])):
+        for x in ((r.get("detail") or {}).get("laps") or []):
+            if x.get("time"):
+                xmap[(r["file"], x["lap"])] = k
+                k += 1
+    return xmap
+
+
+def interleaved(a_id: str, b_id: str, recs: list, files_with_pace: set) -> bool:
+    """Driven A, B, A (or B, A, B) in time: going back to the first setup cancels his own improvement and the track
+    rubbering in. Only files that gave counted laps take part."""
+    run = []
+    for r in sorted(recs, key=lambda r: (r.get("sort") or 0, r["file"])):
+        sid = r.get("setup_id")
+        if sid in (a_id, b_id) and r["file"] in files_with_pace and (not run or run[-1] != sid):
+            run.append(sid)
+    return len(run) >= 3
+
+
+def _pair(a: dict, b: dict, ctx: dict | None = None) -> dict:
     pa, pb = a["pace"], b["pace"]
+    ctx = ctx or {}
     out = {"a": a["id"], "b": b["id"], "verdict": "not enough to tell", "faster": None, "diff_s": None,
-           "ci90": None, "more_laps": None, "comparable": True, "confounders": [], "missing": [], "text": ""}
+           "ci90": None, "ci": None, "ci_level": None, "more_laps": None, "comparable": True, "confounders": [],
+           "missing": [], "interleaved": None, "trend": None, "drift_s": None, "caution": None, "text": ""}
     out["missing"] = a["missing"] + b["missing"]
     if pa["median"] is not None and pb["median"] is not None:
         out["diff_s"] = round(pa["median"] - pb["median"], 3)        # > 0: b is faster
@@ -768,35 +834,68 @@ def _pair(a: dict, b: dict) -> dict:
             out["confounders"].append(f"{s['label']} was driven on a {s['pace']['track_state']} track")
     out["comparable"] = not out["confounders"]
     if out["missing"]:
-        out["text"] = (f"{a['label']} vs {b['label']}: not enough to tell yet - " + "; ".join(out["missing"])
+        out["text"] = (f"{a['label']} vs {b['label']}: not enough to tell yet. " + _cap("; ".join(out["missing"]))
                        + (". Also, " + "; ".join(out["confounders"]) if out["confounders"] else "") + ".")
         return out
     if out["confounders"]:
         out["verdict"] = "confounded"
         out["text"] = (f"{a['label']} vs {b['label']} can't be compared fairly: " + "; ".join(out["confounders"])
-                       + ". The lap times are shown but not adjusted - drive both in similar conditions.")
+                       + ". The lap times are shown but not adjusted. Drive both in similar conditions.")
         return out
     d = out["diff_s"]
-    lo, hi = _boot_ci(pa["times"], pb["times"])
-    out["ci90"] = [round(lo, 3), round(hi, 3)]
-    if (lo > 0 or hi < 0) and abs(d) >= MIN_DIFF:
-        fast, slow = (b, a) if d > 0 else (a, b)
+    lo, hi, level, how = _boot_ci(pa["times"], pb["times"], a.get("_stints"), b.get("_stints"))
+    out["ci"], out["ci_level"], out["ci_method"] = [round(lo, 3), round(hi, 3)], level, how
+    out["ci90"] = out["ci"]                    # kept for older readers: the interval used, at ci_level %
+    # driving order: was one setup simply driven later, while he was getting quicker?
+    xa, xb = a.get("_x") or [], b.get("_x") or []
+    later = None
+    if xa and xb:
+        later = b if float(np.median(xb)) > float(np.median(xa)) else a
+    out["interleaved"] = bool(ctx.get("interleaved"))
+    trend = lap_trend((a.get("_trend") or []) + (b.get("_trend") or []))
+    out["trend"] = trend
+    real = lo > 0 or hi < 0
+    fast, slow = ((b, a) if d > 0 else (a, b)) if d else (None, None)
+    if real and fast is not None and later is fast and not out["interleaved"]:
+        gap_laps = abs(float(np.median(xb)) - float(np.median(xa)))
+        quicker = -trend["hi"] if trend and trend["hi"] < 0 else 0.0     # the cautious end of the interval
+        drift = quicker * gap_laps
+        out["drift_s"] = round(drift, 3)
+        if drift >= 0.5 * abs(d):
+            out["verdict"] = "confounded"
+            out["comparable"] = False
+            why = (f"you were getting quicker as you drove (about {quicker:.2f} s a lap within each run, so about "
+                   f"{drift:.1f} s over the {gap_laps:.0f} laps between the two setups)")
+            out["confounders"].append(why)
+            out["text"] = (f"{a['label']} vs {b['label']} can't be compared fairly yet: {fast['label']} looked "
+                           f"{_fmt_s(abs(d))} s a lap quicker, but {why}, which could explain at least half of it. "
+                           f"Go back to {slow['label']} for a few laps to be sure.")
+            return out
+        out["caution"] = (f"{fast['label']} was also driven later, so part of this may be you getting quicker. "
+                          f"Go back to {slow['label']} for a few laps to be sure.")
+    if real and abs(d) >= MIN_DIFF:
         out["verdict"] = "faster"
         out["faster"] = fast["id"]
         out["text"] = (f"{fast['label']} was faster than {slow['label']} by about {_fmt_s(abs(d))} s a lap "
                        f"(typical clean lap {fast['pace']['median']:.2f} vs {slow['pace']['median']:.2f} s, "
-                       f"{fast['pace']['clean_laps']} and {slow['pace']['clean_laps']} clean laps).")
+                       f"{fast['pace']['clean_laps']} and {slow['pace']['clean_laps']} clean laps)."
+                       + (" " + out["caution"] if out["caution"] else ""))
         return out
     out["verdict"] = "no clear difference"
+    out["caution"] = None
+    gap = f"typical laps {pa['median']:.2f} vs {pb['median']:.2f} s"
+    if real:
+        out["text"] = (f"{fast['label']} was about {_fmt_s(abs(d))} s a lap quicker than {slow['label']}: smaller than "
+                       f"the {MIN_DIFF:.1f} s Debrief counts as a real difference.")
+        return out
     n = _more_laps(pa["times"], pb["times"], d)
     out["more_laps"] = n
-    gap = f"typical laps {pa['median']:.2f} vs {pb['median']:.2f} s"
     if n > MAX_MORE_LAPS:
         out["text"] = (f"No clear difference between {a['label']} and {b['label']} ({gap}): they are so close it would "
                        f"take more than {MAX_MORE_LAPS} more clean laps on each to tell them apart.")
     else:
-        out["text"] = (f"No clear difference yet between {a['label']} and {b['label']} ({gap}) - about {n} more clean "
-                       f"lap{'s' if n != 1 else ''} on each would tell.")
+        out["text"] = (f"No clear difference yet between {a['label']} and {b['label']} ({gap}): if the gap is real, "
+                       f"about {n} more clean lap{'s' if n != 1 else ''} on each would show it.")
     return out
 
 
@@ -804,25 +903,48 @@ def compare(runs, setups: list | None = None) -> dict:
     """Pace per setup for one car + track, with the evidence gate.
 
     runs: the index records for one car + track (group() is run on them unless `setups` from group() is given).
-    A setup needs 5 counted laps (pace_laps()). A winner is named only when the 90% bootstrap interval of the
-    difference of medians excludes zero and the gap is at least 0.1 s. Very different track temperature or fuel, or
-    a damp/wet track, makes the pair "confounded" (said, never adjusted).
+    A setup needs 5 counted laps (pace_laps()). A winner is named only when the bootstrap interval of the
+    difference of medians excludes zero (whole stints resampled when each setup has 3+ stints; 95% instead of 90%
+    with under 10 laps) and the gap is at least 0.1 s. Very different track temperature or fuel, or a damp/wet
+    track, makes the pair "confounded" (said, never adjusted). So does driving order: when the quicker setup was
+    simply driven later (not A, B, A) and his own within-run improvement (lap_trend) over the laps between them
+    could explain at least half the gap; a smaller drift still adds a caution to a "faster" verdict.
     Returns {"setups": [{"id", "label", "pace": {...}, "enough": bool, "missing": [...]}],
              "pairs": [{"a", "b", "verdict" ("faster" | "no clear difference" | "not enough to tell" | "confounded"),
-                        "faster", "diff_s" (a median - b median), "ci90" [lo, hi], "more_laps", "comparable",
-                        "confounders", "missing", "text"}],
+                        "faster", "diff_s" (a median - b median), "ci" [lo, hi], "ci_level" (90 | 95), "ci90"
+                        (same as ci), "more_laps", "comparable", "confounders", "missing", "interleaved", "trend",
+                        "drift_s", "caution", "text"}],
              "verdict": plain sentences}. Pairs are consecutive setups (A vs B, B vs C)."""
     recs = list(runs)
     g = {"setups": setups} if setups is not None else group(recs)
-    rows = []
+    xmap = _lap_order(recs)
+    rows, pace_files = [], {}
     for s in g["setups"]:
         if not s["fingerprint"]:
             continue
         mine = [r for r in recs if r.get("setup_id") == s["id"]]
         p = _setup_pace(mine)
         miss = _gate(p, s["label"])
-        rows.append({"id": s["id"], "label": s["label"], "pace": p, "enough": not miss, "missing": miss})
-    pairs = [_pair(rows[i], rows[i + 1]) for i in range(len(rows) - 1)]
+        keep, _d = pace_laps(mine)
+        by_stint = {}
+        for f, x in keep:
+            by_stint.setdefault((f, x["stint"]), []).append(x)
+        trend = []
+        for (f, _st), xs in by_stint.items():
+            pts = sorted((xmap[(f, x["lap"])], x["time"]) for x in xs if (f, x["lap"]) in xmap)
+            trend.append(([q for q, _t in pts], [t for _q, t in pts]))
+        pace_files[s["id"]] = {f for f, _x in keep}
+        rows.append({"id": s["id"], "label": s["label"], "pace": p, "enough": not miss, "missing": miss,
+                     "_x": [xmap[(f, x["lap"])] for f, x in keep if (f, x["lap"]) in xmap],
+                     "_stints": [[x["time"] for x in xs] for xs in by_stint.values()], "_trend": trend})
+    pairs = []
+    for i in range(len(rows) - 1):
+        a, b = rows[i], rows[i + 1]
+        il = interleaved(a["id"], b["id"], recs, pace_files[a["id"]] | pace_files[b["id"]])
+        pairs.append(_pair(a, b, {"interleaved": il}))
+    for r in rows:
+        for k in ("_x", "_stints", "_trend"):
+            r.pop(k, None)
     if not rows:
         verdict = "No laps with a setup recorded for this car and track yet."
     elif len(rows) == 1:

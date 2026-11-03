@@ -1452,7 +1452,6 @@ function renderSlReport(R){const out=document.createDocumentFragment();
     t.append(th,tb);wrap.append(t);fc.append(wrap)}
   (C.pairs||[]).forEach(pr=>{const box=h('div','slpair');if(pr.text&&String(C.verdict||'').trim()!==String(pr.text).trim())box.append(h('p',null,pr.text));
     (pr.confounders||[]).forEach(x=>box.append(h('p','note warn','Not a fair test: '+x+'.')));
-    if(ok(pr.more_laps)&&pr.verdict!=='faster')box.append(h('p','note','About '+plural(pr.more_laps,'more clean lap')+' on each would tell.'));
     if(box.children.length)fc.append(box)});
   const miss=rows.flatMap(r=>r.missing||[]);if(miss.length)fc.append(h('p','note','Still missing: '+miss.join('; ')+'.'));
   fc.append(h('p','note','A lap counts when it is clean, not an out lap or the first flying lap, not spent alongside another car, and not far off that run\'s pace. Debrief only names a faster setup when the laps clearly say so.'));

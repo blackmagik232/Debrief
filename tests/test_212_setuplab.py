@@ -182,6 +182,68 @@ check(p["verdict"] == "no clear difference" and "No clear difference yet" in p["
       and isinstance(p["more_laps"], int) and f"about {p['more_laps']} more clean lap" in p["text"],
       f"0.05 s gap -> no clear difference, with laps still needed ({p['text']})")
 
+p = sl.compare(recs_of(folder("gate_ok")))["pairs"][0]
+check(p["interleaved"] is False and p["caution"] and "also driven later" in p["text"]
+      and "Go back to Setup A (baseline.sto) for a few laps to be sure." in p["text"],
+      "B driven after A: a 'faster' verdict says part of it may be him getting quicker")
+check(p["ci_level"] == 95 and p["ci_method"] == "laps" and p["ci90"] == p["ci"], "under 10 laps a setup: a 95% interval")
+
+# finding 3: an interval clear of zero but a gap under 0.1 s is not a difference, and needs no more laps
+d = folder("gate_tiny")
+mk(d, "2026-11-01 18-00-00", [99.50, 99.50, 99.51, 99.49, 99.50, 99.50, 99.51])
+mk(d, "2026-11-01 19-00-00", [99.50, 99.50, 99.51, 99.49, 99.50, 99.50, 99.51])
+mk(d, "2026-11-02 18-00-00", [99.45, 99.45, 99.46, 99.44, 99.45, 99.45, 99.46], setup=setup_b())
+mk(d, "2026-11-02 19-00-00", [99.45, 99.45, 99.46, 99.44, 99.45, 99.45, 99.46], setup=setup_b())
+p = sl.compare(recs_of(d))["pairs"][0]
+check(p["verdict"] == "no clear difference" and p["more_laps"] is None and p["ci"][0] > 0
+      and "about 0.05 s a lap quicker than Setup A" in p["text"]
+      and "smaller than the 0.1 s Debrief counts as a real difference" in p["text"], f"tiny but real gap ({p['text']})")
+
+
+# finding 1: driving order. Identical setups and a driver who gets 0.03 s a lap quicker must not make B "faster".
+def drifting(name, order, per_lap=0.03, laps=8, noise=0.03, seed=1):
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    d, k = folder(name), 0
+    for i, which in enumerate(order):
+        times = []
+        for _j in range(laps):
+            times.append(100.0 - per_lap * k + float(rng.normal(0, noise)))
+            k += 1
+        mk(d, f"2026-11-0{1 + i // 2} {18 + i % 2}-00-00", times, setup=setup_b() if which == "B" else None)
+    return d
+
+
+for seed in (1, 2, 3):
+    p = sl.compare(recs_of(drifting(f"drift{seed}", "AABB", seed=seed)))["pairs"][0]
+    check(p["verdict"] != "faster" and p["faster"] is None, f"0.03 s/lap improvement, same setup: no 'faster' ({p['verdict']})")
+check(p["verdict"] == "confounded" and not p["comparable"] and p["interleaved"] is False
+      and p["trend"]["hi"] < 0 and p["drift_s"] >= 0.5 * abs(p["diff_s"])
+      and "you were getting quicker as you drove" in p["text"] and "Go back to Setup A" in p["text"]
+      and any("getting quicker" in c for c in p["confounders"]), f"drift explains the gap -> confounded ({p['text']})")
+lt = sl.lap_trend([([0, 1, 2, 3, 4], [100.0, 99.97, 99.94, 99.91, 99.88]), ([10, 11, 12], [99.7, 99.67, 99.64])])
+check(lt and abs(lt["slope"] + 0.03) < 1e-6 and lt["stints"] == 2, f"Theil-Sen slope within stints ({lt})")
+check(sl.lap_trend([([0, 1], [1.0, 2.0])]) is None, "stints under 3 laps give no trend")
+p = sl.compare(recs_of(drifting("drift_aba", "ABBA")))["pairs"][0]
+check(p["interleaved"] is True and p["verdict"] != "faster" and not p["caution"]
+      and not any("getting quicker" in c for c in p["confounders"]), f"A, B, A: interleaved, so no drift caution ({p['verdict']})")
+# a real 0.5 s gain, driven A, B, A: named faster with no caution
+d = folder("aba_real")
+mk(d, "2026-11-01 18-00-00", PACE_A + [99.5, 99.6])
+mk(d, "2026-11-01 19-00-00", PACE_B + [99.0, 99.1], setup=setup_b())
+mk(d, "2026-11-02 18-00-00", PACE_A + [99.5, 99.4])
+p = sl.compare(recs_of(d))["pairs"][0]
+check(p["verdict"] == "faster" and p["faster"] == "B" and p["interleaved"] and not p["caution"]
+      and "driven later" not in p["text"], f"interleaved real gain: faster, no caution ({p['text']})")
+# block bootstrap: 3+ stints on each setup resample whole stints
+d = folder("blocks")
+for k in range(3):
+    mk(d, f"2026-11-01 1{k}-00-00", PACE_A + [99.5, 99.6])
+for k in range(3):
+    mk(d, f"2026-11-02 1{k}-00-00", PACE_B + [99.0, 99.1], setup=setup_b())
+p = sl.compare(recs_of(d))["pairs"][0]
+check(p["ci_method"] == "stints" and p["ci_level"] == 90 and p["verdict"] == "faster", f"3 stints each: block bootstrap ({p['ci_method']})")
+
 d = folder("gate_temp")
 mk(d, "2026-11-01 18-00-00", PACE_A, surface_temp=22.0)
 mk(d, "2026-11-01 19-00-00", PACE_A, surface_temp=22.0)

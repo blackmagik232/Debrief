@@ -29,6 +29,7 @@ from ..g61 import Garage61Error
 from . import settings_io
 from . import carsetup    # 2.15 Car and setup
 from . import racing      # 2.16 Racing
+from . import carcompare as carcompare_page     # 2.18 Car vs car
 from . import coach2      # Coach 2.0: voice packs, device, cue log, rehearsal
 
 UI = Path(__file__).resolve().parent / "ui"
@@ -2358,6 +2359,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._carsetup_call(lambda: carsetup.get(self, r, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}), r, get=True)
         if r in racing.GET_ROUTES:      # 2.16 Racing: starts and incidents
             return self._carsetup_call(lambda: racing.get(self, r, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}), r, get=True)
+        if r in carcompare_page.GET_ROUTES:     # 2.18 Car vs car
+            return self._carsetup_call(lambda: carcompare_page.get(self, r, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}), r, get=True)
         return self._nf()
 
     def _carsetup_call(self, fn, r, get=False):
@@ -3410,8 +3413,9 @@ class Handler(BaseHTTPRequestHandler):
     MAX_RESULT_CSV = 2 * 1024 * 1024
 
     def _post_result_csv(self):
-        """iRacing's results CSV as the raw body, ?review=<folder>. Nothing is saved: the form is filled in and the
-        person presses Save."""
+        """iRacing's results CSV as the raw body, ?review=<folder>. The result form is filled in and the person presses
+        Save; since 2.18 the parsed table (cars, classes, iRatings, lap times) is also kept beside the review as
+        field.json for Car vs car (carcompare.py). Nothing else is saved."""
         cl = (self.headers.get("Content-Length") or "").strip()
         if not cl.isdigit() or self.headers.get("Transfer-Encoding") or int(cl) > self.MAX_RESULT_CSV:
             self.close_connection = True
@@ -3430,6 +3434,7 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(review, dict):
             return self._json({"ok": False, "error": "That review's data file is damaged."}, 400)
         me = results_csv.pick(parsed, (review.get("meta") or {}).get("driver"))
+        _save_field(d, review, parsed)
         return self._json({"ok": True, "matched": me, "drivers": parsed["drivers"], "multiclass": parsed["multiclass"]})
 
     def _post_racecap_link(self, body):
@@ -3852,3 +3857,18 @@ class Handler(BaseHTTPRequestHandler):
         name = {"car": mine[0]["car"], "track": mine[0]["track"]} if mine else {"car": car, "track": track}
         return self._json(_jsonable({"ok": True, **name, "car_path": car, "track_code": track, "report": rep,
                                      "focus": weak_from_cards(rep)}))
+
+
+def _save_field(d: Path, review: dict, parsed: dict) -> None:
+    """2.18: keep the parsed results table beside the review (field.json, written atomically) so Car vs car can use
+    every driver's car, iRating and laps. A failure is logged and never stops the form from filling in."""
+    meta = review.get("meta") or {}
+    doc = {"version": 1, "track": meta.get("track") or "", "when": meta.get("started_at") or "", "me": meta.get("driver") or "",
+           "subsession": str((review.get("racecap") or {}).get("subsession") or ""), "drivers": parsed.get("drivers") or [],
+           "multiclass": bool(parsed.get("multiclass"))}
+    try:
+        tmp = d / "field.json.tmp"
+        tmp.write_text(json.dumps(doc), encoding="utf-8")
+        os.replace(tmp, d / "field.json")
+    except (OSError, ValueError) as e:
+        app.say(f"Couldn't keep the results table for Car vs car ({type(e).__name__}).")

@@ -53,8 +53,20 @@ def _sr(v):
     return sr if sr <= 4.99 else None
 
 
+def lap_time(v):
+    """'1:38.874' or '98.874' -> 98.874 seconds; None for a blank or nonsense value (iRacing writes -1 for none)."""
+    s = str(v or "").strip()
+    m = re.fullmatch(r"(?:(\d+):)?(\d+(?:\.\d+)?)", s)
+    if not m:
+        return None
+    t = int(m.group(1) or 0) * 60 + float(m.group(2))
+    return round(t, 3) if 5 <= t <= 3600 else None
+
+
 def parse(data) -> dict:
-    """{"drivers": [{"name", "car", "class", "fields": {...}}], "multiclass": bool}."""
+    """{"drivers": [{"name", "car", "class", "model", "lap", "fields": {...}}], "multiclass": bool}.
+    "car" is the car number; "model" is the car's name ("Car" column, 2.18) and "lap" the average and fastest lap
+    and laps completed ({"avg", "best", "laps"}), each left out when the file doesn't have it."""
     try:
         rows = list(csv.reader(io.StringIO(_text(data))))
     except csv.Error:
@@ -103,8 +115,16 @@ def parse(data) -> dict:
         out = get(r, "Out").lower()
         if out in ("running", "disconnected"):
             fields["finish_status"] = out
+        lap = {}
+        for key, col in (("avg", "Average Lap Time"), ("best", "Fastest Lap Time")):
+            t = lap_time(get(r, col))
+            if t is not None:
+                lap[key] = t
+        n = _int(get(r, "Laps Comp"))
+        if n is not None and n >= 0:
+            lap["laps"] = n
         drivers.append({"name": clean_name(get(r, "Name")), "car": get(r, "Car #").lstrip("#"),
-                        "class": get(r, "Car Class"), "fields": fields})
+                        "class": get(r, "Car Class"), "model": get(r, "Car")[:80], "lap": lap, "fields": fields})
     return {"drivers": drivers, "multiclass": len(groups) > 1}
 
 

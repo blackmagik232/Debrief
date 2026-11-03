@@ -40,7 +40,9 @@ FEATURE_MODULES = ("race_analysis", "racecap_link", "replay_scan", "results_csv"
                    # 2.16 Racing: start report and incident map
                    "startreport", "incidentmap",
                    # 2.17 Coach 2.0: voice packs, sound device, cue log
-                   "voicepack", "audioout", "coachvoice", "cuelog")
+                   "voicepack", "audioout", "coachvoice", "cuelog",
+                   # 2.18 Car vs car
+                   "carcompare")
 
 
 _REFRESH_DONE: set = set()

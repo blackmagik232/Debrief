@@ -36,7 +36,7 @@ import numpy as np
 
 from debrief import ibt
 
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 
 # Leaf keys that are readings (they change without the driver touching the setup) - never part of a setup's identity.
 READING_KEYS = {"LastHotPressure", "LastTempsOMI", "LastTempsIMO", "TreadRemaining", "UpdateCount"}
@@ -49,29 +49,39 @@ CORNER_WORDS = {"LF": "left front", "RF": "right front", "LR": "left rear", "RR"
 PAIR = {"LeftFront": ("RightFront", "Front"), "RightFront": ("LeftFront", "Front"),
         "LeftRear": ("RightRear", "Rear"), "RightRear": ("LeftRear", "Rear")}
 
-# Evidence gate (same spirit as the rest of Debrief: say "not enough to tell" rather than guess)
-MIN_STINTS = 2
-MIN_STINT_LAPS = 3
-MIN_LAPS = 6
-TRAFFIC = 1.07                 # laps slower than 107% of the setup's median are traffic, not pace
-MAX_TEMP_GAP = 6.0             # deg C of track surface temperature
-MIN_DIFF = 0.15                # s a lap: smaller than this is never called a difference
+# Evidence gate (same spirit as the rest of Debrief: say "not enough to tell" rather than guess).
+# 5 clean laps per setup is the minimum Coach Dave's Setup IQ also uses.
+MIN_LAPS = 5
+MAD_K = 3.0                    # a lap more than 3 x MAD slower than its stint's median is not pace (traffic, mistake)
+TRAFFIC = 1.07                 # fallback when the MAD is 0: laps slower than 107% of the median
+TRAFFIC_SIDE = 0.10            # a lap with a car alongside (CarLeftRight not clear) for >10% of it is a traffic lap
+MAX_TEMP_GAP = 6.0             # deg C of track surface temperature: more and the comparison is confounded
+MAX_FUEL_GAP = 15.0            # litres of average fuel load: more and the comparison is confounded
+MIN_DIFF = 0.10                # s a lap: a smaller gap is never called a difference
+BOOT_N = 2000                  # bootstrap resamples for the 90% interval of the median difference
+BOOT_SEED = 212
+MAX_MORE_LAPS = 60             # beyond this "more laps would tell" is not a useful answer
 
-# Tyre temperature targets for GT cars (carcass temps at a pit stop): inner edge 5-8 deg C hotter than the outer.
-CAMBER_TARGET = (5.0, 8.0)
-CAMBER_HIGH = CAMBER_TARGET[1] + 2.0      # more than this: too much negative camber
-CAMBER_LOW = 0.0                          # outer hotter than inner: not enough negative camber
-CROWN = 4.0                               # middle vs edges, deg C: pressure too high / too low
-IMBALANCE_KPA = 5.0
+# Tyre temperature targets for GT cars (carcass temps at a pit stop, stint of >= 5 laps): the inner edge hotter than
+# the outer by 6-10 deg C at the front and a little less at the rear. Low-medium confidence: lap time beats them.
+CAMBER_TARGET = {"front": (6.0, 10.0), "rear": (4.0, 8.0)}
+CAMBER_MARGIN = 2.0            # outside the target by more than this before an idea is given
+CROWN = 4.0                    # middle vs average of the edges, deg C: pressure high / low
+TEMP_STINT_LAPS = 5            # a pit reading only counts after a stint of at least 5 laps
 
-# Hot-pressure target windows per car path, kPa. Deliberately empty: we have no target we can stand behind, so the
-# hot pressures are reported with their front/rear and left/right balance instead. report()/suggestions() take a
-# `targets` argument so a window he trusts (from his series or team) can be used.
+# Hot pressures: live, sampled at the fastest point of each lap, laps 3+ of a stint.
+HOT_POS = 3
+AXLE_KPA = 7.0                 # one tyre more than this off its axle partner -> change that tyre's cold pressure
+IMBALANCE_KPA = 5.0            # front/rear difference worth reporting
+# No target window is shipped for any car: there is no credible current source for GT4 hot pressures. A target is
+# learned from his own fastest stints instead, or he can pass his own (`targets`).
 HOT_TARGETS: dict = {}
 
-BOTTOM_MM = 1.0                # samples within 1 mm of the lowest value count as "at the floor"
-BOTTOM_FRAC = 0.02             # more than 2% of clean-lap samples at the floor
+BOTTOM_MM = 1.0                # within 1 mm of the learned floor counts as touching it
+BOTTOM_FRAC = 0.02             # more than 2% of clean-lap samples piled at the floor: a flat bottom on the trace
 BOTTOM_MOVE_MM = 5.0           # the channel must move at least this much, or it is not a real ride-height trace
+BOTTOM_LOSS = 0.05             # s: laps that touch must lose this much near that spot before a change is suggested
+HIST_BINS, HIST_MM = 80, 0.5   # stored low end of each ride-height trace (40 mm from 10 mm under the 0.5th pct)
 
 _NAME_TIME = re.compile(r"(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})\.ibt$", re.I)
 
@@ -183,31 +193,57 @@ def _detail_of(ib) -> dict:
     out["track_state"] = state
 
     laps = ibt.laps(ib)
-    have = {c: ib.has(f"{c}pressure") for c in ("LF", "RF", "LR", "RR")}
-    press = {c: ib.col(f"{c}pressure") for c in have if have[c]}
+    press = {c: ib.col(f"{c}pressure") for c in ("LF", "RF", "LR", "RR") if ib.has(f"{c}pressure")}
     fuel = ib.col("FuelLevel") if ib.has("FuelLevel") else None
     pct = ib.col("LapDistPct") if ib.has("LapDistPct") else None
-    rows, stint, prev = [], 0, None
-    clean_idx = []
+    speed = ib.col("Speed") if ib.has("Speed") else None
+    side = ib.col("CarLeftRight").astype(int) if ib.has("CarLeftRight") else None
+    rows, stint, pos, prev = [], 0, 0, None
+    clean_idx, clean_no = [], []
     for x in laps:
         if prev is not None and (x["lap"] != prev["lap"] + 1 or x["session_num"] != prev["session_num"] or prev["pit"]):
             stint += 1
+            pos = 0
+        elif prev is not None:
+            pos += 1
         a, b = x["start"], x["end"]
+        # pos 0 is the out lap (from the pits or the file's start); pos 1 the first flying lap (tyres warming up)
         row = {"lap": x["lap"], "time": round(x["time"], 3) if x["time"] else None, "session": x["session"],
-               "clean": x["clean"], "start_lap": x["start_lap"], "pit": x["pit"], "stint": stint}
+               "clean": x["clean"], "start_lap": x["start_lap"], "pit": x["pit"], "stint": stint, "pos": pos,
+               "warm": pos <= 1, "traffic": False}
+        if fuel is not None:
+            row["fuel_level"] = round(float(fuel[a]), 2)
         if x["clean"]:
             clean_idx.append((a, b))
+            clean_no.append(x["lap"])
+            if side is not None and b > a:
+                busy = float(np.mean((side[a:b] != 0) & (side[a:b] != 1)))
+                row["traffic"] = busy > TRAFFIC_SIDE
             if press:
-                row["press"] = {c: round(float(np.median(v[a:b])), 1) for c, v in press.items()}
+                # one consistent spot: the fastest sample of the lap (else the lap median)
+                k = a + int(np.argmax(speed[a:b])) if speed is not None and b > a else None
+                row["press"] = {c: round(float(v[k] if k is not None else np.median(v[a:b])), 1) for c, v in press.items()}
             if fuel is not None and b - a > 1:
                 used = float(fuel[a] - fuel[b - 1])
                 if 0 < used < 20:
                     row["fuel"] = round(used, 3)
+            if pct is not None and b - a > 40:
+                # time in each 5% of the lap, so time lost at one spot can be seen
+                pp = pct[a:b].astype(float).copy()
+                j = 0
+                while j < min(len(pp), 10) and pp[j] > 0.5:          # the last samples before the line
+                    pp[j] = 0.0
+                    j += 1
+                pp = np.maximum.accumulate(pp)
+                edges = np.searchsorted(pp, np.linspace(0, 1, 21)[1:-1])
+                tt = np.concatenate(([0], edges, [b - a])) / rate
+                row["bins"] = [round(float(v), 3) for v in np.diff(tt)]
         rows.append(row)
         prev = x
     out["laps"] = rows
 
-    # pit readings: the carcass temps at the first sample and wherever they change (only at a pit-stall stop)
+    # pit readings: the carcass temps at the first sample and wherever they change (only at a pit-stall stop).
+    # A reading made at a stop belongs to the stint that ended there; its length says how much to trust it.
     readings = []
     if all(ib.has(f"{c}temp{z}") for c in ("LF", "RF", "LR", "RR") for z in ("CL", "CM", "CR")):
         vals = {c: [ib.col(f"{c}temp{z}") for z in ("CL", "CM", "CR")] for c in ("LF", "RF", "LR", "RR")}
@@ -216,35 +252,45 @@ def _detail_of(ib) -> dict:
         st = ib.col("SessionTime") if ib.has("SessionTime") else None
         for i in idx:
             r = _reading_from_channels(vals, i)
+            stint_laps = None
+            if i > 0:
+                before = [(row, x) for row, x in zip(rows, laps) if x["start"] < i]
+                if before:
+                    sid = before[-1][0]["stint"]
+                    stint_laps = sum(1 for row in rows if row["stint"] == sid and row["time"] and not row["pit"]
+                                     and row["pos"] >= 1)
             readings.append({"t": round(float(st[i]), 1) if st is not None else round(i / rate, 1),
-                             "at_start": i == 0, "source": "channels", "tyres": r,
+                             "at_start": i == 0, "source": "channels", "tyres": r, "stint_laps": stint_laps,
                              "cold": all(_cold(v) for v in r.values())})
     out["readings"] = readings
 
-    # ride heights on clean laps: is there a hard floor the car keeps hitting?
+    # ride heights on clean laps: the low end of the trace (to learn the car's floor across files) and, per lap,
+    # the lowest point and where on the lap it was.
     ride = {}
     if clean_idx:
-        sel = np.concatenate([np.arange(a, b) for a, b in clean_idx])
-        lap_of = np.concatenate([np.full(b - a, k) for k, (a, b) in enumerate(clean_idx)])
         for ch, label in (("LFrideHeight", "LF"), ("RFrideHeight", "RF"), ("LRrideHeight", "LR"),
                           ("RRrideHeight", "RR"), ("CFSRrideHeight", "splitter")):
             if not ib.has(ch):
                 continue
-            v = ib.col(ch)[sel].astype(float)
-            ok = np.isfinite(v)
-            if ok.sum() < 10:
+            col = ib.col(ch).astype(float)
+            sel = np.concatenate([np.arange(a, b) for a, b in clean_idx])
+            v = col[sel]
+            v = v[np.isfinite(v)]
+            if len(v) < 10:
                 continue
-            v2, lo2 = v[ok], lap_of[ok]
-            floor = float(v2.min())
-            at = v2 <= floor + BOTTOM_MM / 1000.0
-            where = None
-            if pct is not None and at.any():
-                bins = np.bincount([_pct_bin(float(p)) for p in pct[sel][ok][at]], minlength=20)
-                where = int(np.argmax(bins))
-            ride[label] = {"floor_mm": round(floor * 1000, 1), "median_mm": round(float(np.median(v2)) * 1000, 1),
-                           "move_mm": round(float(np.percentile(v2, 99) - np.percentile(v2, 1)) * 1000, 1),
-                           "at_floor": round(float(at.mean()), 4), "laps_at_floor": int(len(set(lo2[at].tolist()))),
-                           "laps": len(clean_idx), "where_bin": where}
+            p05 = float(np.percentile(v, 0.5))
+            lo_edge = p05 - 0.010
+            hist, _e = np.histogram(v, bins=HIST_BINS, range=(lo_edge, lo_edge + HIST_BINS * HIST_MM / 1000.0))
+            per_lap = []
+            for (a, b), no in zip(clean_idx, clean_no):
+                seg = col[a:b]
+                k = int(np.argmin(seg))
+                per_lap.append([round(float(seg[k]) * 1000, 1), round(float(pct[a + k]), 3) if pct is not None else None,
+                                int(no)])
+            ride[label] = {"p05_mm": round(p05 * 1000, 2), "n": int(len(v)), "lo_mm": round(lo_edge * 1000, 2),
+                           "hist": hist.astype(int).tolist(),
+                           "move_mm": round(float(np.percentile(v, 99) - np.percentile(v, 1)) * 1000, 1),
+                           "laps": per_lap}
     out["ride"] = ride
 
     # live surface temps (info only): median outer/middle/inner on clean laps

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.17.2
+
+- **The coach talks more.** On your first drive with 2.17.0 it said almost nothing: with no focus corners from your race reviews or the Corner coach it only said your lap time, and before it had a reference lap it said nothing at all. Played through your Zolder files it said 0 or 1 thing a lap.
+- **Coaching level** (top of the Coach page): **Quiet** is 2.17.0 exactly (focus corners and your lap time, at most 2 tips a lap). **Normal** is the new default: up to 4 cues a lap, at least 3 seconds apart. **Busy**: up to 6 a lap, 2.5 seconds apart. It is saved as soon as you pick it and the coach uses it at once.
+- **A word after any corner** (Normal and Busy): where you lost a tenth or more against your reference, one short cue on the next straight about what changed most: "T3, braked early", "T3: more speed, 6 down" or "T3, a tenth down". Where you gained a tenth or more: "T3, good, up a tenth" (one a lap on Normal, two on Busy).
+- **Sector times** (Normal and Busy): the lap is split in three by your reference's time; after the first two sectors it says "Sector one, up two tenths" or "Sector two, a tenth down" when the gap is a tenth or more. Your lap time at the line covers the rest.
+- **Focus corners learned from this session**: with no race reviews or Corner coach cards for this car and track, the coach picks the corners where your last 1 to 3 clean laps lost the most against your reference (2 on Normal, 3 on Busy), updates them every lap and gives them brake markers. The Coach page says "Learning from this session" and which corners; when you set a new best, what it learned carries over.
+- **The first laps**: with no lap of yours in your telemetry files, it says "Building your reference" as you roll out of the pits (or on a straight), and after your first clean lap "Reference set, one thirty-eight nine"; from the next lap everything is compared with it. When your best lap comes from your telemetry files the status line says so.
+- Every quiet rule stays: nothing under braking, in a corner, with a car alongside (and 2 seconds after), on pit road, on lap 1 of a race, or less than 1 second before a brake point; a cue that can't be said in time is dropped, never said late.
+- George says all of it: 176 new clips made the same way as the others, at the same loudness and speed (the clips he already had are unchanged). He covers 100% of the coach's phrases (2,756), including lap times from 0:40 to 3:00. The coach log says why each new cue was made, and when it learned a focus corner.
+- Checked on your real files (McLaren 570S GT4 at Zolder, 8 files, 14 clean laps, each file against the best lap of the others): Normal said 4 cues on 13 laps and 3 on 1; Busy 5 or 6 on 13 laps; Quiet the same as 2.17.0 (0 or 1). No cue under braking, none ending less than 1 second before a brake point, no two overlapping.
+- Not proven yet: only tested by playing your telemetry files through the coach, never live in iRacing. Try a practice session on Normal and switch to Quiet or Busy if it's too much or too little.
+
 ## 2.17.1
 
 - **Five more coach voices.** Besides George (British male, still the default), the Coach page's voice list now has **Michael (American male)**, **Fenrir (American male)**, **Heart (American female)**, **Kumo (Japanese accent, male)** and **Omega (Indian accent, male)**. Pick one and press **Preview** to hear it. Each covers every phrase the coach can say, at the same loudness as George. Like George they were made once with Kokoro-82M (Apache-2.0) and ship as sound clips; nothing goes online.

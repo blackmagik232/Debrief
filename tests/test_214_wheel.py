@@ -8,6 +8,8 @@ import threading
 import time
 from pathlib import Path
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -128,10 +130,85 @@ poll(w, clk, 3)
 check(w.status()["state"] == "not_found" and "isn't plugged in" in w.status()["text"], "wheel unplugged: said")
 be.devs = {3: {"name": "Wheel", "mid": 200, "pid": 7}, 1: {"name": "Pedals", "mid": 100, "pid": 1}}
 be.masks = {3: 0, 1: 0}
-poll(w, clk, 25)
+poll(w, clk, int(wm.RESCAN_MAX_S / 0.05) + 2)
 be.press(3, 5)
 poll(w, clk)
 check(len(presses) == 4 and w._dev == 3, "plugged back in on another number: found again")
+
+print("== rescans (2.14 review): none while the device answers, backing off while it's missing")
+
+
+class CountingBackend(FakeBackend):
+    def __init__(self, with_identity=True):
+        super().__init__()
+        self.scans = 0
+        self.idents = 0
+        if not with_identity:
+            self.identity = None
+
+    def devices(self):
+        self.scans += 1
+        return super().devices()
+
+    def identity(self, dev):
+        self.idents += 1
+        with self.lock:
+            d = self.devs.get(dev)
+            return dict(d) if d else None
+
+
+cb, ck = CountingBackend(), Clock()
+wb = wm.WheelMute(backend=cb, clock=ck, binding={"device": 2, "button": 1, "name": "Wheel", "mid": 200, "pid": 7})
+poll(wb, ck, 20 * 60)                                   # a minute at 20 reads a second
+check(cb.scans == 1, f"a minute with the wheel answering: the device list read once ({cb.scans})")
+check(10 <= cb.idents <= 13, f"its identity checked every 5 s ({cb.idents} checks in a minute)")
+check(cb.reads >= 20 * 60 - 1, "every poll is one button read")
+cb.devs = {2: {"name": "Pedals", "mid": 100, "pid": 1}, 4: {"name": "Wheel", "mid": 200, "pid": 7}}
+cb.masks = {2: 0, 4: 0}
+poll(wb, ck, 20 * 6)
+check(wb._dev == 4, "another device on the wheel's number: noticed within 5 s, the wheel found on its new number")
+cb.devs, cb.masks = {0: {"name": "Pedals", "mid": 100, "pid": 1}}, {0: 0}
+s0 = cb.scans
+poll(wb, ck, 20 * 120)                                  # two minutes unplugged
+n_missing = cb.scans - s0
+check(5 <= n_missing <= 10, f"two minutes unplugged: {n_missing} device-list reads (2, 4, 8, 16, 30, 30 ... s apart)")
+gaps = []
+cb2, ck2 = CountingBackend(), Clock()
+cb2.devs, cb2.masks = {}, {}
+w7 = wm.WheelMute(backend=cb2, clock=ck2, binding={"device": 2, "button": 1, "name": "Wheel", "mid": 200, "pid": 7})
+last, times = cb2.scans, []
+for i in range(20 * 200):
+    ck2.tick(0.05)
+    w7.poll_once()
+    if cb2.scans != last:
+        last = cb2.scans
+        times.append(ck2.t)
+d = np.diff(times) if len(times) > 1 else []
+check(len(d) >= 5 and abs(d[0] - 2.0) < 0.11 and abs(d[1] - 4.0) < 0.11 and max(d) <= wm.RESCAN_MAX_S + 0.11,
+      f"backoff: {[round(float(x), 1) for x in d[:8]]} s between looks")
+cb2.devs, cb2.masks = {5: {"name": "Wheel", "mid": 200, "pid": 7}}, {5: 0}
+poll(w7, ck2, int(wm.RESCAN_MAX_S / 0.05) + 2)
+check(w7._dev == 5 and w7._backoff == 0.0, "plugged in again: found within 30 s and the wait starts over")
+# no identity() on the backend (older stand-ins): no checks, still no rescans while it answers
+cb3, ck3 = CountingBackend(with_identity=False), Clock()
+w8 = wm.WheelMute(backend=cb3, clock=ck3, binding={"device": 2, "button": 1, "name": "Wheel", "mid": 200, "pid": 7})
+poll(w8, ck3, 20 * 30)
+check(cb3.scans == 1 and cb3.idents == 0, "a backend without identity(): read once, never rescanned")
+# learning: the device list at most once a second, even when there are no devices
+cb4, ck4 = CountingBackend(), Clock()
+cb4.devs, cb4.masks = {}, {}
+w9 = wm.WheelMute(backend=cb4, clock=ck4)
+w9._learn = {"cb": None, "until": ck4() + 10, "base": None}
+poll(w9, ck4, 20 * 10)
+check(cb4.scans <= 11, f"learning with no devices for 10 s: {cb4.scans} device-list reads (at most 1 a second)")
+cb5, ck5 = CountingBackend(), Clock()
+w10 = wm.WheelMute(backend=cb5, clock=ck5)
+w10._learn = {"cb": None, "until": ck5() + 10, "base": None}
+poll(w10, ck5, 20 * 5)
+check(cb5.scans <= 6 and w10.answered == {0, 2}, f"learning: {cb5.scans} lists in 5 s, devices that answered "
+                                                 f"remembered {sorted(w10.answered)}")
+w10.running = lambda: True
+check("first 32 buttons" in w10.status()["text"], f"Learn says only the first 32 buttons count: {w10.status()['text']}")
 
 print("== matching rules")
 twins = [{"id": 0, "name": "Box", "mid": 5, "pid": 5}, {"id": 1, "name": "Box", "mid": 5, "pid": 5}]

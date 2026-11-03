@@ -2,7 +2,9 @@
 
 Windows' own joystick interface (winmm.dll: joyGetNumDevs, joyGetDevCapsW, joyGetPosEx with JOY_RETURNBUTTONS),
 through ctypes, loaded only when used: up to 16 devices and 32 buttons each, read about 20 times a second on a
-thread of its own (one call per read for the chosen device; the device list is looked at again every few seconds).
+thread of its own (one call per read for the chosen device). The device list is only looked at again when the chosen
+device stops answering (after 2 s, then less and less often, up to every 30 s), or when the device on its number
+turns out to be another one (its name and numbers are checked every 5 s); while learning, at most once a second.
 Off Windows, or when winmm can't be loaded, everything is a quiet no-op.
 
     w = WheelMute(on_press=coach_runner.toggle, binding=saved_binding)
@@ -35,7 +37,11 @@ _LOG = logging.getLogger("debrief.wheelmute")
 MAX_DEVICES = 16
 MAX_BUTTONS = 32
 POLL_HZ = 20.0
-RESCAN_S = 3.0              # look at the list of devices again this often
+RESCAN_MIN_S = 2.0          # the chosen device stopped answering: look for it after this ...
+RESCAN_MAX_S = 30.0         # ... doubling each time it still isn't there, up to this
+RESCAN_S = RESCAN_MIN_S     # (kept for older callers)
+IDENTITY_S = 5.0            # while it answers, check this often that it is still the same device (one caps call)
+LEARN_SCAN_S = 1.0          # while learning, the device list at most this often
 DEBOUNCE_S = 0.3            # a second press within this is ignored
 LEARN_TIMEOUT_S = 15.0
 
@@ -85,6 +91,13 @@ class WinmmBackend:
         if self._winmm.joyGetPosEx(int(dev), self._ct.byref(self._info)) != self.JOYERR_NOERROR:
             return None
         return int(self._info.dwButtons)
+
+    def identity(self, dev: int):
+        """{"name", "mid", "pid"} of the device on this number (one joyGetDevCapsW call), None when unreadable."""
+        caps = self._JC()
+        if self._winmm.joyGetDevCapsW(int(dev), self._ct.byref(caps), self._ct.sizeof(caps)) != self.JOYERR_NOERROR:
+            return None
+        return {"name": caps.szPname.strip(), "mid": int(caps.wMid), "pid": int(caps.wPid)}
 
     def devices(self) -> list:
         out = []
@@ -187,6 +200,11 @@ class WheelMute:
         self._prev = False
         self._last_press = -1e9
         self._last_scan = -1e9
+        self._next_scan = -1e9          # the chosen device is missing: look again at this time
+        self._backoff = 0.0             # ... after this long (RESCAN_MIN_S doubling up to RESCAN_MAX_S)
+        self._last_ident = -1e9
+        self.scans = 0                  # device lists read (tests)
+        self.answered: set = set()      # device numbers that have answered at some point
         self._devices: list = []
         self._logged = set()
         self.presses = 0
@@ -227,7 +245,8 @@ class WheelMute:
             self.binding = clean_binding(binding)
             self._dev = None
             self._prev = True               # a button already held when it is set doesn't count as a press
-            self._last_scan = -1e9
+            self._next_scan = -1e9
+            self._backoff = 0.0
 
     def learn(self, on_learned=None, timeout_s: float = LEARN_TIMEOUT_S) -> bool:
         """'Press the button you want': the next button that goes down on any device becomes the binding, and
@@ -252,7 +271,8 @@ class WheelMute:
         if self._backend is None and self._backend_tried:
             st, text = "unavailable", "Wheel buttons can't be read on this computer."
         elif self._learn is not None:
-            st, text = "learning", "Press the button on your wheel you want to use for mute."
+            st, text = "learning", ("Press the button on your wheel you want to use for mute. Windows only "
+                                    "passes on the first 32 buttons of each device, so pick one of those.")
         elif not self.running():
             st, text = "off", "Wheel button mute is off."
         elif b is None:
@@ -291,13 +311,37 @@ class WheelMute:
 
     def _scan(self, now):
         be = self._backend
+        self.scans += 1
         try:
             self._devices = list(be.devices() or [])
         except Exception as e:  # noqa: BLE001
             self._devices = []
             self._note(("scan", e.__class__.__name__), f"wheelmute: device list failed ({e})")
+        self.answered |= {d.get("id") for d in self._devices if isinstance(d, dict)}
         self._last_scan = now
         self._dev = match(self._devices, self.binding)
+        self._last_ident = now
+
+    def _missing(self, now):
+        """The chosen device isn't there: look again after RESCAN_MIN_S, doubling up to RESCAN_MAX_S."""
+        self._dev = None
+        self._prev = False
+        self._backoff = min(RESCAN_MAX_S, self._backoff * 2.0) if self._backoff else RESCAN_MIN_S
+        self._next_scan = now + self._backoff
+
+    def _still_same(self, now) -> bool:
+        """Every IDENTITY_S: the device on the chosen number is still the bound one (backends with identity())."""
+        fn = getattr(self._backend, "identity", None)
+        b = self.binding
+        if fn is None or now - self._last_ident < IDENTITY_S or not (b.get("name") or b.get("mid") is not None):
+            return True
+        self._last_ident = now
+        try:
+            ident = fn(self._dev)
+        except Exception as e:  # noqa: BLE001
+            self._note(("ident", e.__class__.__name__), f"wheelmute: device check failed ({e})")
+            return True
+        return ident is not None and _same(ident, b)
 
     def poll_once(self):
         """One read (the thread calls this ~20 times a second; tests call it directly)."""
@@ -312,20 +356,28 @@ class WheelMute:
             return
         if self.binding is None:
             return
-        if now - self._last_scan >= RESCAN_S or self._dev is None and now - self._last_scan >= 1.0:
+        if self._dev is None:                            # not found yet / unplugged: look, with a growing wait
+            if now < self._next_scan:
+                return
             self._scan(now)
-        if self._dev is None:
-            self._prev = False
-            return
+            if self._dev is None:
+                self._missing(now)
+                return
+            self._backoff = 0.0
+        elif not self._still_same(now):                  # another device on that number now: look for ours
+            self._scan(now)
+            if self._dev is None:
+                self._missing(now)
+                return
         try:
             mask = be.buttons(self._dev)
         except Exception as e:  # noqa: BLE001
             mask = None
             self._note(("read", e.__class__.__name__), f"wheelmute: button read failed ({e})")
-        if mask is None:                                 # unplugged: look for it again
+        if mask is None:                                 # unplugged: look for it again (now, then backing off)
             self._dev = None
             self._prev = False
-            self._last_scan = -1e9
+            self._next_scan = now
             return
         down = bool(int(mask) >> (self.binding["button"] - 1) & 1)
         if down and not self._prev and now - self._last_press >= DEBOUNCE_S:
@@ -340,7 +392,7 @@ class WheelMute:
 
     def _poll_learn(self, lr, now):
         be = self._backend
-        if now - self._last_scan >= 1.0 or not self._devices:
+        if now - self._last_scan >= LEARN_SCAN_S:
             self._scan(now)
         masks = {}
         for d in self._devices:

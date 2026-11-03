@@ -373,8 +373,18 @@ def _segments(files: list, rows: list, best_row) -> tuple[dict, dict]:
         f = files[r["file_index"]]
         R = f["R"].get(r["_k"])
         if r["valid"] and R is not None:
-            seg_laps.append({"n": r["n"], "R": R, "t": r["time"], "clean": True})
+            seg_laps.append({"n": r["n"], "R": R, "t": r["time"], "clean": bool(r["clean"])})
     theo["valid_laps"] = len(seg_laps)
+    # Real files (Nov 2026): with every valid lap counted, segment bests came from warm-up and slow laps and the best
+    # possible lap was 0.65-0.85 s under the real best. With MIN_LAPS clean laps, only clean laps (and the best lap
+    # itself) count; with fewer, valid laps do, and the text says so.
+    n_clean_seg = sum(1 for x in seg_laps if x["clean"])
+    theo["laps_used"] = "valid"
+    if n_clean_seg >= MIN_LAPS:
+        best_n = best_row["n"] if best_row else None
+        seg_laps = [x for x in seg_laps if x["clean"] or x["n"] == best_n]
+        theo["laps_used"] = "clean"
+    theo["laps_counted"] = len(seg_laps)
     n_valid = sum(1 for r in rows if r["valid"])
     if not seg_laps:
         theo["text"] = ("No valid lap has a full distance trace, so the lap can't be split into segments."
@@ -440,6 +450,11 @@ def _segments(files: list, rows: list, best_row) -> tuple[dict, dict]:
         if gains:
             parts = [f"{g['segment']} ({g['gain_s']:.2f} s, best on lap {g['from_lap']})" for g in gains[:3]]
             text += " Most of it is in " + ", ".join(parts) + "."
+        if theo["laps_used"] == "clean":
+            text += f" Counted from your {len(seg_laps)} clean laps."
+        else:
+            text += (f" Counted from all {len(seg_laps)} valid laps, because fewer than {MIN_LAPS} were clean, so it "
+                     "may be too optimistic.")
         text += " Each segment's best came from a different lap, so this is a guide, not a lap you can count on."
         theo["text"] = text
     # spread per segment over clean laps

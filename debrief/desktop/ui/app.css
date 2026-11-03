@@ -401,3 +401,48 @@ details.xtras[open]{gap:16px}
   .prepmore>summary .note{margin-left:0;flex-basis:100%}
 }
 @media (prefers-reduced-motion:reduce){.prepview{transition:none}}
+
+/* ---------- 2.12: Setup Lab, Coach, the small links on Prepare */
+.navbtn.live::after{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--good);margin-left:8px;vertical-align:1px;animation:pulse 1.6s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.navbtn.live::after{animation:none}}
+.pvlinks{display:flex;flex-wrap:wrap;gap:6px 18px;margin:-6px 0 0}
+.linkbtn{font:inherit;font-size:13px;background:none;border:0;padding:0;color:var(--me);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.linkbtn:hover{text-decoration-thickness:2px}
+kbd{font-family:var(--mono);font-size:11.5px;border:1px solid var(--axis);border-bottom-width:2px;border-radius:3px;padding:0 5px;margin-left:4px;background:var(--panel);color:var(--fg2)}
+.slreport{display:grid;gap:18px;transition:opacity .12s}
+.slreport.busy{opacity:.55}
+.slhead{grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:14px 24px}
+.slser{display:grid;gap:6px;justify-items:start;max-width:340px}
+.slser .note{font-size:12.5px}
+.slover{min-width:220px}
+.slsec h4,.sldiff h4{font-family:var(--display);font-weight:700;font-size:17px;margin:0;letter-spacing:.01em}
+.sldiff{display:grid;gap:6px;padding:10px 0;border-top:1px solid var(--grid)}
+.sldiff:nth-child(2){border-top:none;padding-top:0}
+.slchg{margin:0;padding:0 0 0 18px;display:grid;gap:4px}
+.slchg li{display:grid;gap:0}
+.slchg li>span:first-child{font-family:var(--mono);font-size:13.5px}
+.slchg.muted li>span:first-child{color:var(--fg2)}
+.slfiles summary{font-size:12.5px;color:var(--fg2);cursor:pointer}
+.slfiles ul{font-size:12px;color:var(--fg2);margin:4px 0 0;padding-left:16px}
+.slverdict{font-size:17px;font-weight:500;max-width:70ch}
+.sltbl{max-width:none}
+.sltbl th,.sltbl td{white-space:nowrap}
+.sltbl thead th:first-child{text-align:left;padding-left:0}
+.sltbl td:nth-child(5){font-family:var(--body);font-size:13px;color:var(--fg2);white-space:normal;min-width:150px}
+.slpair{display:grid;gap:4px;padding-top:8px;border-top:1px solid var(--grid)}
+.slnextcard{border-left:4px solid var(--me);background:var(--bg);padding:12px 16px;display:grid;gap:6px;border-radius:0 4px 4px 0}
+.slaction{font-family:var(--display);font-weight:700;font-size:22px;line-height:1.15}
+.slideas li{display:grid;gap:2px}
+.slidea{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.slsec{gap:10px}
+.comain{gap:14px}
+.costatus{font-size:17px;font-weight:500}
+.btn.cobig{font-size:16px;padding:12px 26px;min-width:190px}
+.cogrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.coref{font-family:var(--display);font-weight:700;font-size:32px;line-height:1.05}
+.cospoken{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.cospoken li{display:flex;gap:14px;align-items:baseline}
+.cospoken .cot{color:var(--muted);font-size:12.5px;min-width:52px}
+#fCoach input[type=range]{width:100%;accent-color:var(--me)}
+#fCoach .field>span b{font-weight:500;color:var(--fg2);margin-left:4px}
+@media (max-width:760px){.slhead{grid-template-columns:1fr}.slaction{font-size:19px}}

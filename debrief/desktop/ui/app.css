@@ -616,3 +616,20 @@ td.rcwhen .linkbtn{font-size:12.5px;margin-top:2px}
 #vRacing .col{max-width:1120px;grid-template-columns:minmax(0,1fr)}
 #vRacing .prwrap,#vRacing .slreport,.rcsec,.rctrackbox,.rcraces{grid-template-columns:minmax(0,1fr);min-width:0}
 .rcraces{display:grid;gap:4px}
+
+/* ---------- Coach 2.0: voice and sound, rehearsal, coach log */
+.covoice{display:grid;gap:12px}
+.covoice h4{margin:8px 0 0}
+.covoice .field>span b{font-weight:500;color:var(--fg2);margin-left:4px}
+.field.grow{flex:1 1 260px;min-width:0;max-width:520px}
+.corh{align-items:flex-end}
+.corh .field{flex:1 1 300px;min-width:0}
+.corh select{width:100%}
+#coRhProg .pct{font-size:12.5px;color:var(--muted);min-width:120px}
+.colog{max-height:420px;overflow:auto}
+#coLogRows td:nth-child(5){font-weight:500}
+#coLogRows td:nth-child(6){color:var(--fg2)}
+#coLogRows tr.ev-spoken td:nth-child(4){color:var(--good)}
+#coLogRows tr.ev-dropped td:nth-child(4),#coLogRows tr.ev-cancelled td:nth-child(4){color:var(--lose)}
+#coLogView .phead{margin-top:14px}
+.pvlist.bad li{color:var(--lose)}

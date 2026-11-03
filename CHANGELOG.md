@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.17.0
+
+- **Coach 2.0: a natural voice.** The live coach now speaks with recorded neural voices instead of Windows speech. It comes with one voice, **George (British male)**, tuned for the coach. George covers every phrase the coach can say (785 phrases, corners T1 to T25), at the same loudness, and the coach times each cue with the clip's exact length, so it finishes before your brake point. Windows speech is only used for a phrase a voice can't say (the "Good, 0" to "Good, 19" plan words). The voices were made with Kokoro-82M (Apache-2.0) and ship as sound clips (about 8 MB); Kokoro itself is not part of Debrief and nothing goes online. More voices (Michael, Fenrir, Heart, Kumo, Omega) are coming later; you can already add your own voice pack.
+- **Voice and sound** (Coach page): pick the voice and hear it with **Preview**; pick the headset or speakers it plays through (**Play through**; if that device is unplugged the coach switches to Windows default and goes back to it when it returns); **Measure audio delay**, which the coach then uses to start each cue earlier; and **Add your own voice pack** from a folder or a .zip (Debrief checks it first: only sound clips and a manifest, nothing that runs).
+- **Coach log** (Coach page): every cue the coach made, said, dropped or cut off, with the lap, the spot on track, the speed and why, one file per session (the last 30 are kept, in `coach-logs` next to your settings; only the car and track, nothing about you). **View** shows a session; **Copy for Claude** puts a short summary on the clipboard to paste into a chat.
+- **Rehearse with a session**: plays one of your Practice sessions through the coach at real speed, with the same voice, device and rules, so you can hear what it would say before you drive. Stop ends it. Not while you coach live.
+- **Repeat that** (**Ctrl+Shift+R**, or a wheel button you teach it) says the last cue again; **Mute for 1 minute** (**Ctrl+Shift+N**) quiets the coach for a minute.
+- **Already fixed**: when you got a focus corner wrong and then drive it well twice in a row, the coach stops talking about it until it slips again (twice in three laps); one slip is left alone. The log says when a corner is fixed or back.
+- Debrief does not change iRacing's volume (lowering iRacing while the coach talks was tried and left out of this version).
+- Checked on your real files (McLaren 570S GT4 at Zolder, 8 files, 42 laps, played through the coach with George's clip lengths and 3 focus corners): at most 2 cues in a lap, none ending less than 1 second before a brake point (the closest ended 2.0 s before), no two cues overlapping, and every line said was in the voice pack.
+- Not proven yet: the voices, the chosen sound device, unplugging it, the measured audio delay and the Ctrl+Shift+R / Ctrl+Shift+N keys have only been tested with stand-ins, never on your PC with iRacing running. Before trusting it in a race, do a 20-minute practice session with the coach on and check that it is clear, on time and in the right headset.
+
 ## 2.16.0
 
 - **Racing** (new page, after Practice in the sidebar): your starts and your incidents across all your races, from the replay scans, telemetry files and saved reviews already on your PC. Debrief only reads them (RaceCap's folder too, when you have linked it); nothing is written there and nothing goes online.

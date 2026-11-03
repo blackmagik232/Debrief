@@ -24,6 +24,14 @@ datas += [(str(p), "debrief/desktop/ui/fonts") for p in sorted((PKG / "desktop" 
 if not any(d[1] == "debrief/desktop/ui/fonts" and d[0].endswith("fonts.css") for d in datas):
     raise SystemExit("debrief/desktop/ui/fonts/fonts.css is missing: the fonts would be left out of the build")
 datas += [(str(p), "debrief/data") for p in sorted((PKG / "data").glob("*.json"))]   # the season schedule that ships with the app
+# Coach 2.0: the voice packs (manifest.json + 16-bit WAV clips + preview.wav per pack; coverage.txt stays out)
+_packs = [d for d in sorted((PKG / "data" / "voicepacks").glob("*")) if (d / "manifest.json").is_file()]
+for _need in ("engineer",):   # George (engineer) is the default
+    if not any(d.name == _need for d in _packs):
+        raise SystemExit(f"debrief/data/voicepacks/{_need} is missing: that coach voice would be left out")
+for _d in _packs:
+    datas += [(str(p), f"debrief/data/voicepacks/{_d.name}") for p in sorted(_d.iterdir())
+              if p.is_file() and (p.name == "manifest.json" or p.suffix.lower() == ".wav")]
 datas += [(str(PKG / "desktop" / "icon.png"), "debrief/desktop"),
           (str(PKG / "desktop" / "debrief.ico"), "debrief/desktop"),
           (str(ROOT / "settings.example.toml"), ".")]
@@ -55,7 +63,9 @@ for _must in ("debrief.prep", "debrief.goals", "debrief.results", "debrief.team"
               "debrief.sessionibt", "debrief.cornercoach",
               "debrief.practiceplan", "debrief.wheelmute", "debrief.firstrun",
               "debrief.balance", "debrief.pressurelearn", "debrief.setupshare", "debrief.teamref",
-              "debrief.startreport", "debrief.incidentmap"):
+              "debrief.startreport", "debrief.incidentmap",
+              "debrief.voicepack", "debrief.audioout", "debrief.coachvoice", "debrief.cuelog",
+              "debrief.desktop.coach2"):
     if _must not in hiddenimports:
         raise SystemExit(f"Build stopped: {_must} would be left out of Debrief.exe")
 

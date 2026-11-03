@@ -1,0 +1,6 @@
+George (British male) (engineer): 216 clips, 7.50 MB, 16000 Hz, speed 1.25, comma pause 60 ms
+Coach phrases covered: 785 of 785 (100.0%)
+Left to Windows speech by design: Good, 0 .. Good, 19 (20 phrases)
+Takes to listen to: 2
+  line 35 'Turn ten, smoother brake.': spoken as 'Turn ten. Smoother brake.' to get a pause at the comma (listen to the join)
+  line 174 'Ninety-seven.': odd length for its words (7.6 syllables/s, usual 4.5)

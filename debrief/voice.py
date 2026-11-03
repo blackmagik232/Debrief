@@ -511,6 +511,105 @@ class SapiVoice:
                     pass
 
 
+class SapiRenderer:
+    """Coach 2.0: Windows speech rendered to sound in memory, never played by SAPI itself (the voice pack's player
+    plays it through the chosen device). render(text, rate) -> (16-bit mono PCM bytes, sample rate) or None, on
+    one thread of its own that owns the COM object. Used only for the few phrases a voice pack can't say. Never
+    raises; when SAPI can't start, every render is None and .reason says why."""
+
+    def __init__(self, log=None):
+        self._log = log or _LOG.warning
+        self._q: queue.Queue = queue.Queue()
+        self._stop = threading.Event()
+        self._ready = threading.Event()
+        self.available = False
+        self.reason = ""
+        self.rendered = 0
+        self._dir = None
+        self._thread = threading.Thread(target=self._run, name="debrief-sapi-render", daemon=True)
+        self._thread.start()
+
+    def render_async(self, text: str, rate: int, callback):
+        """callback((pcm, sample_rate) or None) on the render thread."""
+        if self._stop.is_set():
+            callback(None)
+            return
+        self._q.put((str(text), _clamp(rate, -10, 10, 0), callback))
+
+    def render(self, text: str, rate: int = 0, timeout: float = 8.0):
+        box, ev = {}, threading.Event()
+        self.render_async(text, rate, lambda r: (box.update(r=r), ev.set()))
+        ev.wait(timeout)
+        return box.get("r")
+
+    def wait_ready(self, timeout: float = 5.0) -> bool:
+        self._ready.wait(timeout)
+        return self.available
+
+    def close(self, timeout: float = 2.0):
+        self._stop.set()
+        self._q.put(None)
+        if threading.current_thread() is not self._thread:
+            self._thread.join(timeout)
+
+    def _run(self):
+        sp, backend, uninit = None, None, None
+        try:
+            sp, backend, uninit = _com_object("SAPI.SpVoice")
+            sp.Volume = 100
+            self._dir = tempfile.mkdtemp(prefix="debrief-sapi-")
+            self.available = True
+        except Exception as e:  # noqa: BLE001
+            self.reason = f"Windows speech could not be started ({str(e)[:160]})"
+            self._log(f"voice: {self.reason}")
+        finally:
+            self._ready.set()
+        n = 0
+        try:
+            while not self._stop.is_set():
+                item = self._q.get()
+                if item is None:
+                    break
+                text, rate, cb = item
+                out = None
+                if sp is not None:
+                    n += 1
+                    path = Path(self._dir) / f"r{n}.wav"
+                    try:
+                        sp.Rate = rate
+                        fs = _new_com("SAPI.SpFileStream", backend)
+                        fs.Open(str(path), SSFM_CREATE_FOR_WRITE, False)
+                        try:
+                            sp.AudioOutputStream = fs
+                            sp.Speak(text, 0)
+                        finally:
+                            fs.Close()
+                        with wave.open(str(path), "rb") as w:
+                            if w.getsampwidth() == 2 and w.getnchannels() == 1:
+                                out = (w.readframes(w.getnframes()), w.getframerate())
+                        self.rendered += out is not None
+                    except Exception as e:  # noqa: BLE001
+                        self._log(f"voice: Windows speech could not say a phrase ({e.__class__.__name__})")
+                    finally:
+                        try:
+                            path.unlink()
+                        except OSError:
+                            pass
+                try:
+                    cb(out)
+                except Exception:  # noqa: BLE001
+                    pass
+        finally:
+            sp = None
+            if uninit is not None:
+                try:
+                    uninit()
+                except Exception:  # noqa: BLE001
+                    pass
+            if self._dir:
+                shutil.rmtree(self._dir, ignore_errors=True)
+
+
 def make_voice(volume: int = 100, rate: int = 0, log=None):
     """The best voice this computer has: SapiVoice on Windows (which goes quiet on its own if SAPI fails),
     NullVoice anywhere else."""

@@ -3413,9 +3413,11 @@ class Handler(BaseHTTPRequestHandler):
     MAX_RESULT_CSV = 2 * 1024 * 1024
 
     def _post_result_csv(self):
-        """iRacing's results CSV as the raw body, ?review=<folder>. The result form is filled in and the person presses
-        Save; since 2.18 the parsed table (cars, classes, iRatings, lap times) is also kept beside the review as
-        field.json for Car vs car (carcompare.py). Nothing else is saved."""
+        """iRacing's results CSV as the raw body, ?review=<folder>. Nothing is saved here: the result form is filled in
+        and the person presses Save. Since 2.18 the parsed table (cars, classes, iRatings, lap times) waits in memory
+        and is kept beside the review as field.json for Car vs car (carcompare.py) only when he presses Save, and
+        only when the file's track and race match the review and he is in it. A file for another track or race is
+        refused."""
         cl = (self.headers.get("Content-Length") or "").strip()
         if not cl.isdigit() or self.headers.get("Transfer-Encoding") or int(cl) > self.MAX_RESULT_CSV:
             self.close_connection = True
@@ -3433,9 +3435,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": False, "error": "Couldn't read that review."}, 400)
         if not isinstance(review, dict):
             return self._json({"ok": False, "error": "That review's data file is damaged."}, 400)
+        bad = field_mismatch(review, parsed)
+        if bad:
+            return self._json({"ok": False, "error": bad}, 400)
         me = results_csv.pick(parsed, (review.get("meta") or {}).get("driver"))
-        _save_field(d, review, parsed)
-        return self._json({"ok": True, "matched": me, "drivers": parsed["drivers"], "multiclass": parsed["multiclass"]})
+        field_pending(self.server, d.name, field_doc(review, parsed))
+        drivers = [{k: v for k, v in x.items() if k != "cust_id"} for x in parsed["drivers"]]
+        if me:
+            me = {k: v for k, v in me.items() if k != "cust_id"}
+        return self._json({"ok": True, "matched": me, "drivers": drivers, "multiclass": parsed["multiclass"]})
 
     def _post_racecap_link(self, body):
         cfg = self._cfg()
@@ -3475,7 +3483,10 @@ class Handler(BaseHTTPRequestHandler):
                              " to finish first.")
         if act == "save":
             res = results.save(cfg["library_folder"], d.name, clean_result_fields(body.get("fields")))
-            return self._json({"ok": True, "result": res})
+            out = {"ok": True, "result": res}
+            if "field_me" in body:          # 2.18: the results file loaded in this form: keep its table for Car vs car
+                out["field"] = save_field(self.server, d, body.get("field_me"))
+            return self._json(out)
         if act == "delete":
             return self._json({"ok": True, "deleted": bool(results.delete(cfg["library_folder"], d.name))})
         raise ValueError("Bad request.")
@@ -3859,16 +3870,85 @@ class Handler(BaseHTTPRequestHandler):
                                      "focus": weak_from_cards(rep)}))
 
 
-def _save_field(d: Path, review: dict, parsed: dict) -> None:
-    """2.18: keep the parsed results table beside the review (field.json, written atomically) so Car vs car can use
-    every driver's car, iRating and laps. A failure is logged and never stops the form from filling in."""
+
+# ---------------------------------------------------------------- 2.18: the results table kept for Car vs car
+FIELD_PENDING_S = 6 * 3600       # a loaded results file waits this long for Save
+
+
+def field_mismatch(review: dict, parsed: dict) -> str | None:
+    """Plain words when the results file is for another track or race than this review, else None."""
+    from .. import schedule
     meta = review.get("meta") or {}
-    doc = {"version": 1, "track": meta.get("track") or "", "when": meta.get("started_at") or "", "me": meta.get("driver") or "",
-           "subsession": str((review.get("racecap") or {}).get("subsession") or ""), "drivers": parsed.get("drivers") or [],
-           "multiclass": bool(parsed.get("multiclass"))}
+    race = parsed.get("race") or {}
+    mine_sub = str((review.get("racecap") or {}).get("subsession") or "")
+    if race.get("subsession") and mine_sub and race["subsession"] != mine_sub:
+        return (f"This results file is for race {race['subsession']}, but this review is race {mine_sub}. "
+                "Pick the results file of this race.")
+    if race.get("track") and meta.get("track") and not schedule.same_track(race["track"], meta["track"]):
+        return (f"This results file is for {race['track']}, but this review is {meta['track']}. "
+                "Pick the results file of this race.")
+    return None
+
+
+def field_doc(review: dict, parsed: dict) -> dict:
+    meta = review.get("meta") or {}
+    race = parsed.get("race") or {}
+    return {"version": 2, "track": meta.get("track") or race.get("track") or "", "when": meta.get("started_at") or race.get("when") or "",
+            "me": "", "subsession": str(race.get("subsession") or (review.get("racecap") or {}).get("subsession") or ""),
+            "race": race, "drivers": parsed.get("drivers") or [], "multiclass": bool(parsed.get("multiclass"))}
+
+
+def field_pending(server, review_name: str, doc: dict) -> None:
+    lock = server.__dict__.setdefault("_field_lock", threading.Lock())
+    with lock:
+        p = server.__dict__.setdefault("_field_pending", {})
+        p[review_name] = {"doc": doc, "t": time.monotonic()}
+        for k in [k for k, v in p.items() if time.monotonic() - v["t"] > FIELD_PENDING_S]:
+            p.pop(k, None)
+
+
+def save_field(server, d: Path, me) -> dict:
+    """On Save: keep the results table loaded in this form beside the review (field.json, written atomically).
+    Refused when his name isn't in it, or when a table of another race is already kept (it stays as it was).
+    A different table of the same race replaces the old one, which is kept as field.json.bak. Never raises:
+    {"kept": bool, "note": plain words}."""
+    from .. import results_csv
+    lock = server.__dict__.setdefault("_field_lock", threading.Lock())
+    with lock:
+        item = server.__dict__.setdefault("_field_pending", {}).pop(d.name, None)
+    if item is None:
+        return {"kept": False, "note": "Load the iRacing results file again to keep it for Car vs car."}
+    doc = item["doc"]
+    hits = [x for x in doc["drivers"] if isinstance(me, str) and me.strip() and results_csv.same_name(x.get("name"), me)]
+    if not hits:
+        return {"kept": False, "note": "The results table wasn't kept for Car vs car: your name wasn't found in it."}
+    doc = dict(doc, me=hits[0]["name"])
+    f = d / "field.json"
+    old = None
     try:
+        old = json.loads(f.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        old = None
+    except (OSError, ValueError):
+        old = {}
+    note = "Kept the results table for Car vs car."
+    if isinstance(old, dict) and old.get("drivers"):
+        if old.get("drivers") == doc["drivers"] and old.get("subsession") == doc["subsession"]:
+            return {"kept": True, "note": note}
+        if old.get("subsession") and doc["subsession"] and old["subsession"] != doc["subsession"]:
+            return {"kept": False, "note": f"A results table for another race ({old['subsession']}) is already kept for "
+                                           "this review, so it was left as it is."}
+    try:
+        if old is not None and f.is_file():
+            bak = d / "field.json.bak"
+            tmp = d / "field.json.bak.tmp"
+            tmp.write_bytes(f.read_bytes())
+            os.replace(tmp, bak)
+            note = "Replaced the kept results table for Car vs car (the old one is kept as field.json.bak)."
         tmp = d / "field.json.tmp"
         tmp.write_text(json.dumps(doc), encoding="utf-8")
-        os.replace(tmp, d / "field.json")
+        os.replace(tmp, f)
     except (OSError, ValueError) as e:
         app.say(f"Couldn't keep the results table for Car vs car ({type(e).__name__}).")
+        return {"kept": False, "note": "The results table couldn't be kept for Car vs car. Details were saved to debrief.log."}
+    return {"kept": True, "note": note}

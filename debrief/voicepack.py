@@ -68,6 +68,7 @@ MAX_NUM = 100              # speech says those few)
 MIN_KMH = 4                # "more speed, 7 down": 4..20 km/h (the coach says it from Settings.slower_kmh, 4)
 MAX_KMH = 20
 MAX_TENTHS = 20            # lap deltas: a tenth .. 2.0 seconds
+LAP_TENTHS = (400, 1800)   # 2.17.2 "Reference set, one thirty-eight nine": lap times 0:40.0 .. 2:59.9 (in tenths)
 
 
 class VoicePackError(Exception):
@@ -112,6 +113,26 @@ def amount_words(tenths: int) -> str:
     return f"{_ONES[s]} point {_ONES[t]} seconds"
 
 
+def lap_time_words(seconds: float) -> str:
+    """A lap time the way an engineer says it, to the tenth: 98.874 -> 'one thirty-eight nine', 65.04 ->
+    'one oh five oh', 52.3 -> 'fifty-two three'."""
+    n = int(round(float(seconds) * 10))
+    m, rest = divmod(n, 600)
+    sec, tenth = divmod(rest, 10)
+    tw = "oh" if tenth == 0 else _ONES[tenth]
+    if m == 0:
+        return f"{number_words(sec)} {tw}"
+    sw = "oh oh" if sec == 0 else f"oh {_ONES[sec]}" if sec < 10 else number_words(sec)
+    return f"{number_words(m)} {sw} {tw}"
+
+
+def _lap_parts(tenths: int):
+    """(minutes-and-seconds words, tenth word) for a lap time in tenths of a second."""
+    w = lap_time_words(tenths / 10)
+    head, _, tail = w.rpartition(" ")
+    return head, tail
+
+
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
@@ -123,7 +144,7 @@ TAILS = ["carry more speed", "lighter brake", "brake later", "brake earlier", "t
 # whole phrases said on their own (practiceplan progress cues, the lap cue "New best")
 WHOLES = ["Good brake point", "Good, held it in", "Good, no coasting", "Good throttle", "Good speed",
           "Good, on pace", "Too much brake", "Braked too early", "Braked too late", "Hold the brake in",
-          "Less coasting", "More speed", "New best"]
+          "Less coasting", "More speed", "New best", "Building your reference"]
 
 SECTIONS = {
     "A": "Brake markers. One clear phrase, a small pause at the comma.",
@@ -132,6 +153,8 @@ SECTIONS = {
     "D": "Lap times, a new best. A little lift, but stay calm. Short pause at the comma.",
     "E": "Brake pressure. First 'Good, eighty-four' with a short pause at the comma, then each number on its own.",
     "F": "Short practice cues. Each one on its own.",
+    "G": "Time in a corner or a sector. Say the turn or sector, a short pause at the comma, then the time.",
+    "H": "Lap times. Like reading a stopwatch: a short pause at the comma before the last number.",
 }
 
 
@@ -163,6 +186,19 @@ def lines() -> list:
         add("E", f"{w[:1].upper()}{w[1:]}.", [(f"num_{n}", "whole")])
     for w in WHOLES:
         add("F", f"{w}.", [(_slug(w), "whole")])
+    # 2.17.2 (added after everything above, so earlier line numbers never change)
+    for k in range(1, MAX_TENTHS + 1):         # "Turn three, two tenths down." -> tail "two tenths down"
+        turn = (k + 2) % MAX_TURN + 1
+        add("G", f"Turn {number_words(turn)}, {amount_words(k)} down.", [(f"lost_{amount_key(k)}", "tail")])
+    for k, w in enumerate(("one", "two", "three"), 1):
+        add("G", f"Sector {w}, up {amount_words(k + 1)}.", [(f"sector_{k}", "lead")])
+    add("H", "Reference set, one thirty-eight nine.", [("reference_set", "lead")])
+    for i, n in enumerate(range(LAP_TENTHS[0] // 10, LAP_TENTHS[1] // 10 + 1)):   # whole seconds 40 .. 179
+        head, _ = _lap_parts(n * 10)
+        digit = (n * 7) % 10                    # each tenth word comes from one of the first lines
+        _h, tw = _lap_parts(n * 10 + digit)
+        clips = [(f"lap_{n}", "lead")] + ([(f"tenth_{digit}", "tail")] if i < 10 else [])
+        add("H", f"{head[:1].upper()}{head[1:]}, {tw}.", clips)
     return out
 
 
@@ -207,6 +243,35 @@ def _tail(text: str):
     return None
 
 
+def _time_tail(text: str):
+    """2.17.2: 'two tenths down' -> ['lost_0_2'], 'up a tenth' -> ['up_0_1'], 'good, up a tenth' -> ['good_lead',
+    'up_0_1'], else None."""
+    t = text.strip().lower()
+    m = re.fullmatch(r"(good,\s*)?up\s+(.+)", t)
+    if m:
+        a = _amount(m.group(2))
+        return (["good_lead"] if m.group(1) else []) + [f"up_{a}"] if a else None
+    m = re.fullmatch(r"(.+?)\s+down", t)
+    if m:
+        a = _amount(m.group(1))
+        return [f"lost_{a}"] if a else None
+    return None
+
+
+_LAP_KEYS = None
+
+
+def _lap_keys(words: str):
+    """'one thirty-eight nine' -> ['lap_98', 'tenth_9'] for the lap times a pack says (LAP_TENTHS), else None."""
+    global _LAP_KEYS
+    if _LAP_KEYS is None:
+        _LAP_KEYS = {}
+        for n in range(LAP_TENTHS[0] // 10, LAP_TENTHS[1] // 10 + 1):
+            for d in range(10):
+                _LAP_KEYS[lap_time_words(n + d / 10)] = [f"lap_{n}", f"tenth_{d}"]
+    return _LAP_KEYS.get(" ".join(words.lower().split()))
+
+
 def compose(text) -> list | None:
     """The clip keys that say one of the coach's cues, or None when no pack can say it (unknown words, a corner
     past turn 25, a delta over 2 seconds ...). Only reads the text: whether a given pack has every clip is
@@ -224,7 +289,20 @@ def compose(text) -> list | None:
     m = re.fullmatch(_TURN + r"\s*[:,]\s*(.+)", t, re.I)
     if m:
         n, tail = int(m.group(1)), _tail(m.group(2))
-        return [f"turn_{n}", tail] if 1 <= n <= MAX_TURN and tail else None
+        if not 1 <= n <= MAX_TURN:
+            return None
+        if tail:
+            return [f"turn_{n}", tail]
+        tt = _time_tail(m.group(2)) if "," in t[:8] else None     # "T3, a tenth down" / "T3, good, up a tenth"
+        return [f"turn_{n}"] + tt if tt else None
+    m = re.fullmatch(r"sector (one|two|three),\s*(.+)", low)
+    if m:
+        tt = _time_tail(m.group(2))
+        return [f"sector_{('one', 'two', 'three').index(m.group(1)) + 1}"] + tt if tt and "good" not in tt[0] else None
+    m = re.fullmatch(r"reference set,\s*(.+)", low)
+    if m:
+        k = _lap_keys(m.group(1))
+        return ["reference_set"] + k if k else None
     if low in _WHOLE_KEYS:
         return [_WHOLE_KEYS[low]]
     m = re.fullmatch(r"down\s+(.+)", low)

@@ -1,7 +1,7 @@
 """Stress test for the live coach (Coach 2.0): play telemetry files through the coach as fast as possible, timing
 every cue with a voice pack's exact clip lengths, and count what a driver would hear.
 
-    python tools/coach_stress.py <telemetry folder> [--pack engineer] [--top 3]
+    python tools/coach_stress.py <telemetry folder> [--pack engineer] [--top 3] [--level quiet|normal|busy]
 
 For each car and track: the reference is the best clean lap across that pair's files; the focus corners are the
 reference's slowest braked corners (top N, as if the reviews named them). Every file is then played through the
@@ -27,7 +27,7 @@ def key_of(path: Path) -> str:
     return parts[0] if len(parts) == 3 else path.stem
 
 
-def run(folder: Path, pack_id: str, top: int) -> dict:
+def run(folder: Path, pack_id: str, top: int, level: str = lc.DEFAULT_LEVEL) -> dict:
     pack = vp.find_pack(pack_id)
     if pack is None:
         raise SystemExit(f"voice pack {pack_id} not found")
@@ -39,7 +39,7 @@ def run(folder: Path, pack_id: str, top: int) -> dict:
     groups = collections.defaultdict(list)
     for p in sorted(folder.glob("*.ibt")):
         groups[key_of(p)].append(p)
-    st = lc.Settings(top_n=top)
+    st = lc.Settings(top_n=top, level=level)
     total = {"files": 0, "laps": 0, "cues": 0, "max_per_lap": 0, "short": 0, "overlaps": 0, "min_gap_s": None,
              "uncovered": set(), "pairs": []}
     for key, paths in groups.items():
@@ -100,8 +100,9 @@ def main(argv=None):
     ap.add_argument("folder")
     ap.add_argument("--pack", default="engineer")
     ap.add_argument("--top", type=int, default=3)
+    ap.add_argument("--level", default=lc.DEFAULT_LEVEL, choices=sorted(lc.LEVELS))
     a = ap.parse_args(argv)
-    t = run(Path(a.folder), a.pack, a.top)
+    t = run(Path(a.folder), a.pack, a.top, a.level)
     avg = t["cues"] / t["laps"] if t["laps"] else 0
     gap = "n/a" if t["min_gap_s"] is None else f"{t['min_gap_s']:.2f} s"
     print(f"TOTAL: {t['files']} files, {t['laps']} laps, {t['cues']} cues ({avg:.2f} a lap), at most "

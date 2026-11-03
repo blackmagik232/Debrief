@@ -138,7 +138,7 @@ def play(path, settings=None, weak=None, ref=None, voice=None, keep=None):
     (coach, voice, source). keep: Coach.keep_reference (a lap he chose, never replaced while in use)."""
     src = lc.IbtPlaybackSource(path, speed=0)
     v = voice or vc.FakeVoice()
-    coach = lc.Coach(ref, weak, settings or lc.Settings(), duration=v.duration)
+    coach = lc.Coach(ref, weak, settings or lc.Settings(level="quiet"), duration=v.duration)
     coach.keep_reference = keep
     while True:
         s = src.read()
@@ -263,8 +263,13 @@ check(rr.reference_searches == 2 and rr.coach.reference is not None and rr._stat
 check(rr.status()["text"].startswith("Coaching:") and "—" not in rr.status()["text"], rr.status()["text"])
 src_i.cur = {"car": {"path": "fordmustanggt4", "name": "Ford Mustang GT4"}, "track": {"code": "zolder gp", "name": "Zolder"}}
 rr._ensure_reference()
+check(rr.status()["text"].startswith("Building your reference: Ford Mustang GT4 at Zolder. No lap of yours in your "
+                                     "telemetry files, so your first clean lap becomes the reference"),
+      f"no reference (Normal): plain words ({rr.status()['text']})")
+rr.settings.level = "quiet"
 check(rr.status()["text"] == "Listening: Ford Mustang GT4 at Zolder. No clean lap to coach from yet. Drive a clean lap to set one.",
-      f"no reference: plain words ({rr.status()['text']})")
+      f"no reference (Quiet): plain words as before ({rr.status()['text']})")
+rr.settings.level = "normal"
 rr._state = "waiting"
 rr.source = types.SimpleNamespace(state="not_installed")
 check(rr.status()["text"] == "Waiting: Debrief's iRacing connection is missing. Reinstall Debrief.", rr.status()["text"])
@@ -414,7 +419,7 @@ ap = crossing_time(per, 2, c2.apex_pct)
 check(fbp and ap < fbp[0]["t"] < ap + 12, f"feedback on the straight after the corner ({fbp[0]['t'] - ap:.1f} s after the apex)")
 timing_rules_ok(per, fpers.said, ref, "persisting")
 # with three weak corners, still no more than two corrective cues a lap
-_c, f3, _s = play(cur, settings=lc.Settings(top_n=3), weak=weak, ref=ref)
+_c, f3, _s = play(cur, settings=lc.Settings(top_n=3, level="quiet"), weak=weak, ref=ref)
 first = [x["text"] for x in f3.said if lap_of(x["t"]) == 1]
 check(len(first) == 2 and all(t.startswith("Brake marker") for t in first), f"top 3: first lap still 2 cues {first}")
 # a pre-rendered (longer) cue is started earlier so it still ends 1 s before the brake point
@@ -425,7 +430,7 @@ check(lm and all(d >= 2.0 + 1.0 + 0.1 - 0.06 for d in lm), f"rendered length use
 check(any("Brake marker, T2" in p_ for p_ in _c.vocabulary()) and any(p_.startswith("Down two") for p_ in _c.vocabulary()),
       "vocabulary for pre-rendering")
 # optional beep at the brake point
-_c, fb_, _s = play(cur, settings=lc.Settings(brake_beep=True), weak=weak, ref=ref)
+_c, fb_, _s = play(cur, settings=lc.Settings(brake_beep=True, level="quiet"), weak=weak, ref=ref)
 bt = [crossing_time(cur, lap_of(t), c2.brake_pct) - t for t in fb_.beeps if abs(crossing_time(cur, lap_of(t), c2.brake_pct) - t) < 0.2]
 check(len(fb_.beeps) >= 8 and len(bt) >= 4, f"brake-point beeps when switched on ({len(fb_.beeps)}, at T2: {len(bt)})")
 check(fv.beeps == [], "no beep by default")
@@ -433,7 +438,8 @@ check(fv.beeps == [], "no beep by default")
 # the same through the LiveRunner thread (as fast as possible)
 before = {t.name for t in threading.enumerate()}
 fv2 = vc.FakeVoice()
-r = lc.LiveRunner(lc.IbtPlaybackSource(cur, speed=0), fv2, reference=ref, weak_corners=weak)
+r = lc.LiveRunner(lc.IbtPlaybackSource(cur, speed=0), fv2, reference=ref, weak_corners=weak,
+                  settings=lc.Settings(level="quiet"))
 r.start()
 t0 = time.monotonic()
 while r.running() and time.monotonic() - t0 < 60:
@@ -448,7 +454,7 @@ check(r.stop() and "debrief-livecoach" not in {t.name for t in threading.enumera
 race, _rt = make(TMP / "race.ibt", [{}, {"corners": SLOW2}, {}], session="Race", lead_pit=False)
 _c, fr0, _s = play(race, weak=weak, ref=ref)
 check(fr0.said == [] and _c.quiet_reason == "Race session (coaching in races is off)", "no cues in a race by default")
-_c, fr1, _s = play(race, settings=lc.Settings(in_races=True), weak=weak, ref=ref)
+_c, fr1, _s = play(race, settings=lc.Settings(in_races=True, level="quiet"), weak=weak, ref=ref)
 print("   race cues:", [(round(x["t"] - 100, 1), x["text"]) for x in fr1.said])
 check(len(fr1.said) > 0, f"cues in a race with in_races ({len(fr1.said)})")
 end_lap1 = crossing_time(race, 2, 0.0001)
@@ -470,11 +476,11 @@ check(not any(x["text"].startswith(("Down", "New")) and crossing_time(off, 3, 0.
               for x in fo.said), "no lap time for a lap with an off")
 
 # ---------------------------------------------------------------- mute, rate cap, stale cues
-_c, fm, _s = play(cur, settings=lc.Settings(muted=True), weak=weak, ref=ref)
+_c, fm, _s = play(cur, settings=lc.Settings(muted=True, level="quiet"), weak=weak, ref=ref)
 check(fm.said == [] and _c.quiet_reason == "Muted", "muted: nothing said")
 co = lc.Coach(ref, weak)
 check(co.toggle() is True and co.settings.muted and co.toggle() is False, "toggle mutes and unmutes")
-_c, fg, _s = play(cur, settings=lc.Settings(gap_s=30.0), weak=weak, ref=ref)
+_c, fg, _s = play(cur, settings=lc.Settings(gap_s=30.0, level="quiet"), weak=weak, ref=ref)
 check(gaps_ok(fg.said, 30.0) and len(fg.said) >= 3, f"a longer gap is kept ({len(fg.said)} cues)")
 check(len(_c.queue.dropped) > 0, f"cues that couldn't be said in time were dropped ({len(_c.queue.dropped)})")
 check(all(x.spoken_t - x.t <= 2.0 + 1e-6 for x in _c.spoken), "no cue spoken more than 2 s after it was made")
@@ -663,7 +669,7 @@ if zr.exists() and zl.exists():
         print(f"     {c.name}: brake {c.brake_pct * 100:5.1f}% {c.brake_m:5.0f} m  apex {c.apex_pct * 100:5.1f}% "
               f"{c.apex_m:5.0f} m  min {c.min_kmh:5.1f} km/h" if c.brake_pct is not None else f"     {c.name}: lift")
     check(6 <= len(rr.braked) <= 11, "real: Zolder braking zones in a sensible range")
-    _c, fz, _s = play(zl, settings=lc.Settings(in_races=True), ref=rr,
+    _c, fz, _s = play(zl, settings=lc.Settings(in_races=True, level="quiet"), ref=rr,
                       weak=[{"id": "C4", "apex_m": rr.corner(4).apex_m, "avg_avail": 0.3},
                             {"id": "C6", "apex_m": rr.corner(6).apex_m, "avg_avail": 0.2},
                             {"id": "C2", "apex_m": rr.corner(2).apex_m, "avg_avail": 0.1}])

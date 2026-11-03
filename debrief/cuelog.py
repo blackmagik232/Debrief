@@ -4,7 +4,7 @@ session can be looked at afterwards ("why did it say that there?", "why was it q
     <settings dir>/coach-logs/<date> <car> <track>.jsonl            (rehearsals: "... rehearsal.jsonl")
 
 A line: {"ev": made | spoken | dropped | cancelled | not_made | corner_fixed | corner_regressed | lap_end |
-reference | repeated | muted | session, "t": session time, "lap", "dist_m", "kmh", "kind", "text", "corner",
+reference | focus_learned (2.17.2: focus corners learned from this session) | repeated | muted | session, "t": session time, "lap", "dist_m", "kmh", "kind", "text", "corner",
 "why" (why it was made), "dropped" (why it was not said), "measured" {...}, ...}. Several sessions on one day with
 the same car and track go into the same file, each starting with a "session" line.
 
@@ -32,10 +32,10 @@ KEYS = ("ev", "t", "lap", "dist_m", "kmh", "kind", "text", "corner", "why", "dro
         "next_brake_s", "waited_s", "lap_time", "clean", "cues", "source", "ref_lap", "ref_date", "corners", "focus",
         "car", "track", "mode", "version", "started", "settings", "voice", "seconds", "latency_s", "wall")
 MEASURED_KEYS = ("min_kmh", "ref_min_kmh", "down_kmh", "brake_point_m", "ref_brake_point_m", "early_m", "to_brake_m",
-                 "lost_s", "value", "hit", "near", "lap", "lap_time", "ref_time", "delta_s", "timed_by")
+                 "lost_s", "value", "hit", "near", "lap", "lap_time", "ref_time", "delta_s", "timed_by", "sector")
 FOCUS_KEYS = ("name", "id", "lost_s", "phrase", "brake_m")
 SETTINGS_KEYS = ("markers", "feedback", "lap_delta", "top_n", "max_per_lap", "repeat_laps", "gap_s", "in_races",
-                 "audio_latency_s", "end_before_brake_s", "voice_pack", "fixed_laps", "volume")
+                 "audio_latency_s", "end_before_brake_s", "voice_pack", "fixed_laps", "volume", "level")
 
 
 def _plain(x, n=60) -> str:
@@ -248,6 +248,9 @@ def summary(rows, name: str = "", version: str = "", limit: int = 6000) -> str:
         L.append("Not made: " + ", ".join(f"{k} {v}" for k, v in notm.most_common()))
     fx = [f"{r.get('corner')} fixed at lap {r.get('lap')}" for r in rows if r.get("ev") == "corner_fixed"]
     fx += [f"{r.get('corner')} slipped back at lap {r.get('lap')}" for r in rows if r.get("ev") == "corner_regressed"]
+    fx += [f"focus learned at lap {r.get('lap')}: " + (", ".join(
+        f"{f.get('name')}" + (f" ({f['lost_s']:.2f} s)" if isinstance(f.get("lost_s"), (int, float)) else "")
+        for f in r.get("focus") or []) or "none") for r in rows if r.get("ev") == "focus_learned"]
     if fx:
         L.append("Corners: " + "; ".join(fx))
     other = Counter(r.get("ev") for r in rows if r.get("ev") in ("repeated", "muted"))

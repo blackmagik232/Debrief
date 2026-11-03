@@ -368,7 +368,7 @@ STR.mkdir()
 for f in (refp, cur):
     shutil.copy(f, STR / f.name)
 tot = stress.run(STR, "engineer", 1)
-check(tot["files"] == 2 and tot["cues"] > 0 and tot["max_per_lap"] <= lc.Settings().max_per_lap and
+check(tot["files"] == 2 and tot["cues"] > 0 and tot["max_per_lap"] <= lc.Settings().per_lap() and
       tot["short"] == 0 and tot["overlaps"] == 0 and not tot["uncovered"],
       f"stress tool: {tot['cues']} cues, at most {tot['max_per_lap']} a lap, none too close, none overlapping")
 

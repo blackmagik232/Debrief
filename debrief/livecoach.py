@@ -51,7 +51,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import engine, ibt
+from . import engine, ibt, voicepack
 
 GRID = 1000                 # reference points around the lap
 KMH = 3.6
@@ -62,8 +62,31 @@ ABS_IBT = "BrakeABSactive"   # the ABS channel's name in .ibt files (Garage 61's
 MAX_PHRASE = 60             # characters: a corner-coach phrase longer than this is not spoken
 
 KIND_MARKER, KIND_FEEDBACK, KIND_LAP, KIND_BEEP = "marker", "feedback", "lap", "beep"
+KIND_CORNER, KIND_SECTOR, KIND_INFO = "corner", "sector", "info"     # 2.17.2
 FOCUS_MIN_HZ = 15.0         # 2.14 review: live reads at least this often while a practice focus is watched
-PRIORITY = {KIND_MARKER: 3, KIND_FEEDBACK: 2, KIND_LAP: 1}
+PRIORITY = {KIND_MARKER: 3, KIND_FEEDBACK: 2, KIND_CORNER: 2, KIND_LAP: 1, KIND_SECTOR: 1, KIND_INFO: 1}
+
+# 2.17.2 Coaching level. quiet: 2.17.0's few cues (focus corners and the lap only, Settings.max_per_lap and gap_s).
+# normal (the default) and busy also give: focus corners learned from this session when no review or Corner coach
+# card names any, a word after any corner where he lost (or gained) time against the reference, sector deltas, and
+# "Building your reference" / "Reference set, ..." before there is a reference.
+#   per_lap     cues a lap, every kind together (quiet: Settings.max_per_lap, markers + feedback only)
+#   gap_s       at most one cue every this many seconds (quiet: Settings.gap_s)
+#   live_top    focus corners learned from this session
+#   corner_min_s  a corner where he lost or gained at least this against the reference gets a word
+#   positives   "good" cues a lap
+LEVELS = {
+    "quiet": {"per_lap": None, "gap_s": None, "live_top": 0, "corner_min_s": None, "positives": 0,
+              "sectors": False, "first_laps": False},
+    "normal": {"per_lap": 4, "gap_s": 3.0, "live_top": 2, "corner_min_s": 0.1, "positives": 1,
+               "sectors": True, "first_laps": True},
+    "busy": {"per_lap": 6, "gap_s": 2.5, "live_top": 3, "corner_min_s": 0.1, "positives": 2,
+             "sectors": True, "first_laps": True},
+}
+DEFAULT_LEVEL = "normal"
+LIVE_MIN_LOSS_S = 0.05      # a corner is a session focus corner only when it costs at least this on average
+CORNER_MAX_S = 1.0          # a corner this far off the reference was a moment (traffic, a slide): no word about it
+LEARN_LAPS = 3              # session focus corners come from the last this many clean laps
 
 
 # ---------------------------------------------------------------- settings
@@ -108,6 +131,7 @@ class Settings:
     quiet_hotkey: str = "ctrl+shift+n"    # mute for a minute
     fixed_laps: int = 2                 # a corner driven well this many passes in a row is left alone
     log_cues: bool = True               # write the cue log (coach-logs/*.jsonl)
+    level: str = DEFAULT_LEVEL          # 2.17.2 Coaching level: quiet / normal / busy (LEVELS)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -147,7 +171,24 @@ class Settings:
         s.fixed_laps = max(1, min(10, s.fixed_laps))
         s.device = "".join(ch for ch in s.device if ch.isprintable()).strip()[:31]
         s.voice_pack = s.voice_pack.strip()[:40]
+        s.level = s.level.strip().lower()
+        if s.level not in LEVELS:
+            s.level = DEFAULT_LEVEL
         return s
+
+    def lv(self, key: str):
+        """This coaching level's value for key (LEVELS)."""
+        return LEVELS.get(self.level, LEVELS[DEFAULT_LEVEL])[key]
+
+    @property
+    def quiet(self) -> bool:
+        return self.level == "quiet"
+
+    def per_lap(self) -> int:
+        return self.max_per_lap if self.quiet else int(self.lv("per_lap"))
+
+    def gap(self) -> float:
+        return self.gap_s if self.quiet else float(self.lv("gap_s"))
 
 # ---------------------------------------------------------------- reference
 
@@ -640,6 +681,10 @@ class _Lap:
         self.trace: list = []
         self.cues = 0                   # corrective cues said this lap
         self.corners: set = set()       # corner numbers cued this lap
+        self.said = 0                   # 2.17.2: every cue said this lap (the level's per-lap limit)
+        self.positives = 0              # ... "good" cues said this lap
+        self.closs: dict = {}           # ... corner num -> seconds lost against the reference (clean passes)
+        self.sector_t: list = []        # ... session time at each sector boundary passed
 
 
 class _Obs:
@@ -692,6 +737,17 @@ class Coach:
         self.focus = None                # 2.14: the practice plan's focus corner (practiceplan.LiveFocus), optional
         self.focus_corner = None         # ... that corner on the reference (Corner), matched by its apex
         self.keep_reference = None       # 2.15: a reference he chose (a teammate's lap): never replaced while in use
+        self.proven: list = []           # 2.17.2: focus corners from the race reviews or the Corner coach
+        self.learned: list = []          # ... focus corners learned from this session (when there are no proven ones)
+        self._loss_hist: list = []       # ... {corner num: seconds lost} for the last clean laps against this reference
+        self._segs: dict = {}            # ... corner num -> (entry pct, exit pct) timed against the reference
+        self._sectors: list = []         # ... the two sector boundaries (pct), thirds of the reference lap by time
+        self._fb_made: dict = {}         # ... corner num -> session time its weak-corner feedback was made
+        self._building = None            # ... "Building your reference": None, "made" or "said"
+        self._full_since = None          # ... session time full throttle began (no reference: a straight)
+        self._last_along_t = -1e9
+        self._last_off_t = -1e9
+        self._last_inc_t = -1e9
         self._reset_all()
         if reference is not None:
             self.set_reference(reference)
@@ -700,8 +756,15 @@ class Coach:
     def set_reference(self, ref: Reference | None, weak_corners=None):
         if weak_corners is not None:
             self.weak_input = list(weak_corners)
+        same = ref is not None and ref is self.reference
         self.reference = ref
-        self.weak = match_weak(ref, self.weak_input, self.settings.top_n, self.settings.corner_prefix) if ref else []
+        self.proven = match_weak(ref, self.weak_input, self.settings.top_n, self.settings.corner_prefix) if ref else []
+        if not same:                     # times against an older reference say nothing about this one
+            self._loss_hist = []
+            self.learned = []
+        self._timing(ref)
+        self._learn(emit=False)
+        self.weak = self.proven or self.learned
         self._obs = {}
         self._marker_done = set()
         self._beep_done = set()
@@ -713,6 +776,80 @@ class Coach:
                        focus=[{"name": w.name, "id": w.corner.id, "lost_s": w.lost_s, "phrase": w.phrase,
                                "brake_m": round(w.corner.brake_m) if w.corner.brake_m is not None else None}
                               for w in self.weak])
+
+    # ---- 2.17.2: corner times, sectors and focus corners learned from this session ----
+    def _timing(self, ref):
+        self._segs, self._sectors = {}, []
+        if ref is None:
+            return
+        L = ref.length_m
+        for c in ref.corners:
+            lo = min(c.start_rel_m, (c.brake_rel_m - 60.0) if c.brake_rel_m is not None else c.start_rel_m)
+            a, b = c.apex_pct + lo / L, c.apex_pct + c.end_rel_m / L
+            if 0.0 <= a < b < 1.0:       # a corner across the line isn't timed
+                self._segs[c.num] = (a, b)
+        lt = ref.lap_time
+        tt = np.maximum.accumulate(np.asarray(ref.time, float))
+        if len(tt) and tt[-1] > 0:
+            # each boundary at a third of the lap by time, moved back to the exit of the corner before it, so the
+            # sector's word comes at the start of a straight
+            for k in (1, 2):
+                third = float(np.interp(lt * k / 3.0, tt, ref.pct))
+                exits = [b for _a, b in self._segs.values() if third - 0.15 < b <= third]
+                self._sectors.append(max(exits) if exits else third)
+
+    def _learn(self, emit: bool = True):
+        """Focus corners from this session: when no race review or Corner coach card names any, the corners where he
+        lost the most against the reference over his last clean laps (LEARN_LAPS), top Settings level live_top."""
+        st = self.settings
+        n = int(st.lv("live_top") or 0)
+        ref = self.reference
+        old = [w.corner.num for w in self.learned]
+        if ref is None or self.proven or n <= 0 or not self._loss_hist:
+            self.learned = [] if (ref is None or self.proven or n <= 0) else self.learned
+        else:
+            tot: dict = {}
+            for laploss in self._loss_hist[-LEARN_LAPS:]:
+                for num, x in laploss.items():
+                    tot.setdefault(num, []).append(x)
+            avg = sorted(((sum(v) / len(v), num) for num, v in tot.items()), key=lambda x: (-x[0], x[1]))
+            self.learned = [Weak(corner=ref.corner(num), lost_s=round(a, 3), name=f"{st.corner_prefix}{num}",
+                                 source="session")
+                            for a, num in avg[:n] if a >= LIVE_MIN_LOSS_S and ref.corner(num) is not None]
+        if not self.proven:
+            self.weak = self.learned
+        new = [w.corner.num for w in self.learned]
+        if emit and new != old:
+            self._emit("focus_learned", why=f"lost the most against the reference over the last "
+                                            f"{min(LEARN_LAPS, len(self._loss_hist))} clean laps",
+                       focus=[{"name": w.name, "id": w.corner.id, "lost_s": w.lost_s} for w in self.learned])
+
+    def focus_info(self) -> dict:
+        """What the coach focuses on and why, in plain words (the Coach page's status)."""
+        st = self.settings
+        names = [w.name for w in self.weak]
+        listed = ", ".join(names[:-1]) + (" and " if len(names) > 1 else "") + names[-1] if names else ""
+        if self.proven:
+            src = "corner coach" if any(w.source == "corner coach" for w in self.proven) else "reviews"
+            text = (f"Focus: {listed}, from the Corner coach." if src == "corner coach"
+                    else f"Focus: {listed}, from your race reviews.")
+        elif self.learned:
+            src = "session"
+            n = min(LEARN_LAPS, len(self._loss_hist))
+            text = (f"Learning from this session: {listed} cost you the most against your reference over your last "
+                    + (f"{n} clean laps." if n > 1 else "clean lap."))
+        elif self.reference is None:
+            src = None
+            text = ("No reference lap yet. Drive one clean lap and it becomes the reference." if st.quiet else
+                    "Building your reference: drive one clean lap and the coach compares every lap after it.")
+        elif st.quiet:
+            src = None
+            text = "No focus corners from your reviews or the Corner coach, so only lap times are said."
+        else:
+            src = "session"
+            text = ("Learning from this session: after your next clean lap the coach picks the corners where you "
+                    "lose the most.")
+        return {"source": src, "names": names, "text": text, "level": st.level}
 
     def set_focus(self, focus):
         """2.14: the practice plan's "one thing this session" (practiceplan.LiveFocus or None). After each clean pass
@@ -817,6 +954,19 @@ class Coach:
         for k in range(1, 10):
             out += [f"Down {delta_words(k / 10)}", f"New best, up {delta_words(k / 10)}"]
         out.append("New best")
+        st = self.settings
+        if st.lv("first_laps"):
+            out.append(BUILDING_TEXT)
+        if self.reference is not None and not st.quiet:     # 2.17.2: every corner, and the sectors
+            pre = st.corner_prefix
+            for c in self.reference.corners:
+                name = f"{pre}{c.num}"
+                out += [early_text(name)] + [corner_time_text(name, k / 10) for k in range(1, 6)]
+                out += [good_text(name, k / 10) for k in range(1, 4)]
+            for k in range(2):
+                out += [sector_text(k, d / 10) for d in (-3, -2, -1, 1, 2, 3, 4, 5)]
+            for c in self.reference.corners:
+                out += [speed_text(f"{pre}{c.num}", n) for n in range(max(1, int(math.ceil(st.slower_kmh))), 11)]
         if self.focus is not None:                       # 2.14 practice focus cues
             try:
                 out += list(self.focus.vocabulary())
@@ -835,7 +985,7 @@ class Coach:
                 "muted": self.settings.muted, "quiet_reason": self.quiet_reason,
                 "last_lap": self.last_lap, "spoken": [c.to_dict() for c in self.spoken[-10:]],
                 "events": self.events[-10:],
-                "focus": self._focus_status()}
+                "focus": self._focus_status(), "level": self.settings.level, "focus_info": self.focus_info()}
 
     def _focus_status(self):
         try:
@@ -864,6 +1014,8 @@ class Coach:
         self._marker_done = set()
         self._beep_done = set()
         self._pending: _Pending | None = None
+        self._full_since = None
+        self._inc_seen = None
         self.queue.clear("session reset")
 
     def _need_s(self, text: str) -> float:
@@ -908,6 +1060,7 @@ class Coach:
                 self._emit("cancelled", why="car alongside")
             self.queue.clear("car alongside")
             self._traffic_until = t + st.traffic_hold_s  # quiet until 2 s after it clears
+            self._last_along_t = t
         self._alongside = alongside
         on_track = on and surf == ibt.ON_TRACK and not pit
 
@@ -927,8 +1080,18 @@ class Coach:
             lap.pit = True
         if surf == ibt.OFF_TRACK or not on:
             lap.off = True
+            self._last_off_t = t
         if inc != lap.inc0:
             lap.incident = True
+        if self._inc_seen is not None and inc != self._inc_seen:
+            self._last_inc_t = t
+        self._inc_seen = inc
+        thr = float(s.get("Throttle") or 0.0)
+        if thr >= 0.9 and brk <= st.braking_pedal:
+            if self._full_since is None:
+                self._full_since = t
+        else:
+            self._full_since = None
         if lap.valid and not lap.pit and len(lap.trace) < 20000:
             lap.trace.append((t, pct, v, brk, float(s.get("Throttle") or 0.0), float(s.get("Gear") or 0.0)))
         if self._pending is not None:
@@ -957,6 +1120,15 @@ class Coach:
                 self._marker(w, dists, v, t, coachable, lap)
                 b = self._beep(w, dists, v, coachable)
                 beep = beep or b
+            if self._prev_pct is not None and lap.valid and not lap.pit and lap.t0 is not None:
+                self._timed(self._prev_pct, pct, t, lap, coachable)     # 2.17.2 corner times and sectors
+        elif (st.lv("first_laps") and self._building is None and not st.muted and on and not alongside
+              and surf in (ibt.ON_TRACK, ibt.IN_PIT_STALL, ibt.APPROACHING_PITS) and v > 3.0
+              and not (is_race(stype) and (not st.in_races or lapn <= 1))):
+            self._building = "made"                       # 2.17.2: no reference yet, on the move
+            self._push(Cue(text=BUILDING_TEXT, priority=PRIORITY[KIND_INFO], key="info:building", t=t,
+                           kind=KIND_INFO, expires=t + 120.0, why="no reference lap yet: the first clean lap "
+                                                                  "becomes the reference"))
 
         # ---- 2.14 practice focus: one corner measured each clean pass ----
         if self.focus is not None:
@@ -990,9 +1162,12 @@ class Coach:
 
         def blocked(c: Cue) -> str | None:
             """The rule that keeps this cue back now, in a few words (the cue log says it when a cue is dropped)."""
-            if reason and not (c.kind == KIND_LAP and reason in ("Out lap or in lap", "Lap not seen from the start")):
+            if c.kind == KIND_INFO and ref is None:
+                return self._info_blocked(st, t, brk, v, pit, on_track, alongside, stype, lapn)
+            if reason and not (c.kind in (KIND_LAP, KIND_INFO)
+                               and reason in ("Out lap or in lap", "Lap not seen from the start")):
                 return reason.lower()
-            if t - self._last_spoken_t < st.gap_s:
+            if t - self._last_spoken_t < st.gap():
                 return "rate limit"
             if brk > st.braking_pedal:                    # never under braking ...
                 return "braking"
@@ -1002,12 +1177,21 @@ class Coach:
             for num, dist in dists.items():              # must END end_before_brake_s before every brake point
                 if dist / vv < need:
                     return "no room before a brake point"
-            if c.kind in (KIND_MARKER, KIND_FEEDBACK):
-                num = int(c.corner[1:]) if c.corner else None
-                if lap.cues >= st.max_per_lap:
+            if st.quiet:
+                if c.kind in (KIND_MARKER, KIND_FEEDBACK):
+                    num = int(c.corner[1:]) if c.corner else None
+                    if lap.cues >= st.max_per_lap:
+                        return "lap limit"
+                    if num in lap.corners:
+                        return "corner limit"
+            else:
+                if c.kind != KIND_INFO and lap.said >= st.per_lap():
                     return "lap limit"
-                if num in lap.corners:
+                if c.kind in (KIND_MARKER, KIND_FEEDBACK, KIND_CORNER) and c.corner \
+                        and int(c.corner[1:]) in lap.corners:
                     return "corner limit"
+                if c.key.startswith("good:") and lap.positives >= int(st.lv("positives")):
+                    return "good-cue limit"
             if c.kind != KIND_MARKER and st.markers and coachable:   # keep room for a weak corner's focus cue
                 for w in self.weak:
                     d = dists.get(w.corner.num)
@@ -1038,9 +1222,38 @@ class Coach:
             lap.cues += 1
             lap.corners.add(num)
             self._corner_last[num] = (lap.num, cue.kind)
+        elif cue.kind == KIND_CORNER and cue.corner:
+            lap.corners.add(int(cue.corner[1:]))
+        if cue.key.startswith("good:"):
+            lap.positives += 1
+        if cue.kind == KIND_INFO:
+            if cue.key == "info:building":
+                self._building = "said"
+        else:
+            lap.said += 1
         self.spoken.append(cue)
         del self.spoken[:-50]
         return [cue]
+
+    def _info_blocked(self, st, t, brk, v, pit, on_track, alongside, stype, lapn) -> str | None:
+        """2.17.2: with no reference there are no brake points to keep clear of, so "Building your reference" is said
+        only where nothing can be asked of him: rolling out of the pits, or after 1.5 s of full throttle on a
+        straight; never alongside a car, under braking, in a race he isn't coached in, or on a race's first lap."""
+        if is_race(stype) and (not st.in_races or lapn <= 1):
+            return "race session"
+        if alongside or t < self._traffic_until:
+            return "car alongside"
+        if t - self._last_spoken_t < st.gap():
+            return "rate limit"
+        if brk > st.braking_pedal:
+            return "braking"
+        if pit:
+            return None if 3.0 < v < 30.0 else "on pit road"
+        if not on_track:
+            return "off track"
+        if self._full_since is None or t - self._full_since < 1.5 or v < 15.0:
+            return "waiting for a straight"
+        return None
 
     def _quiet(self, st, stype, on_track, alongside, t, coachable, start_lap, lap) -> str | None:
         if st.muted:
@@ -1193,6 +1406,98 @@ class Coach:
             text, why = early_text(w.name), f"braked {early:.0f} m before the reference"
         self._push(Cue(text=text, priority=PRIORITY[KIND_FEEDBACK], key=f"feedback:{c.id}", t=t,
                        kind=KIND_FEEDBACK, corner=c.id, expires=t + st.stale_s, why=why, measured=measured))
+        self._fb_made[c.num] = t
+
+    # -- 2.17.2: every corner and sector timed against the reference --
+    def _timed(self, p0: float, p1: float, t: float, lap: _Lap, coachable: bool):
+        """Called each sample (p0 -> p1 this lap). When the car leaves a timed corner: the time lost or gained there
+        against the reference (and, at a sector boundary, the sector's), and maybe a word about it."""
+        if p1 <= p0:
+            return
+        hits = [(b, num) for num, (_a, b) in self._segs.items() if p0 < b <= p1]
+        secs = [(b, k) for k, b in enumerate(self._sectors) if p0 < b <= p1]
+        if not hits and not secs:
+            return
+        tr = np.asarray(lap.trace, float)
+        if len(tr) < 5:
+            return
+        pp = np.maximum.accumulate(tr[:, 1])
+        for _b, num in hits:
+            self._corner_pass(num, tr, pp, t, lap, coachable)
+        for b, k in secs:
+            self._sector_pass(k, b, tr, pp, t, lap, coachable)
+
+    def _clean_since(self, t0: float, lap: _Lap) -> bool:
+        return (self._last_along_t < t0 - 0.5 and self._last_off_t < t0 and self._last_inc_t < t0
+                and not lap.pit)
+
+    def _corner_pass(self, num, tr, pp, t, lap: _Lap, coachable: bool):
+        st, ref = self.settings, self.reference
+        c = ref.corner(num)
+        a, b = self._segs[num]
+        if c is None or pp[0] > a + 0.002:
+            return                                        # the lap's trace doesn't cover the corner
+        tin, tout = np.interp([a, b], pp, tr[:, 0])
+        rin, rout = np.interp([a, b], ref.pct, ref.time)
+        lost = float((tout - tin) - (rout - rin))
+        if not self._clean_since(tin, lap) or not math.isfinite(lost):
+            return
+        lap.closs[num] = lost
+        cmin = st.lv("corner_min_s")
+        if st.quiet or cmin is None or not st.feedback or not coachable or self._focus_owns(num):
+            return
+        if self._fb_made.get(num) == t:
+            return                                        # its focus-corner word was just made
+        m = (pp >= a) & (pp <= b)
+        seg = tr[m]
+        down = c.min_kmh - float(seg[:, 2].min()) * KMH if len(seg) else 0.0
+        early = 0.0
+        if c.brake_rel_m is not None and len(seg) > 1:
+            on = np.nonzero((seg[1:, 3] > BRAKE_ON) & (seg[:-1, 3] <= BRAKE_ON))[0]
+            if len(on):
+                rel = _rel_m(float(pp[m][on[0] + 1]), c.apex_pct, ref.length_m)
+                if rel <= 40.0:
+                    early = c.brake_rel_m - rel
+        name = f"{st.corner_prefix}{num}"
+        measured = {"lost_s": round(lost, 3), "min_kmh": round(float(seg[:, 2].min()) * KMH, 1) if len(seg) else None,
+                    "ref_min_kmh": round(c.min_kmh, 1), "down_kmh": round(down, 1), "early_m": round(early, 1)}
+        if cmin - 1e-9 <= lost <= CORNER_MAX_S:
+            if num in self._fixed:
+                return
+            re_, rd = early / st.early_m, down / st.slower_kmh
+            if max(re_, rd) >= 1.0 and re_ >= rd:
+                text, why = early_text(name), f"lost {lost:.2f} s here, braked {early:.0f} m before the reference"
+            elif rd >= 1.0 and int(round(down)) <= voicepack.MAX_KMH:
+                text, why = speed_text(name, int(round(down))), \
+                    f"lost {lost:.2f} s here, minimum speed {down:.0f} km/h under the reference"
+            else:
+                text, why = corner_time_text(name, lost), f"lost {lost:.2f} s here against the reference"
+            self._push(Cue(text=text, priority=PRIORITY[KIND_CORNER], key=f"corner:{c.id}", t=t, kind=KIND_CORNER,
+                           corner=c.id, expires=t + st.stale_s + 1.0, why=why, measured=measured))
+        elif cmin - 1e-9 <= -lost <= CORNER_MAX_S and int(st.lv("positives")) > lap.positives:
+            self._push(Cue(text=good_text(name, -lost), priority=PRIORITY[KIND_SECTOR], key=f"good:{c.id}", t=t,
+                           kind=KIND_CORNER, corner=c.id, expires=t + st.stale_s + 1.0,
+                           why=f"gained {-lost:.2f} s here against the reference", measured=measured))
+
+    def _sector_pass(self, k, b, tr, pp, t, lap: _Lap, coachable: bool):
+        st, ref = self.settings, self.reference
+        tb = float(np.interp(b, pp, tr[:, 0]))
+        lap.sector_t.append(tb)
+        if k == 0:
+            t0, r0 = lap.t0, 0.0
+        elif len(lap.sector_t) >= 2:
+            t0, r0 = lap.sector_t[-2], float(np.interp(self._sectors[k - 1], ref.pct, ref.time))
+        else:
+            return
+        if t0 is None or pp[0] > 0.01 + (self._sectors[k - 1] if k else 0.0) or not self._clean_since(t0, lap):
+            return
+        d = (tb - t0) - (float(np.interp(b, ref.pct, ref.time)) - r0)
+        if not st.lv("sectors") or not st.lap_delta or not coachable or lap.off or lap.incident:
+            return
+        if st.delta_min_s - 1e-9 <= abs(d) <= st.lap_delta_max_s:
+            self._push(Cue(text=sector_text(k, d), priority=PRIORITY[KIND_SECTOR], key=f"sector:{k + 1}", t=t,
+                           kind=KIND_SECTOR, expires=t + 10.0, why=f"sector {k + 1} against the reference",
+                           measured={"sector": k + 1, "delta_s": round(d, 3)}))
 
     def _judge(self, c: Corner, err: bool, measured: dict) -> bool:
         """Coach 2.0 "already fixed": a corner where he made an error earlier in the session and has since driven
@@ -1230,9 +1535,14 @@ class Coach:
         clean = lap.valid and not (lap.pit or lap.off or lap.incident or start_lap)
         lt = (tc - lap.t0) if lap.t0 is not None else None
         self.last_lap = {"lap": lap.num, "time": round(lt, 3) if lt else None, "clean": clean, "delta": None}
-        self._emit("lap_end", lap=lap.num, lap_time=round(lt, 3) if lt else None, clean=clean, cues=lap.cues)
+        self._emit("lap_end", lap=lap.num, lap_time=round(lt, 3) if lt else None, clean=clean,
+                   cues=lap.cues if self.settings.quiet else lap.said)
         self.lap_log.append(self.last_lap)
         del self.lap_log[:-30]
+        if clean and lap.closs and self.reference is not None:     # 2.17.2: learn the session's focus corners
+            self._loss_hist.append(dict(lap.closs))
+            del self._loss_hist[:-LEARN_LAPS]
+            self._learn()
         self._pending = _Pending(lap, tc, lt, clean, last_lap_time) if (clean and lt and lt > 0) else None
 
     def _lap_result(self, t: float, last_lap_time):
@@ -1272,6 +1582,11 @@ class Coach:
         given_in_use = self.keep_reference is not None and ref is self.keep_reference
         if (ref is None or lt < ref.lap_time) and st.update_reference and not given_in_use:
             self._adopt(p.lap, lt)
+            if ref is None and self.reference is not None and st.lv("first_laps"):
+                self._push(Cue(text=reference_set_text(lt), priority=PRIORITY[KIND_INFO], key="info:refset", t=t,
+                               kind=KIND_INFO, expires=t + 45.0,            # not urgent: waits for a long straight
+                               why="first clean lap: it is now the reference",
+                               measured={"lap": p.lap.num, "lap_time": round(lt, 3)}))
 
     def _adopt(self, lap: _Lap, lt: float):
         ref = self.reference
@@ -1316,6 +1631,34 @@ def early_text(name: str) -> str:
 
 def speed_text(name: str, kmh_down: int) -> str:
     return f"{name}: more speed, {kmh_down} down"
+
+
+# 2.17.2: every phrase below is said by the bundled voice packs (voicepack.compose), else by Windows speech
+def corner_time_text(name: str, lost_s: float) -> str:
+    """'T3, two tenths down'"""
+    return f"{name}, {delta_words(lost_s)} down"
+
+
+def good_text(name: str, gained_s: float) -> str:
+    """'T3, good, up a tenth'"""
+    return f"{name}, good, up {delta_words(gained_s)}"
+
+
+SECTOR_WORDS = ("one", "two", "three")
+
+
+def sector_text(k: int, d: float) -> str:
+    """k 0..2, d = this sector's time minus the reference's: 'Sector one, up two tenths' / 'Sector two, a tenth down'."""
+    head = f"Sector {SECTOR_WORDS[k]}, "
+    return head + (f"up {delta_words(d)}" if d < 0 else f"{delta_words(d)} down")
+
+
+BUILDING_TEXT = "Building your reference"
+
+
+def reference_set_text(lap_time: float) -> str:
+    """'Reference set, one thirty-eight nine'"""
+    return "Reference set, " + voicepack.lap_time_words(lap_time)
 
 # ---------------------------------------------------------------- 2.14 one corner from live samples
 
@@ -1504,6 +1847,22 @@ class IrsdkSource:
 
 
 # ---------------------------------------------------------------- the runner
+
+def reference_why(ref, given=None) -> str:
+    """2.17.2: where the reference lap came from, in a few plain words (the Coach page's status)."""
+    if ref is None:
+        return ""
+    if given is not None and ref is given:
+        return "the lap you chose"
+    kind = (ref.source or {}).get("kind")
+    if kind == "ibt":
+        return "your best lap in your telemetry files"
+    if kind == "live":
+        return "your best clean lap this session"
+    if kind == "g61":
+        return "a Garage 61 lap"
+    return ""
+
 
 def short_track(name: str) -> str:
     try:
@@ -1714,10 +2073,16 @@ class LiveRunner:
             text = ("Waiting: Debrief's iRacing connection is missing. Reinstall Debrief." if src == "not_installed"
                     else "Waiting for iRacing to start.")
         elif st == "no_reference":
-            text = f"Listening: {car} at {track}. No clean lap to coach from yet. Drive a clean lap to set one."
+            text = (f"Listening: {car} at {track}. No clean lap to coach from yet. Drive a clean lap to set one."
+                    if self.settings.quiet else
+                    f"Building your reference: {car} at {track}. No lap of yours in your telemetry files, so your "
+                    f"first clean lap becomes the reference and every lap after it is compared with it.")
         elif st == "coaching":
             ref = self.coach.reference
             text = f"Coaching: {car} at {track}, reference {ref.describe()}" if ref else f"Coaching: {car} at {track}"
+            why = reference_why(ref, self._given)
+            if why and not self.settings.quiet:
+                text += f" ({why})"
             if cs["muted"]:
                 text += " (muted)"
         elif st == "finished":
@@ -1755,7 +2120,8 @@ class LiveRunner:
                 "corners": len(cs["reference"]["corners"]) if cs["reference"] else 0,
                 "weak": cs["weak"], "last_lap": cs["last_lap"], "spoken": cs["spoken"], "events": cs["events"],
                 "voice": vs, "error": self._error, "errors": self._errors, "settings": self.settings.to_dict(),
-                "focus": cs.get("focus")}
+                "focus": cs.get("focus"), "level": cs.get("level"), "focus_info": cs.get("focus_info"),
+                "reference_why": reference_why(self.coach.reference, self._given)}
 
     def _fixed_names(self) -> list:
         ref = self.coach.reference
@@ -1934,11 +2300,13 @@ class LiveRunner:
     _base_interval = None
 
     def _prepare(self):
-        """Hand the voice every fixed phrase for this reference, to render ahead of time (once per reference)."""
+        """Hand the voice every fixed phrase for this reference, to render ahead of time (once per reference; with
+        no reference yet, once, the phrases of the first laps)."""
         r = self.coach.reference
-        if r is None or self._prepared is r:
+        key = r if r is not None else ("none", self.settings.level)
+        if self._prepared is key or (r is None and self._prepared == key):
             return
-        self._prepared = r
+        self._prepared = key
         _call(self.voice, "prepare", self.coach.vocabulary())
 
 

@@ -63,10 +63,30 @@ def lap_time(v):
     return round(t, 3) if 5 <= t <= 3600 else None
 
 
+def _header(rows) -> dict:
+    """The race's details above the table (2.18): {"track", "subsession", "when", "series"}, each "" when missing.
+    iRacing writes a row of names ("Start Time","Track","Series",...,"Subsession ID") and a row of values under it."""
+    out = {"track": "", "subsession": "", "when": "", "series": ""}
+    for k, r in enumerate(rows[:-1]):
+        names = [x.strip() for x in r]
+        if "Track" not in names and "Subsession ID" not in names:
+            continue
+        vals = rows[k + 1]
+        got = {n: (vals[i].strip() if i < len(vals) else "") for i, n in enumerate(names)}
+        sub = got.get("Subsession ID", "")
+        out.update(track=got.get("Track", "")[:120], series=got.get("Series", "")[:120],
+                   subsession=sub if re.fullmatch(r"\d{1,12}", sub) else "", when=got.get("Start Time", "")[:40])
+        break
+    return out
+
+
 def parse(data) -> dict:
-    """{"drivers": [{"name", "car", "class", "model", "lap", "fields": {...}}], "multiclass": bool}.
-    "car" is the car number; "model" is the car's name ("Car" column, 2.18) and "lap" the average and fastest lap
-    and laps completed ({"avg", "best", "laps"}), each left out when the file doesn't have it."""
+    """{"drivers": [{"name", "car", "class", "model", "lap", "out", "cust_id", "fields": {...}}], "multiclass": bool,
+    "race": {"track", "subsession", "when", "series"}}.
+    "car" is the car number; "model" is the car's name ("Car" column, 2.18), "lap" the average and fastest lap
+    and laps completed ({"avg", "best", "laps"}), each left out when the file doesn't have it, "out" iRacing's own
+    status as written ("Running", "Disconnected", "Car Damage"...) and "cust_id" iRacing's member number (kept on
+    this PC only, to tell two members with the same name apart). "race" comes from the lines above the table."""
     try:
         rows = list(csv.reader(io.StringIO(_text(data))))
     except csv.Error:
@@ -75,6 +95,7 @@ def parse(data) -> dict:
     if head is None:
         raise ResultsFileError("That file has no results table. Use the CSV from the iRacing results page.")
     cols = {name.strip(): k for k, name in enumerate(rows[head])}
+    details = _header(rows[:head])
 
     def get(r, name):
         k = cols.get(name)
@@ -124,8 +145,9 @@ def parse(data) -> dict:
         if n is not None and n >= 0:
             lap["laps"] = n
         drivers.append({"name": clean_name(get(r, "Name")), "car": get(r, "Car #").lstrip("#"),
-                        "class": get(r, "Car Class"), "model": get(r, "Car")[:80], "lap": lap, "fields": fields})
-    return {"drivers": drivers, "multiclass": len(groups) > 1}
+                        "class": get(r, "Car Class"), "model": get(r, "Car")[:80], "lap": lap,
+                        "out": get(r, "Out")[:40], "cust_id": get(r, "Cust ID")[:12], "fields": fields})
+    return {"drivers": drivers, "multiclass": len(groups) > 1, "race": details}
 
 
 def pick(parsed: dict, name) -> dict | None:

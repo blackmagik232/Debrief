@@ -77,6 +77,10 @@
       <span class="lrtx"><b id="lrWhat"></b><span class="note" id="lrWhen"></span></span>
       <button type="button" class="btn primary" id="lrOpen">Open last race</button>
     </div>
+    <div class="frcard" id="firstRun" hidden aria-labelledby="frTitle">
+      <div class="phead"><h3 id="frTitle">Getting set up</h3><span class="pill" id="frPill"></span><button type="button" class="btn ghost" id="frHide" title="Hide this list. Help shows it again.">Hide</button></div>
+      <ol class="frlist" id="frList"></ol>
+    </div>
     <iframe id="frame" title="Review" sandbox="allow-scripts allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads"></iframe>
   </section>
 
@@ -326,6 +330,14 @@
         <span class="eyebrow">From your telemetry</span>
         <h1>Practice</h1>
         <p class="lede">Every time you drove, straight from the telemetry files iRacing saves on this PC. Open one for your laps, where the time is and one thing to try in each corner.</p>
+        <div class="panel onething" id="prPlan" hidden aria-live="polite">
+          <div class="phead"><h3>This session's one thing</h3><span class="pill" id="ptConf"></span></div>
+          <label class="field ptcombo" for="ptCombo" id="ptComboWrap" hidden><span>Car and track</span><select id="ptCombo"></select></label>
+          <div id="ptBody"></div>
+          <div class="row" id="ptActs"><button type="button" class="btn primary" id="ptCoach">Coach this</button><button type="button" class="btn" id="ptAnother">Pick another</button><span class="msg" id="ptMsg" role="status"></span></div>
+          <div id="ptLast"></div>
+          <details class="pthist" id="ptHist" hidden><summary>Your plans here so far</summary><ul class="pvlist" id="ptHistList"></ul></details>
+        </div>
         <div class="panel" id="prTel">
           <div class="phead"><h3>Your telemetry</h3><span class="pill" id="prPill"></span></div>
           <p class="note" id="prTelNote"></p>
@@ -364,6 +376,12 @@
           <p class="note" id="coRefNote">Debrief uses your best clean lap for the car and track iRacing shows, from your telemetry files. No lap yet? Drive a clean one and it becomes the reference.</p>
           <p class="note" id="coLast" hidden></p>
         </div>
+        <div class="panel cofocus" id="coFocus" hidden>
+          <div class="phead"><h3>This session's one thing</h3><span class="pill" id="coFocusPill"></span></div>
+          <p id="coFocusText"></p>
+          <p class="coprog num" id="coFocusProg"></p>
+          <p class="note" id="coFocusNote"></p>
+        </div>
         <div class="panel">
           <div class="phead"><h3>Focus corners</h3></div>
           <ul class="pvlist" id="coWeak"></ul>
@@ -376,7 +394,7 @@
         <ul class="cospoken" id="coSpoken"></ul>
       </div>
       <details class="panel prepmore" id="coSet">
-        <summary><h3>Settings</h3><span class="note">What it says, how loud, races</span></summary>
+        <summary><h3>Settings</h3><span class="note">What it says, how loud, races, wheel button</span></summary>
         <form class="gridf" id="fCoach" autocomplete="off">
           <label class="check" for="coInRaces"><input id="coInRaces" type="checkbox"><span>Coach in races too</span></label>
           <p class="note">Off at first: races are for racing. Lap 1 of a race is always quiet.</p>
@@ -391,6 +409,12 @@
           </div>
           <div class="row"><button type="submit" class="btn">Save</button><button type="button" class="btn" id="coTest">Test voice</button><span class="msg" id="coSetMsg" role="status"></span></div>
         </form>
+        <div class="cowheel" id="coWheel">
+          <h4>Mute from a wheel button</h4>
+          <p class="note">Pick a button on your wheel that mutes and unmutes the coach while it is on. Press Learn, then press the button within 15 seconds.</p>
+          <p id="coWheelText" role="status">No wheel button chosen yet.</p>
+          <div class="row"><button type="button" class="btn" id="coWheelLearn">Learn</button><button type="button" class="btn" id="coWheelClear">Clear</button><span class="msg" id="coWheelMsg" role="status"></span></div>
+        </div>
       </details>
     </div>
   </section>
@@ -633,7 +657,7 @@
 </dialog>
 <dialog id="dlgHelp" aria-labelledby="helpTitle">
   <div class="phead"><h3 id="helpTitle">Help</h3><button type="button" class="btn ghost" id="helpClose">Close</button></div>
-  <div class="row" role="group" aria-label="Help pages"><button type="button" class="btn" data-help="tour">Tour</button><button type="button" class="btn" data-help="words">What the words mean</button><button type="button" class="btn" data-help="keys">Keyboard keys</button></div>
+  <div class="row" role="group" aria-label="Help pages"><button type="button" class="btn" data-help="tour">Tour</button><button type="button" class="btn" data-help="words">What the words mean</button><button type="button" class="btn" data-help="keys">Keyboard keys</button><button type="button" class="btn" id="helpFirstRun">Setup checklist</button></div>
   <div id="helpBody"></div>
 </dialog>
 <dialog id="dlgCard" aria-labelledby="cardTitle">

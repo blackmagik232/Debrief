@@ -117,7 +117,7 @@ function markNav(){
   document.querySelectorAll('.navbtn').forEach(b=>{const on=b.dataset.nav===nav;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
   document.querySelectorAll('.rev').forEach(b=>{const on=current.view==='review'&&b.dataset.dir===current.dir;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
   document.body.classList.remove('navopen');
-  frameBar();lastRaceCard();
+  frameBar();lastRaceCard();renderFirstRun();
 }
 // where the frame really is: links inside it (library -> review) don't change f.src, and the sandboxed page
 // can't be looked into, so its bridge script tells us (see the 'message' listener below)
@@ -1307,7 +1307,9 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
   ['Prepare and look back','Prepare gets you ready for the next track. Progress, Season and Skills show how you are trending.'],
   ['Setup Lab','Reads the telemetry files iRacing saves on this PC: what changed between your setups, which one was faster (only when the laps clearly say so) and one change to try next.'],
   ['Coach','Press Start coaching, then drive. A few short spoken cues from your own best lap and the corners your reviews say cost you time. Keep Debrief open while you drive.'],
-  ['Practice','Every time you drove, from your telemetry files: your best and typical lap, the best possible lap, your laps, fuel and setups, and the Corner coach: one thing to try in each corner. Coach these corners hands those corners to the live coach.']],
+  ['Practice','Every time you drove, from your telemetry files: your best and typical lap, the best possible lap, your laps, fuel and setups, and the Corner coach: one thing to try in each corner. Coach these corners hands those corners to the live coach.'],
+  ['One thing this session','The top of Practice picks one thing to work on next time at that track, with a number you can check. Coach this has the live coach watch it. After you drive, open the session: Debrief counts the laps where you did it and says whether to keep it or move on.'],
+  ['Getting set up','The setup checklist on the start page shows what is done and the next step. Hide it when you like; Help > Setup checklist brings it back.']],
  words:[['Clean lap','A full lap Garage 61 didn\'t flag: no incident and not a pit lap.'],['Typical lap','The middle of your clean laps. Half were quicker, half slower.'],
   ['Comparison lap','A lap by a teammate, a followed driver or, with RaceCap, a rival, that yours are measured against.'],['Best sectors added up','Your best time through each part of the track, added together. A guide, not a lap you must be able to drive.'],
   ['Brake point','Where on the track you first brake.'],['Apex','The slowest point of a corner, near the inside.'],['Coasting','Time with neither pedal pressed.'],['Stint','A run of laps between pit stops.'],
@@ -1324,6 +1326,11 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
   ['Best possible lap','Your best time through each part of the lap, added up. Counted from clean laps once there are 5 of them. A guide, not a lap you can count on.'],
   ['Corner coach','Your best laps through a corner against your typical ones: what you do differently on the good ones, how to try it and what it changes. A tip is only given when it passes a fair test: Debrief shuffles which laps count as your best 400 times, and if shuffled laps show a pattern as clear in 1 shuffle in 20 or more, it says "no clear pattern yet" instead. Race laps and practice or qualifying laps are compared separately, and so are setups.'],
   ['Corner time','"Your best laps were about 0.12 s quicker here": each corner\'s share of the gap between your quickest third of laps and the rest, so the corners never add up to more than that gap. It describes your own laps; it is not a promise of lap time, because part of any best lap is luck.'],
+  ['One thing this session','One change for your next session at a track, picked from the Corner coach: the corner, what to do, and the check (for example, peak brake at or below 88%). It is never surer than the Corner coach tip it comes from.'],
+  ['Experiment','"Try this and see": a plan for a corner where your best laps are quicker but the Corner coach found no clear reason. Drive it the same way every lap and see whether it helps. Not a known fix.'],
+  ['Hit it','A lap where your number for the plan\'s corner met the check. 7 laps out of 10 means it is a habit, and the next session moves on.'],
+  ['Quicker, No clear difference','Whether your laps that hit the plan were quicker through that corner than the ones that missed. Debrief shuffles which laps count as hits 400 times; it says Quicker only when fewer than 1 shuffle in 20 shows a gap as big as the real one (and at least 0.03 s), with at least 3 laps of each. It describes those laps; it is not a promise of lap time.'],
+  ['Wheel button mute','Coach page > Settings > Mute from a wheel button: press Learn, then the button on your wheel. That button then mutes and unmutes the coach while it is on.'],
   ['Clear, Likely, Few laps','How sure a Corner coach tip is: Clear passed the shuffle test in fewer than 1 in 100 shuffles, from 12 or more laps, and still passes when every corner is counted at once. Likely passed in fewer than 1 in 20. Few laps passed but from under 9 laps, so treat it as a hint.']],
  keys:[['Ctrl+R','Review last race'],['Ctrl+,','Settings'],['Ctrl+1 to Ctrl+9','Progress, Season, Skills, Goals, All sessions, Prepare, Team, Setup Lab, Coach'],['Ctrl+0','Practice'],['Ctrl+Shift+M','Mute or unmute the coach'],['J','The review before this one'],['K','The review after this one'],['Tab','Move to the next button or chart'],['Arrow keys','Move along a chart that has focus'],['Esc','Close a window like this one']]};
 function showHelp(k){const b=$('helpBody');b.replaceChildren(...(k==='tour'?[h('p','note','A quick look at how Debrief works.')]:[]),...HELP[k].map(([t,d])=>{const p=h('p');p.append(h('b',null,t+': '),document.createTextNode(d));return p}));
@@ -1548,6 +1555,7 @@ function renderCoach(st){co.st=st;const run=!!st.running,state=CO_STATE[st.state
   su.replaceChildren(...(sp.length?sp.map(c=>{const li=h('li');li.append(h('span','num cot',fmtClock(c.t)),h('span',null,c.text));return li}):[h('li','note','Nothing said yet.')]));
   $('coSpokenNote').textContent=sp.length?'Newest first, session time':'';
   coPlanShow(!(run&&W.length));
+  renderCoFocus(st);renderWheel(st.wheel);
   if(!co.filled||!co.dirty){fillCoachSettings(st.settings||{});co.filled=true}
   coTestResult(st.test_voice)}
 function fillCoachSettings(s){$('coInRaces').checked=!!s.in_races;$('coMarkers').checked=s.markers!==false;$('coFeedback').checked=s.feedback!==false;
@@ -1599,7 +1607,7 @@ async function loadPractice(){let j;try{j=await api('sessions-ibt')}catch(e){con
   if(!j.ok){setMsg('prMsg',j.error||'Practice didn\'t load.','bad');return}
   pr.data=j;renderPrTel();if(j.running&&!polling)poll();
   if(pr.sel){openPrSession(pr.sel);return}
-  renderPrList()}
+  renderPrList();loadPlan()}
 function renderPrTel(){const j=pr.data;if(!j)return;const run=!!j.running||(lastJob&&lastJob.state==='running'&&lastJob.kind==='setuplab'),pill=$('prPill'),n=(j.sessions||[]).length;
   $('prFolderSet').hidden=!!j.folder_ok;$('prRead').disabled=!j.folder_ok||run;
   if(run){pill.className='pill';pill.textContent='Reading'}
@@ -1670,6 +1678,8 @@ function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{}
   const cons=R.consistency||{};if(cons.text)hw.append(h('p',null,cons.text));
   if(R.history&&R.history.text)hw.append(h('p','prvs',R.history.text));
   out.append(hw);
+  // 2.14: the practice plan scored on this session
+  out.append(oneThingSec(j.one_thing));
   // 2. best possible lap
   const T=R.theoretical||{},bp=slSec('Best possible lap','prTheo');
   if(T.enough&&ok(T.possible)){bp.append(prFacts([['Best possible',fmtT(T.possible)],['Under your best',ok(T.gap_s)?T.gap_s.toFixed(2)+' s':'–']]));
@@ -1725,9 +1735,12 @@ function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{}
    car and track in the telemetry) */
 async function loadCoPlan(plan){if(plan&&plan.car_path)co.plan=plan;let p=co.plan;
   if(!p){try{const j=await api('sessions-ibt');const x=j&&j.ok&&(j.sessions||[])[0];if(x)p={car_path:x.car_path,track_code:x.track_code}}catch(e){}}
-  if(!p){co.planRep=null;renderCoPlan();return}
-  let j;try{j=await api('corner-coach?'+new URLSearchParams({car:p.car_path,track:p.track_code}))}catch(e){return}
-  co.planRep=j&&j.ok?j:null;renderCoPlan()}
+  if(!p){co.planRep=null;co.focusPlan=null;renderCoPlan();renderCoFocus(co.st);return}
+  const q=new URLSearchParams({car:p.car_path,track:p.track_code});
+  let j;try{j=await api('corner-coach?'+q)}catch(e){return}
+  co.planRep=j&&j.ok?j:null;renderCoPlan();
+  let k=null;try{k=await api('plan?'+q)}catch(e){}
+  co.focusPlan=k&&k.ok&&k.plan&&FOCUS_KINDS.includes(k.plan.kind)?k.plan:null;renderCoFocus(co.st)}
 function renderCoPlan(){const box=$('coPlan'),j=co.planRep;box.replaceChildren();if(!j){box.hidden=true;return}
   const F=j.focus||[],R=j.report||{},where=(j.car||j.car_path)+' at '+(j.track||j.track_code);box.append(h('h4',null,'From the Corner coach'));
   if(F.length){box.append(h('p','note','For the '+where+', from your last '+plural(R.laps||0,'clean lap')+' there. It starts with the biggest and says the tip after the corner:'));
@@ -1736,6 +1749,113 @@ function renderCoPlan(){const box=$('coPlan'),j=co.planRep;box.replaceChildren()
   else box.append(h('p','note','For the '+where+': '+(R.message||'no corner shows a clear pattern yet.')+' So the coach uses your race reviews.'));
   box.hidden=!!co.planHide}
 function coPlanShow(on){co.planHide=!on;if(co.planRep)$('coPlan').hidden=!on}
+
+/* ---------- Practice loop (2.14): one thing this session, scored afterwards, watched by the coach */
+let pt={j:null,combo:null,seq:0};
+const FOCUS_KINDS=['focus','consistency'];
+const PT_CONF=Object.assign({},CC_CONF,{unclear:['Experiment','no','No clear pattern in your laps here: try it and see whether it helps']});
+// "T4" -> "Turn 4" in window text (the spoken name stays T4 in the coach's own phrases)
+const turnWords=t=>String(t||'').replace(/\bT(\d+)\b/g,'Turn $1');
+const VERDICT_PILL={worth:['Quicker','ok'],slower:['Not quicker yet','no'],unclear:['No clear difference',''],too_few:['Too few laps to tell',''],never:['Not measured','no']};
+function planCq(){const j=pt.j;return j&&j.car_path?{car:j.car_path,track:j.track_code}:pt.combo?{car:pt.combo.car_path,track:pt.combo.track_code}:null}
+async function loadPlan(){const seq=++pt.seq,q=pt.combo?'?'+new URLSearchParams({car:pt.combo.car_path,track:pt.combo.track_code}):'';
+  if(!pt.j)renderPlanBusy('Picking one thing for your next session...');
+  let j;try{j=await api('plan'+q)}catch(e){connectionLost();return}
+  if(seq!==pt.seq)return;pt.j=j;renderPlan()}
+function renderPlanBusy(t){const box=$('prPlan');box.hidden=false;$('ptBody').replaceChildren(h('p','note',t));$('ptActs').hidden=true;$('ptLast').replaceChildren();$('ptHist').hidden=true;$('ptConf').textContent=''}
+function hitDots(rows){const d=h('span','ptdots');(rows||[]).forEach(r=>{if(r.hit==null)return;const i=h('i',r.hit?'hit':'miss');i.title='Lap '+r.lap+': '+(r.hit?'hit':'missed')+(r.value!=null?' ('+r.value+')':'');d.append(i)});d.setAttribute('aria-hidden','true');return d}
+function scoreBlock(plan,next){const sc=plan&&plan.score;const box=h('div','ptscore');if(!sc)return box;
+  const top=h('div','pthead');top.append(h('b','ptres',sc.text||''));const vp=VERDICT_PILL[sc.verdict];if(vp)top.append(h('span','pill'+(vp[1]?' '+vp[1]:''),vp[0]));box.append(top);
+  const dots=hitDots(sc.per_lap);if(dots.children.length)box.append(dots);
+  if(sc.verdict_text)box.append(h('p','note',turnWords(sc.verdict_text)));
+  const act=(sc.next||{}).action;let nx='';
+  if(act==='keep')nx='Next: keep this until it is a habit (7 laps out of 10).';
+  else if(act==='next')nx=next&&next.corner&&next.corner!==plan.corner?'Next: move to '+turnWords(next.corner)+'.':'Next: move on to the next thing.';
+  if(nx)box.append(h('p','ptnext',nx));return box}
+function planBody(P){const f=document.createDocumentFragment();
+  f.append(h('p','ptmain',turnWords(P.text)));
+  const row=(k,v,cls)=>{if(!v)return;const q=h('p',cls||null);q.append(h('b',null,k+': '),document.createTextNode(turnWords(cap(v))));f.append(q)};
+  if(FOCUS_KINDS.includes(P.kind)){row('How',P.how);row('The check',P.check);
+    const meta=h('p','note ptmeta');meta.append(document.createTextNode('From '+plural(P.from_laps||0,'lap')+'.'+(P.evidence?' '+P.evidence:'')));f.append(meta);
+    if(P.reason)f.append(h('p','note',turnWords(P.reason)))}
+  else if(P.check)f.append(h('p','note',P.check));
+  return f}
+function renderPlan(){const j=pt.j,box=$('prPlan');box.hidden=false;const body=$('ptBody');
+  const sel=$('ptCombo'),C=(j&&j.combos)||[];$('ptComboWrap').hidden=C.length<2;
+  if(C.length>1){sel.replaceChildren(...C.map((c,i)=>{const o=h('option',null,(c.track||c.track_code)+' · '+(c.car||c.car_path));o.value=String(i);
+    if(j.car_path&&c.car_path===j.car_path&&c.track_code===j.track_code)o.selected=true;return o}))}
+  const pill=$('ptConf');pill.className='pill';pill.textContent='';
+  if(!j||!j.ok){body.replaceChildren(h('p','note',(j&&j.error)||'The plan didn\'t load.'));$('ptActs').hidden=true;$('ptLast').replaceChildren();$('ptHist').hidden=true;return}
+  const P=j.plan;$('ptLast').replaceChildren();
+  if(!P){body.replaceChildren(h('p','note',j.message||'Nothing to plan yet.'));$('ptActs').hidden=true;$('ptHist').hidden=true;return}
+  const where=h('p','note ptwhere',(j.track||'')+' · '+(j.car||''));
+  body.replaceChildren(where,planBody(P));
+  const focus=FOCUS_KINDS.includes(P.kind);$('ptActs').hidden=!focus;$('ptCoach').disabled=false;$('ptAnother').disabled=false;
+  if(focus){const c=PT_CONF[P.confidence]||null;if(c){pill.className='pill'+(c[1]?' '+c[1]:'');pill.textContent=c[0];pill.title=c[2]}}
+  const L=j.last;if(L&&L.score){const lb=h('div','ptlast');lb.append(h('h4',null,'Last session'+(L.score.session_date?', '+slWhen(L.score.session_date):'')),h('p','note','The one thing: '+turnWords(L.text)),scoreBlock(L,P));$('ptLast').replaceChildren(lb)}
+  const H=(j.history||[]).filter(x=>x.score);const hl=$('ptHistList');$('ptHist').hidden=!H.length;
+  hl.replaceChildren(...H.map(x=>{const li=h('li');const sc=x.score;li.append(h('span','num pthd',fmtDate(String(sc.session_date||x.made||'').slice(0,10))),h('b',null,turnWords(x.corner||'')||'Laps'),
+    h('span','sub2',turnWords(x.text)),h('span','num pthr',sc.measured?sc.hits+' of '+sc.measured:'not measured'));return li}))}
+$('ptCombo').addEventListener('change',()=>{const C=(pt.j&&pt.j.combos)||[];pt.combo=C[+$('ptCombo').value]||null;pt.j=null;loadPlan()});
+$('ptAnother').addEventListener('click',async()=>{const q=planCq();if(!q)return;$('ptAnother').disabled=true;setMsg('ptMsg','Picking another...');let r;
+  try{r=await post('plan/new',q)}catch(e){connectionLost();return}
+  $('ptAnother').disabled=false;if(!r.ok){setMsg('ptMsg',r.error||'That didn\'t work.','bad');return}
+  const before=pt.j&&pt.j.plan&&pt.j.plan.id;pt.j=r;renderPlan();
+  setMsg('ptMsg',r.plan&&r.plan.id===before?'Nothing else stands out yet, so it\'s the same corner.':'A different one from your latest laps.','ok')});
+$('ptCoach').addEventListener('click',()=>{const j=pt.j;if(!j||!j.plan)return;openCoach({car_path:j.car_path,track_code:j.track_code})});
+// the session page's "Your one thing": the plan scored on this session
+function oneThingSec(o){const sec=slSec('Your one thing','prOneThing');
+  if(!o||!o.plan){sec.append(h('p','note','No plan was scored on this session. The Practice page picks one thing for your next session at this track.'));return sec}
+  const P=o.plan;sec.append(h('p','ptmain',turnWords(P.text)));if(P.check)sec.append(h('p','note',turnWords(P.check)));
+  sec.append(scoreBlock(P,o.next_plan));
+  if(o.just_scored)sec.append(h('p','note','Scored just now from this session. The Practice page shows your next one thing.'));
+  return sec}
+// the Coach page's "This session's one thing": live progress while coaching, else the plan it will watch
+function renderCoFocus(st){const box=$('coFocus');if(!box)return;const F=st&&st.focus,P=co.focusPlan,run=!!(st&&st.running);
+  const pill=$('coFocusPill');pill.className='pill';
+  if(F&&(run||(F.measured&&(!P||!F.plan_id||F.plan_id===P.plan_id)))){box.hidden=false;$('coFocusText').textContent=turnWords(F.text||'');$('coFocusProg').textContent=F.progress||'';
+    pill.textContent=run?'Watching':'Last drive';if(run)pill.className='pill ok';
+    $('coFocusNote').textContent=run?'After each clean pass through '+turnWords(F.corner||'the corner')+' the coach checks it and now and then says how it went.':'From your last drive with the coach.';return}
+  if(P){box.hidden=false;$('coFocusText').textContent=turnWords(P.text||'');$('coFocusProg').textContent=run?'Watching for this car and track.':'Not started';pill.textContent='';
+    $('coFocusNote').textContent='Start coaching and drive: the coach measures '+turnWords(P.corner||'the corner')+' each clean lap and keeps count. '+turnWords(P.check||'');return}
+  box.hidden=true}
+// wheel button mute
+function renderWheel(w){if(!w)return;const learning=w.state==='learning';
+  $('coWheelText').textContent=(w.text||'')+(w.note&&!learning?' '+w.note:'');
+  $('coWheelLearn').disabled=learning;$('coWheelLearn').textContent=learning?'Press a button now...':'Learn';$('coWheelClear').disabled=!w.binding&&!learning}
+$('coWheelLearn').addEventListener('click',async()=>{setMsg('coWheelMsg','');let r;try{r=await post('coach/wheel-learn')}catch(e){connectionLost();return}
+  if(!r.ok){setMsg('coWheelMsg',r.error||'That didn\'t work.','bad');if(r.wheel)renderWheel(r.wheel);return}
+  if(r.wheel)renderWheel(r.wheel);coachPoll()});
+$('coWheelClear').addEventListener('click',async()=>{let r;try{r=await post('coach/wheel-clear')}catch(e){connectionLost();return}
+  if(!r.ok){setMsg('coWheelMsg',r.error||'That didn\'t work.','bad');return}setMsg('coWheelMsg','');if(r.wheel)renderWheel(r.wheel)});
+
+/* ---------- first-run checklist (2.14): on the start page until every step is done or it is hidden */
+let fr={data:null,force:false,at:0};
+const FR_ACT={settings_token:['Open Settings',()=>openSettings()],
+  settings_folder:['Open Settings',()=>{openSettings();const f=$('fTelemetry');if(f&&f.scrollIntoView)f.scrollIntoView({block:'start'})}],
+  read_telemetry:['Read my telemetry',()=>{openSetupLab();const b=$('slRead');if(b&&!b.disabled)b.click()}],
+  practice:['Open Practice',()=>goNav('practice')],
+  test_voice:['Open the Coach',()=>{openCoach();const d=$('coSet');if(d)d.open=true}]};
+async function loadFirstRun(){fr.at=Date.now();let j;try{j=await api('firstrun')}catch(e){return}if(!j||!j.ok)return;fr.data=j;renderFirstRun()}
+function renderFirstRun(){const box=$('firstRun'),j=fr.data;if(!box)return;
+  const where=current.view==='library'?'lib':(!$('vWelcome').hidden&&!guideOn)?'wel':null;
+  if(where&&Date.now()-fr.at>15000)loadFirstRun();
+  const want=!!(j&&where&&(fr.force||j.show));box.hidden=!want;if(!want)return;
+  if(where==='wel'){const host=$('vWelcome').querySelector('.col');if(box.parentNode!==host)host.append(box)}
+  else if(box.previousElementSibling!==$('lastRace'))$('lastRace').after(box);
+  $('frPill').textContent=j.done+' of '+j.total+' done';$('frPill').className='pill'+(j.all_done?' ok':'');
+  $('frList').replaceChildren(...(j.steps||[]).map(st=>{const li=h('li','frstep'+(st.done?' done':'')+(st.id===j.next?' now':''));
+    const mk=h('span','frtick',st.done?'\u2713':'');mk.setAttribute('aria-hidden','true');
+    const tx=h('div','frtx');tx.append(h('b',null,st.title),h('span','note',st.text));li.append(mk,tx);
+    li.setAttribute('aria-label',(st.done?'Done: ':'To do: ')+st.title);
+    const a=FR_ACT[st.action];if(!st.done&&a){const b=h('button','btn'+(st.id===j.next?' primary':''),a[0]);b.type='button';b.dataset.fr=st.action;b.addEventListener('click',a[1]);li.append(b)}
+    return li}))}
+$('frHide').addEventListener('click',async()=>{let r;try{r=await post('firstrun/dismiss')}catch(e){connectionLost();return}
+  if(r&&r.ok){fr.data=r;fr.force=false;renderFirstRun();banner('Hidden. Help > Setup checklist shows it again.')}});
+$('helpFirstRun').addEventListener('click',async()=>{let r;try{r=await post('firstrun/dismiss',{dismissed:false})}catch(e){connectionLost();return}
+  if(!r||!r.ok)return;fr.data=r;fr.at=Date.now();fr.force=true;closeDlg($('dlgHelp'));
+  if(current.view!=='library'&&!(!$('vWelcome').hidden&&!guideOn)){if(libFolder)openLibrary();else{current={view:'welcome'};welcome()}}
+  renderFirstRun()});
 
 /* ---------- settings */
 function setMsg(id,t,cls){const e=$(id);e.textContent=t||'';e.className='msg'+(cls?' '+cls:'')}
@@ -1942,5 +2062,6 @@ $('fUpdate').addEventListener('submit',async e=>{e.preventDefault();setMsg('updM
   if(tokenSaved)startSync(true);   // catch up with Garage 61 every time Debrief opens
   checkUpdate('auto');
   coachPoll();                     // once: keeps polling only if the coach is already running
+  loadFirstRun();                  // 2.14: the setup checklist on the start page
 })();
 })();

@@ -485,7 +485,48 @@ kbd{font-family:var(--mono);font-size:11.5px;border:1px solid var(--axis);border
 .prlaptbl tr.best>*{background:var(--band)}
 .coplan{display:grid;gap:6px;border-top:1px solid var(--grid);padding-top:10px}
 .coplan h4{margin:0;font-size:15px}
+/* 2.14 Practice loop: this session's one thing, its score, the coach's focus, the wheel button, the setup checklist */
+.onething{border-left:4px solid var(--me)}
+.onething .phead .pill{margin-left:auto}
+.ptcombo{max-width:420px}
+.ptwhere{margin-bottom:2px}
+.ptmain{font-family:var(--display);font-weight:700;font-size:23px;line-height:1.2;max-width:62ch;margin:2px 0 6px}
+#ptBody,.ptlast,.ptscore{display:grid;gap:6px}
+#ptBody p b,.ptscore b{font-weight:600}
+.ptmeta{margin-top:2px}
+.ptlast{border-top:1px solid var(--grid);padding-top:12px;margin-top:6px}
+.ptlast h4{margin:0;font-size:15px}
+.pthead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px}
+.ptres{font-size:18px}
+.ptnext{font-weight:600}
+.ptdots{display:flex;flex-wrap:wrap;gap:4px}
+.ptdots i{display:block;width:12px;height:12px;border-radius:2px;border:1.5px solid var(--axis)}
+.ptdots i.hit{background:var(--good);border-color:var(--good)}
+.pthist summary{cursor:pointer;font-weight:600;padding:4px 0}
+.pthist li{display:grid;grid-template-columns:96px 70px minmax(0,1fr) auto;gap:4px 12px;align-items:baseline}
+.pthist .pthd,.pthist .pthr{font-size:13px;color:var(--fg2)}
+.cofocus{border-left:4px solid var(--me)}
+.cofocus .phead .pill{margin-left:auto}
+.coprog{font-size:20px;font-weight:600}
+.cowheel{display:grid;gap:6px;border-top:1px solid var(--grid);padding-top:12px;margin-top:12px}
+.cowheel h4{margin:0;font-size:15px}
+.frcard{padding:12px 16px;border-bottom:1px solid var(--grid);background:var(--panel);display:grid;gap:8px}
+#vWelcome .frcard{border:1px solid var(--grid);border-radius:6px;max-width:760px;margin-top:18px}
+.frcard .phead{display:flex;align-items:center;gap:10px}
+.frcard .phead h3{font-size:18px}
+.frcard #frHide{margin-left:auto}
+.frlist{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.frstep{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:4px 12px;align-items:center}
+.frtick{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--axis);display:grid;place-items:center;font-size:13px;line-height:1}
+.frstep.done .frtick{border-color:var(--good);color:var(--good)}
+.frstep.now .frtick{border-color:var(--me);background:var(--me)}
+.frtx{display:grid;gap:0;min-width:0}
+.frstep.done .frtx b{color:var(--fg2);font-weight:500}
+.frstep .btn{padding:5px 12px;font-size:13.5px}
 @media (max-width:760px){
+  .pthist li{grid-template-columns:1fr auto}
+  .frstep{grid-template-columns:24px minmax(0,1fr)}
+  .frstep .btn{grid-column:2}
   .prrow{grid-template-columns:1fr auto}
   .prrow .prtypes,.prrow .prlaps{grid-column:1/-1}
   .prbars li{grid-template-columns:96px minmax(0,1fr) 56px}

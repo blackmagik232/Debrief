@@ -1659,16 +1659,18 @@ class DebriefServer(ThreadingHTTPServer):
         ss, idx = self.practice_sessions(cfg)
         return [x for x in ss if _same_combo(x, car, track)], ss, idx
 
-    def new_plan(self, cfg, car, track, ss=None, plans=None) -> dict:
+    def new_plan(self, cfg, car, track, ss=None, plans=None, avoid=None) -> dict:
         """A fresh plan from the corner coach over this car + track's latest files, saved as the current one.
         Call with plan_lock held."""
         pp = app.optional_module("practiceplan")
         if ss is None:
             ss, _idx = self.practice_sessions(cfg)
+        # only sessions whose files are still there (a file moved away since the last read doesn't spoil the plan)
+        ss = [x for x in ss if all(Path(f).exists() for f in (x.get("paths") or []))]
         mine = [x for x in ss if _same_combo(x, car, track)]
         rep = self.corner_coach_for(cfg, ss, car, track) if mine else corner_report([])
         hist = plans if plans is not None else pp.load_plans(plans_folder(), car, track)
-        plan = pp.make_plan(rep, history=hist, car=car, track=track)
+        plan = pp.make_plan(rep, history=hist, car=car, track=track, avoid=avoid)
         plan.update({"car_path": car, "track_code": track,
                      "car_name": mine[0].get("car") if mine else car, "track_name": mine[0].get("track") if mine else track,
                      "after_sort": float(mine[0].get("sort") or 0) if mine else 0.0,
@@ -1687,7 +1689,13 @@ class DebriefServer(ThreadingHTTPServer):
             plans = pp.load_plans(plans_folder(), car, track)
             cur = plans[0] if plans else None
             if fresh or cur is None or isinstance(cur.get("score"), dict):
-                cur = self.new_plan(cfg, car, track, plans=plans)
+                avoid = []
+                if fresh:                   # Pick another: pass over the plans he skipped since the last score
+                    for p in plans:
+                        if isinstance(p.get("score"), dict):
+                            break
+                        avoid.append(p.get("id"))
+                cur = self.new_plan(cfg, car, track, plans=plans, avoid=avoid)
                 plans = pp.load_plans(plans_folder(), car, track)
             return cur, plans
 

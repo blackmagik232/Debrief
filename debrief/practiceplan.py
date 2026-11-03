@@ -319,13 +319,15 @@ def _card_plans(report, card, car=None, track=None):
     return out
 
 
-def _consistency(report, car=None, track=None):
+def _consistency(report, car=None, track=None, avoid=()):
     """The corner where typical laps lose most to your best laps with no clear driving difference: aim to drive it
     the same way every lap."""
     pc = (report or {}).get("per_corner") or {}
     rows = sorted((report or {}).get("unclear") or [], key=lambda u: -(_num(u.get("lost_s")) or 0))
     for u in rows:
         cid = u.get("id")
+        if cid in avoid:
+            continue
         tn = ((pc.get(cid) or {}).get("numbers") or {}).get("t") or {}
         b, t = _num(tn.get("best")), _num(tn.get("typical"))
         lost = _num(u.get("lost_s"))
@@ -371,16 +373,18 @@ def _done_corners(history) -> set:
     return done
 
 
-def make_plan(corner_report: dict | None, history=None, car=None, track=None) -> dict:
+def make_plan(corner_report: dict | None, history=None, car=None, track=None, avoid=None) -> dict:
     """The single focus for the next session (see the module text for the shape). Never raises.
 
     Order: the biggest-loss card that is clear or likely, then thin ones (only when nothing else), each turned into
     a measurable target (its main rule, else its second one). With history (plans newest first, as load_plans
     returns): when the last scored plan said keep, that focus is kept (with today's numbers when the card is still
     there); corners he has already got are skipped while others remain. No card: the most variable corner (drive it
-    the same way every lap). Too few laps: drive WANT_LAPS clean laps first."""
+    the same way every lap). Too few laps: drive WANT_LAPS clean laps first.
+    avoid: corner ids to pass over ("Pick another"); when nothing else is left, the usual pick comes back, said so."""
     try:
-        return _make_plan(corner_report or {}, list(history or []), car, track)
+        av = {str(x) for x in (avoid or []) if x}
+        return _make_plan(corner_report or {}, list(history or []), car, track, av)
     except Exception as e:  # noqa: BLE001
         p = _base(corner_report if isinstance(corner_report, dict) else {}, "none", car, track)
         p["text"] = "Debrief couldn't pick a focus from these laps. Drive a few more clean laps and try again."
@@ -388,7 +392,7 @@ def make_plan(corner_report: dict | None, history=None, car=None, track=None) ->
         return p
 
 
-def _make_plan(report, history, car, track):
+def _make_plan(report, history, car, track, avoid=frozenset()):
     laps = int(report.get("laps") or 0)
     if not report.get("ok") or laps < cc.MIN_LAPS:
         p = _base(report, "laps_first", car, track)
@@ -408,7 +412,7 @@ def _make_plan(report, history, car, track):
 
     last = next((h for h in history if isinstance(h, dict) and isinstance(h.get("score"), dict)
                  and h.get("kind") in ("focus", "consistency")), None)
-    if last is not None and ((last["score"].get("next") or {}).get("action")) == "keep":
+    if last is not None and ((last["score"].get("next") or {}).get("action")) == "keep" and last.get("id") not in avoid:
         card = next((c for c in cards if c.get("id") == last.get("id")), None)
         p = _from_card(report, card, last.get("metric"), car, track) if card else None
         gone = p is None
@@ -433,14 +437,20 @@ def _make_plan(report, history, car, track):
     plans = []
     for c in cards:
         plans += _card_plans(report, c, car, track)
-    fresh = [p for p in plans if p["id"] not in done]
-    pick = (fresh or plans or [None])[0]
+    fresh = [p for p in plans if p["id"] not in done and p["id"] not in avoid]
+    other = [p for p in plans if p["id"] not in avoid]
+    pick = (fresh or other or [None])[0]
     if pick is not None:
         if pick["id"] in done:
             pick["reason"] += " (You'd already got this one, but nothing else stands out yet.)"
         return pick
-    p = _consistency(report, car, track)
+    p = _consistency(report, car, track, avoid)
     if p is not None:
+        return p
+    if avoid:                                   # everything was passed over: the usual pick again, said so
+        p = _make_plan(report, history, car, track)
+        if p.get("kind") in ("focus", "consistency"):
+            p["reason"] += " Nothing else stands out yet, so this is the same one again."
         return p
     p = _base(report, "none", car, track)
     p["text"] = ("Every corner looks steady so far: no clear thing to change and no corner varies much. Drive more "
@@ -763,7 +773,8 @@ class LiveFocus:
     def status(self) -> dict:
         n = len(self.passes)
         h = sum(1 for p in self.passes if p["hit"])
-        return {"corner": self.plan.get("corner"), "id": self.corner_id, "metric": self.plan.get("metric"),
+        return {"plan_id": self.plan.get("plan_id"), "corner": self.plan.get("corner"), "id": self.corner_id,
+                "metric": self.plan.get("metric"),
                 "target": self.plan.get("target"), "text": self.plan.get("text"), "active": self.active,
                 "measured": n, "hits": h, "passes": self.passes[-20:],
                 "progress": (f"Hit {h} of {n} so far" if n else "No clean pass through the corner yet")}

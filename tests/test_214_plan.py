@@ -163,6 +163,14 @@ p = pp.make_plan(rep, history=[moved])
 check(p["id"] == "C2" and not p["repeat"], "move on: the next card")
 p = pp.make_plan(report([card("C1", "carry", {"min_kmh": (120.0, 110.0)})]), history=[moved])
 check(p["id"] == "C1" and "already got" in p["reason"], "move on but nothing else: same corner, said so")
+p = pp.make_plan(rep, avoid=["C1"])
+check(p["id"] == "C2", "Pick another: the corner passed over is skipped")
+p = pp.make_plan(rep, history=[kept], avoid=["C1"])
+check(p["id"] == "C2" and not p["repeat"], "Pick another beats keep for the corner passed over")
+p = pp.make_plan(rep, avoid=["C1", "C2"])
+check(p["id"] == "C1" and "same one again" in p["reason"], f"nothing else left: the usual pick, said so ({p['reason']})")
+p = pp.make_plan(report([], uncl, per_corner=pc), avoid=["C3"])
+check(p["kind"] == "consistency" and p["id"] == "C5", "Pick another for an experiment: the next variable corner")
 
 
 # ---------------------------------------------------------------- scoring

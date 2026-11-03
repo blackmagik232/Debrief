@@ -23,7 +23,9 @@ Cues are deliberately few, short (2-5 words) and quiet ("one focus at a time"):
                                   before the reference brake point and timed so it ENDS >= 1.0 s before it
                                   (distance = reference speed x (cue length + 1.0 s + 0.1 s audio)); if it can't
                                   fit, it is dropped
-  b) "T3: more speed, 6 down" / "T3, braked early"   on the straight after a weak corner
+  b) "T3: more speed, 6 down" / "T3, braked early"   on the straight after a weak corner; when the weak corners
+                                  come from the corner coach (a "phrase" per corner), its advice instead
+                                  ("T3: lighter brake")
   c) "Down three tenths" / "New best, up two tenths"  once per lap after LapLastLapTime updates, on the first
                                   straight where it fits (within 10 s); clean laps, 0.1 s <= delta <= 2 s
   Limits: at most 2 corrective cues (a + b) per lap and 1 per corner per lap; a corner is cued again only after
@@ -55,6 +57,9 @@ GRID = 1000                 # reference points around the lap
 KMH = 3.6
 BRAKE_ON = 0.1              # live brake pedal above this (after being below it) is a brake onset
 _LOG = logging.getLogger("debrief.livecoach")
+
+ABS_IBT = "BrakeABSactive"   # the ABS channel's name in .ibt files (Garage 61's CSV calls it ABSActive)
+MAX_PHRASE = 60             # characters: a corner-coach phrase longer than this is not spoken
 
 KIND_MARKER, KIND_FEEDBACK, KIND_LAP, KIND_BEEP = "marker", "feedback", "lap", "beep"
 PRIORITY = {KIND_MARKER: 3, KIND_FEEDBACK: 2, KIND_LAP: 1}
@@ -206,6 +211,8 @@ def _raw_from(cols: dict, n: int) -> dict:
     raw, missing = {}, []
     for k, nm in names.items():
         a = cols.get(nm)
+        if a is None and k == "abs":
+            a = cols.get(ABS_IBT)                        # .ibt files call it BrakeABSactive
         if a is None:
             missing.append(nm)
             raw[k] = np.zeros(n)
@@ -281,7 +288,7 @@ def _ibt_lap_raw(ib, lap: dict) -> dict:
     a, b = lap["start"], lap["end"]
     cols = {}
     for nm in ("Speed", "LapDistPct", "Brake", "Throttle", "Gear", "SteeringWheelAngle", "RPM", "LatAccel",
-               "LongAccel", "ABSActive"):
+               "LongAccel", "ABSActive", ABS_IBT):
         if ib.has(nm):
             cols[nm] = ib.col(nm)[a:b]
     return _raw_from(cols, b - a)
@@ -433,6 +440,7 @@ class Weak:
     lost_s: float | None
     name: str                   # spoken name
     review_id: str | None = None   # what the race review calls it ("C2"), when the weak corner came from one
+    phrase: str | None = None   # the corner coach's short advice ("T4: lighter brake"), said after the corner
 
 
 def _rel_m(pct: float, apex_pct: float, L: float) -> float:
@@ -457,9 +465,12 @@ def match_weak(ref: Reference, weak, top_n: int = 3, prefix: str = "T") -> list:
     tol = max(60.0, 0.02 * L)
     out, used = [], set()
     for order, w in enumerate(weak):
-        c, lost, num = None, None, None
+        c, lost, num, phrase = None, None, None, None
         if isinstance(w, dict):
             num = _num_of(w.get("id"))
+            ph = w.get("phrase")
+            if isinstance(ph, str) and ph.strip() and len(ph.strip()) <= MAX_PHRASE:
+                phrase = " ".join(ph.split())
             for k in ("avg_avail", "avail", "lost_s", "time_lost"):
                 v = w.get(k)
                 if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v):
@@ -485,7 +496,7 @@ def match_weak(ref: Reference, weak, top_n: int = 3, prefix: str = "T") -> list:
             continue
         used.add(c.num)
         out.append((order, Weak(corner=c, lost_s=lost, name=f"{prefix}{num if num is not None else c.num}",
-                                review_id=f"C{num}" if num is not None else None)))
+                                review_id=f"C{num}" if num is not None else None, phrase=phrase)))
     # biggest time loss first; items without a number keep their given order, after those with one
     out.sort(key=lambda x: (x[1].lost_s is None, -(x[1].lost_s or 0.0), x[0]))
     return [w for _o, w in out][:max(0, top_n)]
@@ -665,6 +676,8 @@ class Coach:
             if w.corner.brake_pct is not None:
                 out += [marker_text(w.name), early_text(w.name)]
             out += [speed_text(w.name, n) for n in range(max(1, int(math.ceil(self.settings.slower_kmh))), 16)]
+            if w.phrase:
+                out.append(w.phrase)
         for k in range(1, 10):
             out += [f"Down {delta_words(k / 10)}", f"New best, up {delta_words(k / 10)}"]
         out.append("New best")
@@ -675,7 +688,8 @@ class Coach:
         return {"reference": r.summary() if r else None,
                 "weak": [{"name": w.name, "id": w.corner.id, "review_id": w.review_id, "lost_s": w.lost_s,
                           "apex_m": round(w.corner.apex_m),
-                          "brake_m": round(w.corner.brake_m) if w.corner.brake_m is not None else None} for w in self.weak],
+                          "brake_m": round(w.corner.brake_m) if w.corner.brake_m is not None else None,
+                          "phrase": w.phrase} for w in self.weak],
                 "muted": self.settings.muted, "quiet_reason": self.quiet_reason,
                 "last_lap": self.last_lap, "spoken": [c.to_dict() for c in self.spoken[-10:]],
                 "events": self.events[-10:]}
@@ -963,7 +977,10 @@ class Coach:
         persists = bool(prev and prev[0])
         if last is not None and lap.num - last[0] < st.repeat_laps and not persists:
             return
-        text = speed_text(w.name, int(round(down))) if down >= st.slower_kmh else early_text(w.name)
+        if w.phrase:                                      # the corner coach's advice for this corner (2.13)
+            text = w.phrase
+        else:
+            text = speed_text(w.name, int(round(down))) if down >= st.slower_kmh else early_text(w.name)
         self.queue.push(Cue(text=text, priority=PRIORITY[KIND_FEEDBACK], key=f"feedback:{c.id}", t=t,
                             kind=KIND_FEEDBACK, corner=c.id, expires=t + st.stale_s))
 

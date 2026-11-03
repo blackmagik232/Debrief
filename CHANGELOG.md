@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.13.0
+
+- **Practice** (new page, Ctrl+0): every time you drove, straight from the telemetry files iRacing saves on your PC, newest first, without waiting for Garage 61. Open one to see your best and typical lap, how consistent you were, and how it compares with last time at that track.
+- **Best possible lap**: your best time through each part of the lap added up, with a bar for where the time is. It now counts only clean laps once there are 5 of them (before, warm-up and slow laps could make it 0.6 to 0.9 s too quick), and says so. It's a guide, not a lap you can count on.
+- **Corner coach**: for each corner, what you do differently on your best laps (brake later, press less hard, come off the brake earlier...), how to try it, what it gets you, why it works and the laps it comes from, with how sure it is (Clear, Likely, Few laps). Taken from your recent laps of that car at that track. Corners with no clear pattern and your braking habits are listed too.
+- The session page also shows every lap (counted, or why not), fuel per lap and how far a tank goes, the track conditions and the setups you used, with a link to Setup Lab for that car.
+- **Coach these corners**: the live coach now focuses on the Corner coach's corners for that car and track, and after each one says its short tip ("T4: lighter brake"). The Coach page shows which corners those are. Without Corner coach tips it works as before, from your race reviews.
+- The coach keeps the ABS reading when its reference lap comes from a telemetry file.
+- Not proven yet: the Corner coach tips and the spoken tips haven't been tried in the car; on your real files the best possible lap was still 0.76 s under your best at Zolder on Nov 1 (5 clean laps, each part's best from a different lap) and 0.65 s on Nov 2 (only 3 clean laps, so it counts all valid laps and says it may be too quick).
+
 ## 2.12.0
 
 - **Setup Lab** (new page, Ctrl+8): Debrief reads the telemetry files iRacing saves on your PC (only reads them, never changes them) and shows your setups (A, B, C), what changed between them in plain words, which one was faster (only when the clean laps clearly say so; otherwise how many more laps would tell; and if the faster one was simply driven later, it says part of that may be you getting quicker), one change to try next with how sure it is, and notes on readings it left out. Fixed setup series just say so. You can tell it whether a series is open or fixed. The first read goes through every file, then only new ones.

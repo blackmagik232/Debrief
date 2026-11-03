@@ -4,7 +4,7 @@
 
 Reviews your iRacing races from Garage 61 and keeps a library of every review, in its own window.
 
-**New in 2.12:** **Setup Lab** reads the telemetry files iRacing saves on your PC and shows what changed between your setups, which one was faster and one change to try next; the **Coach** says a few short cues while you drive, from your own best lap. **2.11:** Prepare is one clean page: pick a car, series, track and week at the top and everything below follows. **2.10:** a season plan and sharper pre-race brief on Prepare, and Read a rival's lap from a replay for Compare. Earlier: **New in 2.7.5:** Scan this race on any race review: with its replay loaded in iRacing, Debrief fast-forwards through it (recording nothing) and adds a race log of every pass, fight, incident and pit stop. Also: load iRacing's results file instead of typing a result; a Resolve marker file for any review; Help (tour, what the words mean, keys). If you also use RaceCap, point Settings > RaceCap link at its library folder: reviews gain a race log (passes, fights, incidents, pit stops, position by lap), race stories, a traffic check and rival laps. Debrief only reads RaceCap's race folders, never its settings or keys, and everything works the same without it.
+**New in 2.13:** **Practice** reviews every session straight from your telemetry files, with the best possible lap and the **Corner coach** (one thing to try in each corner, which the live coach then says while you drive). **2.12:** **Setup Lab** reads the telemetry files iRacing saves on your PC and shows what changed between your setups, which one was faster and one change to try next; the **Coach** says a few short cues while you drive, from your own best lap. **2.11:** Prepare is one clean page: pick a car, series, track and week at the top and everything below follows. **2.10:** a season plan and sharper pre-race brief on Prepare, and Read a rival's lap from a replay for Compare. Earlier: **New in 2.7.5:** Scan this race on any race review: with its replay loaded in iRacing, Debrief fast-forwards through it (recording nothing) and adds a race log of every pass, fight, incident and pit stop. Also: load iRacing's results file instead of typing a result; a Resolve marker file for any review; Help (tour, what the words mean, keys). If you also use RaceCap, point Settings > RaceCap link at its library folder: reviews gain a race log (passes, fights, incidents, pit stops, position by lap), race stories, a traffic check and rival laps. Debrief only reads RaceCap's race folders, never its settings or keys, and everything works the same without it.
 
 ## For Midfield Menace drivers: install
 
@@ -60,6 +60,12 @@ The source-only launchers live in the `dev` folder (see `dev/README.md`).
   - **Notes**: readings that were left out (cold tyres, short stints) and files that couldn't be read.
   - **More > Check a setup file**: a setup from someone else (.sto or .zip) is checked for programs and scripts before you use it. Debrief never opens, runs or installs it, and keeps no copy.
   - Debrief only reads iRacing's folders; it never writes into them. Prepare shows **Setup Lab for this car** when there are files for that car and track.
+- **Practice** (**Ctrl+0**): every time you drove, from the same telemetry files as Setup Lab (press **Read my telemetry** there or here), newest first: date, car, track, session, laps and best lap. Files of one car and track with no more than 3 hours between them count as one session. Open one to see:
+  - **How it went**: best lap, typical lap (the middle of your clean laps), how many laps were within half a second of your best, and how it compares with your last session there.
+  - **Best possible lap**: your best time through each corner added up, from clean laps once there are 5 (else from all valid laps, and it says so), with a bar for each corner where time is. A guide, not a lap you can count on.
+  - **Corner coach**: from your recent laps of that car at that track (up to the last 10 files, within 30 days), one card per corner where your typical lap loses time and your best laps do something clearly different: what's different, how to try it, what it gets you, why, and the laps it comes from, marked Clear, Likely or Few laps. Then corners with no clear pattern yet, and your braking habits (ABS, full pedal, trail braking, coasting).
+  - **Laps** (counted, or why not), **Fuel and strategy**, **Conditions** and **Setups used** (with a link to Setup Lab).
+  - **Coach these corners** opens the Coach: it then focuses on those corners and says each one's short tip after the corner.
 - **Coach** (**Ctrl+9**): press **Start coaching**, then drive. With iRacing running, Debrief says a few short cues: a brake marker on the straight before the one or two corners your race reviews say cost you most, a word after them, and your lap against your best ("Down two tenths"). It coaches from your own best clean lap for that car and track (from your telemetry files, or a better lap you drive). It stays quiet under braking, in corners, with a car alongside, on pit road, on out laps and on lap 1 of a race, and in races at all unless you switch that on. **Mute** or **Ctrl+Shift+M** (works from the car while Debrief is open; map it to a wheel button) silences it. Settings: what it says, focus corners (1 to 3), volume, speaking speed, an optional beep at the brake point, and **Test voice**. Keep Debrief open while you drive. The voice uses Windows' built-in speech; nothing goes online.
 - **Reviews** open with **What to work on**: a two-line verdict, up to three corners to **fix first** (what to change there and roughly what it's worth), your **bad habits** and **good habits**, then the **race story** (lap times). Every chart and table is still there under **All the numbers**.
 - **Updates**: Debrief checks GitHub for a newer version once a day (on by default; switch it off in Settings > Updates). **Update now** downloads the installer, checks its SHA-256 against the one published with the release (Settings > Updates says "checksum"; once a signing key is published it also checks the signature and says so), installs it and reopens Debrief. Before an update re-draws your saved reviews, Debrief copies every review.json to `.backup` in your reviews folder (the two newest sets are kept).
@@ -77,7 +83,7 @@ Reviews are saved in `Documents\Debrief Reviews`. You can open them in a browser
 
 From a command prompt you can also run `python -m debrief team` or `python -m debrief prep --track ID --car ID`.
 
-Keyboard: **Ctrl+R** reviews your last race, **Ctrl+1** to **Ctrl+9** open the pages in sidebar order (Setup Lab is **Ctrl+8**, Coach **Ctrl+9**), **Ctrl+,** opens Settings, **Ctrl+Shift+M** mutes the coach.
+Keyboard: **Ctrl+R** reviews your last race, **Ctrl+1** to **Ctrl+9** open the pages in sidebar order (Setup Lab is **Ctrl+8**, Coach **Ctrl+9**), **Ctrl+0** opens Practice, **Ctrl+,** opens Settings, **Ctrl+Shift+M** mutes the coach.
 
 ## Comparison laps
 
@@ -94,7 +100,7 @@ The Garage 61 API only shares laps from **you, your teammates, and drivers you f
 - Review: one more request to list teammates and followed drivers who were in the same session.
 - Prepare page and track cards: none (the schedule comes from iRacing's PDF; downloading it is one request to iRacing, only when you click).
 - Requests are spaced about a second apart; if Garage 61 asks Debrief to slow down, later requests in that run are spaced further apart.
-- Goals, race results, Season, Setup Lab and the Coach use no requests at all.
+- Goals, race results, Season, Practice, Setup Lab and the Coach use no requests at all.
 
 ## Midfield Menace on Garage 61
 

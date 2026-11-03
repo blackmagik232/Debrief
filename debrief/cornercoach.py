@@ -356,8 +356,8 @@ def phases(R, corner) -> dict | None:
         return None
 
 
-def _phases(R, c):
-    X = _loop(R)
+def _phases(R, c, X=None):
+    X = _loop(R) if X is None else X
     d, v, b, th, dt = X["d"], X["v"], X["b"], X["th"], X["dt"]
     a0, a1, apex = float(c["start_m"]), float(c["end_m"]), float(c["apex_m"])
     m = (d >= a0) & (d <= a1)
@@ -483,6 +483,57 @@ def _phases(R, c):
         elif out["abs_share"] is not None:
             out["lock_method"] = "abs"
     return out
+
+
+def phases_window(cols: dict, corner, length_m: float) -> dict | None:
+    """phases() for a short run of samples through one corner (2.14: the live coach's practice focus), not a whole
+    lap. cols: arrays in iRacing's names and units for consecutive samples (SessionTime s, LapDistPct 0..1, Speed m/s,
+    Brake and Throttle 0..1, optional SteeringWheelAngle rad and Gear). They are put on the same 5 m grid positions
+    as a whole lap (multiples of STEP from the line, shifted by a lap when the corner crosses it), so the numbers are
+    the ones phases() gives for that lap. None unless the samples cover the whole corner zone (start_m .. end_m)."""
+    try:
+        L = float(length_m)
+        p = np.asarray(cols["LapDistPct"], float)
+        t = np.asarray(cols["SessionTime"], float)
+        v = np.asarray(cols["Speed"], float)
+        if len(p) < 5 or len(t) != len(p) or len(v) != len(p) or not L or L < 100:
+            return None
+        d = engine._unwrap(p) * L
+        apex = float(corner["apex_m"])
+        d = d + round((apex - float(np.median(d))) / L) * L          # the lap the corner's apex is on
+        d = np.maximum.accumulate(d + np.arange(len(d)) * 1e-6)
+        a0, a1 = float(corner["start_m"]), float(corner["end_m"])
+        if d[0] > a0 + 1e-6 or d[-1] < a1 - 1e-6:
+            return None
+        grid = np.arange(math.ceil(d[0] / STEP) * STEP, d[-1] + 1e-9, STEP)
+        if len(grid) < 5:
+            return None
+        X = {"d": grid, "tt": np.interp(grid, d, t)}
+        X["dt"] = np.diff(X["tt"], append=X["tt"][-1])
+        X["v"] = np.interp(grid, d, v) * engine.MPH
+        missing = []
+        for key, nm, scale in (("b", "Brake", 100.0), ("th", "Throttle", 100.0)):
+            a = cols.get(nm)
+            if a is None:
+                return None
+            X[key] = np.clip(np.interp(grid, d, np.asarray(a, float)) * scale, 0, 100)
+        idx = np.clip(np.searchsorted(d, grid), 0, len(d) - 1)
+        st = cols.get("SteeringWheelAngle")
+        st_ok = st is not None and all(x is not None for x in st)
+        X["st"] = np.interp(grid, d, np.asarray(st, float)) * 57.2958 if st_ok else np.zeros(len(grid))
+        if not st_ok:
+            missing.append("SteeringWheelAngle")
+        g = cols.get("Gear")
+        X["gear"] = np.asarray(g, float)[idx] if g is not None else np.zeros(len(grid))
+        if g is None:
+            missing.append("Gear")
+        X["abs"] = np.zeros(len(grid))
+        X["rpm"] = np.zeros(len(grid))
+        R = {"_missing": missing + ["ABSActive", "RPM"], "_abs": False, "_wheels": False, "_base": {},
+             "_steer": st_ok and float(np.ptp(X["st"])) > engine.STEER_FLAT_DEG}
+        return _phases(R, corner, X)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 # ---------------------------------------------------------------- comparing best vs typical

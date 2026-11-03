@@ -653,6 +653,7 @@ class Coach:
         self._cancel = False
         self._corner_err: dict = {}      # corner num -> [error on the last pass, error on the pass before]
         self._corner_last: dict = {}     # corner num -> (lap number, kind) of its last cue
+        self.focus = None                # 2.14: the practice plan's focus corner (practiceplan.LiveFocus), optional
         self._reset_all()
         if reference is not None:
             self.set_reference(reference)
@@ -666,6 +667,12 @@ class Coach:
         self._obs = {}
         self._marker_done = set()
         self._beep_done = set()
+
+    def set_focus(self, focus):
+        """2.14: the practice plan's "one thing this session" (practiceplan.LiveFocus or None). After each clean pass
+        through its corner it may give a short progress cue ("Good, 84"), queued as that corner's feedback so every
+        limit above (gap, per lap, per corner, silence rules) applies to it."""
+        self.focus = focus
 
     def mute(self):
         self.settings.muted = True
@@ -709,6 +716,11 @@ class Coach:
         for k in range(1, 10):
             out += [f"Down {delta_words(k / 10)}", f"New best, up {delta_words(k / 10)}"]
         out.append("New best")
+        if self.focus is not None:                       # 2.14 practice focus cues
+            try:
+                out += list(self.focus.vocabulary())
+            except Exception:  # noqa: BLE001
+                pass
         return list(dict.fromkeys(out))
 
     def status(self) -> dict:
@@ -720,7 +732,14 @@ class Coach:
                           "phrase": w.phrase, "source": w.source} for w in self.weak],
                 "muted": self.settings.muted, "quiet_reason": self.quiet_reason,
                 "last_lap": self.last_lap, "spoken": [c.to_dict() for c in self.spoken[-10:]],
-                "events": self.events[-10:]}
+                "events": self.events[-10:],
+                "focus": self._focus_status()}
+
+    def _focus_status(self):
+        try:
+            return self.focus.status() if self.focus is not None else None
+        except Exception:  # noqa: BLE001
+            return None
 
     def feed(self, s: dict) -> list:
         try:
@@ -832,6 +851,22 @@ class Coach:
                 self._marker(w, dists, v, t, coachable, lap)
                 b = self._beep(w, dists, v, coachable)
                 beep = beep or b
+
+        # ---- 2.14 practice focus: one corner measured each clean pass ----
+        if self.focus is not None:
+            ok = coachable and on_track and not alongside and t >= self._traffic_until
+            try:
+                said = self.focus.feed(s, ok=ok, lap=lapn)
+            except Exception as e:  # noqa: BLE001
+                said = None
+                if not getattr(self, "_focus_logged", False):     # once, not 20 times a second
+                    self._focus_logged = True
+                    self._log(f"livecoach: practice focus skipped ({e.__class__.__name__}: {str(e)[:120]})")
+            if said and st.feedback:
+                cid = str(getattr(self.focus, "corner_id", "") or "")
+                if re.fullmatch(r"C\d+", cid):
+                    self.queue.push(Cue(text=said, priority=PRIORITY[KIND_FEEDBACK], key=f"feedback:{cid}", t=t,
+                                        kind=KIND_FEEDBACK, corner=cid, expires=t + st.stale_s))
 
         # ---- speak? ----
         self._prev_pct, self._prev_t = pct, t
@@ -1100,11 +1135,37 @@ def early_text(name: str) -> str:
 def speed_text(name: str, kmh_down: int) -> str:
     return f"{name}: more speed, {kmh_down} down"
 
+# ---------------------------------------------------------------- 2.14 one corner from live samples
+
+def corner_phases(samples, corner, length_m) -> dict | None:
+    """The corner coach's phase numbers (cornercoach.phases: brake point, peak %, trail %, coasting, throttle
+    pick-up, minimum speed ...) for ONE pass through one corner, from the live samples of that pass (dicts with
+    SessionTime, LapDistPct, Speed, Brake, Throttle and, when there, SteeringWheelAngle and Gear). corner: a dict
+    with apex_m, start_m, end_m in metres from the line, as the corner coach's report gives them. None when the
+    samples don't cover the whole corner or can't be read."""
+    try:
+        rows = [x for x in samples or [] if isinstance(x, dict) and x.get("LapDistPct") is not None
+                and x.get("SessionTime") is not None]
+        if len(rows) < 5:
+            return None
+        cols = {nm: [float(x.get(nm) or 0.0) for x in rows]
+                for nm in ("SessionTime", "LapDistPct", "Speed", "Brake", "Throttle")}
+        if all(x.get("SteeringWheelAngle") is not None for x in rows):
+            cols["SteeringWheelAngle"] = [float(x["SteeringWheelAngle"]) for x in rows]
+        if all(x.get("Gear") is not None for x in rows):
+            cols["Gear"] = [float(x["Gear"]) for x in rows]
+        from . import cornercoach
+        return cornercoach.phases_window(cols, corner, length_m)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # ---------------------------------------------------------------- sample sources
 
 # only what the coach reads (each live read copies these out of iRacing's buffer)
 CHANNELS = ("SessionTime", "SessionNum", "Lap", "LapDistPct", "LapLastLapTime", "Speed", "Brake", "Throttle",
-            "Gear", "OnPitRoad", "PlayerTrackSurface", "CarLeftRight", "IsOnTrack", "PlayerCarMyIncidentCount")
+            "Gear", "OnPitRoad", "PlayerTrackSurface", "CarLeftRight", "IsOnTrack", "PlayerCarMyIncidentCount",
+            "SteeringWheelAngle")       # 2.14: steering, for the practice focus's trail-braking number
 
 
 class IbtPlaybackSource:

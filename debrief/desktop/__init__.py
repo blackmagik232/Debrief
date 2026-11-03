@@ -32,7 +32,9 @@ FEATURE_MODULES = ("race_analysis", "racecap_link", "replay_scan", "results_csv"
                    # 2.12 Setup Lab and live coach
                    "ibt", "setuplab", "livecoach", "voice",
                    # 2.13 Session review and corner coach
-                   "sessionibt", "cornercoach")
+                   "sessionibt", "cornercoach",
+                   # 2.14 Practice loop
+                   "practiceplan", "wheelmute", "firstrun")
 
 
 _REFRESH_DONE: set = set()

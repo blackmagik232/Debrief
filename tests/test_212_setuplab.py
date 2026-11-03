@@ -581,7 +581,7 @@ check(rep["diffs"] and rep["diffs"][0]["from"] == "A" and rep["diffs"][0]["to"] 
 check(rep["compare"]["pairs"][0]["faster"] == "B", "report: compare verdict")
 check(rep["suggestions"]["for_setup"] == "B" and rep["series_setup"] == "unknown", "report: suggestions for the latest setup")
 check(any("could not be read" in n for n in rep["notes"]) and any(".sto" in n for n in rep["notes"]), "report: data notes")
-check(rep["car"] == "Mclaren 570s GT4" and rep["track"] == "Zolder Circuit - Grand Prix", "report: names")
+check(rep["car"] == "McLaren 570S GT4" and rep["track"] == "Circuit Zolder (Grand Prix)", "report: names")   # 2.18: names.car / names.track
 json.dumps(rep)
 check(True, "report is JSON-ready")
 cb = sl.combos(sl.index(d))

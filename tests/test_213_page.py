@@ -536,11 +536,12 @@ def test_practice_in_the_window():
             assert "Best lap" in pg.text_content("#prHead") and "last session here" in pg.text_content("#prHead")
             assert pg.locator("#prTheo .prbars li").count() >= 1 and "guide" in pg.text_content("#prTheo")
             cards = pg.evaluate("() => [...document.querySelectorAll('#prCorners .cccard h4')].map(e => e.textContent)")
-            assert {"Turn 2 (C2)", "Turn 4 (C4)", "Turn 6 (C6)"} <= set(cards), cards
+            assert {"Turn 2", "Turn 4", "Turn 6"} <= set(cards), cards   # 2.18: "Turn N" everywhere, no "(CN)"
             # the best-possible-lap bars name corners the same way as the cards
             segs = pg.evaluate("() => [...document.querySelectorAll('#prTheo .prseg')].map(e => e.textContent)")
-            assert segs and all(re.fullmatch(r"Turn \d+ \(C\d+\)", x) for x in segs), segs
-            assert pg.locator("#prTheo .prseg small.prcid").count() == len(segs)
+            assert segs and all(re.fullmatch(r"Turn \d+", x) for x in segs), segs   # 2.18: no "(CN)" beside it
+            assert pg.locator("#prTheo .prseg small.prcid").count() == 0     # 2.18: the numbering note is the hover
+            assert pg.locator("#prTheo .prseg[title]").count() == len(segs)
             ct0 = pg.text_content("#prCorners")
             assert not re.search(r"\b[CT]\d+:", ct0), "unclear corners say Turn N too"
             first = pg.text_content("#prCorners .cccard")
@@ -558,7 +559,7 @@ def test_practice_in_the_window():
             pg.click("#prSetupLab")
             pg.wait_for_selector("#vSetupLab", state="visible")
             pg.wait_for_selector("#slSetups")
-            assert pg.evaluate("() => document.querySelector('#slCombos .pkbtn.on').textContent").startswith("Zolder")
+            assert pg.evaluate("() => document.querySelector('#slCombos .pkbtn.on').textContent").startswith("Circuit Zolder")
             # back to the session and on to the coach
             pg.keyboard.press("Control+0")
             pg.wait_for_selector("#prSessions .prrow")
@@ -568,7 +569,7 @@ def test_practice_in_the_window():
             pg.wait_for_selector("#vCoach", state="visible")
             pg.wait_for_selector("#coPlan li")
             plan = pg.text_content("#coPlan")
-            assert "From the Corner coach" in plan and "T4: lighter brake" in plan and "Turn 4 (C4)" in plan, plan
+            assert "From the Corner coach" in plan and "T4: lighter brake" in plan and "Turn 4" in plan, plan
             # back from a session to the list
             pg.keyboard.press("Control+0")
             pg.wait_for_selector("#prSessions .prrow")

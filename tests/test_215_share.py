@@ -56,7 +56,7 @@ r = ss.share(rep)
 t = r["text"]
 print("     " + t)
 check(r["ok"] and r["pair"] == ("A", "B"), "share made for B vs A (his latest change)")
-check(t.startswith("McLaren 570S GT4 at Zolder Circuit"), f"car and track first ({t[:40]})")
+check(t.startswith("McLaren 570S GT4 at Circuit Zolder"), f"car and track first ({t[:40]})")   # 2.18: names.track
 check("Setup B vs A: " in t, "names the setups by letter")
 check("rear wing 2.5 → 3.5 deg" in t, "rear wing change")
 check("front camber -4.0 → -3.6 deg (both sides)" in t, "camber both sides as one item")
@@ -68,7 +68,7 @@ if pair["verdict"] == "no clear difference" and pair.get("more_laps"):
 check(r["chars"] <= 1500 and len(r["markdown"]) <= 1500, f"short enough for Discord ({r['chars']} chars)")
 private_free(t, "text")
 private_free(r["markdown"], "markdown")
-check(r["markdown"].startswith("**McLaren 570S GT4** at **Zolder Circuit") and "\n- rear wing" in r["markdown"]
+check(r["markdown"].startswith("**McLaren 570S GT4** at **Circuit Zolder") and "\n- rear wing" in r["markdown"]
       and "**Result:**" in r["markdown"], "markdown variant")
 
 # ---------------------------------------------------------------- verdict kinds (hand-made compare)

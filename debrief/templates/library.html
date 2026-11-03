@@ -866,7 +866,8 @@ const SK_WHY={no_traces:'were saved without the lap traces the scores are worked
   bad_data:'couldn\u2019t be read',no_block:'couldn\u2019t be scored'};
 function skWhyText(){const W=SKP&&SKP.why&&typeof SKP.why==='object'?SKP.why:{};const n=SKP&&ok(SKP.n_rows)?SKP.n_rows:0;
   const parts=Object.keys(W).filter(k=>ok(W[k])&&W[k]>0).sort((a,b)=>W[b]-W[a]).map(k=>W[k]+' '+(SK_WHY[k]||SK_WHY.no_block));
-  const base='Skill scores come from a race with at least 6 clean laps with telemetry.';
+  const base='Skill scores appear after a race with at least 6 clean laps with telemetry.';
+  if(!SKP||!SKP.why||typeof SKP.why!=='object')return base;
   if(!n)return base+' You have no race reviews with lap times yet.';
   return 'None of your '+plural(n,'race review')+' has a score yet: '+parts.join('; ')+'. '+base}
 function renderSkills(){const tiles=$('sktiles'),pan=$('skpanel');tiles.replaceChildren();pan.replaceChildren();skRedraw=null;

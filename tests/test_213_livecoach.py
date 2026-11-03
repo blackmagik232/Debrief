@@ -505,7 +505,7 @@ r = lc.LiveRunner(lc.IbtPlaybackSource(cur, speed=1.0), vc.FakeVoice(), referenc
 r.start()
 time.sleep(0.4)
 st = r.status()
-check(st["state"] == "coaching" and st["text"].startswith("Coaching: Mclaren 570s GT4 at Zolder, reference "),
+check(st["state"] == "coaching" and st["text"].startswith("Coaching: McLaren 570S GT4 at Zolder, reference "),
       f"status while coaching: {st['text']}")
 json.dumps(st)
 r.mute()

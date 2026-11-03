@@ -41,7 +41,8 @@ def _review(kinds, lib):
     logs = []
     app.make_api, app.say = (lambda c: api), logs.append
     try:
-        page = app.cmd_review(cfg, "EV1", open_after=False, track_id=468, car_id=190)
+        # 2.18: a race already reviewed opens as saved unless rebuilt; these tests review the same race again
+        page = app.cmd_review(cfg, "EV1", open_after=False, track_id=468, car_id=190, rebuild=True)
     finally:
         app.make_api, app.say = real_make, real_say
     return json.loads((page.parent / "review.json").read_text(encoding="utf-8")), page, logs

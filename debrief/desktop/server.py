@@ -372,8 +372,16 @@ def review_rebuild_params(review_dir: Path) -> dict:
     m = d.get("meta") if isinstance(d, dict) and isinstance(d.get("meta"), dict) else {}
     ids = d.get("combo_ids") if isinstance(d, dict) and isinstance(d.get("combo_ids"), dict) else {}
     st = {"practice": 1, "qualifying": 2}.get(library.session_kind(m.get("session")), 3)
-    return clean_review_params({"event": str(m.get("event_id") or ""), "session_type": st, "rebuild": True,
-                                "track_id": ids.get("track_id"), "car_id": ids.get("car_id")}) or {}
+    ev = str(m.get("event_id") or "")
+    if not re.match(r"^[A-Za-z0-9_-]{1,80}$", ev):
+        raise ValueError("This review doesn't say which Garage 61 event it was, so it can't be rebuilt here. "
+                         "Use Review on the All sessions page.")
+    out = {"event": ev, "session_type": st, "track_id": None, "car_id": None, "rebuild": True}
+    for k in ("track_id", "car_id"):   # older reviews have no ids: the review then finds the race by its event
+        v = ids.get(k)
+        if isinstance(v, int) and not isinstance(v, bool) and v > 0:
+            out[k] = v
+    return out
 
 
 def clean_goal(raw) -> dict:

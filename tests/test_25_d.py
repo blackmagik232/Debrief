@@ -727,7 +727,9 @@ def _run_review(lib):
     cfg = {"library_folder": str(lib), "include_practice": False, "cache_dir": str(TMP / "cache"),
            "max_reference_laps": 0, "salutation": "", "team_slug": "midfield-menace"}
     with patched(app, make_api=lambda c: api):
-        page = app.cmd_review(cfg, "EVT25D000001", open_after=False, session_kind=3, track_id=468, car_id=190)
+        # 2.18: the same race again is a rebuild (a plain Review last race opens the saved one)
+        page = app.cmd_review(cfg, "EVT25D000001", open_after=False, session_kind=3, track_id=468, car_id=190,
+                              rebuild=True)
     return json.loads((Path(page).parent / "review.json").read_text(encoding="utf-8")), api
 
 

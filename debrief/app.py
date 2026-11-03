@@ -773,12 +773,21 @@ def saved_review_dir(library_folder, event, stype):
     if not library_folder or not event:
         return None
     end = "_" + str(event)[-6:].lower() + {1: "_practice", 2: "_qualifying"}.get(stype, "")
+    want = session_label(stype if stype in (1, 2) else 3)
+    hits = []
     try:
-        hits = sorted((d for d in (Path(library_folder) / "reviews").iterdir()
-                       if d.name.lower().endswith(end) and (d / "review.json").is_file()), key=lambda d: d.name)
+        for d in (Path(library_folder) / "reviews").iterdir():
+            if not d.name.lower().endswith(end):
+                continue
+            try:   # only a review of this session as such: an old mixed "Session" review is made again (2.7.2)
+                m = json.loads((d / "review.json").read_text(encoding="utf-8")).get("meta") or {}
+            except (OSError, ValueError, AttributeError):
+                continue
+            if str(m.get("event_id") or "") == str(event) and m.get("session") == want:
+                hits.append(d)
     except OSError:
         return None
-    return hits[-1] if hits else None
+    return sorted(hits, key=lambda d: d.name)[-1] if hits else None
 
 
 def _fmt_or(t):

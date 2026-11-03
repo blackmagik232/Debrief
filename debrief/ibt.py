@@ -357,7 +357,7 @@ def summary(path) -> dict:
             return {"file": Path(path).name, "ok": True, "start": ib.start_date, "car": ib.car(), "track": ib.track(),
                     "sessions": sorted(set(x["session"] for x in lp if x["session"])),
                     "laps": len(lp), "clean_laps": len(clean), "best": min(clean) if clean else None,
-                    "setup": ib.setup, "setup_name": (ib.player().get("DriverSetupName") or "") if ib.player() else ""}
+                    "setup": ib.setup, "setup_name": str((ib.session.get("DriverInfo") or {}).get("DriverSetupName") or "")}
     except Exception as e:  # noqa: BLE001
         return {"file": Path(path).name, "ok": False, "error": str(e)[:200]}
 

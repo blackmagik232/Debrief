@@ -1,0 +1,8 @@
+Omega (Indian accent, male) (omega): 216 clips, 8.02 MB, 16000 Hz, speed 1.05, comma pause 70 ms
+Coach phrases covered: 785 of 785 (100.0%)
+Left to Windows speech by design: Good, 0 .. Good, 19 (20 phrases)
+Takes to listen to: 4
+  line 27 'Turn two, lighter brake.': the two halves were said separately (listen to the join)
+  line 28 'Turn three, brake later.': the two halves were said separately (listen to the join)
+  line 29 'Turn four, brake earlier.': spoken as 'Turn four... brake earlier.' to get a pause at the comma (listen to the join)
+  line 37 'Turn twelve, same every lap.': spoken as 'Turn twelve. Same every lap.' to get a pause at the comma (listen to the join)

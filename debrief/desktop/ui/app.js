@@ -1254,11 +1254,12 @@ function openResult(){const dir=current.dir;if(!dir)return;const r=(resultFor.di
   const sc0=resultFor.dir===dir&&!resultFor.result?resultFor.scan:null;
   if(sc0){$('r_finish_pos').value=String(ok(sc0.class_finish)?sc0.class_finish:sc0.finish);const size=ok(sc0.class_size)?sc0.class_size:sc0.cars;if(ok(size))$('r_field_size').value=String(size)}
   $('incRows').replaceChildren(...(Array.isArray(r.incident_laps)?r.incident_laps.slice(0,30):[]).map(incRow));incState();
-  $('resTitle').textContent=resultFor.result?'Edit race result':'Add race result';$('resDelete').hidden=!resultFor.result;
+  resCsvMe=null;$('resTitle').textContent=resultFor.result?'Edit race result':'Add race result';$('resDelete').hidden=!resultFor.result;
   $('resDelete').dataset.armed='';$('resDelete').textContent='Delete result';setMsg('resMsg','');setMsg('resCsvMsg',resultFor.dir===dir&&!resultFor.result&&resultFor.scan?'Finish filled in from your replay scan, on the road. The results file replaces it with the official one.':'');$('resCsvWho').hidden=true;
   const d=$('dlgResult');if(d.showModal)d.showModal();else d.setAttribute('open','');$('r_finish_pos').focus()}
 /* ---------- 2.7.5: fill the result form from iRacing's results file; nothing is saved until Save */
-function fillFromCsv(d){RES_FIELDS.filter(k=>k!=='notes').forEach(k=>{if(d.fields[k]!=null)$('r_'+k).value=String(d.fields[k])});
+let resCsvMe=null;   /* 2.18: a results file loaded in this form: who he is in it ('' until he picks himself) */
+function fillFromCsv(d){resCsvMe=d.name;RES_FIELDS.filter(k=>k!=='notes').forEach(k=>{if(d.fields[k]!=null)$('r_'+k).value=String(d.fields[k])});
   setMsg('resCsvMsg','Filled in for '+d.name+(d.class?' ('+d.class+')':'')+'. Check it, then press Save result.','ok')}
 $('resCsv').addEventListener('change',async()=>{const f=$('resCsv').files[0];$('resCsv').value='';const dir=current.dir;if(!f||!dir)return;
   if(f.size>2*1024*1024){setMsg('resCsvMsg','That file is too big for a results CSV.','bad');return}
@@ -1267,6 +1268,7 @@ $('resCsv').addEventListener('change',async()=>{const f=$('resCsv').files[0];$('
   catch(e){setMsg('resCsvMsg','Couldn\'t send the file.','bad');return}
   if(!r||!r.ok){setMsg('resCsvMsg',(r&&r.error)||'Couldn\'t read that file.','bad');return}
   const who=$('resCsvWho');if(r.matched){who.hidden=true;fillFromCsv(r.matched);return}
+  resCsvMe='';
   const first=h('option',null,'Which one is you?');first.value='';who.replaceChildren(first,...r.drivers.map((d,i)=>{const o=h('option',null,d.name+(d.car?' #'+d.car:''));o.value=String(i);return o}));
   who._drivers=r.drivers;who.hidden=false;setMsg('resCsvMsg','Your name wasn\'t found exactly. Pick yourself.')});
 $('resCsvWho').addEventListener('change',()=>{const w=$('resCsvWho');if(w.value!=='')fillFromCsv(w._drivers[+w.value])});
@@ -1351,9 +1353,11 @@ $('fResult').addEventListener('submit',async e=>{e.preventDefault();const dir=cu
   if(ok(fields.field_size)&&(fields.finish_pos>fields.field_size||(ok(fields.start_pos)&&fields.start_pos>fields.field_size)||(ok(fields.pos_after_lap1)&&fields.pos_after_lap1>fields.field_size))){
     setMsg('resMsg','A position can\'t be more than the number of cars.','bad');return}
   setMsg('resMsg','Saving...');$('resSave').disabled=true;let r;
-  try{r=await post('result',{review:dir,action:'save',fields})}catch(err){connectionLost();return}finally{$('resSave').disabled=false}
+  const body={review:dir,action:'save',fields};if(resCsvMe!==null)body.field_me=resCsvMe;
+  try{r=await post('result',body)}catch(err){connectionLost();return}finally{$('resSave').disabled=false}
   if(!r.ok){setMsg('resMsg',r.error,'bad');return}
-  resultFor={dir,result:r.result||fields};closeResult();frameBar();reloadFrame();banner('Race result saved.')});
+  resultFor={dir,result:r.result||fields};resCsvMe=null;closeResult();frameBar();reloadFrame();
+  banner('Race result saved.'+(r.field&&r.field.note?' '+r.field.note:''),!!(r.field&&!r.field.kept),r.field?9000:undefined)});
 $('resDelete').addEventListener('click',async()=>{const b=$('resDelete');const dir=current.dir;
   if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='Confirm delete';return}
   let r;try{r=await post('result',{review:dir,action:'delete'})}catch(e){connectionLost();return}
@@ -2561,33 +2565,41 @@ if(typeof HELP==='object'){
     ['Incident points','iRacing counts 1x off track, 2x loss of control and 4x contact. Two at once (say 4 and 1) are split. Points added while no telemetry was recording can\'t be placed on the track.'],
     ['Pattern (Racing)','Said only when at least 3 races show it and a fair test says chance alone would show it less than 1 time in 20, counting every corner tested. With fewer races the page only says what happened.'])}
 if(typeof HELP==='object'){
-  HELP.tour.push(['Car vs car','Which car of a class is quicker at a track for drivers of similar iRating, from the iRacing results files you add to your reviews, and where each car is faster from your own telemetry. It only says one car is quicker when there are enough drivers and chance can\'t explain the gap.']);
-  HELP.words.push(['Similar drivers (Car vs car)','Each driver\'s lap time with their iRating taken into account: the time drivers gain per 1000 iRating is taken off, and cars are only compared inside the same iRating band.'],
-    ['Not enough to tell','Shown instead of a verdict when a car has fewer than 15 drivers with an iRating, or when the gap could be chance (a shuffle test over every pair of cars at once).'])}
+  HELP.tour.push(['Car vs car','Which car of a class is quicker at a track for drivers of similar iRating, from the iRacing results files you add to your reviews, and where you were faster in each car from your telemetry. It only says one car is quicker when there are enough drivers and chance can\'t explain the gap, and car choice and driver skill can\'t be fully separated.']);
+  HELP.words.push(['Similar drivers (Car vs car)','Each driver\'s lap time with their iRating taken into account: each race\'s own speed, the cars, the iRating band and the time drivers gain per 1000 iRating are worked out together.'],
+    ['Not enough to tell','Shown instead of a verdict when a car has fewer than 15 drivers with an iRating, or when the gap could be chance (a shuffle test over every pair of cars at once).'],
+    ['Unlikely to be chance, Likely (Car vs car)','Unlikely to be chance: chance alone would show a gap that big less than 1 time in 20. Likely: less than 1 time in 5, so it could still be chance. Car choice and driver skill can\'t be fully separated either way.'])}
 /* ---------- 2.18 Car vs car: which car of a class is quicker at a track, for drivers of similar iRating, and where
    each car is faster in his own telemetry (api/carcompare, read only, nothing fetched) */
-let cc={data:null,pick:'',seq:0};
-const CC_HOW=['Add the iRacing results file to each race review (Add race result, then Load iRacing results file): every driver\'s car, iRating and lap times come from it.',
+let cc={data:null,pick:'',period:'season',seq:0};
+const CC_HOW=['Add the iRacing results file to each race review (Add race result, then Load iRacing results file, then Save result): every driver\'s car, iRating and lap times come from it.',
   'Scan this race on a review: the replay gives every car\'s laps, but no iRatings, so those drivers only count in the raw numbers.',
-  'For where each car is faster: drive the other car at the same track (iRacing saves the telemetry), or copy a teammate\'s telemetry file from that car into your telemetry folder.'];
+  'For where you were faster in each car: drive the other car at the same track (iRacing saves the telemetry), or load a teammate\'s file from that car on the Coach page or a Practice session (Pick a teammate\'s file); their best lap is used and shown under their name.'];
 async function openCars(){current={view:'cars',dir:null};show('vCars');markNav();await loadCars()}
 async function loadCars(refresh){const seq=++cc.seq;setMsg('ccMsg','Working it out...');$('ccAgain').disabled=true;
   ['ccTable','ccWhere'].forEach(id=>$(id).classList.add('busy'));
-  const q=new URLSearchParams();if(cc.pick){const [t,c]=JSON.parse(cc.pick);q.set('track',t);q.set('class',c)}if(refresh)q.set('refresh','1');
+  const q=new URLSearchParams();if(cc.pick){const [t,c]=JSON.parse(cc.pick);q.set('track',t);q.set('class',c)}if(cc.period==='all')q.set('period','all');if(refresh)q.set('refresh','1');
   let j;try{j=await api('carcompare'+(q.toString()?'?'+q:''))}catch(e){connectionLost();return}finally{if(seq===cc.seq)$('ccAgain').disabled=false}
   if(seq!==cc.seq)return;['ccTable','ccWhere'].forEach(id=>$(id).classList.remove('busy'));
   if(!j.ok){setMsg('ccMsg',j.error||'Car vs car didn\'t load.','bad');return}
   setMsg('ccMsg','');cc.data=j;renderCars()}
 $('ccAgain').addEventListener('click',()=>loadCars(true));
 $('ccPick').addEventListener('change',()=>{cc.pick=$('ccPick').value;loadCars()});
+$('ccPeriod').addEventListener('change',()=>{cc.period=$('ccPeriod').value;loadCars()});
 const ccGap=g=>!ok(g)?'':(Math.abs(g)<0.005?'0.00 s':(g<0?'−':'+')+Math.abs(g).toFixed(2)+' s');
+function ccPillOf(C){if(!C)return['Nothing yet',' no'];if(C.enough)return['Unlikely to be chance',' ok'];
+  if((C.pairs||[]).some(p=>p.confidence==='likely'))return['Likely',''];return['Not enough to tell','']}
 function renderCars(){const j=cc.data;if(!j)return;const F=j.found||{},opts=j.options||[],sel=j.selected;
   const s=$('ccPick');s.replaceChildren(...opts.map(o=>{const op=new Option(o.track+', '+o.class+' ('+plural(o.cars.length,'car')+')',JSON.stringify([o.track,o.class]));return op}));
   if(sel){s.value=JSON.stringify([sel.track,sel.class]);cc.pick=s.value}
   s.disabled=opts.length<2;
-  const pill=$('ccPill');pill.className='pill'+(j.compare&&j.compare.enough?' ok':opts.length?'':' no');
-  pill.textContent=j.compare&&j.compare.enough?'Clear answer':opts.length?'Numbers only':'Nothing yet';
+  const P=(j.compare||{}).period||{},ps=$('ccPeriod');
+  ps.options[0].textContent=P.mode==='season'?'One season: '+String(P.label).split(' (')[0]:'One season (the newest race\'s)';
+  ps.value=j.period==='all'?'all':'season';
+  const pill=$('ccPill'),[pt,pc]=opts.length?ccPillOf(j.compare):['Nothing yet',' no'];pill.className='pill'+pc;pill.textContent=pt;
   let note='Read '+plural(j.races||0,'race')+' with car names and '+plural(j.telemetry_files||0,'telemetry file')+'.';
+  if(P.mode==='season')note+=' Counting '+plural(P.races||0,'race')+' here from '+P.label+' (of '+(P.races_all||0)+'; iRacing can change the cars\' balance between seasons).';
+  else if(P.races_all)note+=' Counting all '+plural(P.races_all,'race')+' here.';
   if(!F.library)note+=' Your library folder wasn\'t found.';
   if(!F.telemetry)note+=' Your telemetry folder wasn\'t found. If iRacing saves telemetry somewhere else, set the folder in Settings.';
   (j.notes||[]).forEach(n=>note+=' '+n);
@@ -2599,31 +2611,35 @@ function ccTable(j){const host=$('ccTable'),C=j.compare;
   const sec=slSec(C.track+', '+C.class,'ccSec');sec.classList.add('rcsec');
   const n=C.counts||{};
   sec.append(prFacts([['Races',String(n.races||0)],['Drivers',String(C.drivers||0)],['With an iRating',String(C.with_irating||0)],['Not counted',String(n.left_out||0)]]));
-  (C.verdicts||[]).forEach(v=>{const p=h('p','rcpat',v.text);p.prepend(h('b',null,'Verdict: '));sec.append(p)});
-  if(!(C.verdicts||[]).length)sec.append(h('p','rcsay',C.summary||''));
+  (C.verdicts||[]).forEach(v=>{const p=h('p','rcpat',v.text);p.prepend(h('b',null,'Unlikely to be chance: '));sec.append(p)});
+  if((C.verdicts||[]).length)sec.append(h('p','note',C.caveat||'Car choice and driver skill can\'t be fully separated.'));
+  else sec.append(h('p','rcsay',C.summary||''));
   const t=h('table','pacetbl cctbl'),th=h('thead'),tr=h('tr');
-  ['Car','Drivers','Typical lap','Best lap','Gap, similar drivers','Confidence'].forEach((x,i)=>{const c=h('th',i?'num':null,x);c.scope='col';tr.append(c)});
+  ['Car','Drivers','Typical lap','Best lap','Gap, similar drivers','How sure'].forEach((x,i)=>{const c=h('th',i===0?null:i===5?'ccconf':'num',x);c.scope='col';tr.append(c)});
   th.append(tr);t.append(th);const tb=h('tbody');
   (C.cars||[]).forEach(r=>{const row=h('tr');row.append(h('th',null,r.car));row.lastChild.scope='row';
     row.append(h('td','num',r.drivers+(r.with_irating!==r.drivers?' ('+r.with_irating+' with iRating)':'')),h('td','num',fmtT(r.median)),h('td','num',ok(r.best)?fmtT(r.best):'Not known'),
-      h('td','num',r.reference?'Reference':ok(r.gap)?ccGap(r.gap)+' a lap':'No numbers'),h('td','ccconf'+(r.confidence==='clear'?' gain':''),r.reference?'Reference car':cap(r.confidence)));tb.append(row)});
+      h('td','num',r.reference?'Reference':ok(r.gap)?ccGap(r.gap)+' a lap':'No numbers'),h('td','ccconf'+(r.confidence==='unlikely to be chance'?' gain':''),r.reference?'Reference car':cap(r.confidence)));tb.append(row)});
   t.append(tb);const wrap=h('div','tblwrap');wrap.append(t);sec.append(wrap);
   sec.append(h('p','note','Gap: against the '+(C.reference||'reference car')+', for drivers of similar iRating; minus means quicker. The typical and best laps are raw: they include who drove each car.'));
   const you=(C.you||{}).items||[];const ys=h('div','rctrackbox');ys.append(h('h4',null,'You vs the field'));
   if(you.length)you.forEach(y=>ys.append(h('p','rcsay',y.text)));else ys.append(h('p','note','Your own races aren\'t in these results yet. Add the iRacing results file to your race reviews at this track.'));
   sec.append(ys);
+  const sl=C.slope_per_1000,slope=!ok(sl)?'not known':sl<0?'−'+Math.abs(sl).toFixed(2)+' s a lap per 1000 iRating':'not reliable here (higher-rated drivers weren\'t quicker in these races)';
   const how=h('details','rchow');how.append(h('summary',null,'How this is worked out'),
-    h('p','note','Pace is each driver\'s average race lap from the iRacing results (the median lap in a replay scan), less the class median of that race, so a hot or slow day counts the same for every car. Not counted: drivers who didn\'t finish, ran fewer than 3 laps, or averaged over 107% of the class median.'),
-    h('p','note','Similar drivers: the lap time a driver gains per 1000 iRating (here '+(ok(C.slope_per_1000)?Math.abs(C.slope_per_1000).toFixed(2)+' s':'not known')+') is taken off, and cars are only compared inside the same iRating band (under 1500, 1500 to 2500, 2500 to 3500, over 3500).'),
-    h('p','note','A car is called quicker only when a shuffle test says the gap is very unlikely to be chance (under 5%, counting every pair of cars at once) and each car has at least 15 drivers with an iRating. Otherwise the numbers are shown with "not enough to tell".'));
+    h('p','note','Pace is each driver\'s average race lap from the iRacing results (the median lap in a replay scan). Counted: drivers whose status was Running at the end and who completed at least 90% of the class winner\'s laps, with at least 3 laps and an average no slower than 107% of the class median.'),
+    h('p','note','One model for every driver in every race: each race\'s own speed, each car, the iRating band and the time drivers gain per 1000 iRating (here '+slope+') are worked out together, so a race with more of one car can\'t make that car look quicker or slower.'),
+    h('p','note','Unlikely to be chance: a shuffle test says a gap this big would come up by chance less than 1 time in 20, counting every pair of cars at once, and each car has at least 15 drivers with an iRating in iRating bands both cars have. Likely: less than 1 time in 5. Otherwise: not enough to tell.'),
+    h('p','note','By default only one season\'s races count, because iRacing can change the cars\' balance between seasons. Pick All races to pool every season.'));
   sec.append(how);host.replaceChildren(sec)}
 function ccWhere(j){const host=$('ccWhere'),W=j.where,cars=j.tel_cars||[];
-  const sec=slSec('Where each car is faster','ccWhereSec');sec.classList.add('rcsec');
+  const sec=slSec('Where you were faster in each car','ccWhereSec');sec.classList.add('rcsec');
   if(!W){sec.append(h('p','rcsay',cars.length===1?'Your telemetry here is only in the '+cars[0].car+'. '+CC_HOW[2]:'No telemetry of yours in two cars of this class at this track. '+CC_HOW[2]));host.replaceChildren(sec);return}
   const L=W.lap||{};
   sec.append(prFacts([[W.a+' laps',String(W.laps_a)],[W.b+' laps',String(W.laps_b)],[W.a+' best',ok(L.a_best)?fmtT(L.a_best):'Not known'],[W.b+' best',ok(L.b_best)?fmtT(L.b_best):'Not known']]));
-  if(W.rough)sec.append(h('p','rcsay','Fewer than 3 clean laps in a car: a rough look, showing only big differences.'));
-  else sec.append(h('p','note','Only differences bigger than your own lap-to-lap spread in each car are shown.'));
+  sec.append(h('p','note','The laps in each car come from different sessions, days and setups'+(W.teammate?' (and one of them is '+W.teammate+'\'s)':'')+', so a difference can be the day, the setup or the driver as well as the car.'));
+  if(W.rough)sec.append(h('p','rcsay','Fewer than 5 clean laps in a car: a rough look. Only the biggest differences are shown (at most 3), as possible ones.'));
+  else sec.append(h('p','note','Shown only when a shuffle test says the difference is unlikely to be chance, counting every corner and measure at once.'));
   const ul=h('ul','ccwlist');(W.rows||[]).forEach(r=>ul.append(h('li','rcsay',r.text)));
   if((W.rows||[]).length)sec.append(ul);else sec.append(h('p','rcsay',W.note||'No clear difference.'));
   host.replaceChildren(sec)}

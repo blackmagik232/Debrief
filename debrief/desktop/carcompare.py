@@ -1,12 +1,14 @@
 """Debrief 2.18 "Car vs car" in the window's server (debrief/carcompare.py does the work).
 
-    GET api/carcompare[?track=&class=&a=&b=&refresh=1]
+    GET api/carcompare[?track=&class=&a=&b=&period=season|all&refresh=1]
 
 Reads (all read only, nothing fetched): the results tables kept beside race reviews (field.json), replay scans
-(Debrief's own and RaceCap's, when Debrief knows RaceCap's folder) and the telemetry files, through Setup Lab's
-index and its cache. track and class pick the comparison (default: the pair with most drivers); a and b pick the two
-cars for "Where each car is faster" (default: the two with most clean laps of his). The answer is cached (memory, then
-a file) under a key made of every input file's name, size and change time, the query and the versions. It holds
+(Debrief's own and RaceCap's, when Debrief knows RaceCap's folder), the telemetry files, through Setup Lab's
+index and its cache, and teammate laps loaded or kept on the Coach page (carsetup's teamref store). track and class
+pick the comparison (default: the pair with most drivers); period picks one season (default) or all races; a and b
+pick the two cars for "Where you were faster in each car" (default: the two with most clean laps of his; a
+teammate's lap fills in a car he hasn't driven there). The answer is cached (memory, then a file) under a key made
+of every input file's name, size and change time, the teammate laps in use, the query and the versions. It holds
 file and folder names only, never a full path.
 """
 from __future__ import annotations
@@ -18,7 +20,7 @@ from pathlib import Path
 from .. import app
 from . import carsetup, racing
 
-VERSION = 1
+VERSION = 2
 CACHE = "carcompare"
 GET_ROUTES = ("api/carcompare",)
 MAX_FILES_PER_CAR = 8          # newest telemetry files per car read for laps
@@ -67,7 +69,43 @@ def _telemetry(cfg, inp) -> list:
     return out
 
 
-def work_out(cfg, inp, q) -> dict:
+def _teammates(server, cfg) -> list:
+    """Teammate laps from the Coach page: loaded this session (memory) or kept (the cache folder). Each:
+    {"driver", "car", "track", "lap" (cornercoach lap), "key"}."""
+    out, seen = [], set()
+    try:
+        st = carsetup.state(server)
+        with st.lock:
+            mem = list(st.team.items())
+    except Exception:  # noqa: BLE001
+        mem = []
+    entries = [(k, e) for k, e in mem]
+    folder = Path(cfg["cache_dir"]) / carsetup.TEAM_DIR
+    try:
+        files = sorted(folder.glob("*.json")) if folder.is_dir() else []
+    except OSError:
+        files = []
+    for f in files:
+        try:
+            raw = json.loads(f.read_text(encoding="utf-8"))
+            if raw.get("version") != carsetup.VERSION:
+                continue
+            k = carsetup._team_key(raw.get("car_path"), raw.get("track_code"))
+            entries.append((k, {"summary": raw.get("summary") or {}, "cornercoach": carsetup._from_plain(raw.get("cornercoach"))}))
+        except (OSError, ValueError, AttributeError, TypeError):
+            continue
+    for k, e in entries:
+        if k in seen or not e.get("cornercoach"):
+            continue
+        seen.add(k)
+        s = e.get("summary") or {}
+        out.append({"driver": str(s.get("driver") or "Your teammate"), "car": str(s.get("car") or ""),
+                    "track": str(s.get("track") or ""), "lap": e["cornercoach"], "key": [str(x) for x in k],
+                    "label": str(s.get("label") or ""), "lap_time": s.get("lap_time")})
+    return out
+
+
+def work_out(cfg, inp, q, team=None) -> dict:
     cc = app.optional_module("carcompare")
     if cc is None:
         raise ValueError("Car vs car isn't available right now. Details were saved to debrief.log in "
@@ -76,14 +114,19 @@ def work_out(cfg, inp, q) -> dict:
     races = got["races"]
     me = sorted({str(r.get("me")) for r in _field_docs(inp["library"]) if r.get("me")})
     tel = _telemetry(cfg, inp)
+    team = team or []
     opts = cc.options(races)
     # telemetry-only pairs (two of his cars in one class at one track) are options too
     tnames = cc._Names(cc._same_track)
     for o in opts:
         tnames.key(o["track"])
-    for t in tel:
+    cnames = cc._Names(cc._same_car)
+    for o in opts:
+        o["cars"] = [cnames.key(c) for c in o["cars"]]
+    for t in tel + team:
         t["_track"] = tnames.key(t["track"]) if t["track"] else ""
-        t["_class"] = cc.class_key(t["car"], t["car_class"])
+        t["_class"] = cc.class_key(t["car"], t.get("car_class"))
+        t["car"] = cnames.key(t["car"])          # one spelling of each car: the results file's when it has the car
     for t in tel:
         if not t["_track"] or not t["clean"]:
             continue
@@ -96,30 +139,43 @@ def work_out(cfg, inp, q) -> dict:
     opts.sort(key=lambda o: (-(len(o["cars"]) > 1), -o["drivers"], o["track"], o["class"]))
     track, cls = q.get("track") or "", q.get("class") or ""
     pick = next((o for o in opts if o["track"] == track and o["class"] == cls), None) or (opts[0] if opts else None)
+    period = "all" if q.get("period") == "all" else "season"
     out = {"options": opts[:200], "notes": got["notes"], "races": len(races), "telemetry_files": len(tel),
-           "selected": None, "compare": None, "where": None, "tel_cars": []}
+           "selected": None, "compare": None, "where": None, "tel_cars": [], "period": period}
     if pick is None:
         return out
     out["selected"] = {"track": pick["track"], "class": pick["class"]}
-    out["compare"] = cc.compare(races, pick["track"], pick["class"], me=me)
-    # where each car is faster: his own telemetry in two cars of this class at this track
+    out["compare"] = cc.compare(races, pick["track"], pick["class"], me=me, period=period)
+    # where he was faster in each car: his own telemetry in two cars of this class at this track; a teammate's lap
+    # (from the Coach page) fills in a car he hasn't driven here
     mine = [t for t in tel if t["_track"] == pick["track"] and t["_class"] == pick["class"] and t["clean"]]
     cars = {}
     for t in mine:
         k = next((c for c in cars if cc._same_car(c, t["car"])), t["car"])
         cars.setdefault(k, []).append(t)
-    out["tel_cars"] = [{"car": c, "clean_laps": sum(t["clean"] for t in v), "files": len(v)}
+    out["tel_cars"] = [{"car": c, "clean_laps": sum(t["clean"] for t in v), "files": len(v), "driver": None}
                        for c, v in sorted(cars.items(), key=lambda kv: -sum(t["clean"] for t in kv[1]))]
+    mates = [t for t in team if t["_track"] == pick["track"] and t["_class"] == pick["class"]
+             and not any(cc._same_car(t["car"], c) for c in cars)]
+    for t in mates:
+        out["tel_cars"].append({"car": t["car"], "clean_laps": 1, "files": 0, "driver": t["driver"]})
     names = [c["car"] for c in out["tel_cars"]]
     a = next((c for c in names if c == q.get("a")), names[0] if names else None)
     b = next((c for c in names if c == q.get("b") and c != a), next((c for c in names if c != a), None))
     if a and b:
-        from .. import cornercoach
-        laps = {}
+        from .. import cornercoach, teamref
+        laps, label = {}, {}
         for car in (a, b):
-            files = sorted(cars[car], key=lambda t: -t["sort"])[:MAX_FILES_PER_CAR]
-            laps[car], _info = cornercoach.load_laps([t["path"] for t in files])
-        out["where"] = cc.where_faster(laps[a], laps[b], a, b)
+            if car in cars:
+                files = sorted(cars[car], key=lambda t: -t["sort"])[:MAX_FILES_PER_CAR]
+                laps[car], _info = cornercoach.load_laps([t["path"] for t in files])
+                label[car] = car
+            else:
+                m = next(t for t in mates if t["car"] == car)
+                laps[car] = [m["lap"]]
+                label[car] = f"{car} ({teamref.possessive(m['driver'])} lap)"
+        out["where"] = cc.where_faster(laps[a], laps[b], label[a], label[b])
+        out["where"]["teammate"] = next((t["driver"] for t in mates if t["car"] in (a, b)), None)
     return out
 
 
@@ -142,12 +198,15 @@ def _field_docs(lib) -> list:
 
 def get_carcompare(h, q):
     cfg = h._cfg()
-    extra = set(q) - {"refresh", "track", "class", "a", "b"}
-    if extra or q.get("refresh") not in (None, "", "0", "1") or any(len(str(v)) > MAX_TEXT for v in q.values()):
+    extra = set(q) - {"refresh", "track", "class", "a", "b", "period"}
+    if (extra or q.get("refresh") not in (None, "", "0", "1") or q.get("period") not in (None, "", "season", "all")
+            or any(len(str(v)) > MAX_TEXT for v in q.values())):
         raise ValueError("Bad request.")
     inp = inputs(cfg)
+    team = _teammates(h.server, cfg)
     raw = json.dumps([_versions(), inp["stamp"], bool(inp["library"]), bool(inp["telemetry_folder"]),
-                      bool(inp["racecap"]), [q.get(k) or "" for k in ("track", "class", "a", "b")]], sort_keys=True, default=str)
+                      bool(inp["racecap"]), [q.get(k) or "" for k in ("track", "class", "a", "b", "period")],
+                      [[t["key"], t["label"], t["lap_time"]] for t in team], _season_stamp()], sort_keys=True, default=str)
     key = "carcompare-" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:24]
     if q.get("refresh") == "1":
         st = carsetup.state(h.server)
@@ -157,10 +216,19 @@ def get_carcompare(h, q):
             (Path(cfg["cache_dir"]) / CACHE / (key + ".json")).unlink()
         except OSError:
             pass
-    val, hit = carsetup.cached(h.server, cfg["cache_dir"], key, lambda: work_out(cfg, inp, q), folder_name=CACHE)
+    val, hit = carsetup.cached(h.server, cfg["cache_dir"], key, lambda: work_out(cfg, inp, q, team), folder_name=CACHE)
     paths = [p for p in (inp["library"], inp["telemetry_folder"], inp["racecap"]) if p]
     where = {"library": bool(inp["library"]), "telemetry": bool(inp["telemetry_folder"]), "racecap": bool(inp["racecap"])}
     return h._json(racing._scrub({"ok": True, "cached": hit, "found": where, **val}, paths))
+
+
+def _season_stamp() -> list:
+    """The saved season schedules (which season a race falls in comes from them)."""
+    try:
+        from .. import schedule
+        return sorted([p.name, p.stat().st_size, p.stat().st_mtime_ns] for p in schedule.folder().glob("*-s*.json"))
+    except OSError:
+        return []
 
 
 def get(h, r, q):

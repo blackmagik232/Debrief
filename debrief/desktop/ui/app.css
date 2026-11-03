@@ -634,9 +634,11 @@ td.rcwhen .linkbtn{font-size:12.5px;margin-top:2px}
 #coLogView .phead{margin-top:14px}
 .pvlist.bad li{color:var(--lose)}
 /* 2.18 Car vs car */
-.cctbl{width:100%}
+.cctbl{width:100%;max-width:none}
 .cctbl th[scope=row]{white-space:nowrap}
-.cctbl td.num{white-space:nowrap}
-.cctbl .ccconf{text-align:left}
+.cctbl thead th{vertical-align:bottom}
+.cctbl thead th:first-child{text-align:left;padding-left:0}
+.cctbl td.num,.cctbl thead th.num{white-space:nowrap}
+.cctbl .ccconf{text-align:left;white-space:nowrap;padding-left:20px}
 .cctbl td.gain{font-weight:600}
 .ccwlist{margin:0;padding-left:18px;display:grid;gap:6px;max-width:80ch}

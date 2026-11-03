@@ -3,17 +3,19 @@
 For each corner it compares your own best laps through that corner with your typical laps, finds the ONE
 clearest difference in how you drove it (and at most one more), and says how to find the time:
 
-    "T4: you lose about 0.25 s here on a typical lap. What's different: on your best laps you brake at 85%
-     instead of 100% ... How to try it: ... What it gets you: ... Evidence: 6 best laps vs 14 typical laps."
+    "T4: your best laps were about 0.12 s quicker here than your typical ones. What's different: on your best laps
+     you brake at 85% instead of 100% ... How to try it: ... What it gets you: about 4 km/h more through the
+     middle ... Evidence: 6 best laps vs 14 typical laps (race laps only)."
 
-plus a short voice phrase for the live coach ("T4: lighter brake, hold it in") and a one-line "why".
+plus a short voice phrase for the live coach (one idea: "T4: lighter brake") and a one-line "why".
 
 Public API (all JSON-friendly, nothing raises for bad input):
     analyze_files(paths, reference=None)  -> report dict (see analyze_laps)
     load_laps(path_or_paths)              -> (laps, info): clean laps on the corner model's 5 m grid
     analyze_laps(laps, reference=None, info=None) -> report dict
     phases(R, corner)                     -> per-lap phase numbers for one corner (or None)
-    compare(laps, corners)                -> per-corner comparison rows (cards, unclear, ok)
+    compare(laps, corners, flags=None, prefix="T", alpha=None, group=None) -> per-corner rows (cards, unclear, fine)
+    perm_test(rows, flags=None, n_perm=None, seed=0) -> the permutation test for one corner
     braking_summary(laps, corners)        -> session-level braking habits in plain words
     lap_from_raw(raw, lap_time, length_m, label) -> a lap (e.g. a teammate's Garage 61 lap) to pass as reference
 
@@ -21,17 +23,24 @@ The corner model is Debrief's own (engine.resample on the 5 m grid, engine.detec
 engine.brake_onset for the brake point): the same C1..Cn numbering the reviews and the live coach use. The spoken
 name is "T<n>" for corner C<n>, as livecoach does.
 
-Honesty rules:
-  - own laps only: best = your fastest third through that corner (at least 3), typical = the rest (at least 3);
-    at least MIN_LAPS clean laps in total. An optional reference lap (a teammate's) gives separate, clearly
-    labelled cards, never mixed with your own.
-  - a card only when the typical lap loses at least MIN_LOST_S in that corner AND a phase number differs by more
-    than its rule threshold AND by more than the lap-to-lap noise (difference of medians > Z_LIKELY x its
-    standard error, spread from the median absolute deviation). Otherwise "no clear pattern yet".
+Honesty rules (2.13 review):
+  - own laps only, like with like: laps are grouped by session kind (race, or practice and qualifying) and setup,
+    and each group with MIN_LAPS clean laps is analysed on its own; best = your fastest third through that corner
+    (at least 3), typical = the rest (at least 3). A card from one group stands unless another group says the
+    opposite. An optional reference lap (a teammate's) gives separate, clearly labelled cards.
+  - a rule fires when a phase number differs by more than its practical threshold and by more than Z_LIKELY x its
+    standard error; a CARD needs more: the permutation test. Which laps count as "best" is shuffled PERM_N times
+    (fixed seed) and the split, the noise test and every rule are run again; the card's rule must look at least as
+    clear (AUC: share of best/typical lap pairs that differ its way) in under P_LIKELY of the shuffles, counting a
+    shuffle where ANY rule in that corner does (so ten rules tested don't give ten chances of a false card), and
+    P_LIKELY is split between the lap groups tested. "clear" needs under P_CLEAR, CLEAR_LAPS laps and under
+    P_LIKELY over every corner at once. Brake-point advice needs MIN_BRAKE_LAPS laps. Otherwise "no clear pattern".
+  - time: best laps are picked by being fastest in that corner, so the raw best-vs-typical gap (gap_s) is partly
+    lap-to-lap scatter. lost_s scales the corners down so they never add up to more than the lap-level gap (median
+    of your other laps minus the median of your fastest third); under MIN_LOST_S a corner is "close to your best".
+    Cards describe ("your best laps were about X s quicker here"); they never promise lap time, and "what it gets
+    you" names only speeds that passed the noise test.
   - nothing is said that the numbers do not show; every card carries the numbers both ways and the lap counts.
-
-Note on "time lost": best laps are picked by being fastest in that corner, so the gap is partly lap-to-lap
-scatter. It is what your typical lap gives away against your own best, not a promise of lap time.
 """
 from __future__ import annotations
 
@@ -41,8 +50,9 @@ from pathlib import Path
 import numpy as np
 
 from . import engine, ibt
+from . import setuplab as sl
 
-VERSION = 1
+VERSION = 2                 # 2.13 review: permutation test, lap groups, honest time (cache key)
 KMH = 3.6
 STEP = engine.STEP
 
@@ -83,19 +93,28 @@ R_MIN_KMH = 3.0             # >= 3 km/h more at the slowest point ...
 R_ENTRY_KMH = 3.0           # ... with entry speed within 3 km/h
 R_SLIP_SHARE = 0.10         # wheelspin / lock-up share lower by >= 0.10
 
-Z_LIKELY = 2.0              # difference of medians > 2 standard errors = beyond the lap-to-lap noise
-Z_CLEAR = 3.0               # > 3 standard errors and CLEAR_LAPS laps = "clear"
+Z_LIKELY = 2.0              # difference of medians > 2 standard errors = beyond the lap-to-lap noise (first gate)
+Z_CLEAR = 3.0               # (kept for callers; "clear" now comes from the permutation test below)
 CLEAR_LAPS = 12
 THIN_LAPS = 9               # fewer laps than this = "thin" even when the difference passes
+MIN_BRAKE_LAPS = 10         # brake-point advice ("brake later / earlier") needs at least this many clean laps
+# the permutation test (2.13 review): shuffle which laps count as "best" PERM_N times (fixed seed, so the same laps
+# always give the same cards); a rule is only said when shuffled laps look at least as clear in under P_LIKELY of
+# the shuffles (any rule in that corner counts, so testing many rules doesn't add false cards)
+PERM_N = 400
+PERM_SEED = 213
+P_LIKELY = 0.05
+P_CLEAR = 0.01              # clear: under 1 % of shuffles, CLEAR_LAPS+ laps, and under 5 % over every corner at once
 # smallest spread assumed per metric, so a perfectly repeatable number can't make a tiny difference "significant"
 NOISE_FLOOR = {"brake_m": 3.0, "peak_pct": 2.0, "abs_share": 0.03, "coast_s": 0.04, "trail_pct": 2.0,
                "release_s": 0.04, "pickup_m": 4.0, "min_kmh": 0.8, "entry_kmh": 0.8, "exit_kmh": 0.8,
                "spin_share": 0.03, "lock_share": 0.03, "full_s": 0.04, "t": 0.01, "release_end_m": 3.0,
                "full_thr_s": 0.04}
 
-CONFIDENCE_RULE = (f"clear: difference beyond {Z_CLEAR:g}x the lap-to-lap noise with {CLEAR_LAPS}+ laps; "
-                   f"likely: beyond {Z_LIKELY:g}x; thin: passes but with fewer than {THIN_LAPS} laps "
-                   f"(or a single reference lap)")
+CONFIDENCE_RULE = (f"a tip is only given when shuffling which laps count as your best ({PERM_N} times) makes a "
+                   f"pattern this clear in under {P_LIKELY:.0%} of shuffles; clear: under {P_CLEAR:.0%}, with "
+                   f"{CLEAR_LAPS}+ laps, and still under {P_LIKELY:.0%} counting every corner at once; likely: under "
+                   f"{P_LIKELY:.0%}; few laps: under {THIN_LAPS} laps (or a single reference lap)")
 
 PARAMS = {k: v for k, v in globals().items() if k.isupper() and isinstance(v, (int, float)) and not isinstance(v, bool)}
 
@@ -238,6 +257,10 @@ def load_laps(src) -> tuple:
                 if "Speed" not in cols or "LapDistPct" not in cols:
                     info["skipped"].append({"file": name, "why": "no speed or lap distance channel"})
                     continue
+                try:
+                    fp = sl.fingerprint(ib.setup or {})
+                except Exception:  # noqa: BLE001
+                    fp = ""
                 n_clean = 0
                 for x in ibt.laps(ib):
                     if not x["clean"] or not x["time"]:
@@ -247,16 +270,35 @@ def load_laps(src) -> tuple:
                         continue
                     R = _grid(raw, x["time"], L)
                     laps.append({"file": name, "lap": x["lap"], "time": float(x["time"]), "session": x["session"],
-                                 "R": R})
+                                 "setup": fp, "R": R})
                     n_clean += 1
                 info["files"].append({"file": name, "clean_laps": n_clean,
                                       "session": ", ".join(sorted(set(x["session"] for x in laps
                                                                       if x["file"] == name and x["session"])))})
         except Exception as e:  # noqa: BLE001
-            info["skipped"].append({"file": name, "why": f"could not be read ({str(e)[:120]})"})
+            info["skipped"].append({"file": name, "why": f"could not be read ({_no_paths(e, p)[:120]})"})
     info["wheel_speeds"] = bool(laps) and all(x["R"]["_wheels"] for x in laps)
     info["abs_channel"] = bool(laps) and all(x["R"]["_abs"] for x in laps)
+    info["abs_active"] = abs_active(laps)
     return laps, info
+
+
+def _no_paths(e, p) -> str:
+    """An error message with the file's folder taken out (the window shows file names, never full paths)."""
+    msg = str(e)
+    for x in (str(p), str(Path(str(p)).parent)):
+        if x and x not in (".", ""):
+            msg = msg.replace(x + "\\", "").replace(x + "/", "").replace(x, Path(str(p)).name)
+    return msg
+
+
+def abs_active(laps) -> bool:
+    """True when the ABS channel is in every lap AND the ABS worked somewhere in them. iRacing writes
+    BrakeABSactive for every car, so a car without ABS (or with it switched off) reads 0 all the time."""
+    laps = [x for x in laps or [] if isinstance(x, dict) and isinstance(x.get("R"), dict)]
+    if not laps or not all(x["R"].get("_abs") for x in laps):
+        return False
+    return any(bool(np.any(np.asarray(x["R"].get("abs", []), float) > 0.5)) for x in laps)
 
 
 def lap_from_raw(raw: dict, lap_time: float, length_m: float, label: str = "Reference lap") -> dict | None:
@@ -487,59 +529,87 @@ def _five(x):
     return max(5, _round_to(abs(x), 5))
 
 
-def _rules(D, P):
-    """The rules that fire. D: metric -> diff_test result (best - typical). P: flags (abs channel present ...).
-    Returns [(rule, metric, strength_key)]. Each rule also needs the noise gate (z >= Z_LIKELY) on its metric."""
-    fired = []
+# which way each rule's number moves on the best laps (+1: bigger on the best laps), for the permutation test
+DIRECTION = {("brake_later", "brake_m"): 1, ("brake_earlier", "brake_m"): -1, ("lighter", "peak_pct"): -1,
+             ("lighter", "abs_share"): -1, ("trail", "coast_s"): -1, ("coast", "coast_s"): -1,
+             ("trail", "trail_pct"): 1, ("release", "release_s"): 1, ("throttle", "pickup_m"): -1,
+             ("carry", "min_kmh"): 1, ("spin", "spin_share"): -1, ("lock", "lock_share"): -1}
+RULE_METRICS = ("brake_m", "peak_pct", "abs_share", "coast_s", "trail_pct", "release_s", "pickup_m", "min_kmh",
+                "entry_kmh", "spin_share", "lock_share")
+
+
+def _rule_masks(D, P):
+    """The rules on arrays: D[metric] = {"has", "ok", "diff", "typical"} (numpy arrays, one entry per split of the
+    laps). Returns [(rule, metric, mask)] in the order the rules are checked; one rule may appear twice with two
+    metrics (the masks never overlap). Each rule needs the noise gate (z >= Z_LIKELY) on its own metric."""
+    P = P or {}
+    ref = next(iter(D.values()))["has"]
+    no = np.zeros(ref.shape, bool)
+
+    def g(k, f):
+        x = D.get(k)
+        return x[f] if x is not None else (no if f in ("has", "ok") else np.full(ref.shape, np.nan))
 
     def ok(k):
-        x = D.get(k)
-        return x is not None and x["z"] >= Z_LIKELY
+        return g(k, "ok")
+    out = []
+    n_laps = P.get("n_laps")
+    point_ok = n_laps is None or n_laps >= MIN_BRAKE_LAPS     # brake-point advice needs more laps (2.13 review)
+    with np.errstate(invalid="ignore"):
+        bd = g("brake_m", "diff")
+        later = ok("brake_m") & (bd >= R_BRAKE_M) & point_ok
+        earlier = ok("brake_m") & (bd <= -R_BRAKE_M) & point_ok
+        out += [("brake_later", "brake_m", later), ("brake_earlier", "brake_m", earlier)]
+        pk_has, pk_t, pk_d = g("peak_pct", "has"), g("peak_pct", "typical"), g("peak_pct", "diff")
+        lighter_peak = ok("peak_pct") & (pk_t >= R_PEAK_TYP) & (pk_d <= -R_PEAK_PCT)
+        lighter_abs = (ok("abs_share") & (g("abs_share", "typical") >= ABS_ZONE_SHARE)
+                       & (g("abs_share", "diff") <= -R_ABS_SHARE) & pk_has & (pk_t >= R_PEAK_TYP) & (pk_d < 0))
+        out += [("lighter", "peak_pct", lighter_peak), ("lighter", "abs_share", lighter_abs & ~lighter_peak)]
+        trail = ok("trail_pct") & (g("trail_pct", "diff") >= R_TRAIL_PCT)
+        coast = ok("coast_s") & (g("coast_s", "diff") <= -R_COAST_S)
+        # coasting less is called trail braking only when the trail-brake number itself passes the test (2.13 review)
+        out += [("trail", "coast_s", coast & trail), ("coast", "coast_s", coast & ~trail),
+                ("trail", "trail_pct", ~coast & trail)]
+        release = ok("release_s") & (g("release_s", "diff") >= R_RELEASE_S)
+        out.append(("release", "release_s", release))
+        out.append(("throttle", "pickup_m", ok("pickup_m") & (g("pickup_m", "diff") <= -R_PICKUP_M)))
+        explained = later | earlier | lighter_peak | lighter_abs | trail | release
+        carry = (ok("min_kmh") & (g("min_kmh", "diff") >= R_MIN_KMH) & g("entry_kmh", "has")
+                 & (np.abs(g("entry_kmh", "diff")) <= R_ENTRY_KMH) & ~explained)
+        out.append(("carry", "min_kmh", carry))   # a fallback: when another rule explains the speed, that one is said
+        out.append(("spin", "spin_share", ok("spin_share") & (g("spin_share", "diff") <= -R_SLIP_SHARE)))
+        out.append(("lock", "lock_share", ok("lock_share") & (g("lock_share", "diff") <= -R_SLIP_SHARE)))
+    return out
 
-    x = D.get("brake_m")
-    if ok("brake_m") and x["diff"] >= R_BRAKE_M:
-        fired.append(("brake_later", "brake_m"))
-    elif ok("brake_m") and x["diff"] <= -R_BRAKE_M:
-        fired.append(("brake_earlier", "brake_m"))
-    pk, ab = D.get("peak_pct"), D.get("abs_share")
-    lighter_peak = ok("peak_pct") and pk["typical"] >= R_PEAK_TYP and pk["diff"] <= -R_PEAK_PCT
-    lighter_abs = (ok("abs_share") and ab["typical"] >= ABS_ZONE_SHARE and ab["diff"] <= -R_ABS_SHARE
-                   and pk is not None and pk["typical"] >= R_PEAK_TYP and pk["diff"] < 0)
-    if lighter_peak or lighter_abs:
-        fired.append(("lighter", "peak_pct" if lighter_peak else "abs_share"))
-    co, tr = D.get("coast_s"), D.get("trail_pct")
-    trail = ok("trail_pct") and tr["diff"] >= R_TRAIL_PCT
-    if ok("coast_s") and co["diff"] <= -R_COAST_S:
-        fired.append(("trail" if (tr is not None and tr["diff"] >= R_TRAIL_PCT) else "coast", "coast_s"))
-    elif trail:
-        fired.append(("trail", "trail_pct"))
-    x = D.get("release_s")
-    if ok("release_s") and x["diff"] >= R_RELEASE_S:
-        fired.append(("release", "release_s"))
-    x = D.get("pickup_m")
-    if ok("pickup_m") and x["diff"] <= -R_PICKUP_M:
-        fired.append(("throttle", "pickup_m"))
-    mn, en = D.get("min_kmh"), D.get("entry_kmh")
-    explained = {r for r, _k in fired} & {"brake_later", "brake_earlier", "lighter", "trail", "release"}
-    if (ok("min_kmh") and mn["diff"] >= R_MIN_KMH and en is not None and abs(en["diff"]) <= R_ENTRY_KMH
-            and not explained):              # a fallback: when another rule already explains the speed, that one is said
-        fired.append(("carry", "min_kmh"))
-    x = D.get("spin_share")
-    if ok("spin_share") and x["diff"] <= -R_SLIP_SHARE:
-        fired.append(("spin", "spin_share"))
-    x = D.get("lock_share")
-    if ok("lock_share") and x["diff"] <= -R_SLIP_SHARE:
-        fired.append(("lock", "lock_share"))
-    return fired
+
+def _as_arrays(D):
+    out = {}
+    for k in RULE_METRICS:
+        x = D.get(k)
+        if x is None:
+            continue
+        out[k] = {"has": np.array([True]), "ok": np.array([x["z"] >= Z_LIKELY]), "diff": np.array([float(x["diff"])]),
+                  "typical": np.array([float(x["typical"])])}
+    return out
+
+
+def _rules(D, P):
+    """The rules that fire. D: metric -> diff_test result (best - typical). P: flags (abs channel present, n_laps ...).
+    Returns [(rule, metric)]. Each rule also needs the noise gate (z >= Z_LIKELY) on its metric. This is the
+    threshold step only: compare() also needs each rule to pass the permutation test before it makes a card."""
+    A = _as_arrays(D)
+    if not A:
+        return []
+    return [(r, k) for r, k, m in _rule_masks(A, P) if bool(m[0])]
 
 
 FAMILY = {"brake_later": "point", "brake_earlier": "point", "lighter": "pressure", "lock": "pressure",
           "trail": "release", "coast": "release", "release": "release", "carry": "release",
           "throttle": "throttle", "spin": "throttle"}
 VOICE = {"brake_later": "brake later", "brake_earlier": "brake earlier", "lighter": "lighter brake",
-         "trail": "hold it in", "coast": "no coasting", "release": "ease off slower", "throttle": "throttle earlier",
+         "trail": "trail into it", "coast": "no coasting", "release": "ease off slower", "throttle": "throttle earlier",
          "carry": "carry more speed", "spin": "smoother throttle", "lock": "smoother brake"}
-VOICE_ALONE = {"trail": "trail the brake in"}
+VOICE_ALONE: dict = {}       # (2.13 review: every phrase is one idea on its own now)
 
 
 def _phrase(rule, D, P, label=None):
@@ -652,54 +722,59 @@ def _phrase(rule, D, P, label=None):
     return "", "", ""
 
 
-def _gets(D, lost, label=None):
+def _passes(x):
+    return x is not None and x.get("z", 0) >= Z_LIKELY
+
+
+def _gets(D, lost=None, label=None):
+    """What the best laps' way gets you, in speeds only, and only speeds that passed the noise test (2.13 review:
+    no "s a lap" promise). "" when no speed difference passed."""
     mn, ex = D.get("min_kmh"), D.get("exit_kmh")
     bits = []
-    if mn:
+    if _passes(mn):
         dv = mn["best"] - mn["typical"]
         if dv >= 1:
             bits.append(f"about {_round_to(dv, 1)} km/h more through the middle "
                         f"({_round_to(mn['best'], 1)} vs {_round_to(mn['typical'], 1)} km/h)")
         elif dv <= -1:
             bits.append(f"about {_round_to(-dv, 1)} km/h less at the slowest point "
-                        f"({_round_to(mn['best'], 1)} vs {_round_to(mn['typical'], 1)} km/h), but quicker overall")
-        else:
-            bits.append(f"about the same speed through the middle ({_round_to(mn['best'], 1)} km/h)")
-    if ex:
+                        f"({_round_to(mn['best'], 1)} vs {_round_to(mn['typical'], 1)} km/h)")
+    if _passes(ex):
         dv = ex["best"] - ex["typical"]
         if abs(dv) >= 1:
-            bits.append(f"{_round_to(abs(dv), 1)} km/h {'more' if dv > 0 else 'less'} on the way out "
-                        f"({_round_to(ex['best'], 1)} vs {_round_to(ex['typical'], 1)} km/h)")
-    bits.append(f"about {lost:.2f} s a lap")
-    return ", ".join(bits[:-1]) + (" and " if len(bits) > 1 else "") + bits[-1]
+            bits.append(f"{'about ' if not bits else ''}{_round_to(abs(dv), 1)} km/h {'more' if dv > 0 else 'less'} "
+                        f"on the way out ({_round_to(ex['best'], 1)} vs {_round_to(ex['typical'], 1)} km/h)")
+    return " and ".join(bits)
 
 
-def _confidence(z, n_total, ref=False):
+def _confidence(z, n_total, ref=False, p=None, p_all=None):
+    """thin / likely / clear. With the permutation test's p (share of shuffles that look at least this clear):
+    clear needs p < P_CLEAR, CLEAR_LAPS laps and p_all (the same over every corner at once) < P_LIKELY."""
     if ref:
         return "thin"
     if n_total < THIN_LAPS:
         return "thin"
+    if p is not None:
+        if p < P_CLEAR and n_total >= CLEAR_LAPS and (p_all is None or p_all < P_LIKELY):
+            return "clear"
+        return "likely"
     if z >= Z_CLEAR and n_total >= CLEAR_LAPS:
         return "clear"
     return "likely"
 
 
 def _voice(name, rules):
+    """One short idea (at most 4 words with the corner name): the primary rule only (2.13 review)."""
     if not rules:
         return None
-    one = VOICE_ALONE.get(rules[0], VOICE[rules[0]]) if len(rules) == 1 else VOICE[rules[0]]
-    if len(rules) > 1:
-        two = f"{VOICE[rules[0]]}, {VOICE[rules[1]]}"
-        if _words(two) <= 5:
-            return f"{name}: {two}"
-    return f"{name}: {one}"
+    return f"{name}: {VOICE_ALONE.get(rules[0], VOICE[rules[0]])}"
 
 
 METRICS = ("brake_m", "peak_pct", "full_s", "abs_share", "release_s", "release_end_m", "trail_pct", "coast_s",
            "pickup_m", "full_thr_s", "min_kmh", "entry_kmh", "exit_kmh", "spin_share", "lock_share", "t")
 
 
-def _card(c, name, lost, D, fired, rows_all, nb, nt, P, label=None, ref=False):
+def _card(c, name, lost, D, fired, rows_all, nb, nt, P, label=None, ref=False, group=None, p=None, p_all=None):
     strength = {r: (_rank_strength(rows_all, k) if rows_all else 0.0, D[k]["z"]) for r, k in fired}
     order = sorted(fired, key=lambda rk: (strength[rk[0]][0], strength[rk[0]][1]), reverse=True)
     primary = order[0]
@@ -712,14 +787,16 @@ def _card(c, name, lost, D, fired, rows_all, nb, nt, P, label=None, ref=False):
         how += " " + parts[1][1][0].upper() + parts[1][1][1:]
     gets = _gets(D, lost, label)
     z = D[primary[1]]["z"]
-    conf = _confidence(z, nb + nt, ref)
+    pp = (p or {}).get(primary[0]) if isinstance(p, dict) else p
+    conf = _confidence(z, nb + nt, ref, p=pp, p_all=p_all)
     if ref:
         evidence = f"{label} (1 lap) vs your {nt} typical laps."
-        head = f"{name}: against {label}, your typical lap loses about {lost:.2f} s here."
+        head = f"{name}: {label} was about {lost:.2f} s quicker here than your typical lap."
     else:
-        evidence = f"{nb} best laps vs {nt} typical laps."
-        head = f"{name}: you lose about {lost:.2f} s here on a typical lap."
-    text = (f"{head} What's different: {diff}. How to try it: {how} What it gets you: {gets}. Evidence: {evidence}")
+        evidence = f"{nb} best laps vs {nt} typical laps" + (f" ({group})" if group else "") + "."
+        head = f"{name}: your best laps were about {lost:.2f} s quicker here than your typical ones."
+    text = (f"{head} What's different: {diff}. How to try it: {how}"
+            + (f" What it gets you: {gets}." if gets else "") + f" Evidence: {evidence}")
     voice = _voice(name, [r for r, _k in used])
     nums = {k: {"best": _r(D[k]["best"], 3), "typical": _r(D[k]["typical"], 3), "z": _r(D[k]["z"], 2)}
             for k in METRICS if D.get(k)}
@@ -729,14 +806,111 @@ def _card(c, name, lost, D, fired, rows_all, nb, nt, P, label=None, ref=False):
             "best_laps": nb, "typical_laps": nt,
             "confidence": conf, "confidence_rule": CONFIDENCE_RULE if not ref else
             "a single reference lap: its own lap-to-lap noise can't be measured, so this is always thin",
+            "p_value": _r(pp, 4), "p_all": _r(p_all, 4), "group": group,
             "voice": voice, "numbers": nums, "text": text, "reference": label if ref else None}
 
 
-def compare(laps, corners, flags=None, prefix: str = "T") -> dict:
-    """Per corner: best vs typical through that corner, the rules that fire, and a card.
-    Returns {"cards": [...biggest loss first], "unclear": [...], "fine": [...], "per_corner": {id: {...}}}."""
-    flags = flags or {}
-    out = {"cards": [], "unclear": [], "fine": [], "per_corner": {}}
+# ---------------------------------------------------------------- the permutation test (2.13 review)
+def _col(rows, key):
+    return np.array([np.nan if _num(r.get(key)) is None else float(r[key]) for r in rows], float)
+
+
+def _diff_many(X, B, T, key):
+    """diff_test on many splits at once: X one number per lap (NaN = missing), B / T lap indices (splits x laps)."""
+    import warnings
+    Xb, Xt = X[B], X[T]
+    nb, nt = (~np.isnan(Xb)).sum(1), (~np.isnan(Xt)).sum(1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        mb, mt = np.nanmedian(Xb, 1), np.nanmedian(Xt, 1)
+        sb = np.nanmedian(np.abs(Xb - mb[:, None]), 1) * 1.4826
+        st = np.nanmedian(np.abs(Xt - mt[:, None]), 1) * 1.4826
+    fl = NOISE_FLOOR.get(key, 0.0)
+    sb, st = np.maximum(np.nan_to_num(sb), fl), np.maximum(np.nan_to_num(st), fl)
+    se = 1.2533 * np.sqrt(sb ** 2 / np.maximum(nb, 1) + st ** 2 / np.maximum(nt, 1))
+    diff = mb - mt
+    with np.errstate(invalid="ignore", divide="ignore"):
+        z = np.where(se > 0, np.abs(diff) / np.where(se > 0, se, 1.0), np.where(diff != 0, 99.0, 0.0))
+    z = np.minimum(99.0, np.nan_to_num(z))
+    has = (nb >= MIN_GROUP) & (nt >= MIN_GROUP)
+    return {"has": has, "ok": has & (z >= Z_LIKELY), "diff": diff, "typical": mt, "best": mb, "z": z}
+
+
+def _auc(X, B, T, sign):
+    """Share of (best lap, typical lap) pairs where the best lap's number is further the rule's way (ties half)."""
+    d = sign * (X[B][:, :, None] - X[T][:, None, :])
+    valid = ~np.isnan(d)
+    with np.errstate(invalid="ignore"):
+        s = np.where(valid, (d > 0) + 0.5 * (d == 0), 0.0).sum((1, 2))
+    return s / np.maximum(valid.sum((1, 2)), 1)
+
+
+def perm_test(rows, P=None, n_perm=None, seed=0) -> dict:
+    """The permutation test for one corner: shuffle which laps count as 'best' n_perm times (fixed seed), rerun the
+    split, the noise test and the rules each time. A rule that fires on the real split gets
+    p = share of shuffles where ANY rule fires at least as clearly (its AUC: the share of best/typical lap pairs that
+    differ its way), so testing ten rules at once doesn't make a false card ten times as likely.
+    Returns {"p": {rule: p}, "auc": {rule: auc}, "null_max": array (one per shuffle), "n_perm"}."""
+    n_perm = PERM_N if n_perm is None else int(n_perm)
+    rows = [r for r in rows if _num(r.get("t")) is not None]
+    n = len(rows)
+    out = {"p": {}, "auc": {}, "metric": {}, "null_max": np.zeros(n_perm), "n_perm": n_perm}
+    if n < 2 * MIN_GROUP:
+        return out
+    k = max(MIN_GROUP, int(round(n * BEST_FRAC)))
+    if n - k < MIN_GROUP:
+        return out
+    t = _col(rows, "t")
+    obs = np.argsort(t, kind="stable")                   # the same split as split(): fastest k through the corner
+    rng = np.random.default_rng([PERM_SEED, int(seed)])
+    perm = rng.permuted(np.tile(np.arange(n), (n_perm, 1)), axis=1)
+    idx = np.vstack([obs[None, :], perm])
+    B, T = idx[:, :k], idx[:, k:]
+    X = {m: _col(rows, m) for m in RULE_METRICS}
+    D = {m: _diff_many(X[m], B, T, m) for m in RULE_METRICS}
+    P2 = dict(P or {}, n_laps=n)
+    entries = _rule_masks(D, P2)
+    strength = np.zeros(len(idx))
+    obs_auc = {}
+    for rule, metric, mask in entries:
+        if not mask.any():
+            continue
+        auc = _auc(X[metric], B, T, DIRECTION[(rule, metric)])
+        strength = np.maximum(strength, np.where(mask, auc, 0.0))
+        if mask[0]:
+            obs_auc[rule] = (float(auc[0]), metric)
+    null = strength[1:]
+    out["null_max"] = null
+    for rule, (a, metric) in obs_auc.items():
+        out["auc"][rule] = a
+        out["metric"][rule] = metric
+        out["p"][rule] = (1.0 + float(np.sum(null >= a - 1e-9))) / (n_perm + 1.0)
+    return out
+
+
+def lap_gap(laps) -> float | None:
+    """Lap-level gap: median of your other laps minus the median of your fastest third (the same split as the
+    corners). Corner times are scaled so they never add up to more than this."""
+    ts = sorted(float(x["time"]) for x in laps or [] if isinstance(x, dict) and _num(x.get("time")) is not None)
+    if len(ts) < 2 * MIN_GROUP:
+        return None
+    k = max(MIN_GROUP, int(round(len(ts) * BEST_FRAC)))
+    if len(ts) - k < MIN_GROUP:
+        return None
+    return max(0.0, float(np.median(ts[k:]) - np.median(ts[:k])))
+
+
+def compare(laps, corners, flags=None, prefix: str = "T", alpha: float | None = None, group: str | None = None) -> dict:
+    """Per corner: best vs typical through that corner, the rules that fire, and a card when a rule also passes the
+    permutation test (p < alpha, default P_LIKELY).
+    Returns {"cards": [...biggest first], "unclear": [...], "fine": [...], "per_corner": {id: {...}}, "lap_gap_s",
+    "scale"}. lost_s is each corner's share of the lap-level gap (lap_gap): the raw best-vs-typical corner gap
+    (gap_s) scaled down so the corners never add up to more than the gap between your fastest third of laps and
+    the rest."""
+    flags = dict(flags or {})
+    alpha = P_LIKELY if alpha is None else float(alpha)
+    out = {"cards": [], "unclear": [], "fine": [], "per_corner": {}, "lap_gap_s": None, "scale": 1.0}
+    work = []
     for k, c in enumerate(corners):
         name = f"{prefix}{k + 1}"
         rows = []
@@ -744,6 +918,10 @@ def compare(laps, corners, flags=None, prefix: str = "T") -> dict:
             p = phases(x["R"], c)
             if p is not None:
                 p["_lap"] = (x.get("file"), x.get("lap"))
+                if not flags.get("abs", True):          # no ABS working anywhere in these laps: no ABS numbers
+                    p["abs_share"] = None
+                    if p.get("lock_method") == "abs":
+                        p["lock_method"] = None
                 rows.append(p)
         pc = {"id": c["id"], "name": name, "laps": len(rows)}
         out["per_corner"][c["id"]] = pc
@@ -754,26 +932,51 @@ def compare(laps, corners, flags=None, prefix: str = "T") -> dict:
         if len(typ) < MIN_GROUP:
             pc["status"] = "too few laps"
             continue
-        lost = float(np.median([r["t"] for r in typ]) - np.median([r["t"] for r in best]))
-        pc.update({"lost_s": _r(lost, 3), "best_laps": len(best), "typical_laps": len(typ)})
+        gap = float(np.median([r["t"] for r in typ]) - np.median([r["t"] for r in best]))
         D = {m: diff_test([r.get(m) for r in best], [r.get(m) for r in typ], m) for m in METRICS}
+        pc.update({"gap_s": _r(gap, 3), "best_laps": len(best), "typical_laps": len(typ)})
         pc["numbers"] = {m: {"best": _r(D[m]["best"], 3), "typical": _r(D[m]["typical"], 3), "z": _r(D[m]["z"], 2)}
                          for m in METRICS if D.get(m)}
+        work.append((k, c, name, rows, best, typ, gap, D, pc))
+    G = lap_gap(laps)
+    tot = sum(max(0.0, w[6]) for w in work)
+    scale = min(1.0, G / tot) if (G is not None and tot > 0) else 1.0
+    out["lap_gap_s"], out["scale"] = _r(G, 3), round(scale, 3)
+    pending, nulls = [], []
+    P2 = dict(flags)
+    for k, c, name, rows, best, typ, gap, D, pc in work:
+        lost = max(0.0, gap) * scale
+        pc["lost_s"] = _r(lost, 3)
         if lost < MIN_LOST_S:
             pc["status"] = "fine"
             out["fine"].append({"corner": name, "id": c["id"], "lost_s": _r(lost, 3)})
             continue
-        fired = _rules(D, flags)
-        if not fired:
+        P2["n_laps"] = len(rows)
+        fired = _rules(D, P2)
+        pt = perm_test(rows, flags, seed=k) if fired else {"p": {}, "null_max": None}
+        if pt.get("null_max") is not None:
+            nulls.append(pt["null_max"])
+        passed = [(r, m) for r, m in fired if pt["p"].get(r, 1.0) < alpha]
+        pc["p"] = {r: _r(v, 4) for r, v in pt["p"].items()}
+        if not passed:
             pc["status"] = "no clear pattern"
-            out["unclear"].append({"corner": name, "id": c["id"], "lost_s": _r(lost, 3),
-                                   "best_laps": len(best), "typical_laps": len(typ),
-                                   "text": (f"{name}: you lose about {lost:.2f} s here on a typical lap, but there's "
-                                            f"no clear pattern yet in what you do differently on your best laps "
+            out["unclear"].append({"corner": name, "id": c["id"], "lost_s": _r(lost, 3), "gap_s": _r(gap, 3),
+                                   "best_laps": len(best), "typical_laps": len(typ), "group": group,
+                                   "text": (f"{name}: your best laps were about {lost:.2f} s quicker here, but there's "
+                                            f"no clear pattern yet in what you do differently on them "
                                             f"({len(best)} best vs {len(typ)} typical laps). It may just be "
                                             f"lap-to-lap scatter.")})
             continue
-        card = _card(c, name, lost, D, fired, rows, len(best), len(typ), flags)
+        pending.append((c, name, lost, gap, D, passed, rows, best, typ, pt, pc))
+    # every corner at once: the largest clearness any corner's rules reach by chance in each shuffle
+    allmax = np.max(np.vstack(nulls), axis=0) if nulls else None
+    for c, name, lost, gap, D, passed, rows, best, typ, pt, pc in pending:
+        card = _card(c, name, lost, D, passed, rows, len(best), len(typ), P2, group=group, p=pt["p"])
+        a = pt["auc"].get(card["rule"])
+        p_all = ((1.0 + float(np.sum(allmax >= a - 1e-9))) / (len(allmax) + 1.0)) if (allmax is not None and a is not None) else None
+        card["p_all"] = _r(p_all, 4)
+        card["confidence"] = _confidence(D[dict(passed)[card["rule"]]]["z"], len(rows), p=pt["p"][card["rule"]], p_all=p_all)
+        card["gap_s"] = _r(gap, 3)
         pc["status"] = "card"
         out["cards"].append(card)
     out["cards"].sort(key=lambda x: -(x["lost_s"] or 0))
@@ -842,7 +1045,9 @@ def braking_summary(laps, corners) -> dict:
     """ABS reliance, lock-ups, trail braking, coasting and full-pedal habit over every lap and corner, in plain words."""
     zones, abs_heavy, full, trail, lock_ev, lock_m = 0, 0, 0, [], 0, None
     coast_per_lap = []
-    abs_known = False
+    laps = [x for x in laps or [] if isinstance(x, dict) and isinstance(x.get("R"), dict)]
+    abs_known = abs_active(laps)                         # the ABS worked somewhere: this car has it
+    abs_channel = bool(laps) and all(x["R"].get("_abs") for x in laps)
     for x in laps:
         cl = 0.0
         for c in corners:
@@ -853,13 +1058,12 @@ def braking_summary(laps, corners) -> dict:
             if p.get("brake_m") is None:
                 continue
             zones += 1
-            if p.get("abs_share") is not None:
-                abs_known = True
+            if abs_known and p.get("abs_share") is not None:
                 abs_heavy += p["abs_share"] > ABS_ZONE_SHARE
             full += (p.get("peak_pct") or 0) >= FULL_BRAKE_PCT
             if p.get("trail_pct") is not None:
                 trail.append(p["trail_pct"])
-            if p.get("lock_method"):
+            if p.get("lock_method") and (abs_known or p["lock_method"] != "abs"):
                 lock_m = p["lock_method"]
             lock_ev += int(p.get("lock_events") or 0)
         coast_per_lap.append(cl)
@@ -886,6 +1090,9 @@ def braking_summary(laps, corners) -> dict:
                   ": a fair amount." if s >= 0.25 else ". You mostly brake below the point where it steps in."))
         if out["abs_onset_pct"] is not None:
             L.append(f"On this car the ABS starts working from about {out['abs_onset_pct']:.0f}% pedal.")
+    elif abs_channel:
+        L.append("The ABS never came on in these laps, so this car has no ABS here (or it is switched off): "
+                 "press until just before the wheels lock.")
     else:
         L.append("This telemetry has no ABS channel, so ABS use can't be measured.")
     if lock_m == "wheel speeds":
@@ -906,36 +1113,112 @@ def braking_summary(laps, corners) -> dict:
 
 
 # ---------------------------------------------------------------- whole analysis
+def lap_kind(session) -> str:
+    """"race" for race laps, "practice" for everything else (practice, qualifying, testing, warm-up)."""
+    return "race" if "race" in str(session or "").lower() else "practice"
+
+
+KIND_WORDS = {"race": "race laps", "practice": "practice and qualifying laps"}
+
+
+def lap_groups(laps) -> list:
+    """Laps grouped by (session kind, setup fingerprint), biggest group first: like is only compared with like (2.13
+    review: race laps on a full tank and qualifying laps on a light one are driven differently). Each group's own
+    off-pace laps (over OFFPACE_FRAC x its median) are left out.
+    [{"kind", "setup", "laps": [...], "off_pace": [...], "label"}]"""
+    by = {}
+    for x in laps:
+        by.setdefault((lap_kind(x.get("session")), str(x.get("setup") or "")), []).append(x)
+    kinds = {k for k, _s in by}
+    setups = {s_ for _k, s_ in by}
+    out = []
+    for (kind, fp), xs in by.items():
+        med = float(np.median([x["time"] for x in xs]))
+        keep = [x for x in xs if x["time"] <= med * OFFPACE_FRAC]
+        off = [x for x in xs if x["time"] > med * OFFPACE_FRAC]
+        label = KIND_WORDS[kind] + (" only" if len(kinds) > 1 else "")
+        if len(setups) > 1:
+            label += ", all on the same setup"
+        out.append({"kind": kind, "setup": fp, "laps": keep, "off_pace": off, "label": label})
+    out.sort(key=lambda g: (-len(g["laps"]), g["kind"] != "race"))
+    return out
+
+
+def _merge(results: list) -> dict:
+    """Cards from several groups of laps: the biggest group's view of each corner, a card from another group when
+    the biggest has none, and no card where two groups say opposite things (brake later vs brake earlier)."""
+    main = results[0]
+    out = {"cards": [], "unclear": [], "fine": [], "per_corner": main["per_corner"]}
+    ids = list(main["per_corner"].keys())
+    for res in results[1:]:
+        ids += [i for i in res["per_corner"] if i not in ids]
+    for cid in ids:
+        cards = [c for res in results for c in res["cards"] if c["id"] == cid]
+        if cards:
+            fams = {}
+            for c in cards:
+                fams.setdefault(FAMILY[c["rule"]], set()).add(c["rule"])
+            if any(len(v) > 1 for v in fams.values()):
+                c0 = cards[0]
+                out["unclear"].append({"corner": c0["corner"], "id": cid, "lost_s": c0["lost_s"], "gap_s": c0.get("gap_s"),
+                                       "best_laps": c0["best_laps"], "typical_laps": c0["typical_laps"], "group": None,
+                                       "text": (f"{c0['corner']}: your laps of different kinds disagree here "
+                                                f"({'; '.join(c['group'] + ': ' + VOICE[c['rule']] for c in cards)}), "
+                                                f"so there's no clear pattern yet.")})
+                continue
+            out["cards"].append(min(cards, key=lambda c: (c.get("p_value") or 1.0, -(c["best_laps"] + c["typical_laps"]))))
+            continue
+        hit = next((u for res in results for u in res["unclear"] if u["id"] == cid), None)
+        if hit is not None:
+            out["unclear"].append(hit)
+            continue
+        hit = next((f for res in results for f in res["fine"] if f["id"] == cid), None)
+        if hit is not None:
+            out["fine"].append(hit)
+    out["cards"].sort(key=lambda x: -(x["lost_s"] or 0))
+    out["unclear"].sort(key=lambda x: -(x["lost_s"] or 0))
+    return out
+
+
 def analyze_laps(laps, reference=None, info=None, prefix: str = "T") -> dict:
     """Corner coach report for clean laps of one car and track (load_laps). Never raises.
 
-    {"ok": bool, "message": str, "version", "laps": n, "laps_used": [{"file","lap","time"}...], "off_pace": [...],
-     "corners": [{"id","name","apex_m","start_m","end_m"}], "cards": [card...], "unclear": [...], "fine": [...],
-     "reference_cards": [card...], "reference": label|None, "summary": braking_summary(), "method": {...},
-     "info": load_laps info}
-    card: {"corner","id","apex_m","lost_s","rule","secondary","different","how","gets","why","evidence",
-           "best_laps","typical_laps","confidence","confidence_rule","voice","numbers","text","reference"}"""
+    {"ok": bool, "message": str, "version", "laps": n (laps compared), "laps_used": [{"file","lap","time","session",
+     "group"}...], "off_pace": [...], "groups": [{"label","kind","laps","used"}], "corners": [{"id","name","apex_m",
+     "start_m","end_m"}], "cards": [card...], "unclear": [...], "fine": [...], "reference_cards": [card...],
+     "reference": label|None, "summary": braking_summary(), "method": {...}, "info": load_laps info}
+    card: {"corner","id","apex_m","lost_s","gap_s","rule","secondary","different","how","gets","why","evidence",
+           "best_laps","typical_laps","confidence","confidence_rule","p_value","p_all","group","voice","numbers",
+           "text","reference"}"""
     info = dict(info or {})
-    base = {"ok": False, "version": VERSION, "laps": 0, "laps_used": [], "off_pace": [], "corners": [], "cards": [],
-            "unclear": [], "fine": [], "reference_cards": [], "reference": None, "summary": None, "info": info,
-            "method": {}, "params": PARAMS}
+    base = {"ok": False, "version": VERSION, "laps": 0, "laps_used": [], "off_pace": [], "groups": [], "corners": [],
+            "cards": [], "unclear": [], "fine": [], "reference_cards": [], "reference": None, "summary": None,
+            "info": info, "method": {}, "params": PARAMS}
     try:
         laps = [x for x in (laps or []) if isinstance(x, dict) and isinstance(x.get("R"), dict)
                 and _num(x.get("time"))]
-        if laps:
-            med = float(np.median([x["time"] for x in laps]))
-            base["off_pace"] = [{"file": x.get("file"), "lap": x.get("lap"), "time": _r(x["time"], 3)}
-                                for x in laps if x["time"] > med * OFFPACE_FRAC]
-            laps = [x for x in laps if x["time"] <= med * OFFPACE_FRAC]
-        base["laps"] = len(laps)
+        groups = lap_groups(laps) if laps else []
+        usable = [g for g in groups if len(g["laps"]) >= MIN_LAPS]
+        base["off_pace"] = [{"file": x.get("file"), "lap": x.get("lap"), "time": _r(x["time"], 3)}
+                            for g in groups for x in g["off_pace"]]
+        base["groups"] = [{"label": g["label"], "kind": g["kind"], "laps": len(g["laps"]), "used": g in usable}
+                          for g in groups]
+        used = [x for g in usable for x in g["laps"]]
+        n_all = sum(len(g["laps"]) for g in groups)
+        base["laps"] = len(used)
         base["laps_used"] = [{"file": x.get("file"), "lap": x.get("lap"), "time": _r(x["time"], 3),
-                              "session": x.get("session")} for x in laps]
-        if len(laps) < MIN_LAPS:
-            have = f"Only {len(laps)} clean lap{'s' if len(laps) != 1 else ''}" if laps else "No clean laps"
+                              "session": x.get("session"), "group": g["label"]} for g in usable for x in g["laps"]]
+        if n_all < MIN_LAPS:
+            have = f"Only {n_all} clean lap{'s' if n_all != 1 else ''}" if n_all else "No clean laps"
             base["message"] = (f"{have}. The corner coach needs at least {MIN_LAPS} to compare your best laps "
                                f"with your typical ones.")
             return base
-        fastest = min(laps, key=lambda x: x["time"])
+        if not usable:
+            base["message"] = (f"{n_all} clean laps, but not {MIN_LAPS} of the same kind (race laps, or practice and "
+                               f"qualifying laps) on the same setup. The corner coach only compares like with like, "
+                               f"because fuel load and setup change how a corner is driven.")
+            return base
+        fastest = min(used, key=lambda x: x["time"])
         R = fastest["R"]
         L = float(R["d"][-1] + STEP)
         corners = engine.detect_corners(R, L=L)
@@ -944,14 +1227,17 @@ def analyze_laps(laps, reference=None, info=None, prefix: str = "T") -> dict:
         if not corners:
             base["message"] = "No corners found on your fastest lap (a flat-out track?)."
             return base
-        flags = {"abs": all(x["R"].get("_abs") for x in laps),
-                 "slip_method": ("wheel speeds" if all(x["R"].get("_wheels") for x in laps) else
-                                 "rpm" if all((x["R"].get("_base") or {}).get("rpm") for x in laps) else None)}
-        flags["abs_onset_pct"] = abs_onset_pct(laps) if flags["abs"] else None
-        res = compare(laps, corners, flags, prefix)
+        flags = {"abs": abs_active(used),
+                 "slip_method": ("wheel speeds" if all(x["R"].get("_wheels") for x in used) else
+                                 "rpm" if all((x["R"].get("_base") or {}).get("rpm") for x in used) else None)}
+        flags["abs_onset_pct"] = abs_onset_pct(used) if flags["abs"] else None
+        alpha = P_LIKELY / len(usable)                  # several groups tested: each must pass a stricter bar
+        results = [compare(g["laps"], corners, flags, prefix, alpha=alpha, group=g["label"]) for g in usable]
+        res = results[0] if len(results) == 1 else _merge(results)
         base.update({k: res[k] for k in ("cards", "unclear", "fine")})
         base["per_corner"] = res["per_corner"]
-        base["summary"] = braking_summary(laps, corners)
+        base["lap_gap_s"] = results[0].get("lap_gap_s")
+        base["summary"] = braking_summary(used, corners)
         base["method"] = {"corners_from": f"your fastest lap ({fastest.get('file')}, lap {fastest.get('lap')}, "
                                           f"{fastest['time']:.3f} s)",
                           "best": "fastest third of your laps through each corner (at least 3)",
@@ -959,14 +1245,20 @@ def analyze_laps(laps, reference=None, info=None, prefix: str = "T") -> dict:
                           "wheelspin": flags["slip_method"],
                           "lockup": "wheel speeds" if flags["slip_method"] == "wheel speeds" else
                           ("abs" if flags["abs"] else None),
-                          "abs_onset_pct": flags["abs_onset_pct"], "confidence": CONFIDENCE_RULE}
+                          "abs_onset_pct": flags["abs_onset_pct"], "confidence": CONFIDENCE_RULE,
+                          "groups": "; ".join(f"{g['label']}: {len(g['laps'])}" for g in usable),
+                          "time": ("each corner's share of the gap between your fastest third of laps and the rest "
+                                   "(the corners never add up to more than that gap); it describes your own laps, it "
+                                   "is not a promise of lap time")}
         if reference is not None and isinstance(reference.get("R") if isinstance(reference, dict) else None, dict):
             base["reference"] = str(reference.get("label") or "the reference lap")
-            base["reference_cards"] = compare_reference(laps, reference, corners, flags, prefix)
+            base["reference_cards"] = compare_reference(used, reference, corners, flags, prefix)
         base["ok"] = True
         n = len(base["cards"])
-        base["message"] = (f"{n} corner{'s' if n != 1 else ''} with a clear thing to try, from {len(laps)} clean laps."
-                           if n else f"No corner shows a clear pattern yet from {len(laps)} clean laps.")
+        which = usable[0]["label"] if len(usable) == 1 else "; ".join(g["label"] for g in usable)
+        base["message"] = (f"{n} corner{'s' if n != 1 else ''} with a clear thing to try, from {len(used)} clean laps "
+                           f"({which})." if n else
+                           f"No corner shows a clear pattern yet from {len(used)} clean laps ({which}).")
         return base
     except Exception as e:  # noqa: BLE001
         base["ok"] = False

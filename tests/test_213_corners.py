@@ -203,7 +203,7 @@ def voice_ok(v):
     if not v or ":" not in v:
         return False
     n = cc._words(v.split(":", 1)[1])
-    return 2 <= n <= 5
+    return 1 <= n <= 3 and cc._words(v) <= 4 and "," not in v      # 2.13 review: one idea, at most 4 words
 
 
 # ---------------------------------------------------------------- 1. brake later
@@ -220,7 +220,7 @@ if c:
     check(c["best_laps"] == 4 and c["typical_laps"] == 8 and "4 best laps vs 8 typical laps" in c["evidence"], "evidence counts")
     check(c["lost_s"] >= cc.MIN_LOST_S and c["confidence"] in ("clear", "likely"), f"lost {c['lost_s']} s, {c['confidence']}")
     check(c["voice"] == "T1: brake later" and voice_ok(c["voice"]), f"voice {c['voice']}")
-    check(c["why"] and c["text"].startswith("T1: you lose about"), "why line and full text")
+    check(c["why"] and c["text"].startswith("T1: your best laps were about"), "why line and full text")
 check(card(rep, "C2") is None, "the unchanged corner gets no card")
 
 # ---------------------------------------------------------------- 2. lighter (ABS)
@@ -253,7 +253,7 @@ check(c is not None and c["rule"] == "trail", f"trail-braking rule fires ({c and
 if c:
     check("brake on into the turn" in c["different"] and "instead of coasting" in c["different"], f"different: {c['different']}")
     check("as you turn in, and let it go as you reach the apex" in c["how"], f"how: {c['how']}")
-    check(voice_ok(c["voice"]) and ("trail the brake in" in c["voice"] or "hold it in" in c["voice"]), f"voice {c['voice']}")
+    check(voice_ok(c["voice"]) and c["voice"] == "T1: trail into it", f"voice {c['voice']}")
     nb = c["numbers"]
     check(nb["coast_s"]["typical"] - nb["coast_s"]["best"] >= cc.R_COAST_S, f"coast numbers {nb['coast_s']}")
     check(nb["trail_pct"]["best"] >= 5 and nb["trail_pct"]["typical"] < 5, f"trail numbers {nb['trail_pct']}")
@@ -296,8 +296,9 @@ if c:
     check("wheel speeds" in c["different"] and "squeeze the throttle" in c["how"].lower(), f"spin wording: {c['different']}")
 check(rep["method"]["wheelspin"] == "wheel speeds", "wheelspin measured from wheel speeds")
 rep = run("spin_rpm", laps_with({"vmin": 25.6, "spin": False}, typ_change={"spin": True}), wheels=False)
-check(rep["method"]["wheelspin"] in ("rpm", None) and rep["method"]["lockup"] == "abs",
-      f"no wheel speeds: RPM method for spin, ABS for lock-ups ({rep['method'].get('wheelspin')}, {rep['method'].get('lockup')})")
+check(rep["method"]["wheelspin"] in ("rpm", None) and rep["method"]["lockup"] is None,
+      f"no wheel speeds, ABS never on (pedal under 85%): RPM method for spin, no lock-up method "
+      f"({rep['method'].get('wheelspin')}, {rep['method'].get('lockup')})")
 rep = run("lock", laps_with({"vmin": 25.6, "lock": False}, typ_change={"lock": True}))
 c = card(rep)
 check(c is not None and "lock" in (c["rule"], c["secondary"]), f"lock-up rule fires ({c and (c['rule'], c['secondary'])})")
@@ -354,11 +355,11 @@ check(ok, "report is JSON-serialisable (no numpy types, no NaN)")
 keys = {"corner", "id", "apex_m", "lost_s", "rule", "secondary", "different", "how", "gets", "why", "evidence",
         "best_laps", "typical_laps", "confidence", "confidence_rule", "voice", "numbers", "text", "reference"}
 check(rep["cards"] and all(keys <= set(c) for c in rep["cards"]), "card fields")
-check(all(voice_ok(c["voice"]) for c in rep["cards"]), f"voice phrases 2-5 words: {[c['voice'] for c in rep['cards']]}")
+check(all(voice_ok(c["voice"]) for c in rep["cards"]), f"voice phrases one idea, 4 words: {[c['voice'] for c in rep['cards']]}")
 vp = cc.voice_phrases(rep)
 check(vp and all(k.startswith("C") and v.startswith("T") for k, v in vp.items()), f"voice_phrases {vp}")
 for rule, w in cc.VOICE.items():
-    check(2 <= cc._words(w) <= 5, f"voice word count for {rule}: '{w}'")
+    check(1 <= cc._words(w) <= 3 and "," not in w, f"voice word count for {rule}: '{w}'")
 
 junk = TMP / "junk.ibt"
 junk.write_bytes(b"MZ" + b"\0" * 500)
@@ -383,6 +384,138 @@ check(rep["info"]["skipped"] and rep["laps"] == 10, "a junk file next to a good 
 p_other = make_file(TMP / "other.ibt", own, car="Ford Mustang GT4", car_path="fordmustanggt4")
 rep = cc.analyze_files([p_own, p_other])
 check(any(s["why"] == "a different car or track" for s in rep["info"]["skipped"]), "a different car is skipped")
+
+# ---------------------------------------------------------------- 10. 2.13 review: honest statistics
+# (a) noise passes no more than about 5% of the time: random rows, the full card decision (rules + permutation test)
+def noise_rows(rng, n):
+    rows = []
+    for _ in range(n):
+        rows.append({"t": 3.0 + rng.normal(0, 0.08), "brake_m": -140 + rng.normal(0, 6), "peak_pct": min(100, 92 + rng.normal(0, 6)),
+                     "abs_share": max(0.0, 0.35 + rng.normal(0, 0.15)), "coast_s": max(0.0, 0.3 + rng.normal(0, 0.15)),
+                     "trail_pct": max(0.0, 20 + rng.normal(0, 10)), "release_s": max(0.0, 0.5 + rng.normal(0, 0.2)),
+                     "pickup_m": 10 + rng.normal(0, 12), "min_kmh": 110 + rng.normal(0, 3), "entry_kmh": 190 + rng.normal(0, 2),
+                     "exit_kmh": 150 + rng.normal(0, 2), "spin_share": max(0.0, 0.1 + rng.normal(0, 0.08)),
+                     "lock_share": max(0.0, 0.05 + rng.normal(0, 0.05))})
+    return rows
+
+
+def decide(rows, flags, seed=0):
+    best, typ = cc.split(rows)
+    D = {m: cc.diff_test([r.get(m) for r in best], [r.get(m) for r in typ], m) for m in cc.METRICS}
+    fired = cc._rules(D, dict(flags, n_laps=len(rows)))
+    if not fired:
+        return [], fired
+    pt = cc.perm_test(rows, flags, n_perm=200, seed=seed)
+    return [r for r, _m in fired if pt["p"].get(r, 1.0) < cc.P_LIKELY], fired
+
+
+nrng = np.random.default_rng(7)
+fl = {"abs": True}
+hits = fires = 0
+TRIALS = 150
+for i in range(TRIALS):
+    ok_, fired = decide(noise_rows(nrng, 14), fl, seed=i)
+    hits += bool(ok_)
+    fires += bool(fired)
+check(fires / TRIALS > 0.15, f"pure noise: the threshold rules alone fire often ({fires}/{TRIALS}), the old problem")
+check(hits / TRIALS <= 0.08, f"pure noise: a card in at most about 5% of corners after the permutation test ({hits}/{TRIALS})")
+
+# (b) the vectorised test agrees with diff_test on the real split, and a strong pattern passes
+rows = noise_rows(np.random.default_rng(3), 12)
+order = np.argsort([r["t"] for r in rows], kind="stable")
+best, typ = cc.split(rows)
+k = len(best)
+for m in cc.RULE_METRICS:
+    one = cc.diff_test([r.get(m) for r in best], [r.get(m) for r in typ], m)
+    many = cc._diff_many(cc._col(rows, m), order[None, :k], order[None, k:], m)
+    check(one is not None and abs(one["diff"] - many["diff"][0]) < 1e-9 and abs(one["z"] - many["z"][0]) < 1e-9,
+          f"_diff_many matches diff_test for {m}")
+strong = noise_rows(np.random.default_rng(4), 12)
+for r in sorted(strong, key=lambda r: r["t"])[:4]:
+    r["brake_m"] += 20.0                        # the four fastest brake 20 m later
+pt = cc.perm_test(strong, fl, n_perm=400)
+check(pt["p"].get("brake_later", 1) < cc.P_LIKELY, f"a real 20 m brake-point pattern passes (p {pt['p']})")
+check(abs(cc.perm_test(strong, fl, n_perm=400)["p"].get("brake_later", 1) - pt["p"]["brake_later"]) < 1e-12,
+      "fixed seed: the same laps always give the same answer")
+
+# (c) brake-point advice needs MIN_BRAKE_LAPS laps
+few9 = noise_rows(np.random.default_rng(5), 9)
+for r in sorted(few9, key=lambda r: r["t"])[:3]:
+    r["brake_m"] += 25.0
+b9, t9 = cc.split(few9)
+D9 = {m: cc.diff_test([r.get(m) for r in b9], [r.get(m) for r in t9], m) for m in cc.METRICS}
+check(any(r == "brake_later" for r, _m in cc._rules(D9, {})) and
+      not any(r == "brake_later" for r, _m in cc._rules(D9, {"n_laps": 9})),
+      f"9 laps: no brake-point advice (needs {cc.MIN_BRAKE_LAPS})")
+
+# (d) coasting less is only called trail braking when the trail number itself passes
+def dd(diff, z, typical=0.0):
+    return {"best": typical + diff, "typical": typical, "diff": diff, "z": z, "se": 1.0, "n_best": 4, "n_typical": 8}
+Dt = {"coast_s": dd(-0.5, 4.0, 1.0), "trail_pct": dd(8.0, 1.0, 2.0)}
+check([r for r, _m in cc._rules(Dt, {})] == ["coast"], f"trail number inside the noise: coast, not trail ({cc._rules(Dt, {})})")
+Dt["trail_pct"] = dd(8.0, 3.0, 2.0)
+check([r for r, _m in cc._rules(Dt, {})] == ["trail"], f"trail number passes: trail ({cc._rules(Dt, {})})")
+
+# (e) time: corners never add up past the lap-level gap; no "s a lap" promises; speeds only when they passed
+for r in REPORTS:
+    if r.get("ok") and r.get("lap_gap_s") is not None:
+        tot = sum(x["lost_s"] for x in r["cards"] + r["unclear"] + r["fine"])
+        check(tot <= r["lap_gap_s"] + 0.01, f"corner times add up to {tot:.3f} s, lap gap {r['lap_gap_s']}")
+        break
+cards_all = [c for r in REPORTS for c in r.get("cards") or []]
+check(cards_all and not any("s a lap" in (c["text"] + c["gets"]) for c in cards_all), "no 's a lap' promises in cards")
+for c in cards_all:
+    nb = c["numbers"]
+    if "through the middle" in c["gets"]:
+        check(nb["min_kmh"]["z"] >= cc.Z_LIKELY, f"{c['corner']}: middle speed named only when it passed ({nb['min_kmh']})")
+quiet_rep = next(r for r in REPORTS if r["fine"] and not r["cards"] and not r["unclear"])
+check(quiet_rep["fine"], "a corner can be 'close to your best'")
+check(all(c.get("p_value") is not None and c["p_value"] < cc.P_LIKELY for c in cards_all), "every card passed the permutation test")
+
+# (f) ABS: channel there but never on (a car without ABS) -> no-ABS words
+no_abs = laps_with({"peak": 0.80, "vmin": 26.0}, typ_change={"peak": 1.0, "rs": 90.0, "abs_at": 2.0},
+                   other={"abs_at": 2.0})
+for lap in no_abs:
+    for cp in lap:
+        cp["abs_at"] = 2.0
+rep = run("abs_never", no_abs)
+check(rep["method"]["abs"] is None and rep["info"]["abs_channel"] and not rep["info"]["abs_active"],
+      "ABS channel present but never on: no ABS")
+check(any("ABS never came on" in x and "just before the wheels lock" in x for x in rep["summary"]["lines"]),
+      f"summary says this car has no ABS here: {rep['summary']['lines'][:3]}")
+check(not any("ABS" in (c["how"] + c["different"] + c["why"]) for c in rep["cards"]), "no ABS words in the cards")
+
+# (g) like with like: race laps and practice laps are grouped; the evidence names the laps used
+pr = make_file(TMP / "grp_practice.ibt", laps_with({"bdist": 120.0, "vmin": 25.6}), session="Practice")
+rc_ = make_file(TMP / "grp_race.ibt", laps_with({}, n_best=1, n_typ=4), session="Race")
+rep = cc.analyze_files([pr, rc_])
+check([g["kind"] for g in rep["groups"]] == ["practice", "race"] and [g["used"] for g in rep["groups"]] == [True, False],
+      f"groups {rep['groups']}")
+c = card(rep)
+check(c is not None and "practice and qualifying laps only" in c["evidence"] and rep["laps"] == 12,
+      f"evidence names the laps used: {c and c['evidence']} ({rep['laps']} laps)")
+check("practice and qualifying laps only" in rep["message"], rep["message"])
+# opposite advice in two groups -> no card for that corner
+res_a = {"cards": [dict(c, rule="brake_later", group="race laps only", p_value=0.01)], "unclear": [], "fine": [],
+         "per_corner": {"C1": {}}}
+res_b = {"cards": [dict(c, rule="brake_earlier", group="practice and qualifying laps only", p_value=0.02)],
+         "unclear": [], "fine": [], "per_corner": {"C1": {}}}
+mg = cc._merge([res_a, res_b])
+check(not mg["cards"] and mg["unclear"] and "disagree" in mg["unclear"][0]["text"], f"opposite advice: no card ({mg['unclear']})")
+mg = cc._merge([res_a, dict(res_b, cards=[])])
+check(len(mg["cards"]) == 1, "a card from one group stands when the other has none")
+# mixed kinds, but no group big enough
+rep = cc.analyze_laps([dict(x, session="Race" if i % 2 else "Practice") for i, x in enumerate(cc.load_laps(pr)[0][:10])])
+check(not rep["ok"] and "like with like" in rep["message"], f"no group big enough: {rep['message']}")
+
+# (h) a skipped file names the file, never its folder
+bad = TMP / "sub folder" / "broken.ibt"
+bad.parent.mkdir(exist_ok=True)
+bad.write_bytes(b"\0" * 300)
+rep = cc.analyze_files([pr, bad])
+why = " ".join(x["why"] for x in rep["info"]["skipped"])
+check(rep["info"]["skipped"] and str(bad.parent) not in why, f"skip reason without the folder: {why}")
+
 
 # 2.13 review: card text is joined with a colon or a full stop, never " - " (and no long dashes)
 def _texts(r):

@@ -265,6 +265,7 @@ def _race_row(o, zs) -> dict:
     elif scan and me:
         contact, contact_why = ("no", "The replay shows no incident of yours on lap 1.") if not evs else ("no", "The replay shows no other car in your lap 1 incident.")
     row = {"id": o.get("id"), "ok": True, "track": o.get("track"), "subsession": o.get("subsession"), "when": o.get("when"),
+           "review": str(rev.get("dir") or "") or None,
            "multiclass": multiclass, "in_class": multiclass, "field": field,
            "start": start, "start_from": start_src, "start_words": START_WORDS.get(start_src),
            "lap1_pos": lap1, "lap1_from": lap1_src, "lap1_words": LAP1_WORDS.get(lap1_src), "change": change,

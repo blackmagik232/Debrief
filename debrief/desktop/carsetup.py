@@ -99,8 +99,9 @@ def cache_key(kind: str, paths=(), extra=None) -> str:
     return kind + "-" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:24]
 
 
-def cached(server, cache_dir, key: str, make):
-    """The value for key: from memory, else Debrief's own cache file, else make() (once, even for two requests)."""
+def cached(server, cache_dir, key: str, make, folder_name: str = CACHE):
+    """The value for key: from memory, else Debrief's own cache file, else make() (once, even for two requests).
+    folder_name: the folder in the cache folder (2.16's racing pages keep theirs apart)."""
     from .server import _jsonable
     st = state(server)
     with st.lock:
@@ -113,7 +114,7 @@ def cached(server, cache_dir, key: str, make):
         with st.lock:
             if key in st.mem:
                 return st.mem[key], True
-        folder = Path(cache_dir) / CACHE
+        folder = Path(cache_dir) / folder_name
         path = folder / (key + ".json")
         val, hit = None, True
         try:

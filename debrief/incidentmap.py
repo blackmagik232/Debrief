@@ -934,6 +934,7 @@ def _build(src) -> dict:
 def _event_row(o, e) -> dict:
     c = e.get("class") or {}
     return {"session": o["id"], "kind_of_session": o["kind"], "session_type": o.get("type"), "subsession": o.get("subsession"), "when": o.get("when"),
+            "review": str((o.get("review") or {}).get("dir") or "") or None,
             "t": e.get("t"), "lap": e.get("lap"), "lap1": bool(e.get("lap1")), "before_green": bool(e.get("before_green")),
             "pct": e.get("pct"), "zone": e.get("zone"), "where": e.get("where"), "points": e.get("points"),
             "parts": e.get("parts") or [], "at_once": bool(e.get("at_once")), "what": _what(e), "source": e.get("source"),

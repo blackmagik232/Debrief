@@ -28,6 +28,7 @@ from .. import app, library
 from ..g61 import Garage61Error
 from . import settings_io
 from . import carsetup    # 2.15 Car and setup
+from . import racing      # 2.16 Racing
 
 UI = Path(__file__).resolve().parent / "ui"
 ICON_PNG = Path(__file__).resolve().parent / "icon.png"
@@ -2346,6 +2347,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": False, "error": friendly(e)}, 500)
         if r in carsetup.GET_ROUTES:    # 2.15 Car and setup
             return self._carsetup_call(lambda: carsetup.get(self, r, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}), r, get=True)
+        if r in racing.GET_ROUTES:      # 2.16 Racing: starts and incidents
+            return self._carsetup_call(lambda: racing.get(self, r, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}), r, get=True)
         return self._nf()
 
     def _carsetup_call(self, fn, r, get=False):

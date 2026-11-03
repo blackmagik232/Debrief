@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Midfield Menace · Library</title>
+<title>Debrief · Library</title>
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="connect-src 'none'; object-src 'none'; base-uri 'none'">
 <script>try{const t=localStorage.getItem('debrief-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
@@ -713,7 +713,7 @@ if(current)select(current);else pbTable();
 
 // ================================================================ Season tab
 const EX=(window.EXTRA&&typeof window.EXTRA==='object')?window.EXTRA:{};
-{const B=(EX.brand&&typeof EX.brand==='object')?EX.brand:{};const tn=(typeof B.team_name==='string'&&B.team_name.trim())||'Midfield Menace';document.title=tn+' · Library'}
+document.title='Debrief · Library';   // 2.18: the app's own name (the team's name is for team features)
 const SEAS=(EX.season&&Array.isArray(EX.season.seasons))?EX.season.seasons:[];
 const seasonOf=r=>(r.season&&r.season.name)||'Unknown season';
 const intFmt=v=>ok(v)?String(Math.round(v)):'–';

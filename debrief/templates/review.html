@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Midfield Menace · Race Review</title>
+<title>Debrief · Race Review</title>
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="connect-src 'none'; object-src 'none'; base-uri 'none'">
 <script>try{const t=localStorage.getItem('debrief-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
@@ -787,7 +787,7 @@ function shortTrack(t){
 const MAKES=['Mercedes-AMG','Aston Martin','Global Mazda','Ford','Porsche','BMW','Mercedes','Audi','Lamborghini','Ferrari','McLaren','Chevrolet','Toyota','Mazda','Honda','Hyundai','Acura','Cadillac','Ligier','Radical','Nissan','Lotus','Renault','Volkswagen','VW','Subaru','Kia','Dodge','Pontiac','Mini','Alfa Romeo'];
 function shortCar(c){c=String(c||'').trim();for(const mk of MAKES){if(c.toLowerCase().startsWith(mk.toLowerCase()+' ')){const r=c.slice(mk.length).trim();return r.length>=2?r:c}}return c}
 const trackShort=shortTrack(M.track),carShort=shortCar(M.car);
-document.title=TEAM_NAME+' · '+trackShort+' · '+carShort;
+document.title='Debrief · '+trackShort+' · '+carShort;   // 2.18: the app's name, not the team's
 
 // ---------- tooltips
 let px=0,py=0;const tip=$('tip'),ro=$('readout');
@@ -1495,7 +1495,7 @@ async function drawShareCard(){const W=1200,H=630;const cv=document.createElemen
     if(lab==='BEST LAP'&&badge){x.font='400 15px '+MON;sp('2.5px');const lw=x.measureText(lab).width;x.font='700 14px '+MON;sp('1.5px');const tw=x.measureText(badge[0]).width+20;x.fillStyle=badge[1];rr(bx+lw+10,y0-9,tw,26,13);x.fill();x.fillStyle=C.bg;x.fillText(badge[0],bx+lw+20,y0+9);sp('0px')}});
   // footer
   x.fillStyle=C.ink;x.font='600 26px '+BOD;const drv=String(M.driver||'').trim();x.fillText(drv||'Driver',64,H-44);
-  x.fillStyle=C.muted;x.font='400 16px '+MON;sp('2px');x.textAlign='right';x.fillText((TEAM_NAME+' · Debrief').toUpperCase(),W-64,H-48);x.textAlign='left';sp('0px');
+  x.fillStyle=C.muted;x.font='400 16px '+MON;sp('2px');x.textAlign='right';x.fillText('Debrief · Black Magik Studios'.toUpperCase(),W-64,H-48);x.textAlign='left';sp('0px');
   return cv}
 $('btnShare').onclick=async()=>{const b=$('btnShare');b.disabled=true;try{const cv=await drawShareCard();const name=(fileBase+'_'+trackShort+'_'+carShort).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'_share.png';
   await new Promise((res,rej)=>cv.toBlob(bl=>{if(!bl)return rej(new Error('no image'));saveBlob(name,bl);res()},'image/png'));toast('Saved '+name+' to your downloads')}catch(e){toast('Couldn’t make the share card in this window. Try opening the review in your browser.')}finally{b.disabled=false}};
@@ -1735,7 +1735,7 @@ $('btnPdf').addEventListener('click',()=>{pdfOpen();setTimeout(()=>window.print(
 window.addEventListener('beforeprint',pdfOpen);window.addEventListener('afterprint',()=>{pdfOpened.forEach(d=>{d.open=false});pdfOpened=[]});
 // ---------- 2.8: the race, from a replay scan (D.racecap). Everything is textContent; without a scan the page is as before.
 const RCP=isObj(D.racecap)?D.racecap:null;
-safe('your race',()=>{const int=(v,lo,hi)=>typeof v==='number'&&Number.isInteger(v)&&v>=lo&&v<=hi;const R=RCP;if(!R){$('scanHint').hidden=!(/race/i.test(String(M.session||'race')));return}
+safe('your race',()=>{const int=(v,lo,hi)=>typeof v==='number'&&Number.isInteger(v)&&v>=lo&&v<=hi;const R=RCP;if(!R){$('scanHint').hidden=!(/race/i.test(String(M.session||'race')))||M.event_id==='sample';return}   // 2.18: the sample has no Scan this race button
   $('deep').open=false;
   const list=k=>Array.isArray(R[k])?R[k].filter(isObj):[];const laps=list('laps').filter(x=>int(x.lap,1,5000));
   const pfor=x=>int(x,1,500)?' for P'+x:'';

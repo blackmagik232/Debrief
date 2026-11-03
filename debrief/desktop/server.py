@@ -634,6 +634,7 @@ class Jobs:
         params = params or {}
         cb = self._progress(jid)
         result, error = None, None
+        rejected = False   # 2.18: Garage 61 said no to the token (401), remembered for the setup steps
         app.say(f"--- {datetime.now().isoformat(timespec='seconds')} debrief desktop {kind}")
         try:
             cfg = app.load_settings()
@@ -689,12 +690,15 @@ class Jobs:
         except Garage61Error as e:
             app.say(f"ERROR Garage 61: {e}")
             error = friendly(e)
+            rejected = getattr(e, "status", None) == 401
         except SystemExit as e:
             app.say(f"STOPPED: {e.code}")
             error = friendly(e)
         except Exception as e:  # noqa: BLE001
             app.say("ERROR (unexpected):\n" + traceback.format_exc())
             error = friendly(e)
+        if kind == "check":
+            _note_token_check(ok=error is None, rejected=rejected)
         with self.lock:
             if self.st.get("id") != jid:
                 return
@@ -1457,6 +1461,17 @@ def plan_view(p: dict | None) -> dict | None:
     if isinstance(sc, dict):
         out["score"] = dict(sc, per_lap=(sc.get("per_lap") or [])[-30:])
     return out
+
+
+def _note_token_check(ok: bool, rejected: bool):
+    """2.18 first run: a good check clears "token_rejected"; a 401 sets it, so the setup steps stay open and nothing
+    unlocks on a token Garage 61 refused. Other failures (no network) change nothing. Never raises."""
+    try:
+        fr = app.optional_module("firstrun")
+        if fr is not None and (ok or rejected):
+            fr.mark("token_rejected", value=bool(rejected and not ok))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _mark_voice_tested():
@@ -2587,7 +2602,9 @@ class Handler(BaseHTTPRequestHandler):
     def _get_brand(self, q):
         """Team identity for the window (Midfield Menace names and links). Constants only: no settings, no secrets."""
         from .. import brand
-        return self._json({"ok": True, **brand.as_dict()})
+        from .. import credits   # 2.18: Help > Credits and About show the same list as CREDITS.md
+        return self._json({"ok": True, **brand.as_dict(), "credits": credits.as_list(), "kinds": credits.KINDS,
+                           "trademarks": credits.TRADEMARKS})
 
     def _synced_sessions(self, api):
         if api is None:

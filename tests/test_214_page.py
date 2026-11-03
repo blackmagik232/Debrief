@@ -450,9 +450,10 @@ def test_firstrun():
     make_old()
     read_telemetry()
     code, j = call("api/firstrun")
-    assert code == 200 and j["ok"] and j["total"] == 5, j
+    assert code == 200 and j["ok"] and j["total"] == 6, j
     by = {x["id"]: x for x in j["steps"]}
     assert by["token"]["done"] and by["folder"]["done"] and by["telemetry"]["done"] and by["session"]["done"], by
+    assert by["record"]["done"] and "telemetry files (.ibt)" in by["record"]["text"], by["record"]   # 2.18
     if not by["voice"]["done"]:
         assert j["next"] == "voice" and by["voice"]["action"] == "test_voice" and j["show"], j
         use_fakes(s, lambda: Holding(make_new()))
@@ -648,16 +649,21 @@ def test_firstrun_in_the_window():
         pg.wait_for_selector("#firstRun:not([hidden]) .frstep")
         assert pg.evaluate("() => !document.getElementById('vWelcome').hidden"), "no reviews yet: the welcome page"
         assert pg.evaluate("() => document.getElementById('firstRun').closest('#vWelcome') !== null")
-        assert pg.text_content("#frPill") == "4 of 5 done", pg.text_content("#frPill")
-        assert pg.locator("#frList .frstep.done").count() == 4
+        w = call("api/firstrun")[1]
+        assert w["total"] == 6 and not dict((x["id"], x["done"]) for x in w["steps"])["voice"], w
+        assert pg.text_content("#frPill") == f"{w['done']} of 6 done", pg.text_content("#frPill")
+        assert pg.locator("#frList .frstep.done").count() == w["done"]
         btn = pg.locator("#frList button[data-fr=test_voice]")
-        assert btn.count() == 1 and btn.text_content() == "Open the Coach"
+        assert btn.count() == 1 and btn.text_content() == "Test voice"     # 2.18: the button it names is right there
         no_dash_text(pg, "#firstRun")
         if shots:
             snap(pg, shots / "firstrun-light.png")
         btn.click()
         pg.wait_for_selector("#vCoach", state="visible")
         assert pg.evaluate("() => document.getElementById('coSet').open")
+        pg.wait_for_function("() => document.getElementById('coSetMsg').textContent !== ''")   # it pressed Test voice
+        time.sleep(1)
+        st.write_text("{}", encoding="utf-8")              # the voice was heard: forget it, for the rest of the test
         # hide, then back from Help
         pg.goto(s.url)
         pg.wait_for_selector("#firstRun:not([hidden])")

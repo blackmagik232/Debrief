@@ -101,7 +101,7 @@ def test_request_counts_only_in_settings_about():
     about = re.search(r'<p class="note" id="aboutRequests">.*?</p>', html, re.S)
     assert about and "about six requests" in about.group(0)
     rest = html.replace(about.group(0), "")
-    for fine in ("and request a personal API token", "looks at each request by hand", "issues on request to individual"):
+    for fine in ("and request a personal access token", "looks at each request by hand", "issues on request to individual"):
         rest = rest.replace(fine, "")    # asking for a token, not a count of Garage 61 requests
     assert not re.search(r"\brequests?\b", rest), re.findall(r".{40}\brequests?\b.{20}", rest)
     js = read(UI / "app.js")
@@ -238,6 +238,23 @@ def test_setup_gate_and_sample_review():
         pg.wait_for_function("() => !document.getElementById('guide').hidden")
         gated = pg.evaluate("() => [...document.querySelectorAll('.navbtn[data-nav]')].map(b => [b.dataset.nav, b.getAttribute('aria-disabled')])")
         assert dict(gated)["library"] == "true" and dict(gated)["team"] == "true" and dict(gated)["settings"] is None, gated
+        # 2.18: only Garage 61's pages wait for the token; the telemetry pages open straight away
+        for free in ("practice", "setuplab", "coach", "racing", "cars", "prep"):
+            assert dict(gated)[free] in (None, "false"), (free, gated)
+        pg.click(".navbtn[data-nav=practice]")
+        pg.wait_for_function("() => !document.getElementById('vPractice').hidden")
+        pg.click(".navbtn[data-nav=coach]")
+        pg.wait_for_function("() => !document.getElementById('vCoach').hidden")
+        # the setup checklist's Open Practice goes to Practice, not back to Welcome
+        pg.click("#btnHelp")
+        pg.click("#helpFirstRun")
+        pg.wait_for_function("() => !document.getElementById('vWelcome').hidden")
+        pg.wait_for_selector("#firstRun:not([hidden]) .frstep")
+        assert pg.text_content("#frTitle") == "Start with your telemetry"
+        assert pg.locator("#frList .frstep").count() == 5          # its Garage 61 step is the guide below
+        if pg.locator("#frList button[data-fr=practice]").count():
+            pg.click("#frList button[data-fr=practice]")
+            pg.wait_for_function("() => !document.getElementById('vPractice').hidden")
         # a click and a key both stay on the steps
         pg.click(".navbtn[data-nav=team]", force=True)
         pg.wait_for_function("() => document.getElementById('bannerText').textContent.startsWith('Finish the setup steps')")

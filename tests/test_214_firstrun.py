@@ -36,25 +36,51 @@ def by_id(w):
 
 print("== steps from facts")
 st = fr.steps({})
-check([s["id"] for s in st] == list(fr.STEP_IDS) and not any(s["done"] for s in st), "five steps, none done")
-check(all(s["action"] for s in st) and all(s["title"] and s["text"] for s in st), "each has a title, text and action")
+check([s["id"] for s in st] == list(fr.STEP_IDS) and not any(s["done"] for s in st), "six steps, none done")
+check(list(fr.STEP_IDS) == ["folder", "record", "telemetry", "session", "voice", "token"],
+      "2.18: telemetry first, Garage 61 last")
+check(all(s["action"] for s in st if s["id"] != "record") and all(s["title"] and s["text"] for s in st),
+      "each has a title and text, and an action unless it's done in iRacing")
+check(by_id({"steps": st})["record"]["action"] is None and "Alt+L" in by_id({"steps": st})["record"]["text"],
+      "record: says iRacing records nothing until Alt+L")
 txt = json.dumps(st, ensure_ascii=False)
 check("\u2014" not in txt and "\u2013" not in txt, "no long dashes")
-st = {s["id"]: s for s in fr.steps({"token": True, "folder": True, "folder_path": "C:/x", "files": 3,
+st = {s["id"]: s for s in fr.steps({"token": True, "folder": True, "folder_path": "C:/x", "files": 3, "ibt_files": 3,
                                      "best_clean": 4, "voice_tested": True})}
+check(st["folder"]["text"] == "Telemetry folder found." and "C:/x" not in st["folder"]["text"], "found: no path shown")
+check(st["record"]["done"] and "3 telemetry files (.ibt)" in st["record"]["text"], st["record"]["text"])
 check(st["token"]["done"] and st["token"]["action"] is None, "token done: no action")
 check(st["telemetry"]["done"] and "3 telemetry files read" in st["telemetry"]["text"], st["telemetry"]["text"])
 check(not st["session"]["done"] and "4 clean laps" in st["session"]["text"] and st["session"]["action"] == "practice",
       st["session"]["text"])
 st = {s["id"]: s for s in fr.steps({"folder": True, "files": 0})}
-check("Alt+L" in st["telemetry"]["text"], "no files yet: says how to turn telemetry on")
-w = fr.walkthrough({"token": True, "folder": True, "files": 3, "best_clean": 6, "voice_tested": True}, state={})
+check(not st["record"]["done"] and "Alt+L" in st["record"]["text"] and "found your telemetry folder but no telemetry files"
+      in st["record"]["text"], "folder but no .ibt files: says how to turn telemetry on")
+st = {s["id"]: s for s in fr.steps({"folder": False})}
+check("hasn't found your telemetry folder" in st["record"]["text"] and "Alt+L" in st["record"]["text"], "no folder: says so")
+st = {s["id"]: s for s in fr.steps({"folder": True, "ibt_files": 2, "files": 0})}
+check(st["record"]["done"] and not st["telemetry"]["done"] and "Read my telemetry" in st["telemetry"]["text"],
+      "files there, not read: Read my telemetry")
+# the clean-lap number is the one Practice uses to pick one thing
+from debrief import practiceplan  # noqa: E402
+check(fr.MIN_CLEAN == practiceplan.WANT_LAPS == 10, "clean laps: the same number as Practice")
+check(f"Drive {practiceplan.WANT_LAPS} clean laps" in st["session"]["title"], st["session"]["title"])
+# 2.18: a token Garage 61 rejected doesn't count as connected
+st = {s["id"]: s for s in fr.steps({"token": True, "token_rejected": True})}
+check(not st["token"]["done"] and "didn't accept" in st["token"]["text"] and st["token"]["action"] == "settings_token",
+      "rejected token: not done, says paste it again")
+st = {s["id"]: s for s in fr.steps({"token": False, "token_rejected": True})}
+check(not st["token"]["done"] and "didn't accept" not in st["token"]["text"], "no token: the plain text")
+check("personal access token" in st["token"]["text"] and "Practice, Setup Lab" in st["token"]["text"],
+      "token step: personal access token, and what works without it")
+check(st["voice"]["text"].startswith("Click Test voice"), "voice: names the Test voice button")
+w = fr.walkthrough({"token": True, "folder": True, "files": 3, "best_clean": 10, "voice_tested": True}, state={})
 check(w["all_done"] and not w["show"] and w["text"] == "You're all set.", "all done: not shown")
 w = fr.walkthrough({"token": True}, state={"dismissed": True})
 check(w["dismissed"] and not w["show"] and w["next"] == "folder" and w["done"] == 1, "dismissed: not shown")
 w = fr.walkthrough({"token": True}, state={})
-check(w["show"] and w["text"] == "1 of 5 done. Next: Find your iRacing telemetry.", w["text"])
-check(fr.steps(None)[0]["done"] is False and fr.steps("junk")[0]["id"] == "token", "bad facts: no crash")
+check(w["show"] and w["text"] == "1 of 6 done. Next: Find your iRacing telemetry.", w["text"])
+check(fr.steps(None)[0]["done"] is False and fr.steps("junk")[0]["id"] == "folder", "bad facts: no crash")
 
 print("== gather from Debrief's own files")
 SET = Path(os.environ["DEBRIEF_SETTINGS"])
@@ -66,18 +92,20 @@ SET.write_text('token = "g61-test-token-ABCDEFGHIJKLMNOP"\n' + f"iracing_folder 
                encoding="utf-8")
 f = fr.gather()
 check(f["token"] and f["folder"] and Path(f["folder_path"]) == TEL, f"token and folder found ({f['folder_path']})")
-check(f["files"] == 0 and f["best_clean"] == 0, "no index yet: nothing read")
+check(f["files"] == 0 and f["best_clean"] == 0 and f["ibt_files"] == 0, "no index yet: nothing read")
 cl.make(TEL / "mclaren570sgt4_zolder gp 2026-11-01 10-00-00.ibt", 3)
+(TEL / "notes.txt").write_text("not telemetry", encoding="utf-8")
+check(fr.gather()["ibt_files"] == 1 and fr.count_ibt(TMP / "missing") == 0, "the .ibt files in the folder are counted")
 cache = TMP / "cache" / fr.SETUPLAB_CACHE
 setuplab.index(TEL, cache_path=cache)
 f = fr.gather()
 check(f["files"] == 1 and 0 < f["best_clean"] < fr.MIN_CLEAN, f"one short session read ({f['best_clean']} clean laps)")
-cl.make(TEL / "mclaren570sgt4_zolder gp 2026-11-02 10-00-00.ibt", 9)
+cl.make(TEL / "mclaren570sgt4_zolder gp 2026-11-02 10-00-00.ibt", 13)
 setuplab.index(TEL, cache_path=cache)
 f = fr.gather()
 check(f["files"] == 2 and f["best_clean"] >= fr.MIN_CLEAN, f"a session with {f['best_clean']} clean laps")
 w = fr.walkthrough()
-check(w["next"] == "voice" and w["done"] == 4 and w["show"], f"only the voice left: {w['text']}")
+check(w["next"] == "voice" and w["done"] == 5 and w["show"], f"only the voice left: {w['text']}")
 
 print("== the state file")
 check(fr.mark("voice_tested"), "voice tested remembered")
@@ -88,6 +116,9 @@ check(fr.dismiss() and fr.load_state()["dismissed"] is True and fr.load_state()[
       "dismissed kept beside the voice flag")
 check(fr.undismiss() and fr.load_state()["dismissed"] is False, "undismissed")
 check(not fr.mark("token"), "only known flags can be set")
+check(fr.mark("token_rejected") and fr.token_rejected() and fr.gather()["token_rejected"], "a rejected token is remembered")
+check(by_id(fr.walkthrough())["token"]["done"] is False, "and the Garage 61 step is open again")
+check(fr.mark("token_rejected", value=False) and not fr.token_rejected(), "a good check clears it")
 fr.state_path().write_text("{broken", encoding="utf-8")
 check(fr.load_state() == {} and fr.gather()["voice_tested"] is False, "damaged state file: counts as empty")
 check(fr.dismiss() and fr.load_state() == {"dismissed": True}, "and is replaced on the next save")

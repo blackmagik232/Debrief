@@ -6,15 +6,19 @@
     mark(name, path=None)      -> remember "voice_tested" (or "dismissed") in firstrun.json next to settings.toml
     dismiss(path=None) / undismiss(path=None)
 
-Steps (in order):
-    token       a Garage 61 token is saved                         (settings.toml, settings_io.token_present)
+Steps (in order; 2.18: the telemetry steps come first, because Practice, Setup Lab, Coach and Racing need only
+the telemetry iRacing saves on this PC; Garage 61 is last and only race reviews, history and team wait for it):
     folder      iRacing's telemetry folder is there                 (settings_io.telemetry_folder)
+    record      iRacing has saved telemetry (.ibt) files in it      (counted in the folder; iRacing records nothing
+                                                                    until it is turned on: Alt+L in the car)
     telemetry   Debrief has read at least one telemetry file        (Setup Lab's index: <cache>/setuplab-index.json)
-    session     one session with at least 5 clean laps              (sessionibt.sessions over that index)
+    session     one session with at least MIN_CLEAN clean laps      (sessionibt.sessions over that index)
     voice       the coach's voice has been tested                   (firstrun.json "voice_tested", marked by the
                                                                     server when Test voice is heard)
+    token       a Garage 61 personal access token is saved and      (settings.toml, settings_io.token_present;
+                Garage 61 didn't reject it at the last check        firstrun.json "token_rejected")
 "action" is what the window's button for the step does: "settings_token", "settings_folder", "read_telemetry",
-"practice", "test_voice" (None when the step is done). Nothing here raises; a damaged state file counts as empty.
+"practice", "test_voice" (None when the step is done, and for "record", which is done in iRacing). Nothing here raises; a damaged state file counts as empty.
 """
 from __future__ import annotations
 
@@ -29,14 +33,19 @@ _LOCK = threading.Lock()                   # mark(): one read-change-write of th
 
 STATE_FILE = "firstrun.json"
 SETUPLAB_CACHE = "setuplab-index.json"     # the server's SETUPLAB_CACHE, in the cache folder
-MIN_CLEAN = 5                              # sessionibt.MIN_LAPS
+MIN_CLEAN = 10                             # practiceplan.WANT_LAPS: the clean laps Practice needs to pick one thing
+MAX_COUNT = 100000                         # .ibt files counted in the folder at most (a quick look, not a read)
+FLAGS = ("voice_tested", "dismissed", "token_rejected")
 
-STEP_IDS = ("token", "folder", "telemetry", "session", "voice")
+STEP_IDS = ("folder", "record", "telemetry", "session", "voice", "token")
+TELEMETRY_HOW = ("iRacing doesn't save telemetry until you turn it on: in the car, press Alt+L (or turn on telemetry "
+                 "recording in iRacing's settings), then drive a few laps.")
 
 
 def steps(facts: dict) -> list:
-    """The walkthrough's steps from facts: {"token": bool, "folder": bool, "folder_path": str, "files": int (telemetry
-    files read), "best_clean": int (most clean laps in one session), "voice_tested": bool}."""
+    """The walkthrough's steps from facts: {"token": bool, "token_rejected": bool, "folder": bool, "folder_path": str,
+    "ibt_files": int (.ibt files in the folder), "files": int (telemetry files read), "best_clean": int (most clean
+    laps in one session), "voice_tested": bool}."""
     f = facts if isinstance(facts, dict) else {}
     files = int(f.get("files") or 0)
     best = int(f.get("best_clean") or 0)
@@ -47,26 +56,35 @@ def steps(facts: dict) -> list:
         out.append({"id": sid, "done": bool(done), "title": title, "text": ok if done else todo,
                     "action": None if done else action})
 
-    add("token", f.get("token"), "Connect Garage 61",
-        "Paste your Garage 61 personal access token in Settings so Debrief can fetch your laps.",
-        "Your Garage 61 token is saved.", "settings_token")
+    ibt = int(f.get("ibt_files") or 0)
     add("folder", f.get("folder"), "Find your iRacing telemetry",
         (f"Debrief can't find your telemetry folder{f' ({folder})' if folder else ''}. If iRacing saves it somewhere "
          f"else, pick the folder in Settings."),
-        f"Telemetry folder found{f': {folder}' if folder else ''}.", "settings_folder")
+        "Telemetry folder found.", "settings_folder")
+    add("record", ibt > 0 or files > 0, "Turn on telemetry in iRacing",
+        ((f"Debrief found your telemetry folder but no telemetry files (.ibt) in it yet. {TELEMETRY_HOW}")
+         if f.get("folder") else f"Debrief hasn't found your telemetry folder yet. {TELEMETRY_HOW}"),
+        (f"Debrief found {ibt} telemetry file{'s' if ibt != 1 else ''} (.ibt) in your telemetry folder."
+         if ibt else "iRacing is saving your telemetry."), None)
     add("telemetry", files > 0, "Read your telemetry",
-        ("No telemetry files read yet. In iRacing, press Alt+L in the car to start saving telemetry, drive a few "
-         "laps, then click Read telemetry." if f.get("folder") else
-         "Once the folder is found, Debrief reads your telemetry files from it."),
+        ("Debrief has found telemetry files but hasn't read them yet. Click Read my telemetry." if ibt else
+         "Once iRacing has saved some telemetry, Debrief reads it from the folder."),
         f"{files} telemetry file{'s' if files != 1 else ''} read.", "read_telemetry")
     add("session", best >= MIN_CLEAN, f"Drive {MIN_CLEAN} clean laps in one session",
         (f"Your best session so far has {best} clean lap{'s' if best != 1 else ''}. Drive at least {MIN_CLEAN} clean "
-         f"laps in one go (no offs, no pit stops) so Debrief can review it." if files else
-         f"Drive at least {MIN_CLEAN} clean laps in one go (no offs, no pit stops) so Debrief can review it."),
+         f"laps in one go (no offs, no pit stops) so Debrief can pick one thing for you to work on." if files else
+         f"Drive at least {MIN_CLEAN} clean laps in one go (no offs, no pit stops) so Debrief can pick one thing for "
+         f"you to work on."),
         f"You have a session with {best} clean laps. Open it on the Practice page.", "practice")
     add("voice", f.get("voice_tested"), "Test the coach's voice",
-        "Click Test voice on the Coach page to check you can hear it over the game.",
+        "Click Test voice to check you can hear the coach over the game.",
         "The coach's voice has been tested.", "test_voice")
+    rejected = bool(f.get("token")) and bool(f.get("token_rejected"))
+    add("token", f.get("token") and not rejected, "Connect Garage 61 for race reviews",
+        ("Garage 61 didn't accept your saved personal access token. Paste it again in Settings." if rejected else
+         "Race reviews, your history and team laps come from Garage 61: paste your Garage 61 personal access token "
+         "in Settings. Practice, Setup Lab, the Coach and Racing work without it."),
+        "Your Garage 61 personal access token is saved.", "settings_token")
     return out
 
 
@@ -113,8 +131,8 @@ def _save_state(data: dict, path=None) -> bool:
 
 
 def mark(name: str, path=None, value: bool = True) -> bool:
-    """Remember a flag ("voice_tested", "dismissed"). False when it can't be saved."""
-    if name not in ("voice_tested", "dismissed"):
+    """Remember a flag ("voice_tested", "dismissed", "token_rejected"). False when it can't be saved."""
+    if name not in FLAGS:
         return False
     with _LOCK:                            # two flags set at once (Test voice and Hide) both stay set
         d = load_state(path)
@@ -152,7 +170,8 @@ def gather(raw_settings: dict | None = None, cache_file=None, state_path=None, f
     """Facts for steps() from Debrief's own files (read only). raw_settings: settings.toml parsed (read when None);
     cache_file: Setup Lab's index file (the cache folder's setuplab-index.json when None); folder: the telemetry folder
     (from the settings when None). Never raises."""
-    facts = {"token": False, "folder": False, "folder_path": "", "files": 0, "best_clean": 0, "voice_tested": False}
+    facts = {"token": False, "folder": False, "folder_path": "", "ibt_files": 0, "files": 0, "best_clean": 0,
+             "voice_tested": False, "token_rejected": False}
     try:
         from .desktop import settings_io
         raw = raw_settings
@@ -162,6 +181,8 @@ def gather(raw_settings: dict | None = None, cache_file=None, state_path=None, f
         tf = Path(folder) if folder else settings_io.telemetry_folder(raw or {})
         facts["folder_path"] = str(tf)
         facts["folder"] = tf.is_dir()
+        if facts["folder"]:
+            facts["ibt_files"] = count_ibt(tf)
     except Exception:  # noqa: BLE001
         pass
     try:
@@ -173,5 +194,32 @@ def gather(raw_settings: dict | None = None, cache_file=None, state_path=None, f
             facts["best_clean"] = max((int(s.get("clean_laps") or 0) for s in sess), default=0)
     except Exception:  # noqa: BLE001
         pass
-    facts["voice_tested"] = bool(load_state(state_path).get("voice_tested"))
+    st = load_state(state_path)
+    facts["voice_tested"] = bool(st.get("voice_tested"))
+    facts["token_rejected"] = bool(st.get("token_rejected"))
     return facts
+
+
+def count_ibt(folder) -> int:
+    """How many telemetry files (.ibt) iRacing has saved in the folder (top level, as Setup Lab reads it). Only names
+    are looked at. 0 when it can't be listed."""
+    n = 0
+    try:
+        with os.scandir(folder) as it:
+            for e in it:
+                if e.name.lower().endswith(".ibt"):
+                    try:
+                        if e.is_file():
+                            n += 1
+                    except OSError:
+                        continue
+                    if n >= MAX_COUNT:
+                        break
+    except OSError:
+        return 0
+    return n
+
+
+def token_rejected(path=None) -> bool:
+    """Garage 61 rejected the saved token at the last connection check (cleared by a good check or a new token)."""
+    return bool(load_state(path).get("token_rejected"))

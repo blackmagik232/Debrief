@@ -1,0 +1,25 @@
+George (British male) (engineer): 216 clips, 7.50 MB, 16000 Hz, speed 1.25, comma pause 60 ms
+Coach phrases covered: 785 of 805 (97.5%)
+  not covered: Good, 0
+  not covered: Good, 1
+  not covered: Good, 2
+  not covered: Good, 3
+  not covered: Good, 4
+  not covered: Good, 5
+  not covered: Good, 6
+  not covered: Good, 7
+  not covered: Good, 8
+  not covered: Good, 9
+  not covered: Good, 10
+  not covered: Good, 11
+  not covered: Good, 12
+  not covered: Good, 13
+  not covered: Good, 14
+  not covered: Good, 15
+  not covered: Good, 16
+  not covered: Good, 17
+  not covered: Good, 18
+  not covered: Good, 19
+Takes to listen to: 2
+  line 35 'Turn ten, smoother brake.': spoken as 'Turn ten. Smoother brake.' to get a pause at the comma (listen to the join)
+  line 174 'Ninety-seven.': odd length for its words (7.6 syllables/s, usual 4.5)

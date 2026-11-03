@@ -28,6 +28,7 @@ from .. import app, library
 from ..g61 import Garage61Error
 from . import settings_io
 from . import carsetup    # 2.15 Car and setup
+from . import coach2      # Coach 2.0: voice packs, device, cue log, rehearsal
 
 UI = Path(__file__).resolve().parent / "ui"
 ICON_PNG = Path(__file__).resolve().parent / "icon.png"
@@ -977,8 +978,8 @@ def _jsonable(o):
 
 COACH_FIELDS = {"in_races": bool, "markers": bool, "feedback": bool, "lap_delta": bool, "brake_beep": bool,
                 "top_n": (1, 3, "Focus corners must be 1, 2 or 3."), "volume": (0, 100, "Volume must be 0 to 100."),
-                "rate": (-10, 10, "Speaking speed must be -10 to 10.")}
-COACH_TEST_TEXT = "Debrief coach. Brake marker, T3."
+                "rate": (-10, 10, "Speaking speed must be -10 to 10."), **coach2.EXTRA_FIELDS}
+COACH_TEST_TEXT = "Brake marker, T3"     # Coach 2.0: a phrase every voice pack says
 
 
 def voice_test_close_s(v, rate) -> float:
@@ -1009,6 +1010,9 @@ def clean_coach_settings(raw) -> dict:
             if not isinstance(v, bool):
                 raise ValueError("Pick on or off.")
             out[k] = v
+            continue
+        if callable(rule):                  # Coach 2.0: text fields and the measured delay (coach2.EXTRA_FIELDS)
+            out[k] = rule(v)
             continue
         lo, hi, msg = rule
         if isinstance(v, bool) or not isinstance(v, (int, float)) or (isinstance(v, float) and (not math.isfinite(v) or v != int(v))):
@@ -1566,6 +1570,7 @@ class DebriefServer(ThreadingHTTPServer):
             self.stop_coach()
         except Exception:  # noqa: BLE001
             app.say("ERROR stopping the coach:\n" + traceback.format_exc())
+        coach2.on_shutdown(self)
         super().shutdown()
 
     def server_close(self):
@@ -1878,7 +1883,7 @@ class DebriefServer(ThreadingHTTPServer):
             except Exception:  # noqa: BLE001
                 pass
 
-    def start_coach(self) -> dict:
+    def start_coach(self, source_factory=None, mode: str = "live", log_header=None) -> dict:
         """Start listening to iRacing and coaching. Never raises: a problem is a message, and the log has the rest.
         Two clicks (or two windows) at once start one coach: a start already under way answers "already", and a
         coach built while Debrief began closing, or after Stop was pressed, is stopped again at once."""
@@ -1895,21 +1900,21 @@ class DebriefServer(ThreadingHTTPServer):
             old = (self.coach, self.coach_hotkey, self.coach_voice)
             self.coach = self.coach_hotkey = self.coach_voice = None
         try:
-            return self._start_coach(livecoach, old, gen)
+            return self._start_coach(livecoach, old, gen, source_factory, mode, log_header)
         finally:
             with self.coach_lock:
                 self.coach_starting = False
 
-    def _start_coach(self, livecoach, old, gen) -> dict:
+    def _start_coach(self, livecoach, old, gen, source_factory=None, mode="live", log_header=None) -> dict:
         self._close_coach_parts(*old)
+        coach2.close_side(self)               # Coach 2.0: a Preview / Measure voice gives the device back
         settings = self.coach_settings()
         settings.muted = False
         r = vc = None
         try:
-            from .. import voice as voice_mod
-            src = self.coach_source_factory() if self.coach_source_factory else livecoach.IrsdkSource(rate_hz=settings.sample_hz)
-            vc = self.coach_voice_factory(settings) if self.coach_voice_factory else \
-                voice_mod.make_voice(volume=settings.volume, rate=settings.rate, log=app.say)
+            src = (source_factory() if source_factory else self.coach_source_factory() if self.coach_source_factory
+                   else livecoach.IrsdkSource(rate_hz=settings.sample_hz))
+            vc = coach2.make_voice(self, settings)
             folder, index_of = None, None
             try:
                 cfg = app.load_settings()
@@ -1923,7 +1928,8 @@ class DebriefServer(ThreadingHTTPServer):
             given = carsetup.coach_reference(self, settings)     # 2.15: a teammate's lap, when he chose it
             r = livecoach.LiveRunner(src, vc, settings=settings, telemetry_dir=folder, weak_for=self.coach_weak_for,
                                      log=app.say, reference_index=index_of, focus_for=self.coach_focus_for,
-                                     reference=given, keep_given=given is not None)
+                                     reference=given, keep_given=given is not None, log_dir=coach2.logs_dir(),
+                                     mode=mode, log_header=log_header)
             r.start()
         except Exception:  # noqa: BLE001
             app.say("ERROR starting the coach:\n" + traceback.format_exc())
@@ -1941,7 +1947,7 @@ class DebriefServer(ThreadingHTTPServer):
             return {"ok": False, "error": "Debrief is closing." if closing else "The coach was stopped while it was starting."}
         hk = None
         try:   # Windows only; elsewhere, or if another program has the key, the mute button still works
-            hk = livecoach.Hotkey(settings.hotkey, r.toggle, log=app.say)
+            hk = coach2.hotkeys(self, settings, r)      # mute, repeat (2.17), quiet for a minute (2.17)
             hk.start(timeout=2.0)
         except Exception:  # noqa: BLE001
             app.say("ERROR starting the coach's mute key:\n" + traceback.format_exc())
@@ -1952,7 +1958,8 @@ class DebriefServer(ThreadingHTTPServer):
         if hk is not None:      # stopped while the key was starting
             self._close_coach_parts(None, hk, None)
         self._start_wheel()
-        app.say("Coach started.")
+        coach2.start_wheel(self)              # Coach 2.0: the wheel button for "Repeat that"
+        app.say("Coach started." if mode == "live" else "Coach rehearsal started.")
         return {"ok": True}
 
     @staticmethod
@@ -1987,6 +1994,7 @@ class DebriefServer(ThreadingHTTPServer):
             tv, self.test_voice = self.test_voice, None
         done = self._close_coach_parts(r, hk, None, timeout)
         self._stop_wheel()
+        coach2.on_coach_stop(self)
         if r is not None:
             try:
                 self.coach_last = r.status()
@@ -2035,6 +2043,7 @@ class DebriefServer(ThreadingHTTPServer):
         with self.coach_lock:
             st["test_voice"] = dict(self.test_state) if self.test_state else None
         carsetup.coach_extra(self, st)      # 2.15: coaching against a teammate's lap
+        coach2.extra(self, st)              # Coach 2.0: keys, measure, preview, rehearsal, wheel repeat
         return _jsonable(st)
 
     def coach_test_voice(self) -> dict:
@@ -2069,9 +2078,7 @@ class DebriefServer(ThreadingHTTPServer):
                 if self.test_gen == gen:
                     self.test_state = {"state": state, "text": text, "reason": reason, "id": gen}
         try:
-            from .. import voice as voice_mod
-            v = self.coach_voice_factory(settings) if self.coach_voice_factory else \
-                voice_mod.make_voice(volume=settings.volume, rate=settings.rate, log=app.say)
+            v = coach2.make_voice(self, settings)
             wait = getattr(v, "wait_ready", None)
             if callable(wait):
                 wait(5.0)
@@ -2344,6 +2351,8 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 app.say("ERROR in " + r + ":\n" + traceback.format_exc())
                 return self._json({"ok": False, "error": friendly(e)}, 500)
+        if r in coach2.GET_ROUTES:      # Coach 2.0
+            return self._carsetup_call(lambda: coach2.get(self, r, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}), r, get=True)
         if r in carsetup.GET_ROUTES:    # 2.15 Car and setup
             return self._carsetup_call(lambda: carsetup.get(self, r, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}), r, get=True)
         return self._nf()
@@ -2903,6 +2912,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._post_discord_stage()
         if r == "api/setuplab/check-file":
             return self._post_setuplab_check_file()
+        if r == coach2.UPLOAD_ROUTE:        # Coach 2.0: a voice pack .zip
+            return self._carsetup_call(lambda: coach2.upload(self), r)
         if r == carsetup.UPLOAD_ROUTE:      # 2.15: a teammate's .ibt
             return self._carsetup_call(lambda: carsetup.upload(self), r)
         try:  # read the body first (even for ping/bye) so a kept-alive connection stays in step
@@ -2976,6 +2987,8 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 app.say("ERROR in " + r + ":\n" + traceback.format_exc())
                 return self._json({"ok": False, "error": friendly(e)}, 500)
+        if r in coach2.POST_ROUTES:         # Coach 2.0
+            return self._carsetup_call(lambda: coach2.post(self, r, body), r)
         if r in carsetup.POST_ROUTES:       # 2.15 Car and setup
             return self._carsetup_call(lambda: carsetup.post(self, r, body), r)
         if r == "api/settings":

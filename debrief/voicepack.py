@@ -63,8 +63,10 @@ XFADE_MS = 8               # crossfade at a join
 JOIN_MS = 90               # default extra pause between a lead clip and the tail after it
 
 MAX_TURN = 25
-MAX_NUM = 100              # "Good, 84": brake % 0..100
-MAX_KMH = 20               # "more speed, 7 down": 1..20 km/h
+MIN_NUM = 20               # "Good, 84": brake % 20..100 (a pass under 20% is a lift, not braking: Windows
+MAX_NUM = 100              # speech says those few)
+MIN_KMH = 4                # "more speed, 7 down": 4..20 km/h (the coach says it from Settings.slower_kmh, 4)
+MAX_KMH = 20
 MAX_TENTHS = 20            # lap deltas: a tenth .. 2.0 seconds
 
 
@@ -145,7 +147,7 @@ def lines() -> list:
     for n in range(1, MAX_TURN + 1):
         add("A", f"Brake marker, turn {number_words(n)}.", [(f"brake_marker_turn_{n}", "whole")])
     tails = [(_slug(t), t) for t in TAILS] + [(f"more_speed_{k}_down", f"more speed, {number_words(k)} down")
-                                             for k in range(1, MAX_KMH + 1)]
+                                             for k in range(MIN_KMH, MAX_KMH + 1)]
     for i, (key, words) in enumerate(tails):
         turn = i % MAX_TURN + 1
         clips = ([(f"turn_{turn}", "lead")] if i < MAX_TURN else []) + [(key, "tail")]
@@ -156,7 +158,7 @@ def lines() -> list:
         add("D", f"New best, up {amount_words(k)}.", ([("new_best_lead", "lead")] if k == 1 else [])
             + [(f"up_{amount_key(k)}", "tail")])
     add("E", "Good, eighty-four.", [("good_lead", "lead")])
-    for n in range(0, MAX_NUM + 1):          # numbers on their own: "Good, seven" runs together with no pause to cut
+    for n in range(MIN_NUM, MAX_NUM + 1):    # numbers on their own: "Good, seven" runs together with no pause to cut
         w = number_words(n)
         add("E", f"{w[:1].upper()}{w[1:]}.", [(f"num_{n}", "whole")])
     for w in WHOLES:
@@ -200,7 +202,7 @@ def _tail(text: str):
     if t in _TAIL_KEYS:
         return _TAIL_KEYS[t]
     m = re.fullmatch(r"more speed,\s*(\d{1,3}) down", t)
-    if m and 1 <= int(m.group(1)) <= MAX_KMH:
+    if m and MIN_KMH <= int(m.group(1)) <= MAX_KMH:
         return f"more_speed_{int(m.group(1))}_down"
     return None
 
@@ -236,7 +238,7 @@ def compose(text) -> list | None:
     m = re.fullmatch(r"good,\s*(\d{1,3})", low)
     if m:
         n = int(m.group(1))
-        return ["good_lead", f"num_{n}"] if 0 <= n <= MAX_NUM else None
+        return ["good_lead", f"num_{n}"] if MIN_NUM <= n <= MAX_NUM else None
     tail = _tail(t)                     # a tip on its own ("Throttle earlier")
     return [tail] if tail and "," not in t else None
 
@@ -1016,6 +1018,22 @@ def preview(pack: VoicePack, cues=PREVIEW_CUES, gap_s: float = 0.7):
         if keys:
             parts += [pack.render_samples(keys), np.zeros(int(gap_s * pack.rate))]
     return np.concatenate(parts) if parts else np.zeros(0)
+
+
+def preview_samples(pack: VoicePack):
+    """(float samples, rate) for the Preview button: the pack's own preview.wav when it has one (a recorded pack
+    may), else the same sample tape made from its clips (the bundled packs: identical sound, no extra file)."""
+    p = pack.manifest.get("preview")
+    if p:
+        f = _inside(pack.folder, p)
+        try:
+            if f is not None and f.is_file() and f.stat().st_size <= MAX_PACK_BYTES:
+                x, r, _info = read_wav(f)
+                if x.size:
+                    return x, r
+        except (OSError, ValueError):
+            pass
+    return preview(pack), pack.rate
 
 
 def pack_bytes(folder) -> int:

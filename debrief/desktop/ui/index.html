@@ -364,9 +364,13 @@
         <div class="row">
           <button type="button" class="btn primary cobig" id="coStart">Start coaching</button>
           <button type="button" class="btn" id="coMute" aria-pressed="false" disabled>Mute <kbd>Ctrl+Shift+M</kbd></button>
+          <button type="button" class="btn" id="coRepeat" disabled>Repeat that <kbd>Ctrl+Shift+R</kbd></button>
+          <button type="button" class="btn" id="coQuiet1" disabled>Mute for 1 minute <kbd>Ctrl+Shift+N</kbd></button>
           <span class="msg" id="coMsg" role="status"></span>
         </div>
+        <div class="progress small" id="coRhProg" hidden><div class="bar" id="coRhBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Rehearsal"><i></i></div><span class="pct num" id="coRhPct"></span></div>
         <p class="note" id="coQuiet" hidden></p>
+        <p class="note" id="coVoiceLine"></p>
         <p class="note warn">Keep Debrief open while you drive. Unproven in the car until you've driven with it.</p>
       </div>
       <div class="cogrid">
@@ -393,6 +397,49 @@
         <div class="phead"><h3>Last cues</h3><span class="note" id="coSpokenNote"></span></div>
         <ul class="cospoken" id="coSpoken"></ul>
       </div>
+      <div class="panel" id="coRehearse">
+        <div class="phead"><h3>Rehearse with a session</h3></div>
+        <p class="note">Plays one of your Practice sessions through the coach at real speed, as if you were driving it: the same voice, sound device and rules. Hear what it would say before you go on track. Not while you coach live.</p>
+        <div class="row corh">
+          <label class="field" for="coRhPick"><span>Session</span><select id="coRhPick"><option value="">Loading...</option></select></label>
+          <button type="button" class="btn" id="coRhGo">Rehearse</button>
+          <span class="msg" id="coRhMsg" role="status"></span>
+        </div>
+      </div>
+      <details class="panel prepmore" id="coVoice">
+        <summary><h3>Voice and sound</h3><span class="note">Which voice, which headset, iRacing's volume, audio delay</span></summary>
+        <div class="gridf covoice">
+          <div class="grid2">
+            <label class="field" for="coPack"><span>Voice</span><select id="coPack"></select></label>
+            <label class="field" for="coDev"><span>Play through</span><select id="coDev"></select></label>
+          </div>
+          <p class="note" id="coPackNote"></p>
+          <p class="note" id="coDevNote">Pick the headset you use in iRacing. Windows default follows whatever Windows plays through.</p>
+          <label class="check" for="coDuck"><input id="coDuck" type="checkbox"><span>Lower iRacing while the coach talks</span></label>
+          <label class="field" for="coDuckLvl"><span>iRacing's volume while it talks <b class="num" id="coDuckV"></b></span><input id="coDuckLvl" type="range" min="10" max="80" step="5"></label>
+          <p class="note">Off at first. New in this version: try it in a practice session first. iRacing's volume comes back after every cue, and when the coach stops.</p>
+          <div class="row"><button type="button" class="btn" id="coVoiceSave">Save</button><button type="button" class="btn" id="coPreview">Preview</button><span class="msg" id="coVoiceMsg" role="status"></span></div>
+          <h4>Audio delay</h4>
+          <p>Measured: <b class="num" id="coLat">not yet</b></p>
+          <p class="note">How long Windows takes to start a sound on the chosen device. The coach starts each cue that much earlier. A Bluetooth headset adds delay that Windows can't see.</p>
+          <div class="row"><button type="button" class="btn" id="coMeasure">Measure audio delay</button><span class="msg" id="coMeasureMsg" role="status"></span></div>
+          <h4>Add your own voice pack</h4>
+          <p class="note">A Debrief voice pack is a folder (or a .zip of one) with manifest.json and .wav clips. Debrief checks it before adding it: only sound clips, nothing that runs.</p>
+          <div class="row"><input type="file" id="coPackZip" accept=".zip" class="sronly"><button type="button" class="btn" id="coPackZipBtn">Choose a .zip</button></div>
+          <div class="row"><label class="field grow" for="coPackDir"><span>Or a folder on this PC</span><input id="coPackDir" type="text" spellcheck="false" placeholder="C:\Users\you\Downloads\myvoice"></label><button type="button" class="btn" id="coPackDirBtn">Add folder</button></div>
+          <p class="msg" id="coPackMsg" role="status"></p>
+          <ul class="pvlist bad" id="coPackProbs" hidden></ul>
+        </div>
+      </details>
+      <details class="panel prepmore" id="coLogs">
+        <summary><h3>Coach log</h3><span class="note">What it said, what it held back and why</span></summary>
+        <p class="note">Every cue the coach makes, says, drops or cuts off, with the lap, the spot on track and the numbers behind it. The last 30 sessions are kept. Only the car and track, nothing about you.</p>
+        <div class="tblwrap"><table class="maptbl" id="coLogTbl"><thead><tr><th>Date</th><th>Car and track</th><th>Laps</th><th>Said</th><th>Dropped</th><th></th></tr></thead><tbody id="coLogList"></tbody></table></div>
+        <div id="coLogView" hidden>
+          <div class="phead"><h4 id="coLogTitle"></h4><button type="button" class="btn" id="coLogCopy">Copy for Claude</button><span class="msg" id="coLogMsg" role="status"></span></div>
+          <div class="tblwrap colog"><table class="maptbl"><thead><tr><th>Lap</th><th>Where</th><th>km/h</th><th>What</th><th>Cue</th><th>Why</th></tr></thead><tbody id="coLogRows"></tbody></table></div>
+        </div>
+      </details>
       <details class="panel prepmore" id="coSet">
         <summary><h3>Settings</h3><span class="note">What it says, how loud, races, wheel button</span></summary>
         <form class="gridf" id="fCoach" autocomplete="off">
@@ -407,6 +454,7 @@
             <label class="field" for="coVol"><span>Volume <b class="num" id="coVolV"></b></span><input id="coVol" type="range" min="0" max="100" step="5"></label>
             <label class="field" for="coRate"><span>Speaking speed <b class="num" id="coRateV"></b></span><input id="coRate" type="range" min="-10" max="10" step="1"></label>
           </div>
+          <p class="note">Speaking speed only changes Windows speech, used for the rare phrase a voice pack can't say.</p>
           <div class="row"><button type="submit" class="btn">Save</button><button type="button" class="btn" id="coTest">Test voice</button><span class="msg" id="coSetMsg" role="status"></span></div>
         </form>
         <div class="cowheel" id="coWheel">
@@ -414,6 +462,12 @@
           <p class="note">Pick a button on your wheel that mutes and unmutes the coach while it is on. Press Learn, then press the button within 15 seconds.</p>
           <p id="coWheelText" role="status">No wheel button chosen yet.</p>
           <div class="row"><button type="button" class="btn" id="coWheelLearn">Learn</button><button type="button" class="btn" id="coWheelClear">Clear</button><span class="msg" id="coWheelMsg" role="status"></span></div>
+        </div>
+        <div class="cowheel" id="coWheelR">
+          <h4>Repeat from a wheel button</h4>
+          <p class="note">Pick a button that says the last cue again. Press Learn, then press the button within 15 seconds.</p>
+          <p id="coWheelRText" role="status">No wheel button chosen yet.</p>
+          <div class="row"><button type="button" class="btn" id="coWheelRLearn">Learn</button><button type="button" class="btn" id="coWheelRClear">Clear</button><span class="msg" id="coWheelRMsg" role="status"></span></div>
         </div>
       </details>
     </div>
@@ -657,7 +711,7 @@
 </dialog>
 <dialog id="dlgHelp" aria-labelledby="helpTitle">
   <div class="phead"><h3 id="helpTitle">Help</h3><button type="button" class="btn ghost" id="helpClose">Close</button></div>
-  <div class="row" role="group" aria-label="Help pages"><button type="button" class="btn" data-help="tour">Tour</button><button type="button" class="btn" data-help="words">What the words mean</button><button type="button" class="btn" data-help="keys">Keyboard keys</button><button type="button" class="btn" id="helpFirstRun">Setup checklist</button></div>
+  <div class="row" role="group" aria-label="Help pages"><button type="button" class="btn" data-help="tour">Tour</button><button type="button" class="btn" data-help="words">What the words mean</button><button type="button" class="btn" data-help="keys">Keyboard keys</button><button type="button" class="btn" data-help="credits">Credits</button><button type="button" class="btn" id="helpFirstRun">Setup checklist</button></div>
   <div id="helpBody"></div>
 </dialog>
 <dialog id="dlgCard" aria-labelledby="cardTitle">

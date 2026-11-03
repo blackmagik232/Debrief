@@ -576,3 +576,21 @@ kbd{font-family:var(--mono);font-size:11.5px;border:1px solid var(--axis);border
 #slBalance.busy,#slPress.busy{opacity:.7}
 @media (max-width:760px){.baltbl{min-width:0}.bal{white-space:normal}}
 .teamcards .cccard{border-left-color:var(--b)}
+
+/* ---------- Coach 2.0: voice and sound, rehearsal, coach log */
+.covoice{display:grid;gap:12px}
+.covoice h4{margin:8px 0 0}
+#coDuckLvl{width:100%;max-width:460px;accent-color:var(--me)}
+.covoice .field>span b{font-weight:500;color:var(--fg2);margin-left:4px}
+.field.grow{flex:1 1 260px;min-width:0;max-width:520px}
+.corh{align-items:flex-end}
+.corh .field{flex:1 1 300px;min-width:0}
+.corh select{width:100%}
+#coRhProg .pct{font-size:12.5px;color:var(--muted);min-width:120px}
+.colog{max-height:420px;overflow:auto}
+#coLogRows td:nth-child(5){font-weight:500}
+#coLogRows td:nth-child(6){color:var(--fg2)}
+#coLogRows tr.ev-spoken td:nth-child(4){color:var(--good)}
+#coLogRows tr.ev-dropped td:nth-child(4),#coLogRows tr.ev-cancelled td:nth-child(4){color:var(--lose)}
+#coLogView .phead{margin-top:14px}
+.pvlist.bad li{color:var(--lose)}

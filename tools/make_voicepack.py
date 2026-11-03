@@ -11,13 +11,14 @@ Model files: --model-dir, or the KOKORO_DIR environment variable (a folder holdi
 
 Every sentence in voicepack.lines() is spoken once, whole, with its punctuation (so the intonation is natural),
 then cut at the comma where a pack joins parts, trimmed, levelled to the same loudness and written as 16-bit mono
-WAV. The same inputs always give the same pack. Also written: preview.wav (ten typical cues, for listening) and
-coverage.txt (which of the coach's phrases the pack can say).
+WAV. The same inputs always give the same pack. Also written: coverage.txt (which of the coach's phrases the pack can
+say). No preview.wav: Debrief plays the same sample tape from the clips themselves (voicepack.preview_samples).
 """
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -163,7 +164,7 @@ def parts_text(text: str, role: str) -> str:
     return head + "," if role == "lead" else tail.strip()
 
 
-def build(tts, voice, lang, pack_id, name, out, rate=22050, speed=None, credit=None, log=print) -> dict:
+def build(tts, voice, lang, pack_id, name, out, rate=16000, speed=None, credit=None, log=print) -> dict:
     t0 = time.time()
     log(f"{name}: voice {voice}, {lang}, into {out}")
     if speed is None:
@@ -219,19 +220,15 @@ def build(tts, voice, lang, pack_id, name, out, rate=22050, speed=None, credit=N
     meta = {"id": pack_id, "name": name, "voice": voice, "lang": lang, "speed": speed,
             "voice_credit": credit or f"Kokoro voice {voice}", "license": LICENSE,
             "loudness_db": vp.TARGET_DB, "generator": "tools/make_voicepack.py"}
+    for old in Path(out).glob("*.wav"):                # a rebuild leaves no clip from an older scheme behind
+        old.unlink()
     vp.write_pack(out, meta, clips, rate, join)
     pack = vp.load_pack(out, strict=True)
-    prev = vp.preview(pack)
-    vp.write_pack(out, meta, clips, rate, join, preview=prev)
-    pack = vp.load_pack(out, strict=True)
     missing = sorted(set(vp.all_keys()) - set(pack.clips))
-    cov = vp.coverage(coach_vocabulary(), pack)
+    cov, by_design = coverage_of(pack)
     size = vp.pack_bytes(out)
     report = [f"{name} ({pack_id}): {len(pack.clips)} clips, {size / 1e6:.2f} MB, {rate} Hz, speed {speed:.2f}, "
-              f"comma pause {join:.0f} ms",
-              f"Coach phrases covered: {len(cov['covered'])} of {len(cov['covered']) + len(cov['missing'])} "
-              f"({100 * cov['share']:.1f}%)"]
-    report += [f"  not covered: {p}" for p in cov["missing"]]
+              f"comma pause {join:.0f} ms"] + coverage_lines(cov, by_design)
     report += [f"  clip missing: {k}" for k in missing] + [f"  problem: {p}" for p in problems]
     qa = check_takes(takes)
     report.append(f"Takes to listen to: {len(qa)}")
@@ -242,6 +239,44 @@ def build(tts, voice, lang, pack_id, name, out, rate=22050, speed=None, credit=N
     log(f"  done in {time.time() - t0:.0f} s")
     return {"clips": len(pack.clips), "bytes": size, "coverage": cov["share"], "missing": missing,
             "problems": problems, "qa": qa}
+
+
+def by_design(phrase: str) -> bool:
+    """Phrases left to Windows speech on purpose: "Good, 0" .. "Good, 19" (a peak brake that low is a lift, not
+    braking; the practice plan practically never says it, and leaving those numbers out keeps the packs smaller)."""
+    import re
+    m = re.fullmatch(r"Good, (\d+)", phrase)
+    return bool(m) and int(m.group(1)) < vp.MIN_NUM
+
+
+def coverage_of(pack):
+    voc = coach_vocabulary()
+    cov = vp.coverage([p for p in voc if not by_design(p)], pack)
+    return cov, [p for p in voc if by_design(p)]
+
+
+def coverage_lines(cov, design) -> list:
+    out = [f"Coach phrases covered: {len(cov['covered'])} of {len(cov['covered']) + len(cov['missing'])} "
+           f"({100 * cov['share']:.1f}%)"]
+    if design:
+        out.append(f"Left to Windows speech by design: {design[0]} .. {design[-1]} ({len(design)} phrases)")
+    return out + [f"  not covered: {p}" for p in cov["missing"]]
+
+
+def report_only(folder) -> int:
+    """--report: rewrite the size and coverage lines of an existing pack's coverage.txt (no Kokoro needed), keeping
+    its notes about takes to listen to."""
+    pack = vp.load_pack(folder, strict=True)
+    cov, design = coverage_of(pack)
+    f = Path(folder) / "coverage.txt"
+    old = f.read_text(encoding="utf-8").splitlines() if f.exists() else []
+    head = old[0] if old else f"{pack.name} ({pack.id})"
+    head = re.sub(r"\d+ clips, [\d.]+ MB", f"{len(pack.clips)} clips, {vp.pack_bytes(folder) / 1e6:.2f} MB", head)
+    rest = old[old.index(next(x for x in old if x.startswith("Takes to listen to"))):] if any(
+        x.startswith("Takes to listen to") for x in old) else []
+    f.write_text("\n".join([head] + coverage_lines(cov, design) + rest) + "\n", encoding="utf-8")
+    print(f"{pack.id}: {len(cov['covered'])}/{len(cov['covered']) + len(cov['missing'])} covered")
+    return 0 if not cov["missing"] else 1
 
 
 def coach_vocabulary() -> list:
@@ -255,7 +290,7 @@ def coach_vocabulary() -> list:
         out += [livecoach.speed_text(name, k) for k in range(4, 16)]
         out += [f"{name}: {v}" for v in cornercoach.VOICE.values()]
         out += [f"{name}: hold it in", f"{name}: same every lap"]
-    for k in range(1, 10):
+    for k in range(1, 21):                      # lap deltas up to Settings.lap_delta_max_s (2 s)
         out += [f"Down {livecoach.delta_words(k / 10)}", f"New best, up {livecoach.delta_words(k / 10)}"]
     out += ["New best"]
     for m in ("peak_brake", "brake_point", "trail", "coast", "throttle_point", "min_speed", "corner_time"):
@@ -272,10 +307,13 @@ def main(argv=None) -> int:
     ap.add_argument("--name", help="name shown in Debrief")
     ap.add_argument("--credit", help="voice credit shown in Debrief")
     ap.add_argument("--out", help="pack folder (default debrief/data/voicepacks/<id>)")
-    ap.add_argument("--rate", type=int, default=22050, choices=vp.RATES)
+    ap.add_argument("--rate", type=int, default=16000, choices=vp.RATES)
     ap.add_argument("--speed", type=float, help="Kokoro speed (default: picked from words a second)")
     ap.add_argument("--model-dir", default=os.environ.get("KOKORO_DIR"))
+    ap.add_argument("--report", help="only rewrite coverage.txt of this existing pack folder (no Kokoro needed)")
     a = ap.parse_args(argv)
+    if a.report:
+        return report_only(a.report)
     if not a.model_dir:
         ap.error("give --model-dir (or set KOKORO_DIR) to the folder with kokoro.onnx and voices.bin")
     md = Path(a.model_dir)

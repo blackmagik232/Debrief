@@ -89,23 +89,42 @@ check(f is not None and not f["driven_later"], "interleaved runs: no driving-ord
 no_long_dash(rep, "report")
 json.dumps(rep)
 
-# the quick pressure driven last: caution
+# the quick pressure driven last, in one go after the other: not compared at all (getting quicker as he drives
+# can't be told apart from the pressure)
 rng = np.random.default_rng(2)
 recs2 = [record(176, 22.0, 98.4, rng) for _ in range(4)] + [record(168, 22.0, 98.0, rng) for _ in range(4)]
 b2 = pl.learn({"files": recs2}, "mclaren570sgt4", "zolder gp")["bands"][0]
-check(b2["finding"] and b2["finding"]["driven_later"] and "getting quicker" in b2["text"],
-      "the quick pressure was driven last: says it may be him getting quicker")
+check(b2["finding"] is None and "one after the other" in b2["text"] and "back and forth" in b2["text"]
+      and b2["test"]["tested"] is False, f"one go each, one after the other: not compared ({b2['text']})")
+# one pressure per day: the day can't be told apart from the pressure
+rng = np.random.default_rng(4)
+recs3 = [record(176, 22.0, 98.4, rng) for _ in range(4)] + [record(168, 22.0, 98.0, rng) for _ in range(4)]
+for i, x in enumerate(recs3):
+    x["sort"] = 1_790_000_000 + (0 if i < 4 else 2 * 86400) + i * 3600
+b3 = pl.learn({"files": recs3}, "mclaren570sgt4", "zolder gp")["bands"][0]
+check(b3["finding"] is None and "different days" in b3["text"] and "the day can't be separated from the pressure"
+      in b3["text"], f"one pressure per day: says the day can't be separated ({b3['text']})")
+# blocks: runs straight after each other on one pressure on one day count once
+bl_ = pl.blocks([dict(cold_key="A", median=1.0, sort=10, file="a"), dict(cold_key="A", median=3.0, sort=20, file="b"),
+                 dict(cold_key="B", median=2.0, sort=30, file="c"), dict(cold_key="A", median=5.0, sort=40, file="d")])
+check([(b["label"], len(b["runs"]), b["median"]) for b in bl_] == [("A", 2, 2.0), ("B", 1, 2.0), ("A", 1, 5.0)],
+      f"blocks: consecutive runs on one pressure count once ({[(b['label'], len(b['runs'])) for b in bl_]})")
+check(not pl.back_and_forth(bl_)[0], "ABA: B only once, not compared")
+check(pl.back_and_forth(pl.blocks([dict(cold_key=k, median=1.0, sort=i, file=str(i)) for i, k in enumerate("ABAB")]))[0],
+      "ABAB: compared")
 
 # ---------------------------------------------------------------- 2. not enough runs
 rng = np.random.default_rng(3)
 few = [record(168, 22.0, 98.0, rng), record(176, 22.5, 98.6, rng)]
 r = pl.learn(few, "mclaren570sgt4", "zolder gp")
 b = r["bands"][0]
-check(b["finding"] is None and "no gap could pass" in b["text"], f"1 + 1 runs: lists, no claim ({b['text']})")
+check(b["finding"] is None and "Can't compare them yet" in b["text"] and "168 kPa cold: 1 run," in b["text"],
+      f"1 + 1 runs: lists, no claim ({b['text']})")
 check("Not enough runs" in " ".join(r["text"]), "says not enough runs")
-three = [record(168, 22.0, 98.0, rng) for _ in range(3)] + [record(176, 22.0, 99.0, rng) for _ in range(3)]
+three = [record(168 if i % 2 == 0 else 176, 22.0, 98.0 if i % 2 == 0 else 99.0, rng) for i in range(6)]
 b = pl.learn(three, "mclaren570sgt4", "zolder gp")["bands"][0]
-check(b["finding"] is None and b["test"]["p_min"] >= 0.05, f"3 + 3 runs can never pass a 5% shuffle test ({b['test']})")
+check(b["finding"] is None and b["test"]["p_min"] >= 0.05 and "about 4 goes on each pressure" in b["text"],
+      f"3 + 3 runs back and forth can never pass a 5% shuffle test ({b['test']}, {b['text']})")
 same = [record(176, 22.0, 98.0, rng) for _ in range(3)]
 b = pl.learn(same, "mclaren570sgt4", "zolder gp")["bands"][0]
 check(b["finding"] is None and "all on 176 kPa cold" in b["text"], "all on one pressure: says so")
@@ -159,6 +178,31 @@ for k in range(100):
 print(f"     three-pressure no-effect sessions: {fp}/100 = {fp / 100:.1%}")
 check(fp / 100 <= 0.05, f"best of three pressures: false-positive rate {fp / 100:.1%} (target 5%)")
 
+# a day effect with one pressure per day (2 or 3 days, 4 runs a day, the day worth 0.25 s): the old run-level
+# shuffle called a "fastest pressure" in about 6 sessions in 10; now never more than 1 in 20
+fp = 0
+for k in range(200):
+    rr = []
+    days = int(rng.integers(2, 4))
+    for d in range(days):
+        de = 0.25 * rng.standard_normal()
+        for j in range(4):
+            x = record((164, 170, 176)[d], 22.0, 98.0 + de, rng, noise=0.1)
+            x["sort"] = 1_790_000_000 + d * 86400 + j * 3600
+            rr.append(x)
+    fp += int(any(bb["finding"] for bb in pl.learn(rr, "mclaren570sgt4", "zolder gp")["bands"]))
+print(f"     one pressure per day, day effect 0.25 s: {fp}/200 = {fp / 200:.1%}")
+check(fp / 200 <= 0.05, f"day effect: false-positive rate {fp / 200:.1%} (target 5%)")
+# getting quicker (0.04 s a run), A then B
+fp = 0
+for k in range(200):
+    rr = [record(168 if i < 4 else 176, 22.0, 98.0 - 0.04 * i, rng, noise=0.1) for i in range(8)]
+    for i, x in enumerate(rr):
+        x["sort"] = 1_790_000_000 + i * 3600
+    fp += int(any(bb["finding"] for bb in pl.learn(rr, "mclaren570sgt4", "zolder gp")["bands"]))
+print(f"     A then B, getting quicker: {fp}/200 = {fp / 200:.1%}")
+check(fp / 200 <= 0.05, f"getting quicker: false-positive rate {fp / 200:.1%} (target 5%)")
+
 # ---------------------------------------------------------------- 4. hot pressure prediction
 rng = np.random.default_rng(11)
 
@@ -187,6 +231,10 @@ narrow = pl.learn(runs_for_pred(5, temps=[22.0, 22.5, 23.0, 22.2, 22.8]), "mclar
 check(narrow["prediction"] and not narrow["prediction"]["uses_temp"] and "isn't learned yet" in narrow["prediction_text"],
       "runs at one temperature: no temperature effect claimed")
 check(pl.predict_hot(None, 1, 2, 3) is None, "no model: no prediction")
+check(p["cold_outside"] == [], "cold pressures inside the runs' own: no warning")
+lo_f, hi_f = m["cold_range"]["front"]
+p2 = pl.predict_hot(m, hi_f + 12, 168, 25.0)
+check(p2["cold_outside"] == ["front"], f"a cold front pressure outside the runs' own range is flagged ({m['cold_range']})")
 # per car when the track has too few
 other = runs_for_pred(6)
 for x in other:

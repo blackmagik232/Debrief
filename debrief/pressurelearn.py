@@ -12,10 +12,14 @@ clean, not the out lap or the first flying lap, not in traffic, not a slow outli
 
 Honest statistics:
   - "your fastest runs were on X cold" is said only for one car + track, in one 5 °C band, with at least
-    MIN_BAND_RUNS runs on at least two different cold pressures, when a shuffle test across runs passes: the cold
-    pressures are shuffled between runs (laps stay with their run), the fastest group is picked again in every
-    shuffle (so picking the best one is part of the null), and the real gap must beat 95 % of the shuffles and be
-    at least MIN_GAP_S. Otherwise the band just lists what was run.
+    MIN_BAND_RUNS runs on at least two different cold pressures, when a shuffle test passes. The unit shuffled is
+    the session, not the run: runs of one pressure driven one after the other on the same day share that day's track,
+    rubber and form, so they count once (a "block": consecutive sessions on one pressure on one day). Each pressure
+    needs at least MIN_BLOCKS blocks and the pressures must be driven back and forth (not one block each, one after
+    the other); otherwise nothing is tested and the band says the day can't be separated from the pressure. The cold
+    pressures are shuffled between blocks, the fastest group is picked again in every shuffle (so picking the best
+    one is part of the null), and the real gap must beat 95 % of the shuffles and be at least MIN_GAP_S. Otherwise
+    the band just lists what was run.
   - Pace is never compared across tracks.
   - The hot-pressure prediction (per car + track, else per car) is a straight line per axle,
     hot - cold = a + c x track temperature (c only when the runs span MIN_TEMP_SPREAD °C), from at least
@@ -26,6 +30,7 @@ Nothing here raises for bad input; everything is JSON-ready.
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from itertools import combinations
 
 import numpy as np
@@ -41,6 +46,8 @@ N_SHUFFLE = 5000            # random shuffles when there are too many to list (f
 SEED = 215
 MIN_PRED_RUNS = 4           # runs with hot pressures before a prediction is made
 MIN_TEMP_SPREAD = 3.0       # °C of spread before the temperature term is learned
+MIN_BLOCKS = 2              # separate blocks (sessions, back and forth) each pressure needs before it is compared
+COLD_MARGIN = 2.0           # kPa: a cold pressure further than this outside the runs' own is a stretch
 HOT_POS = setuplab.HOT_POS  # hot pressures from this lap of a stint on
 
 PARAMS = {k: v for k, v in globals().items() if k.isupper() and isinstance(v, (int, float)) and not isinstance(v, bool)}
@@ -194,6 +201,53 @@ def shuffle_test(meds: list, labels: list) -> dict:
     return {"gap": gap, "best": best, "p": ge / max(1, tot), "n": tot, "p_min": p_min}
 
 
+def _day(r: dict) -> str:
+    try:
+        s = float(r.get("sort") or 0)
+        if s > 0:
+            return datetime.fromtimestamp(s).date().isoformat()
+    except (TypeError, ValueError, OverflowError, OSError):
+        pass
+    return str(r.get("file") or "")
+
+
+def blocks(rs: list) -> list:
+    """Runs in time order grouped into blocks: consecutive runs on the same cold pressure on the same day (one
+    session, or sessions straight after each other). -> [{"label", "median" (mean of its runs), "day", "runs"}]."""
+    out = []
+    for r in sorted(rs, key=lambda x: (x.get("sort") or 0, x.get("file") or "", x.get("stint") or 0)):
+        d = _day(r)
+        if out and out[-1]["label"] == r["cold_key"] and out[-1]["day"] == d:
+            out[-1]["runs"].append(r)
+        else:
+            out.append({"label": r["cold_key"], "day": d, "runs": [r]})
+    for b in out:
+        b["median"] = float(np.mean([r["median"] for r in b["runs"]]))
+    return out
+
+
+def back_and_forth(bl: list) -> tuple:
+    """(ok, why) for comparing pressures across these blocks: each pressure in MIN_BLOCKS blocks or more, and the
+    pressures not driven one block each after the other."""
+    labels = [b["label"] for b in bl]
+    per = {}
+    for g in labels:
+        per[g] = per.get(g, 0) + 1
+    switches = sum(1 for a, b in zip(labels, labels[1:]) if a != b)
+    if min(per.values()) >= MIN_BLOCKS and switches >= len(per):
+        return True, ""
+    days = {}
+    for b in bl:
+        days.setdefault(b["label"], set()).add(b["day"])
+    sets = list(days.values())
+    apart = all(not (a & c) for i, a in enumerate(sets) for c in sets[i + 1:])
+    if apart:
+        return False, ("each pressure was driven on different days, so the day can't be separated from the pressure: "
+                       "drive both on the same day, back and forth (A, B, A, B), to compare them")
+    return False, ("each pressure was driven in one go, one after the other, so getting quicker as you drive can't "
+                   "be separated from the pressure: drive them back and forth (A, B, A, B) to compare them")
+
+
 def _band_report(rs: list) -> dict:
     lo, hi = _band(rs[0]["temp"])
     rows = [{"when": r["when"], "temp": r["temp"], "cold": cold_text(r["cold_key"]),
@@ -219,11 +273,17 @@ def _band_report(rs: list) -> dict:
         out["text"] = (f"At {out['band']} track: {len(rs)} runs, all on {out['groups'][0]['cold'] if out['groups'] else 'unknown pressures'}"
                        f". Try another cold pressure to learn which is quicker.")
         return out
-    meds = [r["median"] for r in usable]
-    labels = [r["cold_key"] for r in usable]
+    bl = blocks(usable)
+    ok, why_not = back_and_forth(bl)
+    if not ok:
+        out["test"] = {"blocks": len(bl), "runs": len(usable), "tested": False}
+        out["text"] = f"At {out['band']} track: {listing}. Can't compare them yet: {why_not}."
+        return out
+    meds = [b["median"] for b in bl]
+    labels = [b["label"] for b in bl]
     t = shuffle_test(meds, labels)
     out["test"] = {"gap_s": round(t["gap"], 3), "p": round(t["p"], 4), "shuffles": t["n"], "runs": len(usable),
-                   "p_min": round(t["p_min"], 4)}
+                   "blocks": len(bl), "tested": True, "p_min": round(t["p_min"], 4)}
     best = groups[t["best"]]
     hot = out["groups"][0]["hot"] if out["groups"] and out["groups"][0]["cold"] == cold_text(t["best"]) else {}
     if t["p"] < ALPHA and t["gap"] >= MIN_GAP_S:
@@ -235,16 +295,18 @@ def _band_report(rs: list) -> dict:
             hot_txt = (f" (hot about {f_:.0f})" if abs(f_ - r_) < 1.5 else f" (hot about {f_:.0f} front, {r_:.0f} rear)")
         later = all(r["sort"] >= max(o["sort"] for o in usable if o["cold_key"] != t["best"]) for r in best)
         out["finding"] = {"cold": cold_text(t["best"]), "hot": hot, "gap_s": round(t["gap"], 3), "p": round(t["p"], 4),
-                          "runs": len(best), "of": len(usable), "driven_later": bool(later)}
+                          "runs": len(best), "of": len(usable), "blocks": len(bl), "driven_later": bool(later)}
         out["text"] = (f"At {out['band']} track your fastest runs were on {cold_text(t['best'])}{hot_txt}: about "
-                       f"{t['gap']:.1f} s a lap quicker than your other runs ({len(best)} of {len(usable)} runs; "
-                       f"a shuffle test across runs says this is unlikely to be luck).")
+                       f"{t['gap']:.1f} s a lap quicker than your other runs ({len(best)} of {len(usable)} runs, "
+                       f"driven back and forth in {len(bl)} goes; a shuffle test across those goes says this is "
+                       f"unlikely to be luck).")
         if later:
             out["text"] += (" Those runs were also your latest, so part of it may be you getting quicker: "
                             "go back to the other pressure for a run to be sure.")
     else:
         if t["p_min"] >= ALPHA:
-            why = ("with this few runs no gap could pass the shuffle test: about 4 runs on each pressure are needed")
+            why = ("with this few goes no gap could pass the shuffle test: about 4 goes on each pressure, back and "
+                   "forth, are needed")
         elif t["gap"] < MIN_GAP_S:
             why = f"the gap is only {t['gap']:.2f} s"
         else:
@@ -266,8 +328,10 @@ def predict_model(rs: list, basis: str) -> dict | None:
         return None
     temps = [r["temp"] for r in use]
     use_temp = (max(temps) - min(temps)) >= MIN_TEMP_SPREAD
+    cf = [float(np.mean([r["cold"][c] for c in ("LF", "RF")])) for r in use]
+    cr = [float(np.mean([r["cold"][c] for c in ("LR", "RR")])) for r in use]
     out = {"basis": basis, "runs": len(use), "uses_temp": use_temp, "temp_range": [min(temps), max(temps)],
-           "axles": {}, "miss_kpa": None}
+           "cold_range": {"front": [min(cf), max(cf)], "rear": [min(cr), max(cr)]}, "axles": {}, "miss_kpa": None}
     errs = []
     for axle, cs in (("front", ("LF", "RF")), ("rear", ("LR", "RR"))):
         rises = [float(np.mean([r["hot"][c] - r["cold"][c] for c in cs])) for r in use]
@@ -296,6 +360,12 @@ def predict_hot(model: dict | None, cold_front: float, cold_rear: float, track_t
             out[axle] = round(float(cold) + a["a"] + a["c"] * t, 1)
         out["miss_kpa"] = model["miss_kpa"]
         out["outside_range"] = not (model["temp_range"][0] - 2 <= t <= model["temp_range"][1] + 2)
+        cold_out = []
+        for axle, cold in (("front", cold_front), ("rear", cold_rear)):
+            rg = (model.get("cold_range") or {}).get(axle)
+            if rg and not (rg[0] - COLD_MARGIN <= float(cold) <= rg[1] + COLD_MARGIN):
+                cold_out.append(axle)
+        out["cold_outside"] = cold_out
         return out
     except Exception:  # noqa: BLE001
         return None

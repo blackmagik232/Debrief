@@ -88,7 +88,7 @@ def focus(lib, **kw):
 
 # ---------------------------------------------------------------- the catalog
 def test_version():
-    assert __version__ == "2.11.0"
+    assert tuple(int(x) for x in __version__.split(".")) >= (2, 11, 0)
 
 
 def test_catalog_has_every_car_by_class_and_no_placeholder():

@@ -118,7 +118,7 @@ def test_bridge_adds_shell_class_and_keys():
     assert S.with_bridge(b"no head at all").startswith(b"no head at all")
     # the bridge's keys never fire while typing
     assert "closest('input,select,textarea,[contenteditable]')" in S.FRAME_BRIDGE
-    assert "(e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&/^[1-7]$/" in S.FRAME_BRIDGE
+    assert "(e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&/^[1-9]$/" in S.FRAME_BRIDGE
 
 
 # ================================================================ sample review
@@ -292,7 +292,7 @@ def test_sidebar_owns_navigation_keys_and_loading_bar():
         pg.goto(srv().url)
         pg.wait_for_function("() => !document.getElementById('vFrame').hidden")
         names = pg.evaluate("() => [...document.querySelectorAll('.nav .navbtn')].map(b => b.textContent.trim())")
-        assert names == ["Progress", "Season", "Skills", "Goals", "All sessions", "Prepare", "Team", "Settings", "Help"], names
+        assert names == ["Progress", "Season", "Skills", "Goals", "All sessions", "Prepare", "Team", "Setup Lab", "Coach", "Settings", "Help"], names
         wait_nav(pg, "library")
         # the page's own tabs are gone inside the window...
         fr = frame_of(pg)
@@ -311,7 +311,8 @@ def test_sidebar_owns_navigation_keys_and_loading_bar():
         assert fr.evaluate("() => window.__same") == 1, "switching tabs reloaded the page"
         # Ctrl+number, from the window and from inside the page
         for key, nav, sel in (("1", "library", None), ("2", "season", None), ("3", "skills", None), ("4", "goals", "#vGoals"),
-                              ("5", "sessions", "#vSessions"), ("6", "prep", "#vPrep"), ("7", "team", None)):
+                              ("5", "sessions", "#vSessions"), ("6", "prep", "#vPrep"), ("7", "team", None),
+                              ("8", "setuplab", "#vSetupLab"), ("9", "coach", "#vCoach")):
             pg.keyboard.press("Control+" + key)
             wait_nav(pg, nav)
             if sel:
@@ -361,7 +362,7 @@ def test_sidebar_owns_navigation_keys_and_loading_bar():
         assert pg.evaluate(active) == "2026-03-01_test" and nav_label(pg) is None
         pg.click("[data-help=keys]")
         keys = pg.text_content("#helpBody")
-        assert "Ctrl+1 to Ctrl+7" in keys and "J:" in keys and "K:" in keys
+        assert "Ctrl+1 to Ctrl+9" in keys and "J:" in keys and "K:" in keys
         pg.click("#helpClose")
         pg.keyboard.press("Control+4")
         pg.wait_for_selector("#goalNote", state="visible")

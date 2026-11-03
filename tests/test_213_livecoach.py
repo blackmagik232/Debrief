@@ -505,9 +505,13 @@ t0 = time.monotonic()
 check(r.stop(timeout=2.0) and time.monotonic() - t0 < 1.0, "stop is quick")
 check("debrief-livecoach" not in {t.name for t in threading.enumerate()} - before, "no leftover thread after stop")
 
-sys.modules.pop("irsdk", None)
+_had_irsdk = sys.modules.pop("irsdk", None)
+sys.modules["irsdk"] = None          # import irsdk now fails, even where pyirsdk is installed (Windows CI)
 src = lc.IrsdkSource()
 check(src.read() is None and src.state == "not_installed", f"IrsdkSource without pyirsdk: None ({src.state})")
+del sys.modules["irsdk"]
+if _had_irsdk is not None:
+    sys.modules["irsdk"] = _had_irsdk
 
 
 class _FakeIR:

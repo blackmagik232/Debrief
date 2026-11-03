@@ -44,7 +44,7 @@ def _yaml_block(d, ind=1):
 
 def session_text(setup=None, session="Practice", car="Mclaren 570s GT4", car_path="mclaren570sgt4", car_id=135,
                  track="Zolder Circuit", track_code="zolder gp", track_id=200, surface_temp=22.2, wet=False,
-                 name="Swazi Williams", setup_name="baseline.sto", other_cars=()):
+                 name="Swazi Williams", setup_name="baseline.sto", other_cars=(), session_secs=None):
     sessions = session if isinstance(session, (list, tuple)) else [session]
     lines = ["---", "WeekendInfo:", f" TrackName: {track_code}", f" TrackID: {track_id}", " TrackLength: 3.98 km",
              f" TrackDisplayName: {track}", " TrackConfigName: Grand Prix", f" TrackSurfaceTemp: {surface_temp:.2f} C",
@@ -52,6 +52,8 @@ def session_text(setup=None, session="Practice", car="Mclaren 570s GT4", car_pat
              "SessionInfo:", " Sessions:"]
     for i, s in enumerate(sessions):
         lines += [f" - SessionNum: {i}", f"   SessionType: {s}", f"   SessionName: {s.upper()}"]
+        if session_secs is not None:
+            lines += ["   SessionLaps: unlimited", f"   SessionTime: {float(session_secs):.4f} sec"]
     lines += ["DriverInfo:", " DriverCarIdx: 3", f" DriverSetupName: {setup_name}", " Drivers:"]
     for idx, (nm, cn, cp, ci) in enumerate([("Other Driver: Jr", "Ligier JS P320", "ligierjsp320", 128)] + list(other_cars)):
         lines += [f" - CarIdx: {idx}", f"   UserName: {nm}", f"   CarScreenName: {cn}", f"   CarPath: {cp}", f"   CarID: {ci}",
@@ -62,11 +64,25 @@ def session_text(setup=None, session="Practice", car="Mclaren 570s GT4", car_pat
     return "\n".join(lines) + "\n...\n"
 
 
+CORNERS = ("LF", "RF", "LR", "RR")
+
+
 def make(path, laps, setup=None, session="Practice", rate=60, lead=5.0, offs=(), pits=(), incidents=(), untimed=(),
-         corner=None, brake_at=None, **kw):
+         corner=None, brake_at=None, pit_temps=None, pressure=None, ride=None, fuel=None, track_temp=None,
+         start_date=1_790_000_000, **kw):
     """A file of consecutive laps (seconds each) after a `lead`-second out lap. offs/pits/incidents/untimed are lap
     indexes (0 = first timed lap). corner: optional function (lap_index, pct) -> (speed m/s, brake 0..1) to shape a
-    lap; default is a simple two-corner lap. Extra channels: tyre carcass temps change only in pits."""
+    lap; default is a simple two-corner lap. Extra channels: tyre carcass temps change only in pits.
+
+    Optional (all off by default, so older tests see the same file):
+      pit_temps: [(lap_index, {"LF": (outer, middle, inner), ...}), ...] carcass temps from the end of that lap
+                 (-1 = from the first sample), written to LFtempCL/CM/CR the way iRacing does: CL is the car's left
+                 side, so outer for left tyres and inner for right tyres.
+      pressure:  {"LF": kPa, ...} live hot pressures (default 188 everywhere).
+      ride:      function (lap_index, pct) -> metres for the front ride heights (rears +25 mm).
+      fuel:      (start litres, litres per lap) adds a FuelLevel channel falling through each lap.
+      track_temp: adds a live TrackTempCrew channel (deg C).
+      start_date: unix seconds in the file header."""
     times = [lead] + list(laps)
     n = int(sum(times) * rate) + 4 * rate
     lap = np.zeros(n, np.int32)
@@ -122,9 +138,37 @@ def make(path, laps, setup=None, session="Practice", rate=60, lead=5.0, offs=(),
             "Brake": ("f", brk), "Throttle": ("f", thr), "SteeringWheelAngle": ("f", steer),
             "LFrideHeight": ("f", rh), "RFrideHeight": ("f", rh), "LRrideHeight": ("f", rh + 0.025), "RRrideHeight": ("f", rh + 0.025),
             "CarLeftRight": ("i", np.ones(n, np.int32))}
-    for c in ("LF", "RF", "LR", "RR"):
+    lap_end = {}                                             # lap index -> first sample after it
+    acc = 0
+    for i, T in enumerate(times):
+        acc += int(round(T * rate))
+        lap_end[i - 1] = min(n, acc)
+    if ride is not None:
+        for j in range(n):
+            li = int(lap[j]) - 1
+            if 0 <= li < len(laps):
+                rh[j] = ride(li, float(pct[j]))
+        cols["LFrideHeight"] = ("f", rh.copy())
+        cols["RFrideHeight"] = ("f", rh.copy())
+        cols["LRrideHeight"] = ("f", rh + 0.025)
+        cols["RRrideHeight"] = ("f", rh + 0.025)
+    for c in CORNERS:
+        temps = {z: np.full(n, 70.0, np.float32) for z in ("CL", "CM", "CR")}
+        for li, tt in (pit_temps or ()):
+            if c not in tt:
+                continue
+            o, m, inner = tt[c]
+            cl, cr = (o, inner) if c in ("LF", "LR") else (inner, o)
+            s0 = 0 if li < 0 else lap_end.get(li, n)
+            temps["CL"][s0:], temps["CM"][s0:], temps["CR"][s0:] = cl, m, cr
         for z in ("CL", "CM", "CR"):
-            cols[f"{c}temp{z}"] = ("f", np.full(n, 70.0, np.float32))
-        cols[f"{c}pressure"] = ("f", np.full(n, 188.0, np.float32))
-    ibt.write_fake(path, session_text(setup=setup, session=session, **kw), cols, tick_rate=rate)
+            cols[f"{c}temp{z}"] = ("f", temps[z])
+        cols[f"{c}pressure"] = ("f", np.full(n, float((pressure or {}).get(c, 188.0)), np.float32))
+    if fuel is not None:
+        f0, per = fuel
+        used = np.where(lap > 0, per * (lap - 1 + pct), 0.0)
+        cols["FuelLevel"] = ("f", (f0 - used).astype(np.float32))
+    if track_temp is not None:
+        cols["TrackTempCrew"] = ("f", np.full(n, float(track_temp), np.float32))
+    ibt.write_fake(path, session_text(setup=setup, session=session, **kw), cols, tick_rate=rate, start_date=start_date)
     return path

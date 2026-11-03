@@ -32,7 +32,8 @@ def main(argv=None) -> int:
         print(f"  unreadable: {b['file']} ({b['error']})")
     for c in sl.combos(idx):
         rep = sl.report(a.folder, c["car_path"], c["track_code"], series_setup=a.series, idx=idx)
-        print(f"\n=== {rep['car']} at {rep['track']} ({rep['files']} files, series setup: {rep['series_setup']})")
+        print(f"\n=== {rep['car']} at {rep['track']} ({rep['files']} files, series setup: {rep['series_setup']}"
+              f"{' - ' + rep['series_setup_source'] if rep.get('series_setup_source') else ''})")
         for s in rep["setups"]:
             print(f"  {s['label']}: first {s['first']}, last {s['last']}, {len(s['files'])} file(s)")
         for r in rep["runs"]:

@@ -853,17 +853,17 @@ def series_setup_kind(value, override=None) -> str:
 
 
 def series_setup_from_files(recs: list) -> tuple[str, str]:
-    """What the telemetry itself says (WeekendOptions.IsFixedSetup): official sessions first, newest first.
+    """What the telemetry itself says (WeekendOptions.IsFixedSetup), from official sessions only (newest first): an
+    offline test session says "fixed" whatever the series is (real Mustang file, Nov 2026), so it never decides.
     Returns ("open" | "fixed" | "unknown", source text)."""
     rs = sorted(recs, key=lambda r: (r.get("sort") or 0), reverse=True)
-    for official in (True, False):
-        for r in rs:
-            det = r.get("detail") or {}
-            if det.get("fixed_setup") is None or bool(det.get("official")) != official:
-                continue
+    for r in rs:
+        det = r.get("detail") or {}
+        if det.get("fixed_setup") is not None and det.get("official"):
             kind = "fixed" if det["fixed_setup"] else "open"
-            where = "an official session" if official else f"a {det.get('event') or 'non-official'} session"
-            return kind, f"the telemetry says {where} on {r.get('when') or r['file']} was {kind} setup"
+            return kind, f"the telemetry says the official session on {r.get('when') or r['file']} was {kind} setup"
+    if any((r.get("detail") or {}).get("fixed_setup") is not None for r in rs):
+        return "unknown", "only test or unofficial sessions so far, which don't say what the series uses"
     return "unknown", ""
 
 

@@ -451,12 +451,17 @@ check(empty["files"] == 0 and any("No telemetry" in n for n in empty["notes"]), 
 d = folder("fixedfile")
 mk(d, "2026-11-01 18-00-00", PACE_A, fixed_setup=True, official=True, setup_name="fixed.sto", setup_load="fixed",
    setup_modified=0)
-mk(d, "2026-11-01 19-00-00", PACE_A, fixed_setup=False, official=False)
+mk(d, "2026-11-01 19-00-00", PACE_A, fixed_setup=False, official=False)      # an unofficial session never decides
 rep = sl.report(d, "mclaren570sgt4", "zolder gp", series_setup=None)
 check(rep["series_setup"] == "fixed" and "official session" in rep["series_setup_source"]
       and rep["suggestions"]["items"][0]["rule"] == "fixed_series", "schedule says nothing: the official file's IsFixedSetup decides")
 rep = sl.report(d, "mclaren570sgt4", "zolder gp", series_setup="open")
 check(rep["series_setup"] == "open" and rep["series_setup_source"] == "series setting", "the series setting / his override wins")
+d = folder("testonly")
+mk(d, "2026-11-01 18-00-00", PACE_A, fixed_setup=True, official=False)
+rep = sl.report(d, "mclaren570sgt4", "zolder gp")
+check(rep["series_setup"] == "unknown" and "test or unofficial" in rep["series_setup_source"],
+      "a test session saying 'fixed' does not decide the series")
 d = folder("changed")
 mk(d, "2026-11-01 18-00-00", PACE_A, setup_name="fixed.sto", setup_load="user", setup_modified=1, fixed_setup=False, official=True)
 rep = sl.report(d, "mclaren570sgt4", "zolder gp")

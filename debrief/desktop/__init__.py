@@ -36,7 +36,9 @@ FEATURE_MODULES = ("race_analysis", "racecap_link", "replay_scan", "results_csv"
                    # 2.14 Practice loop
                    "practiceplan", "wheelmute", "firstrun",
                    # 2.15 Car and setup
-                   "balance", "pressurelearn", "setupshare", "teamref")
+                   "balance", "pressurelearn", "setupshare", "teamref",
+                   # Coach 2.0 voice packs
+                   "voicepack")
 
 
 _REFRESH_DONE: set = set()

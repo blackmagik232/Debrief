@@ -33,7 +33,7 @@ def load(library_folder) -> dict:
     """{"chosen": bool, "series": [{"id", "name"}], "updated": iso|None}. chosen=False until you've saved once."""
     try:
         d = json.loads(_path(library_folder).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         return {"chosen": False, "series": [], "updated": None}
     if not isinstance(d, dict):
         return {"chosen": False, "series": [], "updated": None}
@@ -94,7 +94,7 @@ def _clean_choice(d) -> dict:
 def load_choice(library_folder) -> dict:
     try:
         return _clean_choice(json.loads(_choice_path(library_folder).read_text(encoding="utf-8")))
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         return _clean_choice(None)
 
 

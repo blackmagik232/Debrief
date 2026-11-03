@@ -151,6 +151,10 @@ def test_focus_race_facts_and_never_an_in_game_date():
     assert d["series"]["frequency"].startswith("Races every")
     w = next(w for w in schedule.find_series(sched(), GT4)["weeks"] if w["season_week"] == 7)
     assert w["race_time"] not in json.dumps(d)
+    assert d["race"]["in_game_time"] == w["race_time"][-5:] and d["race"]["conditions"] == w["conditions"]
+    hot = focus(lib, series_id="mini-stock-rookie-series-by-thrustmaster", week_no=7, car="Mini Stock")["race"]
+    assert hot["temperature"] is None or "°C" in hot["temperature"]
+    assert any("°C" in str(focus(lib, series_id="mini-stock-rookie-series-by-thrustmaster", week_no=n, car="Mini Stock")["race"]["temperature"]) for n in (7, 8, 9, 10))
     assert w["race_time"][:10] not in json.dumps(d)
 
 
@@ -253,6 +257,64 @@ def test_plan_strip_matches_the_season_plan_and_can_be_skipped():
     assert o["plan"]["weeks"] and (lib / "my-series.json").read_text(encoding="utf-8") == before
 
 
+def test_review_wet_practice_is_not_a_dry_best():
+    lib = new_lib()
+    add_review(lib, "d", "2026-10-30", best=99.0, median=100.0)
+    add_review(lib, "p", "2026-10-31", best=98.874, median=99.5, wetness=60.0, session="Practice")
+    p = focus(lib, series_id=GT4, week_no=7, car=MCL)["pace"]
+    assert p["dry"]["best"] == 99.0 and p["wet"]["best"] == 98.874
+
+
+def test_review_a_star_with_an_old_id_doesnt_double_the_strip():
+    lib = new_lib()
+    name = schedule.find_series(sched(), GT4)["name"]
+    (lib / "my-series.json").write_text(json.dumps({"schema": 1, "series": [{"id": "old-id", "name": name}]}), encoding="utf-8")
+    nos = [w["no"] for w in focus(lib, series_id=GT4, week_no=7, car=MCL)["plan"]["weeks"]]
+    assert nos == [7, 8, 9, 10, 11, 12], nos
+
+
+def test_review_flags_are_capped_per_series_in_the_strip():
+    lib = new_lib()
+    add_review(lib, "a", "2026-10-30")
+    ids = [s["id"] for s in sched()["series"] if s["id"] != GT4 and any(c == MCL for c in s.get("cars") or [])][:3]
+    ids += [s["id"] for s in sched()["series"] if s["id"] not in ids and s["id"] != GT4 and s.get("category") == "Sports Car"][:2]
+    series.save(lib, ids + [GT4], sched())
+    assert any(w["flag"] for w in focus(lib, series_id=GT4, week_no=7, car=MCL)["plan"]["weeks"])
+
+
+def test_review_same_cars_means_the_picked_car():
+    me = {"id": "a", "name": "A", "cars": ["BMW M2 Racing (G87)"], "weeks": [{"week": 2, "start": "2026-11-10", "track": "T", "season_week": 2}]}
+    other = {"id": "b", "name": "B", "cars": ["Toyota GR86", "BMW M2 Racing (G87)"], "weeks": [{"week": 1, "start": "2026-11-03", "track": "T", "season_week": 1}]}
+    w = me["weeks"][0]
+    assert prepare._plan_warmups(me, w, [me, other], TODAY)[0]["same_cars"]
+    assert not prepare._plan_warmups({**me, "cars": ["Porsche 963 GTP"]}, w, [other], TODAY, "Porsche 963 GTP")[0]["same_cars"]
+    only = {**other, "cars": ["Toyota GR86"]}
+    assert not prepare._plan_warmups(me, w, [only], TODAY, "BMW M2 Racing (G87)")[0]["same_cars"]
+
+
+def test_review_synced_races_without_reviews_say_nothing_about_corners_yet():
+    lib = new_lib()
+    ss = [{"car": MCL, "track": ZOLDER_REVIEW, "start": f"2026-10-{d}T19:00:00Z", "best_clean": 99.0, "type": 3} for d in (20, 21)]
+    d = prepare.focus({"library_folder": str(lib)}, sessions=ss, series_id=GT4, week_no=7, car=MCL, today=TODAY)
+    assert d["status"]["races"] == 2 and d["reviewed_races"] == 0
+
+
+def test_review_deep_file_and_lotus_class_and_racecraft_in_this_car():
+    lib = new_lib()
+    (lib / "prepare-choice.json").write_text("[" * 200000, encoding="utf-8")
+    assert series.load_choice(lib)["car"] is None
+    (lib / "my-series.json").write_text("[" * 200000, encoding="utf-8")
+    assert series.load(lib)["series"] == []
+    assert next(x for x in cat(new_lib())["cars"] if x["name"] == "Lotus 79")["class"] == "Formula Car"
+    z = zolder_lib()
+    assert focus(z, series_id=GT4, week_no=7, car="BMW M4 G82 GT4 Evo")["racecraft_wait"] is None
+
+
+def test_review_whole_season_keeps_past_weeks_with_dates():
+    p = focus(new_lib(), series_id=GT4, week_no=7, car=MCL)["plan"]
+    assert len(p["season"]) == 12 and not p["season"][0]["left"] and p["season"][0]["start"] and p["season"][-1]["left"]
+
+
 # ---------------------------------------------------------------- remembering
 def test_choice_saves_beside_stars_and_drops_anything_odd():
     lib = new_lib()
@@ -341,8 +403,9 @@ def test_ui_rules():
     for i in ("fPrepAny", "prepJoin", "schPill", "btnSchLoad", "intelPanel", "planWeeks", "mySeries"):
         assert f'id="{i}"' in sec, i
     more = sec[sec.index('id="prepMore"'):]
-    for i in ("btnSchDl", "btnSchLoad", "btnIntel", "fPrepAny", "prepJoin"):
+    for i in ("btnSchDl", "btnSchLoad", "btnIntel", "fPrepAny"):
         assert f'id="{i}"' in more, i
+    assert 'id="prepJoin"' not in more      # a non-member has to see it
     assert 'id="seriesPicker"' not in sec and "pickAll" not in sec
 
 
@@ -545,9 +608,25 @@ def test_window_see_race_week_series_disables_other_cars_weeks():
         car = pg.input_value("#pkCar")
         assert car and "see race" not in car.lower()
         pg.wait_for_function("() => document.querySelectorAll('#pkWeeks button').length > 1")
-        st = pg.evaluate("() => [...document.querySelectorAll('#pkWeeks button')].map(b => [b.disabled, b.title])")
-        for off, title in st:
-            assert off == title.startswith("Other cars"), st
+        assert car == "Gen 4 Grand National"       # at week 7 it runs this week
+        pg.focus("#pkSeries")
+        pg.keyboard.type("ring meister")
+        pg.keyboard.press("Enter")      # not a series for this car: Browse all series keeps what was typed
+        pg.wait_for_function("() => [...document.querySelectorAll('#pkSeriesList [role=option]')].some(e => e.textContent.startsWith('Ring Meister'))")
+        pg.keyboard.press("Enter")
+        pg.wait_for_function("() => document.getElementById('pkSeries').value.startsWith('Ring Meister')")
+        # it starts on a car that races a week still to come, never one whose weeks are all gone
+        pg.wait_for_function("() => document.getElementById('pkCar').value === 'Skip Barber Formula 2000'")
+        pg.focus("#pkCar")
+        pg.keyboard.type("caterham 420")
+        pg.keyboard.press("Enter")
+        wait_view(pg, "doesn't run this week")      # keeps the week and offers a car that runs
+        assert pg.input_value("#pkSeries").startswith("Ring Meister") and pg.evaluate("() => !!document.querySelector('#pkWeeks button.on')")
+        assert "no race weeks left" not in pg.inner_text("#mySeries")
+        assert not pg.evaluate("() => [...document.querySelectorAll('#pkWeeks button,#planWeeks button')].some(b => b.disabled)")
+        pg.click("#mySeries .pvfacts .pkbtn")
+        pg.wait_for_function("() => document.getElementById('pkCar').value === 'Skip Barber Formula 2000'")
+        wait_view(pg, "Skip Barber")
         assert not pg.errs, pg.errs
     finally:
         ctx.close()
@@ -606,6 +685,61 @@ def test_window_no_token_says_how_to_build():
         assert pg.is_disabled("#pvBuild") and "token in Settings" in pg.inner_text("#pvMsg")
     finally:
         ctx.close()
+
+
+def test_window_review_nothing_lost_and_small_fixes():
+    lib = zolder_lib()
+    (lib / "my-series.json").write_text(json.dumps({"schema": 1, "series": [{"id": GT4, "name": "GT4 Falken Tyre Challenge"},
+                                                     {"id": "gone", "name": "Series From Last Year"}]}), encoding="utf-8")
+    prep_body = {}
+    r = window(lib, token="fake")
+    if not r:
+        return
+    pg, ctx = r
+    try:
+        wait_view(pg, "Zolder")
+        # a starred series that's gone says so
+        pg.wait_for_function("() => document.getElementById('prepMissing').textContent.includes('Series From Last Year')")
+        # the detail is tucked away, not lost
+        pg.wait_for_function("() => document.querySelector('#mySeries details.pvdetails') && !document.getElementById('pvBuild').disabled")
+        pg.click("#mySeries details.pvdetails summary")
+        pg.wait_for_function("() => document.querySelector('#mySeries details.pvdetails').open")
+        t = pg.inner_text("#mySeries details.pvdetails")
+        assert "In-game start time" in t and "Rain possible" in t and "License" in t and "Category" in t and MCL in t, t
+        assert not re.search(r"Sep|2026-", t), t
+        pg.click("#planSeason summary")
+        pg.wait_for_function("() => document.querySelectorAll('#planSeasonList .past').length === 6")
+        assert "Sep 15" in pg.inner_text("#planSeasonList")
+        pg.click("#prepAll summary")
+        assert "This week: " in pg.inner_text("#prepAllRows") and "Next week: " in pg.inner_text("#prepAllRows")
+        pg.wait_for_function("() => document.querySelectorAll('#allPlanWeeks .wk').length === 6")
+        # after Esc, a click selects the text, so typing replaces it
+        pg.click("#pkCar")
+        pg.keyboard.press("Escape")
+        pg.click("#pkCar")
+        pg.wait_for_function("() => { const i = document.getElementById('pkCar'); return i.selectionEnd - i.selectionStart === i.value.length }")
+        pg.keyboard.press("Z")
+        assert pg.input_value("#pkCar") == "Z"
+        pg.keyboard.press("Escape")
+        # slow load: nothing in the view acts on the old track
+        release = []
+        pg.route("**/api/prepfocus*", lambda rt: release.append(rt))
+        pg.click("#pkWeeks button:nth-child(2)")
+        pg.wait_for_function("() => document.getElementById('pvBuild').disabled && document.getElementById('pvCard').disabled")
+        pg.wait_for_timeout(50)
+        for rt in release:
+            rt.continue_()
+        pg.unroute("**/api/prepfocus*")
+        pg.wait_for_function("() => !document.getElementById('pvBuild').disabled && document.getElementById('mySeries').textContent.includes('Next week')")
+        assert not pg.errs, pg.errs
+    finally:
+        ctx.close()
+        write_settings()
+
+
+def test_window_join_panel_shows_outside_more():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert html.index('id="prepJoin"') < html.index('id="prepMore"')
 
 
 def test_window_phone_has_no_sideways_scroll():

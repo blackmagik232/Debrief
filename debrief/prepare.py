@@ -4,6 +4,7 @@ sends a request.
 """
 from __future__ import annotations
 
+import re
 import statistics as st
 from datetime import date, datetime, timedelta, timezone
 
@@ -192,9 +193,10 @@ def _past_text(p: dict) -> str:
     return "No laps on record here."
 
 
-def _plan_warmups(ser, w, others, today) -> list:
+def _plan_warmups(ser, w, others, today, car=None) -> list:
+    """With car (the one you picked), "same cars" means that car runs there too, not just any car of this week."""
     out = []
-    cars = {schedule.norm(c) for c in schedule.week_cars(ser, w)}
+    cars = {schedule.norm(c) for c in ([car] if car else schedule.week_cars(ser, w))}
     for x in warmups(ser, w, others, today):
         o = next((o for o in others if o.get("name") == x["series"]), {})
         ow = next((y for y in o.get("weeks") or [] if y.get("start") == x["start"]), {})
@@ -230,10 +232,11 @@ def _flag_reason(r: dict, today: date) -> str:
     return f"{first}, and none of your other series race here earlier."
 
 
-def plan(library_folder, sched, mine: dict, sessions: list, matcher=None, today: date | None = None) -> dict:
+def plan(library_folder, sched, mine: dict, sessions: list, matcher=None, today: date | None = None, flag_series=None) -> dict:
     """The rest of the season, week by week, for your own series only. Facts from the schedule, your saved reviews
     and your synced sessions; no targets and no requests. A series you've never driven the cars of shows no history
-    and no flags: Debrief can't tell which cars you own, and flagging every week of it would say nothing."""
+    and no flags: Debrief can't tell which cars you own, and flagging every week of it would say nothing.
+    flag_series: hand out the flags within that one series only (the picked series' strip); else across all of yours."""
     today = today or datetime.now(timezone.utc).date()
     m = matcher or schedule.Matcher()
     from . import prep
@@ -280,7 +283,7 @@ def plan(library_folder, sched, mine: dict, sessions: list, matcher=None, today:
             weeks.setdefault(no, {"season_week": no, "start": w["start"], "now": no == current, "flag": False,
                                   "races": []})["races"].append(row)
     # the same track in two of your series the same week is one thing to prepare, so one flag between them
-    ranked = sorted(((_flag_rank(r, today), r) for r in races if r["_driven"]), key=lambda x: x[0] or (9,))
+    ranked = sorted(((_flag_rank(r, today), r) for r in races if r["_driven"] and flag_series in (None, r["series_id"])), key=lambda x: x[0] or (9,))
     seen = {}
     for rank, r in ranked:
         if rank is None:
@@ -328,7 +331,7 @@ def _driven_cars(rows: list, sessions: list, known: list, m) -> list:
 def catalog(sched, mine: dict, rows: list, sessions: list, m, today: date, suggestions=(), api=None) -> dict:
     """What the Prepare picker offers: every car by class, every series with its cars week by week (schedule.week_cars,
     so "See race week" series count the cars they really run), the tracks, and the cars you've driven. No requests."""
-    names, classes = {}, {}          # the schedule spells one car two ways now and then: one name per car
+    names, classes, cats = {}, {}, {}          # the schedule spells one car two ways now and then: one name per car
     def one(c):
         return names.setdefault(schedule.norm(c), c)
     current = schedule.week_on(sched, today)
@@ -341,16 +344,19 @@ def catalog(sched, mine: dict, rows: list, sessions: list, m, today: date, sugge
             wk = [one(c) for c in schedule.week_cars(ser, w)]
             cars += [c for c in wk if c not in cars]
             row = {"no": w.get("season_week", w.get("week")), "week": w.get("week"), "start": w.get("start"),
-                   "track": w.get("track"), "short": library.short_track_name(w.get("track")),
+                   "track": w.get("track"), "short": library.short_track_name(w.get("track")), "length": w.get("length"),
                    "left": series.week_left(w, current, today)}
             if w.get("cars_this_week"):
                 row["cars"] = wk
             weeks.append(row)
             tracks.setdefault(schedule.norm(w.get("track")), w.get("track"))
         for c in cars:
-            classes.setdefault(c, schedule.class_of(c) or ser.get("category") or "Other")
+            tally = cats.setdefault(c, {})
+            tally[ser.get("category")] = tally.get(ser.get("category"), 0) + 1
         out_series.append({"id": ser.get("id"), "name": ser.get("name"), "category": ser.get("category"), "cars": cars,
                            "weeks": weeks, "starred": ser.get("id") in starred, "suggested": ser.get("id") in sure})
+    for c, tally in cats.items():    # a car in a mixed series keeps the category most of its series have
+        classes[c] = schedule.class_of(c) or max(tally, key=lambda k: tally[k] if k else 0) or "Other"
     known = list(classes)
     driven = _driven_cars(rows, sessions, known, m)
     for d in driven:
@@ -442,10 +448,10 @@ def _weak_here(cfg, rows, here, in_car, real_track, real_car, today) -> dict:
 
 def _season_strip(lib, sched, mine, ser, sessions, m, today) -> dict:
     """The rest of this series' season for the strip, from the same plan as ever, so its flags are the plan's."""
-    resolved = [x for x in mine.get("series") or []]
-    if not any(x.get("id") == ser["id"] for x in resolved):
-        resolved = resolved + [{"id": ser["id"], "name": ser["name"]}]
-    P = plan(lib, sched, {"series": resolved}, sessions, m, today)
+    resolved = [{"id": x["id"], "name": x["name"]} for x in series.resolve(mine, sched)]    # an old saved id counts as its series
+    if not any(x["id"] == ser["id"] for x in resolved):
+        resolved.append({"id": ser["id"], "name": ser["name"]})
+    P = plan(lib, sched, {"series": resolved}, sessions, m, today, flag_series=ser["id"])
     weeks = []
     for w in P.get("weeks") or []:
         for r in w["races"]:
@@ -456,7 +462,12 @@ def _season_strip(lib, sched, mine, ser, sessions, m, today) -> dict:
     notes_ = [x["note"] for x in P.get("series") or [] if x.get("id") == ser["id"] and x.get("note")]
     if P.get("note"):
         notes_.append(P["note"])
-    return {"state": P.get("state"), "weeks": weeks, "notes": notes_}
+    others = [x for x in series.resolve({"series": resolved}, sched) if not x.get("missing")]
+    current = schedule.week_on(sched, today)
+    season = [{"no": w.get("season_week", w.get("week")), "week": w.get("week"), "start": w.get("start"), "track": w.get("track"), "length": w.get("length"),
+               "has_notes": notes.has_notes(notes.load(lib, w.get("track"))), "warmups": warmups(ser, w, others),
+               "left": series.week_left(w, current, today)} for w in ser.get("weeks") or []]
+    return {"state": P.get("state"), "weeks": weeks, "notes": notes_, "season": season}
 
 
 def focus(cfg: dict, api=None, sessions: list | None = None, series_id=None, week_no=None, car=None, track=None,
@@ -478,7 +489,7 @@ def focus(cfg: dict, api=None, sessions: list | None = None, series_id=None, wee
     current = schedule.week_on(sched, today) if sched else None
     out = {"ok": True, "track": track, "car": car, "series": None, "week": None, "race": None, "pace": None, "status": None,
            "corners": [], "warmups": [], "card": None, "has_notes": False, "shared_notes": 0, "track_id": None, "car_id": None,
-           "racecraft": None, "rivals": [], "racecraft_note": None, "racecraft_wait": None, "page": None, "plan": None}
+           "racecraft": None, "rivals": [], "racecraft_note": None, "racecraft_wait": None, "page": None, "plan": None, "reviewed_races": 0}
     if ser is not None:
         out["series"] = {"id": ser["id"], "name": ser.get("name"), "frequency": ser.get("frequency"), "setup": ser.get("setup"),
                          "license": ser.get("license"), "multiclass": ser.get("multiclass", False),
@@ -491,9 +502,13 @@ def focus(cfg: dict, api=None, sessions: list | None = None, series_id=None, wee
         out["week"] = {"no": no, "week": week.get("week"), "start": week.get("start"), "now": no == current,
                        "next": current is not None and no == current + 1, "cars": cars,
                        "car_runs": not car or not cars or any(schedule.same_car(car, c) for c in cars)}
-        out["race"] = series.week_facts(week)
+        text = str(week.get("conditions") or "")
+        temp = re.search(r"(-?\d+)\s*°F\s*/\s*(-?\d+)\s*°C", text)
+        clock = re.search(r"\b(\d{1,2}:\d\d)\s*$", str(week.get("race_time") or ""))    # the time only: its date is in-game, not real
+        out["race"] = {**series.week_facts(week), "conditions": text or None, "in_game_time": clock.group(1) if clock else None,
+                       "temperature": f"{temp.group(1)}°F / {temp.group(2)}°C" if temp else None}
         live = [x for x in series.resolve(mine, sched) if not x.get("missing")]
-        out["warmups"] = _plan_warmups(ser, week, live, today)
+        out["warmups"] = _plan_warmups(ser, week, live, today, car)
     if not track:
         return out
 
@@ -504,7 +519,7 @@ def focus(cfg: dict, api=None, sessions: list | None = None, series_id=None, wee
     in_car = [r for r in here if not car or m.car(r, car)]
     sess_car = [s for s in sess_here if not car or m.car(s, car)]
     from . import prep
-    wet = prep.wet_dirs(lib, [r for r in here if library.is_race(r)])
+    wet = prep.wet_dirs(lib, here)     # practice too: a wet session's lap isn't a dry best
     out["pace"] = _focus_pace(here, sess_here, in_car, sess_car, wet)
     past = _past_at(rows, sessions, track, [car] if car else [], m, wet)
     out["status"] = {"code": past["status"], "text": _STATUS[past["status"]], "detail": _past_text(past), "last": past["last"],
@@ -518,7 +533,8 @@ def focus(cfg: dict, api=None, sessions: list | None = None, series_id=None, wee
     race_here = [r for r in in_car if library.is_race(r)]
     real_track = next((r["track"] for r in here), track)
     real_car = next((r["car"] for r in in_car if r.get("car")), car or "")
-    b = _weak_here(cfg, races, here, race_here, real_track, real_car, today)
+    out["reviewed_races"] = len(race_here)
+    b = _weak_here(cfg, [r for r in races if not car or m.car(r, car)], here, race_here, real_track, real_car, today)    # racecraft in this car only
     out["corners"] = b.get("corners") or []
     out["rivals"], out["racecraft"] = b.get("rivals") or [], b.get("racecraft")
     out["racecraft_note"], out["racecraft_wait"] = b.get("note"), b.get("racecraft_wait")

@@ -561,7 +561,30 @@ function renderPrepare(){const j=prepData;if(!j)return;$('prepJoin').hidden=!not
   $('prepBar').hidden=!sc;if(!pkReady&&(!sc||sc.out_of_date||(sc.warnings&&sc.warnings.length)))$('prepMore').open=true;
   if(!sc){renderFocusNone('Load the season schedule to get started','Open More below and download iRacing\'s schedule. It takes a few seconds and only happens once a season.');$('planPanel').hidden=true;return}
   if(!pkReady){pkReady=true;initPick()}else checkPick();
-  renderPick();refreshFocus(true)}
+  renderPick();renderMissing();renderAllSeries();refreshFocus(true)}
+function renderMissing(){const host=$('prepMissing'),gone=((prepData&&prepData.mine)||[]).filter(s=>s.missing);host.hidden=!gone.length;host.replaceChildren();
+  gone.forEach(s=>{const li=h('li',null,s.name+' is starred, but it isn\'t in the loaded schedule. It may come back next season.');
+    const b=h('button','btn','Remove star');b.type='button';b.addEventListener('click',async()=>{let r;
+      try{r=await post('series',{ids:prepData.mine.map(x=>x.id).filter(i=>i!==s.id)})}catch(e){connectionLost();return}
+      if(!r.ok){setMsg('pkMsg',r.error,'bad');return}stripFor=null;loadPrepare(true)});li.append(b);host.append(li)})}
+function pickSeriesWeek(id,no){const s=serOf(id);if(!s)return;pk.series=id;pk.track=null;seriesAll=false;const w=s.weeks.find(x=>x.no===no);
+  if(!pk.car||!serUses(s,pk.car)||(w&&!carRuns(s,w,pk.car)))pk.car=(w&&cat().driven.map(x=>x.name).find(n=>weekCars(s,w).includes(n)))||(w&&weekCars(s,w)[0])||bestCarFor(s);
+  pk.week=no;pickChanged();$('prepBar').scrollIntoView({block:'nearest'})}
+function renderAllSeries(){const j=prepData,mine=(j.mine||[]).filter(s=>!s.missing),host=$('prepAll');host.hidden=!mine.length;if(!mine.length)return;
+  const rows=$('prepAllRows');rows.replaceChildren();const now=j.current_week;
+  mine.forEach(s=>{const it=h('div','item'),tx=h('div','itx');tx.append(h('b',null,s.name));const meta=serMeta(s);if(meta)tx.append(h('span','sub2',meta));it.append(tx);
+    const row=h('div','pkbtns');[['This week',s.this_week,now],['Next week',s.next_week,now+1]].forEach(([lab,w,no])=>{if(w)row.append(pkBtn(lab+': '+w.track,false,s.id+':'+no,()=>pickSeriesWeek(s.id,no),dayRange(w.start)))});
+    if(!row.children.length)row.append(h('span','sub2','No race this week or next.'));it.append(row);rows.append(it)});
+  const P=j.plan,host2=$('allPlanWeeks'),note=$('allPlanNote'),nn=$('allPlanNotes');host2.replaceChildren();nn.replaceChildren();if(!P){note.textContent='';nn.hidden=true;return}
+  const said=(P.series||[]).map(s=>s.note).filter(Boolean);if(P.note)said.push(P.note);nn.hidden=!said.length;said.forEach(t=>nn.append(h('li',null,t)));
+  if(P.state==='error'){note.textContent='The season plan couldn\'t be worked out. The rest of this page is fine.';return}
+  if(P.state==='season_over'){note.textContent='No race weeks left in this season for your series.';return}
+  const fl=P.flagged||[];note.textContent='Week by week for your starred series, from your saved reviews and synced sessions. It only knows laps those hold. '+
+    (fl.length?'Most prep: '+fl.map(f=>'week '+f.season_week+', '+f.track).join('; ')+'.':'No week stands out as needing more prep than the others.');
+  (P.weeks||[]).forEach(w=>{const box=h('div','wk'+(w.now?' now':''));if(w.flag&&!w.now)box.style.borderLeft='4px solid var(--warn)';
+    box.append(h('span','wlab',(w.now?'This week · ':'')+'Week '+w.season_week+' · '+dayRange(w.start)));w.races.forEach(r=>box.append(planRace(r)));host2.append(box)})}
+function serMeta(s){const bits=[];if(s.category)bits.push(s.category);if(s.license)bits.push(s.license.replace(/\s*-->\s*/,' to '));
+  if(s.setup)bits.push(s.setup==='fixed'?'Fixed setup':'Open setup');return bits.join(' · ')}
 
 /* ---------- the picker (2.11): car, series, track, week. One choice, kept in pk; everything below follows it. */
 let pk={car:null,series:null,week:null,track:null},pkReady=false,focusData=null,focusSeq=0,stripData=null,stripFor=null,seriesAll=false;
@@ -571,13 +594,17 @@ const weekCars=(s,w)=>w.cars||s.cars||[];
 const carRuns=(s,w,car)=>!car||!weekCars(s,w).length||weekCars(s,w).includes(car);
 const weeksLeft=s=>(s.weeks||[]).filter(w=>w.left);
 const serUses=(s,car)=>!car||(s.cars||[]).includes(car);
-function defaultWeek(s,car){const now=cat().current_week,left=weeksLeft(s).filter(w=>carRuns(s,w,car));
-  const hit=left.find(w=>w.no===now)||left[0];return hit?hit.no:null}
+const carHasWeek=(s,car)=>weeksLeft(s).some(w=>carRuns(s,w,car));
+// the car's next running week; a car with none left keeps the week you were on, so the page can offer a car that runs
+function defaultWeek(s,car,keep){const now=cat().current_week,all=weeksLeft(s),left=all.filter(w=>carRuns(s,w,car));
+  const hit=left.find(w=>w.no===now)||left[0]||all.find(w=>w.no===keep)||all.find(w=>w.no===now)||all[0];return hit?hit.no:null}
 function defaultSeries(car){const all=cat().series.filter(s=>serUses(s,car));
   const live=all.filter(s=>weeksLeft(s).some(w=>carRuns(s,w,car)));const pool=live.length?live:all;
   const most=pool.slice().sort((a,b)=>weeksLeft(b).length-weeksLeft(a).length)[0];
   return (pool.find(s=>s.starred)||pool.find(s=>s.suggested)||most||{}).id||null}
-function bestCarFor(s){const d=cat().driven.map(x=>x.name).find(n=>(s.cars||[]).includes(n));return d||(s.cars||[])[0]||null}
+function bestCarFor(s){const names=cat().driven.map(x=>x.name).filter(n=>(s.cars||[]).includes(n));
+  const left=weeksLeft(s),now=left.find(w=>w.no===cat().current_week)||left[0];
+  return names.find(n=>carHasWeek(s,n))||(now&&weekCars(s,now)[0])||names[0]||(s.cars||[])[0]||null}
 function initPick(){const c=cat(),m=(prepData&&prepData.choice)||{},season=prepData.schedule&&prepData.schedule.season;
   const carOk=n=>n&&(c.cars.some(x=>x.name===n)||c.driven.some(x=>x.name===n));
   pk.car=carOk(m.car)?m.car:null;
@@ -588,7 +615,7 @@ function initPick(){const c=cat(),m=(prepData&&prepData.choice)||{},season=prepD
     pk.series=star?star.id:(pk.car?defaultSeries(pk.car):null)}
   const ser=serOf(pk.series);if(ser&&!pk.car)pk.car=bestCarFor(ser);
   pk.week=null;pk.track=null;if(!ser)pk.track=m.track||null;
-  if(ser){const left=weeksLeft(ser).filter(w=>carRuns(ser,w,pk.car));
+  if(ser){const left=weeksLeft(ser);
     const same=m.season===season&&!m.follow_now;
     if(same&&m.week&&left.some(w=>w.no===m.week))pk.week=m.week;
     else if(same&&m.track&&!m.week)pk.track=m.track;
@@ -603,13 +630,13 @@ function pickChanged(){rememberPick();renderPick();refreshFocus(stripFor!==pk.se
 function setCar(name){pk.car=name;seriesAll=false;let s=serOf(pk.series);
   if(!s||!serUses(s,name)){pk.series=defaultSeries(name);s=serOf(pk.series);pk.week=s?defaultWeek(s,name):null;pk.track=null}
   else if(pk.week==null&&!pk.track)pk.week=defaultWeek(s,name);
-  else if(pk.week!=null&&!weeksLeft(s).some(w=>w.no===pk.week&&carRuns(s,w,name)))pk.week=defaultWeek(s,name);
+  else if(pk.week!=null&&!weeksLeft(s).some(w=>w.no===pk.week&&carRuns(s,w,name)))pk.week=defaultWeek(s,name,pk.week);
   pickChanged()}
 function setSeries(id){const s=serOf(id);if(!s)return;pk.series=id;pk.track=null;
-  if(!serUses(s,pk.car)||!pk.car)pk.car=bestCarFor(s);
+  if(!pk.car||!serUses(s,pk.car)||!carHasWeek(s,pk.car))pk.car=bestCarFor(s);
   pk.week=defaultWeek(s,pk.car);pickChanged()}
 function setWeek(no){pk.week=no;pk.track=null;pickChanged()}
-function setTrack(name){const s=serOf(pk.series);const w=s&&weeksLeft(s).find(x=>x.track===name&&carRuns(s,x,pk.car));
+function setTrack(name){const s=serOf(pk.series);const w=s&&weeksLeft(s).find(x=>x.track===name);
   if(w){pk.week=w.no;pk.track=null}else{pk.week=null;pk.track=name}pickChanged()}
 function pickTrackName(){if(pk.track)return pk.track;const s=serOf(pk.series),w=s&&pk.week!=null&&s.weeks.find(x=>x.no===pk.week);return w?w.track:''}
 
@@ -632,10 +659,10 @@ function makeCombo(id,getOpts,onPick){const inp=$(id),list=$(id+'List');let isOp
   function open(q){isOpen=true;list.hidden=false;inp.setAttribute('aria-expanded','true');draw(q);
     const cur=q?(items.length?0:-1):items.findIndex(o=>o.label===val);mark(cur)}
   function choose(n){const o=items[n];if(!o)return;
-    if(o.action){o.action();inp.value='';open('');inp.focus();return}
-    close();val=o.label;inp.value=o.label;onPick(o.value)}
+    if(o.action){const q=inp.value===val?'':inp.value;o.action();inp.value=q;open(q);inp.focus();return}
+    close();val=o.label;inp.value=o.label;if(document.activeElement===inp)inp.select();onPick(o.value)}
   inp.addEventListener('focus',()=>{inp.select()});
-  inp.addEventListener('click',()=>{if(!isOpen)open('');inp.select()});
+  inp.addEventListener('click',()=>{if(!isOpen)open('');if(inp.value===val)setTimeout(()=>{if(document.activeElement===inp&&inp.value===val)inp.select()},0)});
   inp.addEventListener('input',()=>open(inp.value));
   inp.addEventListener('keydown',e=>{
     if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!isOpen){open('');return}
@@ -657,7 +684,7 @@ function seriesOpts(){const c=cat(),out=[],opt=(s,g)=>({label:s.name,value:s.id,
   if(limit)out.push({label:'Browse all series',action:()=>{seriesAll=true}});
   return out}
 function trackOpts(){const c=cat(),s=serOf(pk.series),out=[],seen=new Set();
-  if(s){const now=c.current_week;weeksLeft(s).filter(w=>carRuns(s,w,pk.car)).forEach(w=>{seen.add(w.track);
+  if(s){const now=c.current_week;weeksLeft(s).forEach(w=>{seen.add(w.track);
     out.push({label:w.track,value:w.track,group:'On this series\' schedule',sub:w.no===now?'This week':w.no===now+1?'Next week':'Week '+w.week})})}
   c.tracks.forEach(t=>{if(!seen.has(t))out.push({label:t,value:t,group:'Other tracks'})});return out}
 const cbCar=makeCombo('pkCar',carOpts,setCar),cbSeries=makeCombo('pkSeries',seriesOpts,setSeries),cbTrack=makeCombo('pkTrack',trackOpts,setTrack);
@@ -676,7 +703,7 @@ function renderPick(){const c=cat(),s=serOf(pk.series);
   const left=s?weeksLeft(s):[];$('pkWeeksRow').hidden=!left.length;
   keepFocus($('pkWeeks'),()=>$('pkWeeks').replaceChildren(...left.map(w=>{const now=c.current_week;
     const b=pkBtn(w.no===now?'This week':w.no===now+1?'Next week':'Week '+w.week,w.no===pk.week,String(w.no),()=>setWeek(w.no),w.track);
-    if(!carRuns(s,w,pk.car)){b.disabled=true;b.title='Other cars run this week: '+weekCars(s,w).join(', ')}return b})))}
+    if(!carRuns(s,w,pk.car)){b.classList.add('off');b.title='Other cars run this week: '+weekCars(s,w).join(', ')}return b})))}
 $('pkStar').addEventListener('click',async()=>{const s=serOf(pk.series);if(!s)return;
   const ids=(prepData.mine||[]).map(x=>x.id).filter(i=>i!==s.id);if(!s.starred)ids.push(s.id);
   setMsg('pkMsg','');let r;try{r=await post('series',{ids})}catch(e){connectionLost();return}
@@ -684,8 +711,12 @@ $('pkStar').addEventListener('click',async()=>{const s=serOf(pk.series);if(!s)re
   stripFor=null;await loadPrepare(true);$('pkStar').focus()});
 
 /* ---------- the one prep view: follows the picker, swaps in one go so the page never blanks */
+let focusKeep=null;
 async function refreshFocus(withPlan){const host=$('mySeries');
   if(!pk.car&&!pk.series&&!pk.track){focusSeq++;renderFocusNone('Pick a car to get started','Debrief shows the race, your laps at the track and the corners that keep costing you.');$('planPanel').hidden=true;return}
+  // until the new choice is in, nothing here may act on the old track
+  const was=document.activeElement;if(was&&host.contains(was)&&was.id)focusKeep=was.id;
+  host.querySelectorAll('button').forEach(b=>{b.disabled=true});
   const seq=++focusSeq,q=new URLSearchParams();if(pk.series)q.set('series',pk.series);if(pk.week!=null)q.set('week',String(pk.week));
   if(pk.car)q.set('car',pk.car);if(pk.track)q.set('track',pk.track);if(!withPlan&&stripFor===pk.series)q.set('plan','0');
   const slow=setTimeout(()=>{if(seq===focusSeq)host.classList.add('busy')},220);let d;
@@ -705,8 +736,17 @@ function racePart(d){const box=h('div','pvfacts');const R=d.race,S=d.series;
   if(dl.children.length)box.append(dl);else box.append(h('p','note','The schedule doesn\'t give the race details for this week.'));
   if(S&&S.frequency)box.append(h('p','pvfreq',S.frequency.replace(/\.?$/,'.')));
   if(S&&S.multiclass)box.append(h('p','note','Multi-class'+(S.classes&&S.classes.length?': '+S.classes.join(', '):'')+'.'));
-  if(!d.week.car_runs)box.append(h('p','note','This week runs the '+d.week.cars.join(', ')+', not the '+d.car+'.'));
+  if(!d.week.car_runs){const dr=cat().driven.map(x=>x.name),cs=d.week.cars.slice().sort((x,y)=>(dr.includes(y)?1:0)-(dr.includes(x)?1:0));
+    box.append(h('p','note','The '+d.car+' doesn\'t run this week. '+(cs.length>1?'These cars do:':'This car does:')));
+    const row=h('div','pkbtns');cs.slice(0,4).forEach(c=>row.append(pkBtn('Use the '+c,false,'use:'+c,()=>setCar(c))));
+    if(cs.length>4)row.append(h('span','sub2','and '+(cs.length-4)+' more in the Car list'));box.append(row)}
   return box}
+function detailsPart(d){const S=d.series,R=d.race||{};if(!S)return null;const dl=h('dl'),add=(k,v)=>{if(v)dl.append(h('dt',null,k),h('dd',null,v))};
+  add('In-game start time',R.in_game_time);add('Temperature',R.temperature);add('Conditions',R.conditions);
+  add('License',S.license&&S.license.replace(/\s*-->\s*/,' to '));add('Category',S.category);
+  const list=(d.week&&d.week.cars&&d.week.cars.length)?d.week.cars:((serOf(S.id)||{}).cars||[]);add(list.length>1?'Cars':'Car',list.join(', '));
+  if(!dl.children.length)return null;const x=h('details','sub pvdetails');x.append(h('summary',null,'Race details'),dl);x.open=!!renderFocus.detailsOpen;
+  x.addEventListener('toggle',()=>{renderFocus.detailsOpen=x.open});return x}
 function pacePart(d){const sec=pvSection('Your laps here'),P=d.pace;
   if(!P){sec.append(h('p','note',d.status?d.status.detail:'No laps on record here.'));return sec}
   if(P.other_car)sec.append(h('p','note','Not in this car yet. These are from the '+P.other_car+'.'));
@@ -718,7 +758,7 @@ function pacePart(d){const sec=pvSection('Your laps here'),P=d.pace;
   const st=d.status;if(st&&st.last)sec.append(h('p','note',st.detail+' Last there '+fmtDate(st.last)+'.'));
   return sec}
 function cornerPart(d){const sec=pvSection('Corners that keep costing you');
-  if(!d.corners.length){sec.append(h('p','note',d.status&&d.status.races>=2?'No corner keeps repeating. That\'s a good sign.':'This shows after two or more races here in this car.'));return sec}
+  if(!d.corners.length){sec.append(h('p','note',d.reviewed_races>=2?'No corner keeps repeating. That\'s a good sign.':'This shows after two or more saved race reviews here in this car.'));return sec}
   const ul=h('ul','pvlist');d.corners.forEach(c=>{const li=h('li');li.append(h('b',null,c.id),
     h('span','sub2','Top three to find in '+c.top3+' of '+c.races+' races'+(ok(c.last_avail)?', last cost about '+c.last_avail.toFixed(2)+' s a lap on '+fmtDate(c.last_date)+(c.last_wet?' (wet)':''):'')+'.'));ul.append(li)});
   sec.append(ul);return sec}
@@ -752,7 +792,7 @@ async function buildPrep(btn){const d=focusData;if(!d)return;setMsg('pvMsg','');
   renderPrep(j);const seq=focusSeq;await refreshFocus(false);if(seq+1!==focusSeq)return;const n=focusData;
   if(n&&n.track_id!=null&&n.car_id!=null)startJob('prep',{track_id:n.track_id,car_id:n.car_id});
   else setMsg('pvMsg','Debrief couldn\'t match this track and car to Garage 61\'s lists. Try Any track and car under More.','bad')}
-function renderFocus(d){const wrap=document.createDocumentFragment();const a=document.activeElement,keep=a&&$('mySeries').contains(a)&&a.id?a.id:null;
+function renderFocus(d){const wrap=document.createDocumentFragment();const a=document.activeElement,keep=focusKeep||(a&&$('mySeries').contains(a)&&a.id?a.id:null);focusKeep=null;
   const head=h('div','pvhead');const tt=h('div','pvtt');tt.append(h('h2','pvtrack',d.track||'Pick a track'));
   const by=[d.car,d.series&&d.week?d.series.name:null].filter(Boolean).join(' in ');if(by)tt.append(h('p','pvby',by));
   const when=weekWhen(d);if(when)tt.append(h('p','pvwhen',when));head.append(tt);
@@ -768,16 +808,33 @@ function renderFocus(d){const wrap=document.createDocumentFragment();const a=doc
   if(d.track&&d.car&&!token)msg.textContent='Add your Garage 61 token in Settings to build a prep page.';
   const flag=stripData&&d.week&&(stripData.weeks||[]).find(w=>w.no===d.week.no&&w.flag);
   if(flag&&flag.flag_reason){const f=h('p','pvflag');f.append(h('b',null,'Needs prep. '),document.createTextNode(flag.flag_reason));wrap.append(f)}
-  if(!d.track){wrap.append(h('p','note',(d.series?d.series.name+' has no race weeks left this season. ':'')+'Pick a track above and your history there shows here.'));$('mySeries').replaceChildren(wrap);return}
-  wrap.append(racePart(d));
+  if(!d.track){const det=detailsPart(d);if(det)wrap.append(det);wrap.append(h('p','note',(d.series?d.series.name+' has no race weeks left this season. ':'')+'Pick a track above and your history there shows here.'));$('mySeries').replaceChildren(wrap);return}
+  wrap.append(racePart(d));const det=detailsPart(d);if(det)wrap.append(det);
   const grid=h('div','pvgrid'),L=h('div','pvcol'),R=h('div','pvcol');
   L.append(pacePart(d));if(d.pace)L.append(cornerPart(d));R.append(cardPart(d));const wm=warmPart(d);if(wm)R.append(wm);grid.append(L,R);wrap.append(grid);
   const cr=craftPart(d);if(cr)wrap.append(cr);
-  $('mySeries').replaceChildren(wrap);if(keep&&$(keep))$(keep).focus()}
-/* season plan: the rest of the season for the picked series. Facts only, worked out in prepare.plan. */
+  $('mySeries').replaceChildren(wrap);if(keep&&$(keep)&&!$('dlgCard').open&&!$('dlgFuel').open)$(keep).focus()}
+/* season plan: the rest of the season. Facts only, worked out in prepare.plan. */
+function planRace(r){const d=h('div','gridf');d.style.gap='4px';d.style.marginTop='8px';
+  const top=h('div','phead');const nm=h('span',null);nm.append(h('b',null,r.track));nm.append(h('span','sub2',' · '+r.series+' week '+r.week));
+  const pl=h('span','pill '+(r.status==='raced'?'ok':r.flag?'no':''),r.status_text);top.append(nm,pl);d.append(top);
+  const facts=[r.length,r.rain,r.start_type].filter(Boolean);if(facts.length)d.append(h('span','sub2',facts.join(' · ')));
+  d.append(h('span','sub2',r.detail+(r.last?' Last there '+fmtDate(r.last)+'.':'')));
+  const P=r.pace;if(P){const bits=['Best '+fmtT(P.best)+(P.best_wet?' (wet)':'')];if(ok(P.typical))bits.push('typical '+fmtT(P.typical)+' over '+P.typical_races+(P.wet_races?' dry race':' race')+(P.typical_races===1?'':'s'));
+    if(P.wet_races&&ok(P.wet_best))bits.push('wet best '+fmtT(P.wet_best));d.append(h('span','sub2',bits.join(' · ')+(P.car?' in the '+P.car:'')))}
+  (r.warmups||[]).forEach(x=>d.append(h('span','sub2','Extra laps first: '+x.series+(x.week?' week '+x.week:'')+', from '+fmtDate(x.start).replace(/, \d{4}$/,'')+(x.same_cars?', same cars':', different cars'))));
+  if(r.flag_reason){const f=h('span','sub2');f.append(h('b',null,'Most prep: '),document.createTextNode(r.flag_reason));d.append(f)}
+  const row=h('div','row');const go=h('button','btn','See this week');go.type='button';go.style.padding='6px 11px';go.addEventListener('click',()=>pickSeriesWeek(r.series_id,r.season_week));row.append(go);
+  if(r.track_id!=null&&r.car_id!=null){const bp=h('button','btn','Build prep page');bp.type='button';bp.style.padding='6px 11px';
+    bp.addEventListener('click',()=>startJob('prep',{track_id:r.track_id,car_id:r.car_id}));row.append(bp)}
+  d.append(row);return d}
+function renderSeasonList(P){const host=$('planSeasonList'),rows=P.season||[];$('planSeason').hidden=!rows.length;host.replaceChildren();
+  rows.forEach(w=>{const r=h('div',(w.no===cat().current_week?'now':'')+(w.left?'':' past'));
+    r.append(h('span','mono','Wk '+w.week),h('span','mono',fmtDate(w.start).replace(/, \d{4}$/,'')),h('span',null,w.track),h('span','sub2',w.has_notes?'Card saved':(w.length||'')));host.append(r);
+    if(w.warmups&&w.warmups.length){const u=h('div','sub2 warmups');u.style.gridColumn='1 / -1';u.textContent='Extra laps first: '+w.warmups.map(x=>String(x.series)+' ('+fmtDate(x.start).replace(/, \d{4}$/,'')+')').join(', ');host.append(u)}})}
 function renderPlan(){const panel=$('planPanel'),P=stripData,s=serOf(pk.series);panel.hidden=!P||!s;if(!P||!s)return;
   const host=$('planWeeks'),pill=$('planPill'),note=$('planNote'),notes=$('planNotes');notes.replaceChildren();
-  (P.notes||[]).forEach(t=>notes.append(h('li',null,t)));notes.hidden=!(P.notes||[]).length;
+  (P.notes||[]).forEach(t=>notes.append(h('li',null,t)));notes.hidden=!(P.notes||[]).length;renderSeasonList(P);
   const wks=P.weeks||[];pill.textContent=wks.length?wks.length+' week'+(wks.length===1?'':'s')+' left':'';
   if(P.state==='error'||!wks.length){host.replaceChildren();note.textContent=P.state==='season_over'||P.state==='ok'?'No race weeks left in this season for this series.':'The season plan couldn\'t be worked out. The rest of this page is fine.';return}
   note.textContent=wks.some(w=>w.flag)?'"Needs prep" marks the weeks with the least history behind them, from your saved reviews and synced sessions.':'No week stands out as needing more prep than the others.';
@@ -785,7 +842,7 @@ function renderPlan(){const panel=$('planPanel'),P=stripData,s=serOf(pk.series);
     b.setAttribute('aria-pressed',String(w.no===pk.week));const top=h('span','stripno',(w.now?'This week':'Week '+w.week));
     b.append(top,h('span','striptr',w.short));if(w.flag)b.append(h('span','stripflag','Needs prep'));
     b.title=w.track+(w.flag_reason?'. '+w.flag_reason:'');const row=s.weeks.find(x=>x.no===w.no);
-    if(row&&!carRuns(s,row,pk.car)){b.disabled=true;b.title='Other cars run this week: '+weekCars(s,row).join(', ')}
+    if(row&&!carRuns(s,row,pk.car)){b.classList.add('off');b.append(h('span','stripoff','Other cars'));b.title='Other cars run this week: '+weekCars(s,row).join(', ')}
     b.addEventListener('click',()=>setWeek(w.no));return b})))}
 $('btnSchDl').addEventListener('click',async()=>{if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){banner('Debrief is busy. Wait for it to finish.',true);return}
   setMsg('schMsg','Starting...');schBusy(true);let r;try{r=await post('schedule',{action:'download'})}catch(e){connectionLost();return}

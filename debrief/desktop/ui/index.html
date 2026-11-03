@@ -206,12 +206,27 @@
         <div class="pkquick" id="pkWeeksRow" hidden><span class="pklab">Race week</span><div class="pkbtns" id="pkWeeks" role="group" aria-label="Race week"></div></div>
         <span class="msg" id="pkMsg" role="status"></span>
       </div>
+      <ul class="warnlist" id="prepMissing" hidden></ul>
       <div id="mySeries" class="panel prepview" aria-live="polite"></div>
       <div class="panel planstrip" id="planPanel" hidden>
         <div class="phead"><h3>Season plan</h3><span class="pill" id="planPill"></span></div>
         <div id="planWeeks" class="stripweeks"></div>
         <p class="note" id="planNote"></p>
         <ul class="warnlist" id="planNotes" hidden></ul>
+        <details class="sub" id="planSeason"><summary>Whole season</summary><div id="planSeasonList" class="seasonlist"></div></details>
+      </div>
+      <details class="panel prepmore" id="prepAll" hidden>
+        <summary><h3>All your series</h3><span class="note">This week and next, and the plan across them</span></summary>
+        <div id="prepAllRows" class="list"></div>
+        <h3 class="pvsub">Season plan across your series</h3>
+        <p class="note" id="allPlanNote"></p>
+        <ul class="warnlist" id="allPlanNotes" hidden></ul>
+        <div id="allPlanWeeks" class="gridf"></div>
+      </details>
+      <div class="callout join joinsmall" id="prepJoin" hidden>
+        <h3 class="joinTitle">Join Midfield Menace on Garage 61</h3>
+        <p class="joinText"></p>
+        <div class="row"><a class="btn joinLink" href="https://garage61.net" target="_blank" rel="noreferrer">Open Garage 61</a></div>
       </div>
       <details class="panel prepmore" id="prepMore">
         <summary><h3>More</h3><span class="note">Schedule file, Track Intel, any track and car, pages you've built</span></summary>
@@ -268,11 +283,6 @@
       </div>
       <p class="note">A prep page brings in your teammates' best laps at that track and car from Garage 61.</p>
       </details>
-      <div class="callout join" id="prepJoin" hidden>
-        <h3 class="joinTitle">Join Midfield Menace on Garage 61</h3>
-        <p class="joinText"></p>
-        <div class="row"><a class="btn primary joinLink" href="https://garage61.net" target="_blank" rel="noreferrer">Open Garage 61</a></div>
-      </div>
       </details>
     </div>
   </section>

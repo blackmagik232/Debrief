@@ -369,6 +369,22 @@ details.xtras[open]{gap:16px}
 .stripno{font-family:var(--mono);font-size:11px;color:var(--muted)}
 .striptr{font-size:13.5px;font-weight:600;line-height:1.25}
 .stripflag{font-size:12px;color:var(--warn);font-weight:500}
+.joinsmall{padding:10px 14px;gap:6px;font-size:13px}
+.joinsmall .joinTitle{font-size:15px}
+.joinsmall .joinText{font-size:13px}
+.joinsmall .btn{padding:4px 10px;font-size:13px}
+.pkbtn.off{border-style:dashed;color:var(--fg2)}
+.stripwk.off{border-style:dashed}
+.stripwk.off .striptr{font-weight:500;color:var(--fg2)}
+.stripoff{font-size:12px;color:var(--fg2)}
+.pvdetails{font-size:13.5px}
+.pvdetails dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 14px;margin:8px 0 0}
+.pvdetails dt{color:var(--muted)}
+.pvdetails dd{margin:0}
+.seasonlist div.past{color:var(--muted)}
+#planSeasonList .now,#planSeasonList .now span{font-size:13px}
+#prepMissing{margin:0}
+#prepMissing li .btn{padding:2px 8px;font-size:12.5px;margin-left:8px}
 .prepmore{gap:14px}
 .prepmore:not([open]){gap:0}
 #pkMsg:empty{display:none}

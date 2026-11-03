@@ -2418,10 +2418,10 @@ if(typeof HELP==='object'){
 /* ---------- 2.16 Racing: your starts (green flag to the end of lap 1) and your incidents, across your races, from
    the replay scans, telemetry files and saved reviews on this PC (api/racing, read only) */
 let rc={data:null,track:'',seq:0};
-const RC_KIND={own:'Your own',contact:'Contact',caught_up:'Caught up'};
-const RC_KIND_LONG={own:'Your own mistake',contact:'Contact',caught_up:'Caught up in someone else\'s'};
+const RC_KIND={own:'Your own',contact:'Contact',caught_up:'Caught up',unknown:'Not known'};
+const RC_KIND_LONG={own:'Your own mistake',contact:'Contact',caught_up:'Caught up in someone else\'s',unknown:'Kind not known'};
 const RC_SESS={race:'Race',qualifying:'Qualifying',practice:'Practice'};
-const RC_CONTACT={yes:['Yes','badc'],probably:['Probably','badc'],possibly:['Possibly',''],no:['No','okc']};
+const RC_CONTACT={contact_4x:['Contact (4x)','badc'],possibly:['Possibly',''],no_4x:['No 4x','okc']};
 const rcSigned=n=>ok(n)?(n>0?'+'+n:n<0?'−'+Math.abs(n):'0'):'';
 const rcPts=n=>ok(n)?n+'x':'';
 async function openRacing(){current={view:'racing',dir:null};show('vRacing');markNav();await loadRacing()}
@@ -2430,7 +2430,8 @@ async function loadRacing(){const seq=++rc.seq;setMsg('rcMsg','Working it out...
   let j;try{j=await api('racing')}catch(e){connectionLost();return}finally{if(seq===rc.seq)$('rcAgain').disabled=false}
   if(seq!==rc.seq)return;['rcStarts','rcInc'].forEach(id=>$(id).classList.remove('busy'));
   if(!j.ok){setMsg('rcMsg',j.error||'Racing didn\'t load.','bad');return}
-  setMsg('rcMsg','');rc.data=j;renderRacing()}
+  const P=j.pending;setMsg('rcMsg',P?'Reading your telemetry files: '+P.left+' of '+P.total+' still to read. This fills in as they are read.':'');rc.data=j;renderRacing();
+  if(P)setTimeout(()=>{if(current.view==='racing'&&seq===rc.seq)loadRacing()},2500)}
 $('rcAgain').addEventListener('click',()=>loadRacing());
 $('rcTrack').addEventListener('change',()=>{rc.track=$('rcTrack').value;renderRacing()});
 function rcTracks(j){const out=[];const add=t=>{if(t&&!out.includes(t))out.push(t)};
@@ -2482,7 +2483,7 @@ function rcCornerBars(rows){const box=h('div','rcbars');const scanned=rows.filte
   const order=[],agg={};scanned.forEach(r=>r.corners.forEach(s=>{if(!agg[s.key]){agg[s.key]={label:s.label,g:0,l:0};order.push(s.key)}
     if(/^the start/.test(s.label))agg[s.key].label=s.label;agg[s.key].g+=s.gained||0;agg[s.key].l+=s.lost||0}));
   const max=Math.max(1,...order.map(k=>Math.max(agg[k].g,agg[k].l)));
-  box.append(h('p','rcbarhead','Places gained and lost on lap 1, corner by corner'));
+  box.append(h('p','rcbarhead','Places seen changing on lap 1, corner by corner'));
   const ul=h('ul','rcbarlist');ul.setAttribute('aria-label','Places gained and lost on lap 1 by corner');
   order.forEach(k=>{const a=agg[k],li=h('li','rcbar');li.append(h('span','rcbarlab',cap(a.label)));
     const lost=h('span','rcl'),gain=h('span','rcg');const li1=h('i');li1.style.width=(a.l/max*100)+'%';const gi=h('i');gi.style.width=(a.g/max*100)+'%';
@@ -2520,7 +2521,7 @@ function rcIncidents(j){const host=$('rcInc'),M=j.incidents||{},W=j.where||{};
   sec.append(h('p','note','iRacing counts 1x off track, 2x loss of control, 4x contact. '+(M.steps_note||'')));
   ts.forEach(t=>sec.append(rcIncTrack(t)));
   const how=h('details','rchow');how.append(h('summary',null,'How this is worked out'),h('p','note',M.how||''),
-    h('p','note','Who you were close to comes from a replay scan, so it says "probably" or "possibly": the replay only shows where cars were, not who touched whom.'));
+    h('p','note','The replay only shows where cars were, not who touched whom: another driver is only named as the closest car and how far away along the track. Without a replay scan or the spotter, an incident\'s kind isn\'t known.'));
   sec.append(how);(M.notes||[]).slice(0,6).forEach(n=>sec.append(h('p','note',n)));
   host.replaceChildren(sec)}
 function rcIncTrack(t){const box=h('div','rctrackbox'),top=h('div','phead');top.append(h('h4',null,t.track),h('span','pill',plural(t.events,'incident')+(t.points_known||t.points?', '+t.points+' points':'')));box.append(top);
@@ -2535,10 +2536,10 @@ function rcIncTrack(t){const box=h('div','rctrackbox'),top=h('div','phead');top.
 function rcGrid(t){const cells={};(t.cells||[]).forEach(c=>{cells[c.zone+'|'+c.type]=c});
   const max=Math.max(1,...(t.cells||[]).map(c=>c.events));
   const wrap=h('div','tblwrap'),tb=h('table','pacetbl rcgrid'),hr=h('tr');
-  ['Where','Your own','Contact','Caught up','Lap 1','All'].forEach(x=>hr.append(h('th',null,x)));const hd=h('thead');hd.append(hr);tb.append(hd);
+  ['Where','Your own','Contact','Caught up','Not known','Lap 1','All'].forEach(x=>hr.append(h('th',null,x)));const hd=h('thead');hd.append(hr);tb.append(hd);
   const body=h('tbody');
   (t.by_zone||[]).forEach(b=>{const tr=h('tr',b.events?null:'rcnone');const th=h('th',null,cap(b.label));tr.append(th);
-    ['own','contact','caught_up'].forEach(k=>{const c=cells[b.zone+'|'+k],td=h('td','num rccell');
+    ['own','contact','caught_up','unknown'].forEach(k=>{const c=cells[b.zone+'|'+k],td=h('td','num rccell');
       if(c&&c.events){td.textContent=c.events+(c.points?' · '+rcPts(c.points):'');td.style.background='color-mix(in srgb,var(--lose) '+Math.round(8+c.events/max*30)+'%,var(--panel))';td.classList.add('hot');
         td.title=plural(c.events,'incident')+(c.points?', '+c.points+' points':'')+' at '+b.label+': '+RC_KIND_LONG[k].toLowerCase()}
       tr.append(td)});
@@ -2546,18 +2547,18 @@ function rcGrid(t){const cells={};(t.cells||[]).forEach(c=>{cells[c.zone+'|'+c.t
   tb.append(body);wrap.append(tb);const box=h('div');box.append(h('p','rcbarhead','Where, and what kind (count · points)'),wrap);return box}
 function rcIncList(t){const d=h('details','rcincs');d.append(h('summary',null,'Every incident ('+t.events+')'));
   const wrap=h('div','tblwrap'),tb=h('table','pacetbl rclist'),hr=h('tr');
-  ['When','Session','Lap','Where','Points','What','Kind','How sure','With','Why'].forEach(x=>hr.append(h('th',null,x)));const hd=h('thead');hd.append(hr);tb.append(hd);
+  ['When','Session','Lap','Where','Points','What','Kind','How sure','Closest car','Why'].forEach(x=>hr.append(h('th',null,x)));const hd=h('thead');hd.append(hr);tb.append(hd);
   const body=h('tbody');(t.list||[]).slice().reverse().forEach(r=>{const tr=h('tr');
     tr.append(rcWhenCell(r),h('td',null,RC_SESS[r.kind_of_session]||cap(r.session_type||'')),
       h('td','num',r.before_green?'Pace lap':(r.lap===0?'Before lap 1':(r.lap!=null?String(r.lap):''))),h('td',null,cap(r.where||'')),
       h('td','num',r.points!=null?rcPts(r.points)+(r.at_once?' at once':''):'Not known'),h('td',null,cap(r.what||'')),
-      h('td',null,RC_KIND_LONG[r.type]||''),h('td',null,cap(r.sure||'')),h('td',null,(r.with||[]).join(', ')),h('td','rcwhy',r.why||''));
+      h('td',null,RC_KIND_LONG[r.type]||''),h('td',null,cap(r.sure||'')),h('td',null,r.closest||''),h('td','rcwhy',r.why||''));
     body.append(tr)});
   tb.append(body);wrap.append(tb);d.append(wrap);return d}
 if(typeof HELP==='object'){
-  HELP.tour.push(['Racing','Your starts and your incidents across all your races: how many places you gain or lose on lap 1 and where, and which corners your incidents happen in and what kind they were. It only calls something a pattern when at least 3 races show it and chance can\'t explain it.']);
+  HELP.tour.push(['Racing','Your starts and your incidents across all your races: how many places you gain or lose on lap 1 and where the replay saw them change, and which corners your incidents happen in and what kind they probably were. It only calls something a pattern when at least 3 races show it and chance can\'t explain it.']);
   HELP.words.push(['Places seen changing','On lap 1, cars the replay saw pass you or be passed between two corners. Cars out of the replay\'s view can\'t be counted, so these can add up to less than your real change.'],
-    ['Your own, Contact, Caught up','What kind an incident probably was. Contact: iRacing counted contact (4x) or another car was within 10 m. Caught up: another car\'s trouble started first in the same spot. Your own: no other car near. Each says how sure it is (sure, probably, possibly).'],
+    ['Your own, Contact, Caught up, Not known','What kind an incident probably was. Contact: iRacing counted contact (4x), or another car was within 10 m (possibly). Caught up: another car\'s trouble started first in the same spot (possibly). Your own: the replay or spotter shows no other car near. Not known: no replay scan or spotter data. The replay shows where cars were, not who touched whom, so another driver is only named as the closest car.'],
     ['Incident points','iRacing counts 1x off track, 2x loss of control and 4x contact. Two at once (say 4 and 1) are split. Points added while no telemetry was recording can\'t be placed on the track.'],
-    ['Pattern (Racing)','Said only when at least 3 races show it and a fair test says chance alone would show it less than 1 time in 20, counting every corner tested. With fewer races the page only says what happened.'])}
+    ['Pattern (Racing)','Said only when at least 3 races show it and a fair test says chance alone would show it less than 1 time in 20, counting every corner tested. A corner or lap 1 is compared with the rest of the field in your replay-scanned races (some corners catch out everyone), and a lap 1 habit must go against what your grid place alone gives. With fewer races the page only says what happened.'])}
 })();

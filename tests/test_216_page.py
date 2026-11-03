@@ -178,8 +178,9 @@ def test_racing_endpoint():
     assert [r["start_from"] for r in rows] == ["telemetry", "telemetry", "official", "telemetry"], [r["start_from"] for r in rows]
     assert rows[2]["start_words"] == "from the official results" and rows[0]["lap1_words"].startswith("iRacing's position after lap 1")
     assert (rows[0]["start"], rows[0]["lap1_pos"], rows[0]["change"]) == (4, 5, -1), rows[0]
-    assert rows[1]["change"] == 2 and rows[1]["contact"] == "no", rows[1]
-    assert rows[0]["contact"] == "yes" and rows[0]["incident_points"] == 4, rows[0]
+    assert rows[1]["change"] == 2 and rows[1]["contact"] == "no_4x", rows[1]
+    assert rows[0]["contact"] == "contact_4x" and rows[0]["incident_points"] == 4, rows[0]
+    assert j["pending"] is None, "every telemetry file read"
     assert [bool(r["review"]) for r in rows] == [True, True, True, False], [r["review"] for r in rows]
     assert set(r["review"] for r in rows if r["review"]) == set(make_files()["reviews"])
     assert rows[0]["corners"] and not rows[3]["corners"], "corner by corner only for scanned races"
@@ -196,7 +197,7 @@ def test_racing_endpoint():
     kinds = {(r["kind_of_session"], r["points"], r["type"]) for r in t["list"]}
     assert ("race", 4, "contact") in kinds and ("race", 1, "own") in kinds, kinds
     hit = next(r for r in t["list"] if r["points"] == 4 and r["review"])
-    assert hit["where"] == "Turn 1" and hit["with"] == ["Driver E"] and hit["lap1"], hit
+    assert hit["where"] == "Turn 1" and hit["closest"].startswith("Driver E, ") and hit["lap1"], hit
     assert "1x, 2x, 4x" in M["steps_note"], M["steps_note"]
     assert not t["patterns"], t["patterns"]
 
@@ -218,8 +219,9 @@ def test_cache_reuse_and_invalidation():
     code, j3 = call("api/racing")
     assert j3["cached"] and st.made == made + 1, "Debrief restarted: from the cache folder"
     assert list((TMP / "cache" / RC.CACHE).glob("racing-*.json")), "saved under the cache folder"
-    for f in (TMP / "cache" / RC.CACHE).glob("*.json"):
+    for f in list((TMP / "cache" / RC.CACHE).glob("*.json")) + list((TMP / "cache" / RC.FILES_CACHE).glob("*.json")):
         no_paths(json.loads(f.read_text(encoding="utf-8")), f.name)
+    assert list((TMP / "cache" / RC.FILES_CACHE).glob("files.json")), "each telemetry file's reading is kept"
     # a changed telemetry file
     f = make_files()["ibt"][-1]
     os.utime(f, ns=(f.stat().st_atime_ns, f.stat().st_mtime_ns + 1_000_000_000))
@@ -259,6 +261,79 @@ def test_cache_reuse_and_invalidation():
     for x in ts:
         x.join()
     assert all(c == 200 for c, _ in res) and st.made == n + 1, (st.made - n)
+
+
+def test_cold_open_reads_no_telemetry_file_again():
+    """Debrief restarted with a new answer to work out (say a new review): each telemetry file's reading comes from
+    the cache folder, none is read again."""
+    ready()
+    s = srv()
+    call("api/racing")
+    st = CS.state(s)
+    with st.lock:
+        st.mem.clear()
+    shutil.rmtree(TMP / "cache" / RC.CACHE, ignore_errors=True)
+    s._racing_readings = None                       # as after a restart: only the cache folder is left
+    reads, real = [], RC.read_one
+    RC.read_one = lambda f: reads.append(f.name) or real(f)
+    try:
+        t0 = time.monotonic()
+        code, j = call("api/racing")
+        took = time.monotonic() - t0
+    finally:
+        RC.read_one = real
+    assert code == 200 and j["ok"] and j["pending"] is None and reads == [], reads
+    assert j["starts"]["races"] == 4 and j["incidents"]["events"] == 6
+    print(f"  cold open with every telemetry reading cached: {took:.2f} s")
+
+
+def test_slow_first_read_answers_early_and_finishes_in_the_background():
+    """Over BUDGET_S of new files: the answer comes back early with "pending" (never cached), the rest is read on
+    a background thread, and asking again gives the whole answer."""
+    ready()
+    s = srv()
+    st = CS.state(s)
+    with st.lock:
+        st.mem.clear()
+    shutil.rmtree(TMP / "cache" / RC.CACHE, ignore_errors=True)
+    shutil.rmtree(TMP / "cache" / RC.FILES_CACHE, ignore_errors=True)
+    s._racing_readings = None
+    old, real = RC.BUDGET_S, RC.read_one
+    RC.BUDGET_S = 0.0
+
+    def slow(f):
+        time.sleep(0.3)
+        return real(f)
+    RC.read_one = slow
+    try:
+        made = st.made
+        code, j = call("api/racing")
+        assert code == 200 and j["ok"] and j["pending"] and j["pending"]["left"] >= 1, j.get("pending")
+        assert st.made == made and not list((TMP / "cache" / RC.CACHE).glob("racing-*.json")), "a partial answer is never cached"
+        no_paths(j, "pending")
+        for _ in range(100):
+            code, j = call("api/racing")
+            if not j["pending"]:
+                break
+            time.sleep(0.2)
+        assert not j["pending"] and j["starts"]["races"] == 4 and j["incidents"]["events"] == 6, j.get("pending")
+        assert st.made == made + 1
+    finally:
+        RC.BUDGET_S, RC.read_one = old, real
+    # closing Debrief stops the reader between two files; it never holds the close up
+    R = RC.readings(s, TMP / "cache")
+    s.stopping.set()
+    try:
+        R.recs = {}
+        RC.start_reader(s, R, make_files()["ibt"])
+        t = R.thread
+        if t is not None:
+            t.join(5)
+            assert not t.is_alive()
+        assert len(R.recs) <= 1, "stopped before reading the files"
+    finally:
+        s.stopping.clear()
+        R.recs = None
 
 
 def test_empty_states():

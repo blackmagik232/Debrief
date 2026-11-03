@@ -156,6 +156,24 @@ def test_corner_paths_rules():
                                          "rule": None, "source": "corner coach"}]
 
 
+def test_practice_key_follows_versions():
+    """2.13 review: a cached session review or corner coach is never reused by a newer Debrief or changed module."""
+    import debrief
+    from debrief import cornercoach, sessionibt
+    f = TMP / "key.ibt"
+    f.write_bytes(b"x")
+    k0 = S.practice_key("corners", [f])
+    assert S.practice_key("corners", [f]) == k0
+    for mod, attr, val in ((debrief, "__version__", "9.9.9"), (cornercoach, "VERSION", 999), (sessionibt, "VERSION", 999)):
+        old = getattr(mod, attr)
+        setattr(mod, attr, val)
+        try:
+            assert S.practice_key("corners", [f]) != k0, (mod, attr)
+        finally:
+            setattr(mod, attr, old)
+    assert S.practice_key("corners", [f]) == k0
+
+
 def test_livecoach_phrases_and_abs():
     """The coach takes the corner coach's phrase per focus corner (said after the corner instead of the speed
     words), keeps the old words without one, and a reference built from an .ibt keeps its ABS channel."""

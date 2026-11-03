@@ -1275,7 +1275,7 @@ def redact_webhook(text: str, url: str | None) -> str:
 
 # ---------------------------------------------------------------- Practice: session review and corner coach (2.13)
 PRACTICE_CACHE = "practice"         # folder in the cache folder: one JSON file per worked-out result
-PRACTICE_VERSION = 1                # bump when a result's shape changes, so old cache files are not used
+PRACTICE_VERSION = 2                # bump when a result's shape changes, so old cache files are not used
 PRACTICE_MEM = 48                   # results kept in memory
 PRACTICE_DISK = 300                 # result files kept in the cache folder (the oldest go first)
 CORNER_FILES = 10                   # the corner coach reads at most this many recent files of one car + track ...
@@ -1283,14 +1283,26 @@ CORNER_DAYS = 30                    # ... from at most this many days before the
 SESSION_ID_OK = re.compile(r"^[^\x00-\x1f<>\"]{1,400}$")
 
 
+def practice_versions() -> list:
+    """Debrief's version and the review modules' own version numbers: part of every cached result's name, so a
+    new Debrief (or a changed module) never shows a result worked out by an older one (2.13 review)."""
+    from .. import __version__
+    out = [__version__, PRACTICE_VERSION]
+    for name in ("sessionibt", "cornercoach", "setuplab", "engine"):
+        mod = app.optional_module(name)
+        out.append([name, getattr(mod, "VERSION", None)])
+    return out
+
+
 def practice_key(kind: str, paths, extra=None) -> str:
     """A name for one result: what it is plus each file's name, size and change time, so a changed or new file
-    makes a new result. Raises OSError when a file is gone."""
+    makes a new result, and Debrief's and the modules' versions (practice_versions). Raises OSError when a file
+    is gone."""
     files = []
     for p in paths:
         st = Path(p).stat()
         files.append([Path(p).name, st.st_size, st.st_mtime_ns])
-    raw = json.dumps([PRACTICE_VERSION, kind, sorted(files), extra], sort_keys=True, default=str)
+    raw = json.dumps([practice_versions(), kind, sorted(files), extra], sort_keys=True, default=str)
     return kind + "-" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:24]
 
 

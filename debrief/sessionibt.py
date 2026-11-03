@@ -30,6 +30,7 @@ import numpy as np
 from debrief import engine, ibt
 from debrief import setuplab as sl
 
+VERSION = 2                     # the review's shape and wording (part of the window's cache key)
 GAP_HOURS = 3.0                 # more than this between files starts a new session
 MIN_LAPS = sl.MIN_LAPS          # 5: laps needed before consistency, segment spread or the best possible lap is given
 NEAR_BEST_S = 0.5               # "laps within half a second of your best"
@@ -711,7 +712,7 @@ def review(files, history=None, race_minutes=None, race_laps=None, idx: dict | N
     if isinstance(files, dict):
         files = files.get("paths") or []
     paths = [Path(p) for p in (files or [])]
-    out = {"kind": "session_review", "version": 1, "car": "", "car_path": "", "track": "", "track_code": "",
+    out = {"kind": "session_review", "version": VERSION, "car": "", "car_path": "", "track": "", "track_code": "",
            "date": "", "sort": 0, "files": [], "session_types": [], "subsession": None,
            "summary": {"best": None, "best_lap": None, "median": None, "laps": 0, "valid_laps": 0, "clean_laps": 0,
                        "left_out": {}},

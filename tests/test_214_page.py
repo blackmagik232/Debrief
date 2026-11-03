@@ -716,6 +716,37 @@ def test_review_auto_score_waits_for_a_measured_lap():
     assert o and o["just_scored"] and o["plan"]["plan_id"] == cur["plan_id"] and o["plan"]["score"]["measured"] >= 1, o
 
 
+def test_review_coach_json_writes_dont_clash():
+    """N5: the wheel button and the coach settings saved at the same moment both stay in coach.json."""
+    s = srv()
+    from debrief.desktop import settings_io
+    s.stop_coach()
+    errs = []
+
+    def wheel(k):
+        try:
+            s._wheel_learned({"device": 1, "button": 1 + k % 30, "name": "W", "mid": 1, "pid": 2,
+                              "label": f"Button {1 + k % 30} on W"})
+        except Exception as e:  # noqa: BLE001
+            errs.append(e)
+
+    def settings_(k):
+        code, r = call("api/coach/settings", {"settings": {"volume": 50 + k % 40}})
+        if code != 200:
+            errs.append(r)
+    ts = []
+    for k in range(12):
+        ts += [threading.Thread(target=wheel, args=(k,)), threading.Thread(target=settings_, args=(k,))]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(30)
+    data = settings_io.load_extra("coach")
+    assert not errs, errs
+    assert "wheel" in data and "settings" in data and 50 <= data["settings"]["volume"] < 90, data
+    call("api/coach/wheel-clear", {})
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in list(globals().items()) if n.startswith("test_") and callable(f)]
     failed = 0

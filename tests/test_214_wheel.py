@@ -298,6 +298,46 @@ time.sleep(1.0)
 w5.stop()
 check(10 <= be5.reads <= 30, f"default rate: {be5.reads} reads in a second (about 20)")
 
+# 2.14 review N5: stopped and started again at once (Learn while the coach stops): one poller, never two
+class SlowBackend(FakeBackend):
+    def buttons(self, dev):
+        time.sleep(0.3)                                 # a slow driver: the thread is mid-read when stopped
+        return super().buttons(dev)
+
+
+be7 = SlowBackend()
+w7 = wm.WheelMute(backend=be7, binding={"device": 2, "button": 1, "name": "Wheel", "mid": 200, "pid": 7})
+w7.start()
+time.sleep(0.1)
+w7.stop(timeout=0)                                      # don't wait: its thread is still in the read
+w7.start()
+time.sleep(1.0)
+alive = [t for t in threading.enumerate() if t.name == "debrief-wheelmute" and t.is_alive()]
+check(len(alive) == 1, f"stop then start straight away: one poller left ({len(alive)})")
+w7.stop()
+time.sleep(0.8)
+check(not [t for t in threading.enumerate() if t.name == "debrief-wheelmute" and t.is_alive()], "and it stops")
+# the binding changed while a read is under way: that read doesn't count against the new button
+be8, ck8 = FakeBackend(), Clock()
+hits = []
+w8 = wm.WheelMute(on_press=lambda: hits.append(1), backend=be8, clock=ck8,
+                  binding={"device": 2, "button": 1, "name": "Wheel", "mid": 200, "pid": 7})
+poll(w8, ck8, 2)
+orig = be8.buttons
+
+
+def swap_during_read(dev):
+    w8.set_binding({"device": 2, "button": 2, "name": "Wheel", "mid": 200, "pid": 7})
+    return orig(dev)
+
+
+be8.press(2, 2)
+be8.buttons = swap_during_read
+ck8.tick()
+w8.poll_once()
+be8.buttons = orig
+check(hits == [], "a button held while the binding changes isn't taken as a press")
+
 print("== off Windows / no joystick interface")
 saved = wm.sys.platform
 try:

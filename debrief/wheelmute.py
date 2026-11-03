@@ -205,6 +205,7 @@ class WheelMute:
         self._last_ident = -1e9
         self.scans = 0                  # device lists read (tests)
         self.answered: set = set()      # device numbers that have answered at some point
+        self._gen = 0                   # bumped whenever the binding changes
         self._devices: list = []
         self._logged = set()
         self.presses = 0
@@ -218,17 +219,20 @@ class WheelMute:
         if self._get_backend() is None:
             return False
         with self._lock:
-            if self._thread is not None and self._thread.is_alive():
+            if self._thread is not None and self._thread.is_alive() and not self._stop.is_set():
                 return True
-            self._stop.clear()
-            self._thread = threading.Thread(target=self._run, daemon=True, name="debrief-wheelmute")
+            # a fresh stop flag for each thread: a thread still finishing after stop() keeps its own (set) flag, so
+            # starting again straight away (Learn while the coach stops) never brings it back to life beside the new one
+            self._stop = threading.Event()
+            self._thread = threading.Thread(target=self._run, args=(self._stop,), daemon=True,
+                                            name="debrief-wheelmute")
             self._thread.start()
         return True
 
     def stop(self, timeout: float = 2.0) -> bool:
         """Stop polling; True when the thread has ended."""
-        self._stop.set()
         with self._lock:
+            self._stop.set()
             t, self._thread = self._thread, None
             self._learn = None
         if t is not None and t is not threading.current_thread():
@@ -243,6 +247,7 @@ class WheelMute:
     def set_binding(self, binding):
         with self._lock:
             self.binding = clean_binding(binding)
+            self._gen += 1
             self._dev = None
             self._prev = True               # a button already held when it is set doesn't count as a press
             self._next_scan = -1e9
@@ -299,15 +304,16 @@ class WheelMute:
             except Exception:  # noqa: BLE001
                 pass
 
-    def _run(self):
+    def _run(self, stop=None):
+        stop = stop or self._stop
         period = 1.0 / self.hz
-        while not self._stop.is_set():
+        while not stop.is_set():
             try:
                 self.poll_once()
             except Exception as e:  # noqa: BLE001  (never out of the thread)
                 self._note(("loop", e.__class__.__name__), f"wheelmute: read failed ({e.__class__.__name__}: "
                                                            f"{str(e)[:120]})")
-            self._stop.wait(period)
+            stop.wait(period)
 
     def _scan(self, now):
         be = self._backend
@@ -329,10 +335,9 @@ class WheelMute:
         self._backoff = min(RESCAN_MAX_S, self._backoff * 2.0) if self._backoff else RESCAN_MIN_S
         self._next_scan = now + self._backoff
 
-    def _still_same(self, now) -> bool:
+    def _still_same(self, now, b) -> bool:
         """Every IDENTITY_S: the device on the chosen number is still the bound one (backends with identity())."""
         fn = getattr(self._backend, "identity", None)
-        b = self.binding
         if fn is None or now - self._last_ident < IDENTITY_S or not (b.get("name") or b.get("mid") is not None):
             return True
         self._last_ident = now
@@ -349,12 +354,12 @@ class WheelMute:
         if be is None:
             return
         now = self._clock()
-        with self._lock:
-            lr = self._learn
+        with self._lock:                                 # read together, as set_binding / learn change them
+            lr, b, gen = self._learn, self.binding, self._gen
         if lr is not None:
             self._poll_learn(lr, now)
             return
-        if self.binding is None:
+        if b is None:
             return
         if self._dev is None:                            # not found yet / unplugged: look, with a growing wait
             if now < self._next_scan:
@@ -364,7 +369,7 @@ class WheelMute:
                 self._missing(now)
                 return
             self._backoff = 0.0
-        elif not self._still_same(now):                  # another device on that number now: look for ours
+        elif not self._still_same(now, b):               # another device on that number now: look for ours
             self._scan(now)
             if self._dev is None:
                 self._missing(now)
@@ -379,7 +384,10 @@ class WheelMute:
             self._prev = False
             self._next_scan = now
             return
-        down = bool(int(mask) >> (self.binding["button"] - 1) & 1)
+        with self._lock:
+            if gen != self._gen:                         # the binding changed during this read: next poll
+                return
+        down = bool(int(mask) >> (b["button"] - 1) & 1)
         if down and not self._prev and now - self._last_press >= DEBOUNCE_S:
             self._last_press = now
             self.presses += 1
@@ -426,7 +434,9 @@ class WheelMute:
             self._learn = None
             if found is not None:
                 self.binding = found
+                self._gen += 1
                 self._dev = found["device"]
+                self._backoff = 0.0
                 self._prev = True                        # the learning press doesn't toggle mute
                 self._learn_result = "learned"
             else:

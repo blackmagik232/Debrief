@@ -1511,6 +1511,8 @@ class DebriefServer(ThreadingHTTPServer):
         # 2.14 Practice loop: plans are read and written under this lock (one file per car + track)
         self.plan_lock = threading.Lock()
         self.coach_focus_info = None       # {"plan_id", "corner", "text"} of the plan the running coach watches
+        # coach.json (the coach's settings and the wheel button): one read-change-write at a time
+        self.coach_json_lock = threading.Lock()
         # 2.14 wheel button mute: one poller, started with the coach (or for Learn), stopped with it
         self.wheel = None                  # wheelmute.WheelMute
         self.wheel_note = ""               # how the last Learn went, in plain words
@@ -1796,10 +1798,11 @@ class DebriefServer(ThreadingHTTPServer):
     def _wheel_learned(self, binding):
         """Learn mode ended (on the poller's thread): save the button, or say none was pressed."""
         if binding:
-            data = settings_io.load_extra("coach")
-            data["wheel"] = binding
             try:
-                settings_io.save_extra("coach", data)
+                with self.coach_json_lock:
+                    data = settings_io.load_extra("coach")
+                    data["wheel"] = binding
+                    settings_io.save_extra("coach", data)
                 self.wheel_note = f"Saved: {binding.get('label')}."
                 app.say("Wheel mute button saved.")
             except OSError as e:
@@ -1807,10 +1810,11 @@ class DebriefServer(ThreadingHTTPServer):
                 self.wheel_note = "The button couldn't be saved. Details were saved to debrief.log."
         else:
             self.wheel_note = "No button was pressed. Try again and press the button within 15 seconds."
-        with self.coach_lock:
-            w, run = self.wheel, self.coach is not None and self.coach.running()
-        if w is not None and not run:
-            w.stop(0)                       # only listened for Learn: the coach isn't on
+        with self.coach_lock:               # decided under the lock a starting coach takes, so a coach starting
+            w = self.wheel                  # right now keeps its wheel button
+            run = self.coach_starting or (self.coach is not None and self.coach.running())
+            if w is not None and not run:
+                w.stop(0)                   # only listened for Learn: the coach isn't on (no wait: this thread)
 
     def wheel_learn(self) -> dict:
         w = self._wheel()
@@ -1822,10 +1826,11 @@ class DebriefServer(ThreadingHTTPServer):
         return {"ok": True}
 
     def wheel_clear(self) -> dict:
-        data = settings_io.load_extra("coach")
-        data.pop("wheel", None)
         try:
-            settings_io.save_extra("coach", data)
+            with self.coach_json_lock:
+                data = settings_io.load_extra("coach")
+                data.pop("wheel", None)
+                settings_io.save_extra("coach", data)
         except OSError as e:
             app.say(f"ERROR clearing the wheel button: {type(e).__name__}: {e}")
             raise ValueError(SETTINGS_WRITE_ERROR)
@@ -1853,11 +1858,13 @@ class DebriefServer(ThreadingHTTPServer):
 
     def _start_wheel(self):
         try:
-            if wheel_saved() is None:
+            b = wheel_saved()
+            if b is None:
                 return
             w = self._wheel()
-            w.set_binding(wheel_saved())
-            w.start()
+            with self.coach_lock:           # the same lock _wheel_learned decides under
+                w.set_binding(b)
+                w.start()
         except Exception:  # noqa: BLE001  (the coach works without it)
             app.say("ERROR starting the wheel mute button:\n" + traceback.format_exc())
 
@@ -3602,10 +3609,11 @@ class Handler(BaseHTTPRequestHandler):
         new = clean_coach_settings(body.get("settings"))
         merged = livecoach.Settings.from_dict({**saved_coach_settings(), **new}).to_dict()
         keep = {k: merged[k] for k in COACH_FIELDS}
-        data = settings_io.load_extra("coach")
-        data["settings"] = keep
         try:
-            settings_io.save_extra("coach", data)
+            with self.server.coach_json_lock:
+                data = settings_io.load_extra("coach")
+                data["settings"] = keep
+                settings_io.save_extra("coach", data)
         except OSError as e:
             app.say(f"ERROR saving the coach settings: {type(e).__name__}: {e}")
             raise ValueError(SETTINGS_WRITE_ERROR)

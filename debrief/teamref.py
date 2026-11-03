@@ -153,7 +153,7 @@ def load_reference(path, car_path: str | None = None, track_code: str | None = N
                 return _done(out)
             ref = livecoach.build_reference(ib, prefix=prefix)
             lap_text = livecoach.fmt_lap(best["time"])
-            short = f"{name}'s best lap" if name else "your teammate's best lap"
+            short = f"{possessive(name)} best lap" if name else "your teammate's best lap"
             label = f"{short[:1].upper() + short[1:]} ({lap_text})"
             if ref is not None:
                 ref.source = dict(ref.source, kind="teammate", driver=out["driver"], label=short)
@@ -167,6 +167,12 @@ def load_reference(path, car_path: str | None = None, track_code: str | None = N
     except Exception as e:  # noqa: BLE001
         out["reason"] = f"This file could not be read ({str(e)[:120]})."
         return _done(out)
+
+
+def possessive(name: str) -> str:
+    """"Alex Smith's", "Swazi Williams'" (a name ending in s takes only the apostrophe)."""
+    name = str(name or "").strip()
+    return name + ("'" if name.lower().endswith("s") else "'s")
 
 
 def _done(out: dict) -> dict:

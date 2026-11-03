@@ -133,12 +133,13 @@ def make(path, laps, session="Practice", lead_pit=True, rate=60, start_date=1_79
     return path, times
 
 
-def play(path, settings=None, weak=None, ref=None, voice=None):
+def play(path, settings=None, weak=None, ref=None, voice=None, keep=None):
     """Plays a file as fast as possible straight into a Coach (no thread), as LiveRunner does. Returns
-    (coach, voice, source)."""
+    (coach, voice, source). keep: Coach.keep_reference (a lap he chose, never replaced while in use)."""
     src = lc.IbtPlaybackSource(path, speed=0)
     v = voice or vc.FakeVoice()
     coach = lc.Coach(ref, weak, settings or lc.Settings(), duration=v.duration)
+    coach.keep_reference = keep
     while True:
         s = src.read()
         if s is None:
@@ -372,6 +373,14 @@ check(len(nb) == 1, f"new best said on the quick lap: {[x['text'] for x in nb]}"
 check(any("reference updated" in e["text"] for e in coach.events) and abs(coach.reference.lap_time - cur_times[4]) < 0.05,
       f"reference updated to the new best ({coach.reference.lap_time:.3f})")
 check(coach.reference.source["kind"] == "live" and len(coach.reference.corners) == 4, "the live reference has its corners")
+# 2.15: a lap he chose (a teammate's) is kept while it is the one in use; another reference still updates
+ck, _fv, _s = play(cur, weak=weak, ref=ref, keep=ref)
+check(ck.reference is ref and not any("reference updated" in e["text"] for e in ck.events),
+      "a chosen lap in use: his new best doesn't replace it")
+other = lc.Reference(**{k: getattr(ref, k) for k in ref.__dataclass_fields__})
+ck2, _fv, _s = play(cur, weak=weak, ref=other, keep=ref)
+check(ck2.reference is not other and any("reference updated" in e["text"] for e in ck2.events),
+      "a chosen lap not in use (another car or track): his new best still replaces his own reference")
 check(sum(x.get("timed_by") == "iracing" for x in coach.lap_log) >= 4, f"lap times from LapLastLapTime {coach.lap_log}")
 check([x["text"] for x in said if lap_of(x["t"]) == 7] == ["Down four tenths"] and not any(lap_of(x["t"]) == 6 and x["text"] != "New best, up four tenths" for x in said),
       "after the new best: only the lap delta against it; nothing about corners he drives well")

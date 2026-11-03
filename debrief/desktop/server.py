@@ -1923,7 +1923,7 @@ class DebriefServer(ThreadingHTTPServer):
             given = carsetup.coach_reference(self, settings)     # 2.15: a teammate's lap, when he chose it
             r = livecoach.LiveRunner(src, vc, settings=settings, telemetry_dir=folder, weak_for=self.coach_weak_for,
                                      log=app.say, reference_index=index_of, focus_for=self.coach_focus_for,
-                                     reference=given)
+                                     reference=given, keep_given=given is not None)
             r.start()
         except Exception:  # noqa: BLE001
             app.say("ERROR starting the coach:\n" + traceback.format_exc())

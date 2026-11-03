@@ -656,6 +656,7 @@ class Coach:
         self._corner_last: dict = {}     # corner num -> (lap number, kind) of its last cue
         self.focus = None                # 2.14: the practice plan's focus corner (practiceplan.LiveFocus), optional
         self.focus_corner = None         # ... that corner on the reference (Corner), matched by its apex
+        self.keep_reference = None       # 2.15: a reference he chose (a teammate's lap): never replaced while in use
         self._reset_all()
         if reference is not None:
             self.set_reference(reference)
@@ -1122,7 +1123,10 @@ class Coach:
             if text and st.lap_delta:
                 self.queue.push(Cue(text=text, priority=PRIORITY[KIND_LAP], key="lap", t=t, kind=KIND_LAP,
                                     expires=t + st.lap_cue_wait_s))
-        if (ref is None or lt < ref.lap_time) and st.update_reference:
+        # a lap he was given (a teammate's, 2.15) stays the reference for its own car and track: his new bests
+        # don't replace it there, but still do in any other car or at any other track
+        given_in_use = self.keep_reference is not None and ref is self.keep_reference
+        if (ref is None or lt < ref.lap_time) and st.update_reference and not given_in_use:
             self._adopt(p.lap, lt)
 
     def _adopt(self, lap: _Lap, lt: float):
@@ -1366,6 +1370,8 @@ class LiveRunner:
         r.start(); ... r.status(); r.toggle(); ... r.stop()
 
     reference: a Reference to use (only while its car/track match the live car/track, when both are known).
+    keep_given: that reference is a lap he chose (a teammate's, 2.15): while it is in use his new bests don't
+    replace it (elsewhere they still update his own).
     telemetry_dir: where to look for your best lap for whatever car/track iRacing reports (find_reference).
     reference_index: Setup Lab's saved index of that folder (a dict, or a callable returning one or None), so only
     the file holding the best lap is opened. A reference found (or adopted on track) is kept per car + track for the
@@ -1377,12 +1383,13 @@ class LiveRunner:
 
     def __init__(self, source, voice, settings: Settings | None = None, reference: Reference | None = None,
                  weak_corners=None, telemetry_dir=None, weak_for=None, log=None, clock=time.monotonic,
-                 reference_index=None, focus_for=None):
+                 reference_index=None, focus_for=None, keep_given=False):
         self.source = source
         self._focus_for = focus_for
         self.voice = voice
         self.settings = settings or Settings()
         self.coach = Coach(None, weak_corners, self.settings, log=log, duration=self._voice_duration)
+        self.coach.keep_reference = reference if keep_given else None
         self._given = reference
         self._telemetry_dir = telemetry_dir
         self._reference_index = reference_index

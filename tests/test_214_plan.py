@@ -282,7 +282,8 @@ check(pp.save_plan(F, "mclaren570sgt4", "zolder gp", a) and pp.save_plan(F, "mcl
       "saved two plans")
 got = pp.load_plans(F, "mclaren570sgt4", "zolder gp")
 check([x["plan_id"] for x in got] == [b["plan_id"], a["plan_id"]], "newest first")
-check(pp.plan_path(F, "mclaren570sgt4", "zolder gp").name == "mclaren570sgt4__zolder-gp.json", "file name")
+check(pp.plan_path(F, "mclaren570sgt4", "zolder gp").name.startswith("mclaren570sgt4__zolder-gp__") and
+      pp.plan_path(F, "mclaren570sgt4", "zolder gp").suffix == ".json", "file name")
 sc = pp.score_plan(a, laps, report=rep2)
 check(pp.save_score(F, "mclaren570sgt4", "zolder gp", a["plan_id"], sc), "score saved")
 got = pp.load_plans(F, "mclaren570sgt4", "zolder gp")

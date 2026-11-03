@@ -41,6 +41,7 @@ Nothing here raises for bad input; corrupt plan files are set aside (renamed .ba
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -421,9 +422,15 @@ def _make_plan(report, history, car, track, avoid=frozenset()):
 
     last = next((h for h in history if isinstance(h, dict) and isinstance(h.get("score"), dict)
                  and h.get("kind") in ("focus", "consistency")), None)
+    skip, closed_msg = None, ""
     if last is not None and ((last["score"].get("next") or {}).get("action")) == "keep" and last.get("id") not in avoid:
         card = next((c for c in cards if c.get("id") == last.get("id")), None)
-        p = _from_card(report, card, last.get("metric"), car, track) if card else None
+        p, closed = _kept(report, card, last.get("metric"), car, track)
+        if closed:                              # today's laps: the gap the plan aimed at is (mostly) gone
+            skip = (last.get("id"), last.get("metric"))
+            closed_msg = f"You've closed most of this gap in {last.get('corner') or 'that corner'}: moving on."
+            last = None
+    if last is not None and ((last["score"].get("next") or {}).get("action")) == "keep" and last.get("id") not in avoid:
         gone = p is None
         if gone:
             p = {k: v for k, v in last.items() if k != "score"}
@@ -446,16 +453,17 @@ def _make_plan(report, history, car, track, avoid=frozenset()):
     plans = []
     for c in cards:
         plans += _card_plans(report, c, car, track)
+    plans = [p for p in plans if (p["id"], p["metric"]) != skip]
     fresh = [p for p in plans if p["id"] not in done and p["id"] not in avoid]
     other = [p for p in plans if p["id"] not in avoid]
     pick = (fresh or other or [None])[0]
     if pick is not None:
         if pick["id"] in done:
             pick["reason"] += " (You'd already got this one, but nothing else stands out yet.)"
-        return pick
+        return _closed_note(pick, closed_msg)
     p = _consistency(report, car, track, avoid)
     if p is not None:
-        return p
+        return _closed_note(p, closed_msg)
     if avoid:                                   # everything was passed over: the usual pick again, said so
         p = _make_plan(report, history, car, track)
         if p.get("kind") in ("focus", "consistency"):
@@ -465,6 +473,33 @@ def _make_plan(report, history, car, track, avoid=frozenset()):
     p["text"] = ("Every corner looks steady so far: no clear thing to change and no corner varies much. Drive more "
                  "laps and Debrief will look again.")
     p["reason"] = "no corner coach card and no corner varies much from lap to lap"
+    return _closed_note(p, closed_msg)
+
+
+def _kept(report, card, metric, car=None, track=None):
+    """(plan, closed) for keeping last session's focus. plan: today's numbers for it from the same card, only on a
+    number that card's main or second rule still tests (never more sure than a second rule), else None (the card is
+    gone or no longer looks at that number). closed: the card is still there and its number for this still passes
+    the noise gate, but your typical laps are now within NEED_* of your best: no target needed any more."""
+    if not card:
+        return None, False
+    main = RULE_METRICS.get(card.get("rule") or "", ())
+    sec = RULE_METRICS.get(card.get("secondary") or "", ())
+    if metric not in main and metric not in sec:
+        return None, False
+    p = _from_card(report, card, metric, car, track, second=metric not in main)
+    if p is not None:
+        return p, False
+    key = METRIC_KEY.get(metric)
+    b, t = _nums(card, key) if key else (None, None)
+    return None, b is not None and _tested(card, key) and _zone(report, card.get("id")) is not None
+
+
+def _closed_note(p, msg):
+    """The plan that follows a closed gap says so first (and is marked closed_gap for the score's next step)."""
+    if msg and isinstance(p, dict):
+        p["reason"] = f"{msg} {p.get('reason') or ''}".strip()
+        p["closed_gap"] = True
     return p
 
 
@@ -716,7 +751,12 @@ def _score(plan, items, report):
 def _with_next_plan(out, plan, report):
     if isinstance(report, dict):
         scored = dict(plan, score={k: v for k, v in out.items() if k != "next_plan"})
-        out["next_plan"] = make_plan(report, history=[scored], car=plan.get("car"), track=plan.get("track"))
+        nxt = make_plan(report, history=[scored], car=plan.get("car"), track=plan.get("track"))
+        out["next_plan"] = nxt
+        if nxt.get("closed_gap") and (out.get("next") or {}).get("action") == "keep":
+            out["next"] = {"action": "next", "closed_gap": True,
+                           "text": f"You've closed most of this gap in {plan.get('corner') or 'that corner'}: "
+                                   f"moving on."}
     return out
 
 
@@ -958,11 +998,43 @@ class LiveFocus:
 _SAFE = re.compile(r"[^a-z0-9]+")
 
 
+def _slug(x) -> str:
+    return _SAFE.sub("-", str(x or "unknown").lower()).strip("-")[:60] or "unknown"
+
+
 def plan_path(folder, car, track) -> Path:
-    """<folder>/<car>__<track>.json (lower case, letters and digits only)."""
-    def slug(x):
-        return _SAFE.sub("-", str(x or "unknown").lower()).strip("-")[:60] or "unknown"
-    return Path(folder) / f"{slug(car)}__{slug(track)}.json"
+    """<folder>/<car>__<track>__<hash>.json (lower case, letters and digits only, plus 8 hex characters of the exact
+    car and track, so two cars or tracks whose names differ only in punctuation never share a file)."""
+    h = hashlib.sha1(f"{car or ''}\n{track or ''}".encode("utf-8")).hexdigest()[:8]
+    return Path(folder) / f"{_slug(car)}__{_slug(track)}__{h}.json"
+
+
+def legacy_plan_path(folder, car, track) -> Path:
+    """The 2.14 test builds' name, <car>__<track>.json: read when the new file isn't there yet (never deleted)."""
+    return Path(folder) / f"{_slug(car)}__{_slug(track)}.json"
+
+
+def _read_combo(folder, car, track):
+    """(path to write, data, damaged) for this car + track: the file under plan_path, or, when there is none yet, the
+    plans for exactly this car + track from an older file under legacy_plan_path (written to the new name on the
+    next save; the old file is left as it is)."""
+    path = plan_path(folder, car, track)
+    if path.exists():
+        data, damaged = _read(path)
+        return path, data, damaged
+    old = legacy_plan_path(folder, car, track)
+    if not old.exists():
+        return path, {"version": VERSION, "plans": []}, False
+    data, damaged = _read(old)
+    if damaged:
+        return path, {"version": VERSION, "plans": []}, False
+
+    def mine(x):
+        c, t = x.get("car_path"), x.get("track_code")
+        return (c is None or c == car) and (t is None or t == track)
+    same_file = (data.get("car") in (None, car)) and (data.get("track") in (None, track))
+    plans = [x for x in data["plans"] if mine(x) and (same_file or x.get("car_path") == car)]
+    return path, {"version": VERSION, "car": car, "track": track, "plans": plans}, False
 
 
 def _read(path: Path):
@@ -983,7 +1055,7 @@ def load_plans(folder, car, track) -> list:
     """Every saved plan for this car + track, newest first (each may carry its "score"). [] when there are none or
     the file is damaged. Never raises."""
     try:
-        return _read(plan_path(folder, car, track))[0]["plans"]
+        return _read_combo(folder, car, track)[1]["plans"]
     except Exception:  # noqa: BLE001
         return []
 
@@ -1011,8 +1083,7 @@ def save_plan(folder, car, track, plan: dict) -> bool:
     MAX_HISTORY. False when it can't be written. A damaged file is renamed <name>.bad and a new one started."""
     if not isinstance(plan, dict):
         return False
-    path = plan_path(folder, car, track)
-    data, damaged = _read(path)
+    path, data, damaged = _read_combo(folder, car, track)
     pid = plan.get("plan_id")
     plans = [p for p in data["plans"] if not pid or p.get("plan_id") != pid]
     data.update({"version": VERSION, "car": car, "track": track, "plans": ([plan] + plans)[:MAX_HISTORY]})
@@ -1021,8 +1092,7 @@ def save_plan(folder, car, track, plan: dict) -> bool:
 
 def save_score(folder, car, track, plan_id: str, score: dict) -> bool:
     """Attach a score to the saved plan with this plan_id. False when there is no such plan or it can't be written."""
-    path = plan_path(folder, car, track)
-    data, damaged = _read(path)
+    path, data, damaged = _read_combo(folder, car, track)
     if damaged:
         return False
     for p in data["plans"]:

@@ -362,5 +362,80 @@ sp = pp.session_phases(laps1, plan_ms)
 tl = [x["phases"]["t_long"] for x in sp if x["phases"]]
 check(tl and all(t_ > x["phases"]["t"] for t_, x in zip(tl, sp)), "session laps carry the time to 150 m past the corner")
 
+
+# ---------------------------------------------------------------- N1, N2: keeping a focus
+print("== N1/N2: keeping last session's focus")
+ZC = [{"id": f"C{k}", "name": f"T{k}", "apex_m": 300.0 + 500 * k, "start_m": 150.0 + 500 * k,
+       "end_m": 450.0 + 500 * k} for k in range(1, 6)]
+
+
+def card(cid, rule, nums, lost=0.2, conf="clear", secondary=None):
+    return {"corner": "T" + cid[1:], "id": cid, "rule": rule, "secondary": secondary, "lost_s": lost,
+            "confidence": conf, "how": "Try it.", "why": "Because.", "evidence": "x", "voice": "x",
+            "numbers": {k: {"best": b, "typical": t, "z": 3.0} for k, (b, t) in nums.items()}}
+
+
+def rep_of(cards):
+    return {"ok": True, "laps": 14, "cards": cards, "unclear": [], "fine": [], "corners": ZC, "per_corner": {},
+            "info": {"car": "x", "track": "y", "length_m": 3980.0}}
+
+
+c2 = card("C2", "brake_later", {"brake_m": (-125.0, -140.0), "peak_pct": (80.0, 100.0)}, secondary="lighter")
+second = pp.make_plan(rep_of([dict(c2, numbers={"brake_m": {"best": -138, "typical": -140, "z": 3.0},
+                                                 "peak_pct": {"best": 80.0, "typical": 100.0, "z": 3.0}})]))
+check(second["metric"] == "peak_brake" and second["confidence"] == "likely", "a plan from a card's second rule: likely")
+kept_ = dict(second, score={"next": {"action": "keep"}, "hits": 2, "measured": 8})
+p = pp.make_plan(rep_of([c2]), history=[kept_])
+check(p["repeat"] and p["metric"] == "peak_brake" and p["confidence"] == "likely",
+      f"kept from the second rule: still at most likely ({p['confidence']})")
+gone_rule = card("C2", "brake_later", {"brake_m": (-125.0, -140.0), "peak_pct": (80.0, 100.0)})
+p = pp.make_plan(rep_of([gone_rule]), history=[kept_])
+check(p["repeat"] and p["experiment"] and p["confidence"] == "unclear",
+      "the card no longer tests that number: kept as an experiment, not as a fact")
+pk_plan = pp.make_plan(rep_of([card("C4", "lighter", {"peak_pct": (86.0, 100.0)}, lost=0.3),
+                                card("C1", "carry", {"min_kmh": (120.0, 110.0)}, lost=0.2)]))
+check(pk_plan["id"] == "C4", "plan: lighter brake in T4")
+keep = dict(pk_plan, score={"next": {"action": "keep"}, "hits": 3, "measured": 10})
+closed_rep = rep_of([card("C4", "lighter", {"peak_pct": (86.0, 88.0)}, lost=0.3),
+                     card("C1", "carry", {"min_kmh": (120.0, 110.0)}, lost=0.2)])
+p = pp.make_plan(closed_rep, history=[keep])
+check(not p.get("repeat") and p["id"] == "C1" and p["reason"].startswith("You've closed most of this gap in T4: moving on.")
+      and p.get("closed_gap"), f"the gap closed: moving on, said so ({p['reason'][:60]})")
+gone_rep = rep_of([card("C1", "carry", {"min_kmh": (120.0, 110.0)}, lost=0.2)])
+p = pp.make_plan(gone_rep, history=[keep])
+check(p["repeat"] and p["id"] == "C4" and p["experiment"] and "closed" not in p["reason"],
+      "the card is gone: kept as an experiment (not 'closed')")
+items = [{"peak_pct": 99.0, "t": 10.0}] * 6 + [{"peak_pct": 84.0, "t": 10.0}] * 2
+sc = pp.score_plan(pk_plan, items, report=closed_rep)
+check(sc["next"]["action"] == "next" and "closed most of this gap" in sc["next"]["text"] and
+      sc["next_plan"]["id"] == "C1", f"score: under 70% but the gap closed, so it moves on ({sc['next']['text']})")
+sc = pp.score_plan(pk_plan, items, report=gone_rep)
+check(sc["next"]["action"] == "keep", "score: under 70% and the card gone: keep")
+
+# ---------------------------------------------------------------- N9: plan file names
+print("== N9: plan file names carry a short hash, old files still read")
+F = TMP / "plans"
+a, b = pp.plan_path(F, "mx5 mx52016", "oulton"), pp.plan_path(F, "mx5-mx52016", "oulton")
+check(a != b and a.name.startswith("mx5-mx52016__oulton__") and len(a.stem.split("__")[-1]) == 8,
+      f"names that slug the same get different files ({a.name}, {b.name})")
+old = pp.legacy_plan_path(F, "mclaren570sgt4", "zolder gp")
+F.mkdir(parents=True, exist_ok=True)
+old.write_text(json.dumps({"version": 2, "car": "mclaren570sgt4", "track": "zolder gp",
+                           "plans": [{"plan_id": "old1", "car_path": "mclaren570sgt4", "track_code": "zolder gp"},
+                                     {"plan_id": "old0"}]}), encoding="utf-8")
+got = pp.load_plans(F, "mclaren570sgt4", "zolder gp")
+check([x["plan_id"] for x in got] == ["old1", "old0"], "an older file is read when there's no new one")
+check(pp.save_plan(F, "mclaren570sgt4", "zolder gp", {"plan_id": "new1"}), "saved")
+check(pp.plan_path(F, "mclaren570sgt4", "zolder gp").exists() and old.exists(),
+      "saved under the new name; the old file is left as it was")
+check([x["plan_id"] for x in pp.load_plans(F, "mclaren570sgt4", "zolder gp")] == ["new1", "old1", "old0"],
+      "history carried over")
+check(pp.save_score(F, "mclaren570sgt4", "zolder gp", "old1", {"hits": 1}), "a score on a carried-over plan")
+shared = pp.legacy_plan_path(F, "car a", "t")
+shared.write_text(json.dumps({"version": 2, "car": "car-a", "track": "t",
+                              "plans": [{"plan_id": "x1", "car_path": "car-a", "track_code": "t"}]}), encoding="utf-8")
+check(pp.load_plans(F, "car a", "t") == [] and [x["plan_id"] for x in pp.load_plans(F, "car-a", "t")] == ["x1"],
+      "an old file shared by two cars: each gets only its own plans")
+
 print(f"\n{'all passed' if not fails else str(fails) + ' FAILED'}")
 sys.exit(1 if fails else 0)

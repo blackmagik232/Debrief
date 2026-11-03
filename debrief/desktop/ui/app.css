@@ -633,3 +633,10 @@ td.rcwhen .linkbtn{font-size:12.5px;margin-top:2px}
 #coLogRows tr.ev-dropped td:nth-child(4),#coLogRows tr.ev-cancelled td:nth-child(4){color:var(--lose)}
 #coLogView .phead{margin-top:14px}
 .pvlist.bad li{color:var(--lose)}
+/* 2.18 Car vs car */
+.cctbl{width:100%}
+.cctbl th[scope=row]{white-space:nowrap}
+.cctbl td.num{white-space:nowrap}
+.cctbl .ccconf{text-align:left}
+.cctbl td.gain{font-weight:600}
+.ccwlist{margin:0;padding-left:18px;display:grid;gap:6px;max-width:80ch}

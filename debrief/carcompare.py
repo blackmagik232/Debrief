@@ -484,7 +484,7 @@ def you_vs_field(races, track, car, me, rows=None, cls=None) -> dict | None:
 def _segments(R0, corners):
     """Corner zones and the straights between them (metres on the lap)."""
     L = float(R0["d"][-1] + 5.0)
-    segs = [{"kind": "corner", "c": c, "name": f"T{k + 1}", "a": float(c["start_m"]), "b": float(c["end_m"])}
+    segs = [{"kind": "corner", "c": c, "name": f"Turn {k + 1}", "a": float(c["start_m"]), "b": float(c["end_m"])}
             for k, c in enumerate(corners)]
     out = []
     for k, s in enumerate(segs):
@@ -492,7 +492,7 @@ def _segments(R0, corners):
         nxt = segs[(k + 1) % len(segs)]
         a, b = s["b"], nxt["a"] + (L if k + 1 == len(segs) else 0.0)
         if b - a >= MIN_STRAIGHT_M:
-            out.append({"kind": "straight", "name": f"Straight after T{k + 1}", "a": a, "b": b})
+            out.append({"kind": "straight", "name": f"Straight after Turn {k + 1}", "a": a, "b": b})
     return out
 
 

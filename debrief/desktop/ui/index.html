@@ -32,6 +32,7 @@
     <button type="button" class="navbtn" data-nav="sessions" title="Every session Garage 61 has for you (Ctrl+5)" aria-keyshortcuts="Control+5">All sessions</button>
     <button type="button" class="navbtn" data-nav="practice" title="Practice: every time you drove, from iRacing's telemetry files on this PC (Ctrl+0)" aria-keyshortcuts="Control+0">Practice</button>
     <button type="button" class="navbtn" data-nav="racing" title="Racing: your starts and incidents across your races">Racing</button>
+    <button type="button" class="navbtn" data-nav="cars" title="Car vs car: which car of a class is quicker at a track">Car vs car</button>
     <button type="button" class="navbtn" data-nav="prep" title="Prepare (Ctrl+6)" aria-keyshortcuts="Control+6">Prepare</button>
     <button type="button" class="navbtn" data-nav="team" title="Team (Ctrl+7)" aria-keyshortcuts="Control+7">Team</button>
     <button type="button" class="navbtn" data-nav="setuplab" title="Setup Lab: your setups from iRacing's telemetry files (Ctrl+8)" aria-keyshortcuts="Control+8">Setup Lab</button>
@@ -367,6 +368,23 @@
         </div>
         <div id="rcStarts" class="slreport" aria-live="polite"></div>
         <div id="rcInc" class="slreport" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="vCars" class="view pad" hidden>
+    <div class="col slcol">
+      <div class="prwrap">
+        <span class="eyebrow">From race results, replay scans and your telemetry</span>
+        <h1>Car vs car</h1>
+        <p class="lede">Which car of a class is quicker at a track, for drivers of similar iRating, and where each car is faster. Debrief only reads your files and fetches nothing.</p>
+        <div class="panel" id="ccFound">
+          <div class="phead"><h3>Track and class</h3><span class="pill" id="ccPill"></span></div>
+          <div class="row"><label class="field rctrack" for="ccPick"><span>Compare</span><select id="ccPick"></select></label><button type="button" class="btn" id="ccAgain">Look again</button><span class="msg" id="ccMsg" role="status"></span></div>
+          <p class="note" id="ccFoundNote"></p>
+        </div>
+        <div id="ccTable" class="slreport" aria-live="polite"></div>
+        <div id="ccWhere" class="slreport" aria-live="polite"></div>
       </div>
     </div>
   </section>

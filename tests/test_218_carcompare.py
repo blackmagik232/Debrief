@@ -204,10 +204,10 @@ def test_where_faster_on_fake_telemetry():
     assert len(la) >= 3 and len(lb) >= 3, (len(la), len(lb))
     w = CC.where_faster(la, lb, "McLaren 570S GT4", "Ford Mustang GT4")
     assert not w["rough"]
-    t4 = [r for r in w["rows"] if r["segment"] == "T4"]
+    t4 = [r for r in w["rows"] if r["segment"] == "Turn 4"]
     assert t4 and "min_kmh" in t4[0]["found"] and t4[0]["found"]["min_kmh"]["diff"] < 0, w["rows"]
     assert "the Ford Mustang GT4 is" in t4[0]["text"] and "km/h faster at the slowest point" in t4[0]["text"], t4[0]["text"]
-    others = [r for r in w["rows"] if r["kind"] == "corner" and r["segment"] not in ("T4", "T5")]
+    others = [r for r in w["rows"] if r["kind"] == "corner" and r["segment"] not in ("Turn 4", "Turn 5")]
     assert len(others) <= 1, [r["text"] for r in w["rows"]]
     same = CC.where_faster(la, la2, "Run 1", "Run 2")
     assert len([r for r in same["rows"] if r["kind"] == "corner"]) <= 1, [r["text"] for r in same["rows"]]

@@ -96,10 +96,10 @@ FRAME_BRIDGE = ("<script>/* debrief-frame-bridge */(function(){if(parent===windo
                 "document.addEventListener('click',function(e){var a=e.target&&e.target.closest&&"
                 "e.target.closest('a[href]');if(!a)return;var u;try{u=new URL(a.getAttribute('href'),"
                 "document.baseURI)}catch(x){return}if(u.origin!==P){a.target='_blank';a.rel='noreferrer'}},true);"
-                # 2.8: the sidebar owns Progress / Season / Skills / Goals, and these keys work inside the page too
+                # 2.8: the sidebar owns Progress / Season / Skills / Goals, and these keys work inside the page too (2.12: Ctrl+1-9)
                 "document.body&&document.body.classList.add('in-shell');"
                 "addEventListener('keydown',function(e){var k=String(e.key).toLowerCase(),m=null,t=e.target;"
-                "if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&/^[1-7]$/.test(k))m='page'+k;"
+                "if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&/^[1-9]$/.test(k))m='page'+k;"
                 "else if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey&&(k==='j'||k==='k')&&"
                 "!(t&&t.closest&&t.closest('input,select,textarea,[contenteditable]')))m=k==='j'?'prev':'next';"
                 "if(!m)return;e.preventDefault();try{parent.postMessage({type:'debrief-key',key:m},P)}catch(x){}});"
@@ -791,8 +791,8 @@ def _run_setuplab(cfg, cb, should_stop) -> dict:
     if idx["stopped"]:
         cb(None, f"Stopped. {idx['read']} file(s) read this time; they are kept and the rest are read next time.")
     else:
-        cb(1.0, f"{n} telemetry file{'s' if n != 1 else ''} for {len(combos)} car and track"
-                f"{'s' if len(combos) != 1 else ''} ({idx['read']} new).")
+        ct = "1 car and track" if len(combos) == 1 else f"{len(combos)} cars and tracks"
+        cb(1.0, f"{n} telemetry file{'s' if n != 1 else ''} for {ct} ({idx['read']} new).")
     return {"files": n, "read": idx["read"], "cached": idx["cached"], "bad": len(idx["bad"]),
             "stopped": bool(idx["stopped"]), "combos": len(combos)}
 
@@ -1330,7 +1330,8 @@ class DebriefServer(ThreadingHTTPServer):
     # ---------- the live coach (2.12)
     def shutdown(self):
         """Stops the coach (its thread, the mute key and the voice) first, whoever closes Debrief: the window going
-        away, an update or Ctrl+C."""
+        away, an update or Ctrl+C. No new coach starts after this."""
+        self.stopping.set()
         try:
             self.stop_coach()
         except Exception:  # noqa: BLE001

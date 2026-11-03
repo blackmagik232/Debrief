@@ -11,6 +11,7 @@ session-light.png, session-dark.png).
 """
 from __future__ import annotations
 
+import re
 import json
 import os
 import shutil
@@ -177,6 +178,12 @@ def test_livecoach_phrases_and_abs():
     plain = livecoach.Coach(ref, [{"id": "C4", "apex_m": c4.apex_m, "lost_s": 0.21}], livecoach.Settings())
     assert plain.weak[0].phrase is None and "T4: lighter brake" not in plain.vocabulary()
     assert "Brake marker, T4" in plain.vocabulary()
+    # 2.13 review: a corner from the corner coach isn't named after the race review; one from a review is
+    assert plain.weak[0].review_id == "C4" and plain.weak[0].source is None
+    cw = livecoach.match_weak(ref, [dict(weak[0], source="corner coach")])
+    assert cw[0].source == "corner coach" and cw[0].review_id is None, cw
+    st = livecoach.Coach(ref, [dict(weak[0], source="corner coach")], livecoach.Settings()).status()["weak"][0]
+    assert st["source"] == "corner coach" and st["review_id"] is None, st
 
 
 def test_feedback_says_the_phrase():
@@ -464,7 +471,13 @@ def test_practice_in_the_window():
             assert "Best lap" in pg.text_content("#prHead") and "last session here" in pg.text_content("#prHead")
             assert pg.locator("#prTheo .prbars li").count() >= 1 and "guide" in pg.text_content("#prTheo")
             cards = pg.evaluate("() => [...document.querySelectorAll('#prCorners .cccard h4')].map(e => e.textContent)")
-            assert {"T2", "T4", "T6"} <= set(cards), cards
+            assert {"Turn 2 (C2)", "Turn 4 (C4)", "Turn 6 (C6)"} <= set(cards), cards
+            # the best-possible-lap bars name corners the same way as the cards
+            segs = pg.evaluate("() => [...document.querySelectorAll('#prTheo .prseg')].map(e => e.textContent)")
+            assert segs and all(re.fullmatch(r"Turn \d+ \(C\d+\)", x) for x in segs), segs
+            assert pg.locator("#prTheo .prseg small.prcid").count() == len(segs)
+            ct0 = pg.text_content("#prCorners")
+            assert not re.search(r"\b[CT]\d+:", ct0), "unclear corners say Turn N too"
             first = pg.text_content("#prCorners .cccard")
             for k in ("What's different", "How to try it", "What it gets you", "Why", "Evidence"):
                 assert k in first, (k, first)
@@ -490,7 +503,7 @@ def test_practice_in_the_window():
             pg.wait_for_selector("#vCoach", state="visible")
             pg.wait_for_selector("#coPlan li")
             plan = pg.text_content("#coPlan")
-            assert "From the Corner coach" in plan and "T4: lighter brake" in plan, plan
+            assert "From the Corner coach" in plan and "T4: lighter brake" in plan and "Turn 4 (C4)" in plan, plan
             # back from a session to the list
             pg.keyboard.press("Control+0")
             pg.wait_for_selector("#prSessions .prrow")
@@ -509,6 +522,43 @@ def test_practice_in_the_window():
             assert not errs, errs
         finally:
             ctx.close()
+
+
+def test_coach_page_with_corner_coach():
+    """The Coach page names the corner coach's focus corners "Turn 4 (from the Corner coach)" and shows the tip."""
+    s = srv()
+    read_telemetry()
+    files = make_files()
+    shots = shots_dir()
+    r = page(scale=2 if shots else 1)
+    if not r:
+        return
+    ctx, pg, errs = r
+    use_fakes(s, lambda: Holding(files["new2"]))
+    try:
+        pg.goto(s.url)
+        pg.wait_for_function("() => document.querySelector('.navbtn[data-nav=coach]')")
+        pg.keyboard.press("Control+9")
+        pg.wait_for_selector("#vCoach", state="visible")
+        pg.wait_for_function("() => document.getElementById('coText').textContent === 'Coach off'")
+        pg.click("#coStart")
+        pg.wait_for_function("() => document.getElementById('coText').textContent.startsWith('Coaching')", timeout=30000)
+        pg.wait_for_function("() => document.querySelectorAll('#coWeak li').length > 0", timeout=30000)
+        weak = pg.text_content("#coWeak")
+        assert re.search(r"Turn \d+ \(from the Corner coach\)", weak) and "in your race review" not in weak, weak
+        assert 'the coach says: "T' in weak, weak
+        assert "Corner coach" in pg.text_content("#coWeakNote")
+        assert pg.text_content("#vCoach .comain h3") == "Status"
+        txt = pg.text_content("#vCoach")
+        assert "\u2014" not in txt and "\u2013" not in txt, "no long dashes on the Coach page"
+        if shots:
+            snap(pg, shots / "coach213-light.png")
+        pg.click("#coStart")
+        pg.wait_for_function("() => document.getElementById('coText').textContent === 'Coach off'")
+        assert not errs, errs
+    finally:
+        call("api/coach/stop", {})
+        ctx.close()
 
 
 def test_practice_before_reading():

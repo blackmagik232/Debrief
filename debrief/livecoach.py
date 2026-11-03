@@ -441,6 +441,7 @@ class Weak:
     name: str                   # spoken name
     review_id: str | None = None   # what the race review calls it ("C2"), when the weak corner came from one
     phrase: str | None = None   # the corner coach's short advice ("T4: lighter brake"), said after the corner
+    source: str | None = None   # "corner coach" when it came from the corner coach (then there's no review_id)
 
 
 def _rel_m(pct: float, apex_pct: float, L: float) -> float:
@@ -465,9 +466,10 @@ def match_weak(ref: Reference, weak, top_n: int = 3, prefix: str = "T") -> list:
     tol = max(60.0, 0.02 * L)
     out, used = [], set()
     for order, w in enumerate(weak):
-        c, lost, num, phrase = None, None, None, None
+        c, lost, num, phrase, source = None, None, None, None, None
         if isinstance(w, dict):
             num = _num_of(w.get("id"))
+            source = w.get("source") if w.get("source") == "corner coach" else None
             ph = w.get("phrase")
             if isinstance(ph, str) and ph.strip() and len(ph.strip()) <= MAX_PHRASE:
                 phrase = " ".join(ph.split())
@@ -496,7 +498,8 @@ def match_weak(ref: Reference, weak, top_n: int = 3, prefix: str = "T") -> list:
             continue
         used.add(c.num)
         out.append((order, Weak(corner=c, lost_s=lost, name=f"{prefix}{num if num is not None else c.num}",
-                                review_id=f"C{num}" if num is not None else None, phrase=phrase)))
+                                review_id=f"C{num}" if num is not None and source is None else None,
+                                phrase=phrase, source=source)))
     # biggest time loss first; items without a number keep their given order, after those with one
     out.sort(key=lambda x: (x[1].lost_s is None, -(x[1].lost_s or 0.0), x[0]))
     return [w for _o, w in out][:max(0, top_n)]
@@ -689,7 +692,7 @@ class Coach:
                 "weak": [{"name": w.name, "id": w.corner.id, "review_id": w.review_id, "lost_s": w.lost_s,
                           "apex_m": round(w.corner.apex_m),
                           "brake_m": round(w.corner.brake_m) if w.corner.brake_m is not None else None,
-                          "phrase": w.phrase} for w in self.weak],
+                          "phrase": w.phrase, "source": w.source} for w in self.weak],
                 "muted": self.settings.muted, "quiet_reason": self.quiet_reason,
                 "last_lap": self.last_lap, "spoken": [c.to_dict() for c in self.spoken[-10:]],
                 "events": self.events[-10:]}

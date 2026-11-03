@@ -8,6 +8,7 @@
 - The session page also shows every lap (counted, or why not), fuel per lap and how far a tank goes, the track conditions and the setups you used, with a link to Setup Lab for that car.
 - **Coach these corners**: the live coach now focuses on the Corner coach's corners for that car and track, and after each one says its short tip ("T4: lighter brake"). The Coach page shows which corners those are. Without Corner coach tips it works as before, from your race reviews.
 - The coach keeps the ABS reading when its reference lap comes from a telemetry file.
+- Corners read the same way on the session page: **Turn 3**, with the race review's name **(C3)** in small text, in the best possible lap bars, the Corner coach cards and the text. On the Coach page, its corners show as "Turn 3 (from the Corner coach)". The Corner coach's tips use colons and full stops instead of dashes.
 - Not proven yet: the Corner coach tips and the spoken tips haven't been tried in the car; on your real files the best possible lap was still 0.76 s under your best at Zolder on Nov 1 (5 clean laps, each part's best from a different lap) and 0.65 s on Nov 2 (only 3 clean laps, so it counts all valid laps and says it may be too quick).
 
 ## 2.12.0

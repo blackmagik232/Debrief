@@ -187,7 +187,12 @@ def laps_with(best_change: dict, n_best=4, n_typ=8, typ_change=None, other=None)
 
 def run(name, lap_params, **kw):
     p = make_file(TMP / f"{name}.ibt", lap_params, **{k: v for k, v in kw.items() if k in ("wheels", "abs_ch", "steer")})
-    return cc.analyze_files([p], **{k: v for k, v in kw.items() if k == "reference"})
+    rep = cc.analyze_files([p], **{k: v for k, v in kw.items() if k == "reference"})
+    REPORTS.append(rep)
+    return rep
+
+
+REPORTS = []      # every report made here, checked at the end for sentence joins with " - "
 
 
 def card(rep, cid="C1"):
@@ -379,5 +384,20 @@ p_other = make_file(TMP / "other.ibt", own, car="Ford Mustang GT4", car_path="fo
 rep = cc.analyze_files([p_own, p_other])
 check(any(s["why"] == "a different car or track" for s in rep["info"]["skipped"]), "a different car is skipped")
 
+# 2.13 review: card text is joined with a colon or a full stop, never " - " (and no long dashes)
+def _texts(r):
+    for c in (r.get("cards") or []) + (r.get("reference_cards") or []):
+        yield from (c.get(k) or "" for k in ("different", "how", "gets", "why", "evidence", "text"))
+    yield from (u.get("text") or "" for u in r.get("unclear") or [])
+    yield from ((r.get("summary") or {}).get("lines") or [])
+    yield r.get("message") or ""
+
+
+texts = [t for r in REPORTS for t in _texts(r) if t]
+check(len(texts) > 40, f"card texts gathered ({len(texts)})")
+bad = [t for t in texts if " - " in t or "\u2014" in t or "\u2013" in t]
+check(not bad, f"no ' - ' or long dashes in card text: {bad[:3]}")
+few = cc.analyze_laps([])
+check(" - " not in (few.get("message") or ""), f"too-few-laps message: {few.get('message')}")
 print("FAILED" if fails else "ALL OK", fails)
 sys.exit(1 if fails else 0)

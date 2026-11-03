@@ -1555,7 +1555,7 @@ function fillCoachSettings(s){$('coInRaces').checked=!!s.in_races;$('coMarkers')
 function coRanges(){$('coVolV').textContent=$('coVol').value+'%';const r=+$('coRate').value;$('coRateV').textContent=r<0?'slower':r>0?'faster':'normal'}
 // "Turn 2 (C2 in your race review)": the spoken name as words, and the race review's own name for the corner
 function coCornerLabel(w){const m=/^[A-Za-z](\d+)$/.exec(String(w.name||''));const n=m?'Turn '+m[1]:String(w.name||'');
-  return w.review_id?n+' ('+w.review_id+' in your race review)':n}
+  return w.source==='corner coach'?n+' (from the Corner coach)':w.review_id?n+' ('+w.review_id+' in your race review)':n}
 ['coVol','coRate'].forEach(id=>$(id).addEventListener('input',()=>{coRanges();co.dirty=true}));
 $('fCoach').addEventListener('change',()=>{co.dirty=true});
 $('fCoach').addEventListener('submit',async e=>{e.preventDefault();setMsg('coSetMsg','Saving...');
@@ -1646,8 +1646,13 @@ async function openPrSession(id){pr.sel=id;const seq=++pr.seq,host=$('prReport')
   renderPrSession(j);$('prOne').scrollIntoView({block:'start'})}
 function prFacts(items){const dl=h('dl','factband');items.forEach(([k,v])=>{const d=h('div');d.append(h('dt',null,k),h('dd','num',v));dl.append(d)});return dl}
 function ccBadge(c){const x=CC_CONF[c]||[String(c||''),'',''];const b=h('span','pill'+(x[1]?' '+x[1]:''),x[0]);b.title=x[2]||'How sure this is';return b}
+/* 2.13 review: a corner reads "Turn 3", with the race review's name "(C3)" in small text beside it */
+function turnNum(x){const m=/^[CT](\d+)$/.exec(String(x||''));return m?+m[1]:null}
+function turnName(x){const n=turnNum(x);return n!==null?'Turn '+n:String(x||'')}
+function turnEl(tag,cls,name,id){const e=h(tag,cls,turnName(name));const n=turnNum(id||name);
+  if(n!==null&&turnNum(name)!==null){const s=h('small','prcid','(C'+n+')');s.title='What the race review calls this corner';e.append(' ',s)}return e}
 function ccCard(c){const card=h('article','cccard'),top=h('div','cchead');
-  top.append(h('h4',null,c.corner),h('span','cclost num',ok(c.lost_s)?'about '+c.lost_s.toFixed(2)+' s a lap':''),ccBadge(c.confidence));card.append(top);
+  top.append(turnEl('h4',null,c.corner,c.id),h('span','cclost num',ok(c.lost_s)?'about '+c.lost_s.toFixed(2)+' s a lap':''),ccBadge(c.confidence));card.append(top);
   const row=(k,v,cls)=>{const p=h('p',cls||null);p.append(h('b',null,k+': '),document.createTextNode(cap(v)));return p};
   card.append(row('What\'s different',c.different),row('How to try it',c.how),row('What it gets you',c.gets));
   if(c.why)card.append(row('Why',c.why,'note'));if(c.evidence)card.append(row('Evidence',c.evidence,'note'));
@@ -1669,8 +1674,8 @@ function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{}
     bp.append(h('p','note',T.text));
     const G=(T.gains||[]).filter(g=>ok(g.gain_s));if(G.length){bp.append(h('h4',null,'Where the time is'));const mx=Math.max(...G.map(g=>g.gain_s));
       const ul=h('ul','prbars');G.forEach(g=>{const li=h('li'),bar=h('span','prbar'),i=h('i');i.style.width=Math.max(3,Math.round(100*g.gain_s/mx))+'%';bar.append(i);
-        li.append(h('span','prseg',g.segment),bar,h('span','num',g.gain_s.toFixed(2)+' s'),h('span','sub2','best on lap '+g.from_lap));
-        li.setAttribute('aria-label',g.segment+': '+g.gain_s.toFixed(2)+' seconds, best on lap '+g.from_lap);ul.append(li)});bp.append(ul)}}
+        li.append(turnEl('span','prseg',g.segment),bar,h('span','num',g.gain_s.toFixed(2)+' s'),h('span','sub2','best on lap '+g.from_lap));
+        li.setAttribute('aria-label',turnName(g.segment)+': '+g.gain_s.toFixed(2)+' seconds, best on lap '+g.from_lap);ul.append(li)});bp.append(ul)}}
   else bp.append(h('p','note',T.text||'Not enough laps yet.'));
   const SP=R.segment_spread||{};if(SP.text)bp.append(h('p','note',SP.text));
   out.append(bp);
@@ -1679,8 +1684,10 @@ function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{}
   cc.append(h('p','note',C.ok?'From your last '+plural(C.laps||0,'clean lap')+' here ('+plural(C.files||0,'telemetry file')+' of this car at this track). Your best laps through each corner against your typical ones.':(C.message||'Not enough clean laps here yet.')));
   if(cards.length){const box=h('div','cccards');cards.forEach(c=>box.append(ccCard(c)));cc.append(box)}
   else if(C.ok)cc.append(h('p',null,C.message||'No corner shows a clear pattern yet.'));
-  const U=C.unclear||[];if(U.length){cc.append(h('h4',null,'No clear pattern yet'));const ul=h('ul','pvlist');U.forEach(u=>ul.append(h('li','note',u.text||u.corner)));cc.append(ul)}
-  const fine=(C.fine||[]).map(f=>f.corner).filter(Boolean);if(fine.length)cc.append(h('p','note','Already close to your best: '+fine.join(', ')+'.'));
+  const U=C.unclear||[];if(U.length){cc.append(h('h4',null,'No clear pattern yet'));const ul=h('ul','pvlist');U.forEach(u=>{const li=h('li','note'),t=String(u.text||''),m=/^[CT]\d+:\s*/.exec(t);
+    if(m&&turnNum(u.corner)!==null){const sp=h('span');sp.append(turnEl('b',null,u.corner,u.id),': '+t.slice(m[0].length));li.append(sp)}
+    else li.textContent=t||turnName(u.corner);ul.append(li)});cc.append(ul)}
+  const fine=(C.fine||[]).map(f=>turnName(f.corner)).filter(Boolean);if(fine.length)cc.append(h('p','note','Already close to your best: '+fine.join(', ')+'.'));
   const BS=(C.summary&&C.summary.lines)||[];if(C.ok&&BS.length){cc.append(h('h4',null,'Braking habits'));const ul=h('ul','pvlist');BS.forEach(x=>ul.append(h('li',null,x)));cc.append(ul)}
   if(cards.length){const row=h('div','row'),b=h('button','btn primary','Coach these corners');b.type='button';b.id='prCoach';
     b.addEventListener('click',()=>openCoach({car_path:R.car_path,track_code:R.track_code}));
@@ -1721,7 +1728,8 @@ async function loadCoPlan(plan){if(plan&&plan.car_path)co.plan=plan;let p=co.pla
 function renderCoPlan(){const box=$('coPlan'),j=co.planRep;box.replaceChildren();if(!j){box.hidden=true;return}
   const F=j.focus||[],R=j.report||{},where=(j.car||j.car_path)+' at '+(j.track||j.track_code);box.append(h('h4',null,'From the Corner coach'));
   if(F.length){box.append(h('p','note','For the '+where+', from your last '+plural(R.laps||0,'clean lap')+' there. It starts with the biggest and says the tip after the corner:'));
-    const ul=h('ul','pvlist');F.forEach(f=>{const li=h('li');li.append(h('b',null,f.phrase),h('span','sub2',ok(f.lost_s)?'about '+f.lost_s.toFixed(2)+' s a lap':''));ul.append(li)});box.append(ul)}
+    const ul=h('ul','pvlist');F.forEach(f=>{const li=h('li'),nm=/^([CT]\d+):/.exec(String(f.phrase||''));li.append(nm?turnEl('b',null,nm[1],f.id):h('b',null,turnName(f.id)),
+      h('span','sub2','Says "'+f.phrase+'"'+(ok(f.lost_s)?', about '+f.lost_s.toFixed(2)+' s a lap':'')));ul.append(li)});box.append(ul)}
   else box.append(h('p','note','For the '+where+': '+(R.message||'no corner shows a clear pattern yet.')+' So the coach uses your race reviews.'));
   box.hidden=!!co.planHide}
 function coPlanShow(on){co.planHide=!on;if(co.planRep)$('coPlan').hidden=!on}

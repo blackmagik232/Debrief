@@ -60,6 +60,15 @@ def _r(x, nd=3):
     return None if x is None or not math.isfinite(float(x)) else round(float(x), nd)
 
 
+def _seg_name(nm, more: str = "") -> str:
+    """A corner segment in words: "C3" (the race review's name) reads "Turn 3 (C3)", with any extra words inside
+    the same brackets ("Turn 3 (C3, 0.05 s)"); sectors stay "S1" ("S1 (0.05 s)")."""
+    m = re.fullmatch(r"C(\d+)", str(nm))
+    if m:
+        return f"Turn {m.group(1)} ({nm}{', ' + more if more else ''})"
+    return f"{nm} ({more})" if more else str(nm)
+
+
 def _fmt(t) -> str:
     if t is None:
         return "-"
@@ -448,7 +457,7 @@ def _segments(files: list, rows: list, best_row) -> tuple[dict, dict]:
         text = (f"Your best {('corners' if theo['basis'] == 'corners' else 'sectors')} added up make "
                 f"{_fmt(possible)}, {theo['gap_s']:.2f} s under your best lap ({_fmt(best_row['time'])}).")
         if gains:
-            parts = [f"{g['segment']} ({g['gain_s']:.2f} s, best on lap {g['from_lap']})" for g in gains[:3]]
+            parts = [_seg_name(g['segment'], f"{g['gain_s']:.2f} s, best on lap {g['from_lap']}") for g in gains[:3]]
             text += " Most of it is in " + ", ".join(parts) + "."
         if theo["laps_used"] == "clean":
             text += f" Counted from your {len(seg_laps)} clean laps."
@@ -471,8 +480,9 @@ def _segments(files: list, rows: list, best_row) -> tuple[dict, dict]:
         spread["segments"] = items
         top = max(items, key=lambda x: x["spread_s"])
         spread["top"] = top["segment"]
-        spread["text"] = (f"Most of your lap-to-lap variation is in {top['segment']} (±{top['spread_s']:.2f} s, "
-                          f"one standard deviation over {len(clean_ns)} clean laps).")
+        spread["text"] = ("Most of your lap-to-lap variation is in "
+                          + _seg_name(top['segment'], f"±{top['spread_s']:.2f} s, one standard deviation over "
+                                                      f"{len(clean_ns)} clean laps") + ".")
     else:
         spread["text"] = (f"Where your lap times vary needs {MIN_LAPS} clean laps with a full trace; "
                           f"this session has {len(clean_ns)}.")

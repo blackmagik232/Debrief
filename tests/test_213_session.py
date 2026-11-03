@@ -1,6 +1,7 @@
 """2.13: session review from .ibt files (debrief/sessionibt.py). Run: python tests/test_213_session.py"""
 from __future__ import annotations
 
+import re
 import json
 import sys
 import tempfile
@@ -121,6 +122,10 @@ check(abs(th["gap_s"] - (100.0 - th["possible"])) < 0.01 and len(th["gains"]) ==
 check(all(abs(sum(r["segments"]) - r["time"]) < 0.01 for r in rv["laps"] if r.get("segments")), "segments add up to the lap")
 sp = rv["segment_spread"]
 check(sp["enough"] and sp["top"] in ("C1", "C2") and "Most of your lap-to-lap variation is in" in sp["text"], sp["text"])
+check(re.search(r"variation is in Turn [12] \(C[12], ±", sp["text"]) is not None, f"spread says Turn N (CN): {sp['text']}")
+check(re.search(r"Most of it is in Turn [12] \(C[12], [0-9.]+ s, best on lap \d+\)", th["text"]) is not None,
+      f"best possible lap says Turn N (CN): {th['text']}")
+check(si._seg_name("S2") == "S2" and si._seg_name("S2", "0.05 s") == "S2 (0.05 s)", "sectors keep their names")
 gate = si.review([mk(d, "2026-10-31 19-00-00", [100.0] * 4, pace=pace)])
 check(gate["theoretical"]["possible"] is None and not gate["theoretical"]["enough"]
       and "needs 5 valid laps" in gate["theoretical"]["text"], gate["theoretical"]["text"])

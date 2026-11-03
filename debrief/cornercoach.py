@@ -554,7 +554,7 @@ def _phrase(rule, D, P, label=None):
         diff = (f"{who} you start braking about {n} m {'later' if later else 'earlier'} "
                 f"({_round_to(b, 5)} m before the apex instead of {_round_to(t, 5)} m)")
         cars = max(1, int(round(n / 4.5)))
-        how = (f"brake about {n} m {'later' if later else 'earlier'} - pick a marker {n} m "
+        how = (f"brake about {n} m {'later' if later else 'earlier'}: pick a marker {n} m "
                f"{'past' if later else 'before'} your current one (about {cars} car length{'s' if cars > 1 else ''}), "
                f"and keep the same pressure.")
         why = ("Every metre you stay flat out before braking is time you don't spend slowing down." if later else
@@ -569,7 +569,7 @@ def _phrase(rule, D, P, label=None):
                      f"{int(round(100 * g('abs_share', 'typical')))}%)")
         onset = P.get("abs_onset_pct")
         below = onset is not None and g("peak_pct") < onset - 2
-        how = (f"same braking marker. Press firmly but not all the way - about {x}%"
+        how = (f"same braking marker. Press firmly but not all the way: about {x}%"
                + (f", just short of where the ABS starts working (about {_round_to(onset, 5)}% on this car)."
                   if below else "."))
         less_abs = D.get("abs_share") and D["abs_share"]["z"] >= Z_LIKELY and D["abs_share"]["diff"] <= -R_ABS_SHARE
@@ -597,8 +597,8 @@ def _phrase(rule, D, P, label=None):
         co = D["coast_s"]
         diff = (f"{who} you spend {co['best']:.1f} s with both feet off the pedals instead of {co['typical']:.1f} s "
                 f"(between letting go of the brake and starting on the throttle)")
-        how = "as the brake comes off, go straight to a little throttle - don't wait with both feet off."
-        why = "With both feet off the car is neither slowing nor speeding up - the slowest way through."
+        how = "as the brake comes off, go straight to a little throttle. Don't wait with both feet off."
+        why = "With both feet off, the car is neither slowing nor speeding up: the slowest way through."
         return diff, how, why
     if rule == "release":
         z = g("release_s")
@@ -616,7 +616,7 @@ def _phrase(rule, D, P, label=None):
         if where == "at the apex":
             diff = (f"{who} you pick up the throttle about {n} m earlier (at the apex instead of "
                     f"{_round_to(abs(g('pickup_m', 'typical')), 5)} m after it)")
-        how = f"start feeding the throttle about {n} m earlier, {where} - gently at first, then more as you unwind the wheel."
+        how = f"start feeding the throttle about {n} m earlier, {where}. Gently at first, then more as you unwind the wheel."
         why = "The sooner you're back on the power, the faster you are all the way down the next straight."
         return diff, how, why
     if rule == "carry":
@@ -629,7 +629,7 @@ def _phrase(rule, D, P, label=None):
             how = "same braking marker, but come off the brake a little earlier so the car rolls faster through the middle."
         elif pk and pk["z"] >= Z_LIKELY and pk["diff"] <= -R_PEAK_PCT:
             diff += f", and brake at about {_round_to(pk['best'], 5)}% instead of {_round_to(pk['typical'], 5)}%"
-            how = (f"same braking marker, but press less hard - about {_round_to(pk['best'], 5)}% - so you don't "
+            how = (f"same braking marker, but press less hard (about {_round_to(pk['best'], 5)}%) so you don't "
                    f"slow down more than the corner needs.")
         else:
             how = ("same braking marker, but brake a little less so you don't slow down more than the corner needs. "
@@ -882,23 +882,23 @@ def braking_summary(laps, corners) -> dict:
         s = out["abs_share"]
         L.append(f"The ABS does a lot of the work (active for over {int(ABS_ZONE_SHARE * 100)}% of the stop) in "
                  f"{int(round(100 * s))}% of your braking zones" +
-                 (" - you lean on it heavily; pressing a little less usually stops you just as fast." if s >= 0.5 else
-                  " - a fair amount." if s >= 0.25 else " - you mostly brake below the point where it steps in."))
+                 (": you lean on it heavily. Pressing a little less usually stops you just as fast." if s >= 0.5 else
+                  ": a fair amount." if s >= 0.25 else ". You mostly brake below the point where it steps in."))
         if out["abs_onset_pct"] is not None:
             L.append(f"On this car the ABS starts working from about {out['abs_onset_pct']:.0f}% pedal.")
     else:
         L.append("This telemetry has no ABS channel, so ABS use can't be measured.")
     if lock_m == "wheel speeds":
         L.append(f"Front wheel lock-ups (from wheel speeds): {lock_ev} in {len(laps)} laps"
-                 + (" - none worth worrying about." if lock_ev == 0 else "."))
+                 + (", none worth worrying about." if lock_ev == 0 else "."))
     elif lock_m == "abs":
         L.append("No wheel-speed channels, so lock-ups can't be counted directly; ABS activity above is the guide.")
     if trail:
         ts = out["trail_share"]
         L.append(f"You still have some brake on as you turn in at {int(round(100 * ts))}% of corners"
                  + (f" (about {out['trail_median_pct']:.0f}% pedal)" if out["trail_median_pct"] else "")
-                 + (" - you trail brake as a habit." if ts >= 0.6 else
-                    " - sometimes." if ts >= 0.3 else " - you mostly finish braking before turning."))
+                 + (": you trail brake as a habit." if ts >= 0.6 else
+                    ": sometimes." if ts >= 0.3 else ". You mostly finish braking before turning."))
     else:
         L.append("No steering channel, so trail braking can't be measured.")
     L.append(f"Coasting (both feet off between braking and throttle): about {out['coast_s_per_lap']:.1f} s per lap.")
@@ -932,7 +932,7 @@ def analyze_laps(laps, reference=None, info=None, prefix: str = "T") -> dict:
                               "session": x.get("session")} for x in laps]
         if len(laps) < MIN_LAPS:
             have = f"Only {len(laps)} clean lap{'s' if len(laps) != 1 else ''}" if laps else "No clean laps"
-            base["message"] = (f"{have} - the corner coach needs at least {MIN_LAPS} to compare your best laps "
+            base["message"] = (f"{have}. The corner coach needs at least {MIN_LAPS} to compare your best laps "
                                f"with your typical ones.")
             return base
         fastest = min(laps, key=lambda x: x["time"])

@@ -4,7 +4,8 @@ session can be looked at afterwards ("why did it say that there?", "why was it q
     <settings dir>/coach-logs/<date> <car> <track>.jsonl            (rehearsals: "... rehearsal.jsonl")
 
 A line: {"ev": made | spoken | dropped | cancelled | not_made | corner_fixed | corner_regressed | lap_end |
-reference | focus_learned (2.17.2: focus corners learned from this session) | repeated | muted | session, "t": session time, "lap", "dist_m", "kmh", "kind", "text", "corner",
+reference | focus_learned (2.17.2: focus corners learned from this session) | repeated | asked (2.17.2: "How's my
+pace?") | muted | session, "t": session time, "lap", "dist_m", "kmh", "kind", "text", "corner",
 "why" (why it was made), "dropped" (why it was not said), "measured" {...}, ...}. Several sessions on one day with
 the same car and track go into the same file, each starting with a "session" line.
 
@@ -32,10 +33,11 @@ KEYS = ("ev", "t", "lap", "dist_m", "kmh", "kind", "text", "corner", "why", "dro
         "next_brake_s", "waited_s", "lap_time", "clean", "cues", "source", "ref_lap", "ref_date", "corners", "focus",
         "car", "track", "mode", "version", "started", "settings", "voice", "seconds", "latency_s", "wall")
 MEASURED_KEYS = ("min_kmh", "ref_min_kmh", "down_kmh", "brake_point_m", "ref_brake_point_m", "early_m", "to_brake_m",
-                 "lost_s", "value", "hit", "near", "lap", "lap_time", "ref_time", "delta_s", "timed_by", "sector")
+                 "lost_s", "value", "hit", "near", "lap", "lap_time", "ref_time", "delta_s", "timed_by", "sector",
+                 "down_mph")
 FOCUS_KEYS = ("name", "id", "lost_s", "phrase", "brake_m")
 SETTINGS_KEYS = ("markers", "feedback", "lap_delta", "top_n", "max_per_lap", "repeat_laps", "gap_s", "in_races",
-                 "audio_latency_s", "end_before_brake_s", "voice_pack", "fixed_laps", "volume", "level")
+                 "audio_latency_s", "end_before_brake_s", "voice_pack", "fixed_laps", "volume", "level", "lap_times")
 
 
 def _plain(x, n=60) -> str:
@@ -200,8 +202,8 @@ def list_logs(folder) -> list:
 def _fmt_m(r) -> str:
     m = r.get("measured") or {}
     bits = []
-    if "min_kmh" in m:
-        bits.append(f"min {m['min_kmh']} vs ref {m.get('ref_min_kmh')} km/h")
+    if "min_kmh" in m:                      # 2.17.2: shown in mph (measured in km/h, as before)
+        bits.append(f"min {_mph(m['min_kmh'])} vs ref {_mph(m.get('ref_min_kmh'))} mph")
     if m.get("brake_point_m") is not None:
         bits.append(f"brake {m['brake_point_m']} m before apex vs ref {m.get('ref_brake_point_m')}")
     if "delta_s" in m:
@@ -211,6 +213,15 @@ def _fmt_m(r) -> str:
     if "to_brake_m" in m:
         bits.append(f"made {m['to_brake_m']} m before brake point at {m.get('brake_point_m')} m")
     return "; ".join(bits)
+
+
+def _mph(kmh):
+    return round(kmh / 1.609344) if isinstance(kmh, (int, float)) else "?"
+
+
+def _mph_text(s):
+    """Older logs' 'N km/h' in mph."""
+    return re.sub(r"(-?\d+(?:\.\d+)?) km/h", lambda m: f"{_mph(float(m.group(1)))} mph", str(s or ""))
 
 
 def summary(rows, name: str = "", version: str = "", limit: int = 6000) -> str:
@@ -253,12 +264,12 @@ def summary(rows, name: str = "", version: str = "", limit: int = 6000) -> str:
         for f in r.get("focus") or []) or "none") for r in rows if r.get("ev") == "focus_learned"]
     if fx:
         L.append("Corners: " + "; ".join(fx))
-    other = Counter(r.get("ev") for r in rows if r.get("ev") in ("repeated", "muted"))
+    other = Counter(r.get("ev") for r in rows if r.get("ev") in ("repeated", "asked", "muted"))
     if other:
         L.append("Driver: " + ", ".join(f"{k} {v}" for k, v in other.items()))
-    L.append("Spoken (lap, metres, km/h, cue | why | numbers | next brake point s, cue length s):")
+    L.append("Spoken (lap, metres, mph, cue | why | numbers | next brake point s, cue length s):")
     for r in spoken:
-        L.append(f" L{r.get('lap')} {r.get('dist_m', '?')}m {r.get('kmh', '?')} \"{r.get('text')}\" | {r.get('why', '')} | "
+        L.append(f" L{r.get('lap')} {r.get('dist_m', '?')}m {_mph(r.get('kmh'))} \"{r.get('text')}\" | {_mph_text(r.get('why', ''))} | "
                  f"{_fmt_m(r)} | {r.get('next_brake_s', '-')} s, {r.get('dur_s', '-')} s")
     dropped = [r for r in rows if r.get("ev") == "dropped"][:40]
     if dropped:

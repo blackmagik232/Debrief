@@ -331,7 +331,7 @@ def coach_vocabulary() -> list:
     for n in range(1, vp.MAX_TURN + 1):
         name = f"T{n}"
         out += [livecoach.marker_text(name), livecoach.early_text(name)]
-        out += [livecoach.speed_text(name, k) for k in range(4, 16)]
+        out += [livecoach.speed_text(name, k) for k in range(vp.MIN_MPH, vp.MAX_KMH + 1)]   # mph (2.17.2)
         out += [f"{name}: {v}" for v in cornercoach.VOICE.values()]
         out += [f"{name}: hold it in", f"{name}: same every lap"]
     for k in range(1, 21):                      # lap deltas up to Settings.lap_delta_max_s (2 s)
@@ -345,6 +345,10 @@ def coach_vocabulary() -> list:
             out += [livecoach.sector_text(s, k / 10), livecoach.sector_text(s, -k / 10)]
     out += [livecoach.BUILDING_TEXT]
     out += [livecoach.reference_set_text(k / 10) for k in range(vp.LAP_TENTHS[0], vp.LAP_TENTHS[1])]
+    out += [livecoach.reference_set_text(k / 10, short=True) for k in range(vp.LAP_TENTHS[0], vp.LAP_TENTHS[1])]
+    out += ["Good, on pace", livecoach.NO_CLEAN_TEXT, livecoach.FAR_DOWN_TEXT]     # 2.17.2 "How's my pace?"
+    for n in range(1, vp.MAX_TURN + 1):
+        out += [f"Down {livecoach.delta_words(k / 10)}, most in T{n}" for k in range(1, vp.MAX_TENTHS + 1)]
     for m in ("peak_brake", "brake_point", "trail", "coast", "throttle_point", "min_speed", "corner_time"):
         out += practiceplan.cue_vocabulary({"metric": m})
     return list(dict.fromkeys(out))

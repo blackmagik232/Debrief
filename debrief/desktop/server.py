@@ -980,14 +980,23 @@ def _jsonable(o):
 COACH_FIELDS = {"in_races": bool, "markers": bool, "feedback": bool, "lap_delta": bool, "brake_beep": bool,
                 "top_n": (1, 3, "Focus corners must be 1, 2 or 3."), "volume": (0, 100, "Volume must be 0 to 100."),
                 "rate": (-10, 10, "Speaking speed must be -10 to 10."), "level": lambda v: clean_level(v),
+                "lap_times": lambda v: clean_lap_times(v),
                 **coach2.EXTRA_FIELDS}
 
 
 def clean_level(v) -> str:
-    """2.17.2 Coaching level: quiet, normal or busy."""
+    """2.17.2 Coaching level: quiet, normal, busy or ask (Only when I ask)."""
     from .. import livecoach
     if not isinstance(v, str) or v.strip().lower() not in livecoach.LEVELS:
-        raise ValueError("Pick Quiet, Normal or Busy.")
+        raise ValueError("Pick Quiet, Normal, Busy or Only when I ask.")
+    return v.strip().lower()
+
+
+def clean_lap_times(v) -> str:
+    """2.17.2 how lap times are said: full ("one thirty-eight nine") or short ("thirty-eight nine")."""
+    from .. import livecoach
+    if not isinstance(v, str) or v.strip().lower() not in livecoach.LAP_TIMES:
+        raise ValueError("Pick Full or Short.")
     return v.strip().lower()
 COACH_TEST_TEXT = "Brake marker, T3"     # Coach 2.0: a phrase every voice pack says
 

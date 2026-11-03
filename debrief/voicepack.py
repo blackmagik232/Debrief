@@ -61,12 +61,14 @@ PAD_MS = 30                # silence kept before and after the speech when trimm
 FADE_MS = 6                # fade in/out on every clip
 XFADE_MS = 8               # crossfade at a join
 JOIN_MS = 90               # default extra pause between a lead clip and the tail after it
+EDGE_QUIET = 1e-3          # a clip edge this quiet has already been faded (no second fade at a join)
 
 MAX_TURN = 25
 MIN_NUM = 20               # "Good, 84": brake % 20..100 (a pass under 20% is a lift, not braking: Windows
 MAX_NUM = 100              # speech says those few)
-MIN_KMH = 4                # "more speed, 7 down": 4..20 km/h (the coach says it from Settings.slower_kmh, 4)
+MIN_KMH = 4                # "more speed, 7 down": 4..20 (lines B; 2.17.2: the number is mph)
 MAX_KMH = 20
+MIN_MPH = 3                # 2.17.2: "more speed, 3 down" (3 mph is the coach's trigger), line K
 MAX_TENTHS = 20            # lap deltas: a tenth .. 2.0 seconds
 LAP_TENTHS = (400, 1800)   # 2.17.2 "Reference set, one thirty-eight nine": lap times 0:40.0 .. 3:00.9 (in tenths)
 
@@ -122,8 +124,22 @@ def lap_time_words(seconds: float) -> str:
     tw = "oh" if tenth == 0 else _ONES[tenth]
     if m == 0:
         return f"{number_words(sec)} {tw}"
-    sw = "oh oh" if sec == 0 else f"oh {_ONES[sec]}" if sec < 10 else number_words(sec)
-    return f"{number_words(m)} {sw} {tw}"
+    return f"{number_words(m)} {_sec_words(sec)} {tw}"
+
+
+def _sec_words(sec: int) -> str:
+    return "oh oh" if sec == 0 else f"oh {_ONES[sec]}" if sec < 10 else number_words(sec)
+
+
+def lap_time_short_words(seconds: float) -> str:
+    """2.17.2 a lap time the short way race engineers read it, without the minute: 98.874 -> 'thirty-eight nine',
+    65.04 -> 'oh five oh'; under a minute it is the same as lap_time_words (52.3 -> 'fifty-two three')."""
+    n = int(round(float(seconds) * 10))
+    m, rest = divmod(n, 600)
+    sec, tenth = divmod(rest, 10)
+    if m == 0:
+        return lap_time_words(seconds)
+    return f"{_sec_words(sec)} {'oh' if tenth == 0 else _ONES[tenth]}"
 
 
 def _lap_parts(tenths: int):
@@ -155,7 +171,11 @@ SECTIONS = {
     "F": "Short practice cues. Each one on its own.",
     "G": "Time in a corner or a sector. Say the turn or sector, a short pause at the comma, then the time.",
     "H": "Lap times. Like reading a stopwatch: a short pause at the comma before the last number.",
+    "I": "Your pace, when you ask for it. Matter-of-fact, a short natural pause at the comma.",
+    "J": "Short lap times, without the minute. Like reading a stopwatch: a short pause at the comma.",
+    "K": "One more corner tip. Say the turn, a short natural pause at the comma, then the tip.",
 }
+PACE_WHOLES = ["No clean lap yet", "Down more than two seconds"]      # 2.17.2 answers to "How's my pace?"
 
 
 def lines() -> list:
@@ -199,6 +219,19 @@ def lines() -> list:
         _h, tw = _lap_parts(n * 10 + digit)
         clips = [(f"lap_{n}", "lead")] + ([(f"tenth_{digit}", "tail")] if i < 10 else [])
         add("H", f"{head[:1].upper()}{head[1:]}, {tw}.", clips)
+    # 2.17.2 "How's my pace?" (added after everything above, so earlier line numbers never change)
+    for n in range(1, MAX_TURN + 1):           # "Down three tenths, most in turn four." -> lead + tail
+        k = (n - 1) % MAX_TENTHS + 1
+        add("I", f"Down {amount_words(k)}, most in turn {number_words(n)}.",
+            ([(f"down_lead_{amount_key(k)}", "lead")] if n <= MAX_TENTHS else []) + [(f"most_turn_{n}", "tail")])
+    for w in PACE_WHOLES:
+        add("I", f"{w}.", [(_slug(w), "whole")])
+    for sec in range(60):                      # short lap times: "Thirty-eight, nine." -> lead "thirty-eight"
+        w = _sec_words(sec)
+        add("J", f"{w[:1].upper()}{w[1:]}, {'oh' if (sec * 3) % 10 == 0 else _ONES[(sec * 3) % 10]}.",
+            [(f"sec_{sec}", "lead")])
+    for k in range(MIN_MPH, MIN_KMH):          # 2.17.2 mph: the smallest "more speed" number
+        add("K", f"Turn {number_words(k + 5)}, more speed, {number_words(k)} down.", [(f"more_speed_{k}_down", "tail")])
     return out
 
 
@@ -215,7 +248,7 @@ def all_keys() -> dict:
 
 _TURN = r"(?:T|Turn\s*)(\d{1,3})"
 _AMOUNT = re.compile(r"^(?:(a|one|two|three|four|five|six|seven|eight|nine) tenths?|(\d{1,2})\.(\d) seconds?)$", re.I)
-_WHOLE_KEYS = {w.lower(): _slug(w) for w in WHOLES}
+_WHOLE_KEYS = {w.lower(): _slug(w) for w in WHOLES + PACE_WHOLES}
 _TAIL_KEYS = {t: _slug(t) for t in TAILS}
 
 
@@ -238,7 +271,7 @@ def _tail(text: str):
     if t in _TAIL_KEYS:
         return _TAIL_KEYS[t]
     m = re.fullmatch(r"more speed,\s*(\d{1,3}) down", t)
-    if m and MIN_KMH <= int(m.group(1)) <= MAX_KMH:
+    if m and MIN_MPH <= int(m.group(1)) <= MAX_KMH:
         return f"more_speed_{int(m.group(1))}_down"
     return None
 
@@ -269,6 +302,9 @@ def _lap_keys(words: str):
         for n in range(LAP_TENTHS[0] // 10, LAP_TENTHS[1] // 10 + 1):
             for d in range(10):
                 _LAP_KEYS[lap_time_words(n + d / 10)] = [f"lap_{n}", f"tenth_{d}"]
+        for sec in range(60):                  # 2.17.2 short lap times ("thirty-eight nine")
+            for d in range(10):
+                _LAP_KEYS.setdefault(f"{_sec_words(sec)} {'oh' if d == 0 else _ONES[d]}", [f"sec_{sec}", f"tenth_{d}"])
     return _LAP_KEYS.get(" ".join(words.lower().split()))
 
 
@@ -305,6 +341,10 @@ def compose(text) -> list | None:
         return ["reference_set"] + k if k else None
     if low in _WHOLE_KEYS:
         return [_WHOLE_KEYS[low]]
+    m = re.fullmatch(r"down\s+(.+?),\s*most in\s+" + _TURN, t, re.I)     # 2.17.2 "Down three tenths, most in T4"
+    if m:
+        a, n = _amount(m.group(1)), int(m.group(2))
+        return [f"down_lead_{a}", f"most_turn_{n}"] if a and 1 <= n <= MAX_TURN else None
     m = re.fullmatch(r"down\s+(.+)", low)
     if m:
         a = _amount(m.group(1))
@@ -721,10 +761,15 @@ class VoicePack:
             else:
                 gap = self._gap(prev, k)
                 if gap >= xf:
+                    # a pause between them: each clip already fades to silence at its edges (finish), so a second
+                    # fade is only put on an edge that isn't silent; a second one would soften the tail's first sound
+                    # (its clip starts right where the speech does, cut at the comma)
                     r = np.linspace(1.0, 0.0, xf)
-                    out[-xf:] *= r
-                    c = c.copy()
-                    c[:xf] *= r[::-1]
+                    if abs(out[-1]) > EDGE_QUIET:
+                        out[-xf:] *= r
+                    if abs(c[0]) > EDGE_QUIET:
+                        c = c.copy()
+                        c[:xf] *= r[::-1]
                     out = np.concatenate([out, np.zeros(gap - xf), c])
                 else:                           # no pause: overlap the edges (equal-power crossfade)
                     n = min(xf, len(out), len(c))

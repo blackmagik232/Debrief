@@ -13,6 +13,8 @@ Rules:
   * One sound at a time. A new sound with a higher priority than the one playing (or interrupt=True) stops it at
     once (waveOutReset) and plays; an equal or lower one waits its turn, but never longer than max_wait_s after it
     was asked for (then it is dropped: a late cue is worse than none). At most MAX_PENDING wait.
+  * 2.17.2: a sound may come with check(): asked right before it starts; when it gives a reason (the car has moved
+    on and the cue no longer fits), the sound is dropped, not played.
   * The chosen device is found by its name (Windows renumbers devices when USB things are plugged in). When it is
     missing or stops working, the sound goes to Windows' default device instead and status()["note"] says so; the
     chosen device is looked for again at most every RECHECK_S and used again as soon as it is back.
@@ -230,12 +232,13 @@ def list_devices(backend=None) -> list:
 
 # ---------------------------------------------------------------- the player
 class _Item:
-    __slots__ = ("pcm", "rate", "priority", "asked", "on_start", "on_end", "tag", "kind", "result")
+    __slots__ = ("pcm", "rate", "priority", "asked", "on_start", "on_end", "tag", "kind", "result", "check")
 
-    def __init__(self, pcm, rate, priority, asked, on_start, on_end, tag, kind="play"):
+    def __init__(self, pcm, rate, priority, asked, on_start, on_end, tag, kind="play", check=None):
         self.pcm, self.rate, self.priority, self.asked = pcm, int(rate), int(priority), asked
         self.on_start, self.on_end, self.tag, self.kind = on_start, on_end, tag, kind
         self.result = None
+        self.check = check
 
 
 class Player:
@@ -258,6 +261,7 @@ class Player:
         self.note = ""                  # plain words for the window ("Your headset ... isn't connected ...")
         self.played = 0
         self.dropped = 0
+        self.invalid = 0                # 2.17.2: dropped because check() said the sound no longer fits
         self.errors = 0
         self._logged = set()
         self._thread = threading.Thread(target=self._run, name="debrief-audio", daemon=True)
@@ -265,10 +269,11 @@ class Player:
 
     # ---- any thread ----
     def play(self, pcm: bytes, rate: int, priority: int = 0, interrupt: bool = False, on_start=None, on_end=None,
-             tag=None) -> bool:
+             tag=None, check=None) -> bool:
         if not pcm:
             return False
-        item = _Item(bytes(pcm)[:len(pcm) - len(pcm) % 2], rate, priority, self._clock(), on_start, on_end, tag)
+        item = _Item(bytes(pcm)[:len(pcm) - len(pcm) % 2], rate, priority, self._clock(), on_start, on_end, tag,
+                     check=check)
         with self._cv:
             if self._stop:
                 return False
@@ -456,6 +461,15 @@ class Player:
                     if item.kind == "play" and self._clock() - item.asked > self.max_wait_s:
                         self._drop(item, "waited too long")
                         continue
+                    if item.kind == "play" and item.check is not None:
+                        try:
+                            why = item.check()
+                        except Exception:  # noqa: BLE001  (a failing check never stops the sound thread)
+                            why = None
+                        if why:
+                            self.invalid += 1
+                            self._drop(item, "no longer valid")
+                            continue
                     self._play(item)
                 except Exception as e:  # noqa: BLE001
                     self.errors += 1

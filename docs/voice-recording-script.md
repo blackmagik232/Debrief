@@ -412,3 +412,106 @@ Lap times. Like reading a stopwatch: a short pause at the comma before the last 
 354. Two fifty-eight, six.
 355. Two fifty-nine, three.
 356. Three oh oh, oh.
+
+## Section I (from line 357)
+
+Your pace, when you ask for it. Matter-of-fact, a short natural pause at the comma.
+
+357. Down a tenth, most in turn one.
+358. Down two tenths, most in turn two.
+359. Down three tenths, most in turn three.
+360. Down four tenths, most in turn four.
+361. Down five tenths, most in turn five.
+362. Down six tenths, most in turn six.
+363. Down seven tenths, most in turn seven.
+364. Down eight tenths, most in turn eight.
+365. Down nine tenths, most in turn nine.
+366. Down one second, most in turn ten.
+367. Down one point one seconds, most in turn eleven.
+368. Down one point two seconds, most in turn twelve.
+369. Down one point three seconds, most in turn thirteen.
+370. Down one point four seconds, most in turn fourteen.
+371. Down one point five seconds, most in turn fifteen.
+372. Down one point six seconds, most in turn sixteen.
+373. Down one point seven seconds, most in turn seventeen.
+374. Down one point eight seconds, most in turn eighteen.
+375. Down one point nine seconds, most in turn nineteen.
+376. Down two seconds, most in turn twenty.
+377. Down a tenth, most in turn twenty-one.
+378. Down two tenths, most in turn twenty-two.
+379. Down three tenths, most in turn twenty-three.
+380. Down four tenths, most in turn twenty-four.
+381. Down five tenths, most in turn twenty-five.
+382. No clean lap yet.
+383. Down more than two seconds.
+
+## Section J (from line 384)
+
+Short lap times, without the minute. Like reading a stopwatch: a short pause at the comma.
+
+384. Oh oh, oh.
+385. Oh one, three.
+386. Oh two, six.
+387. Oh three, nine.
+388. Oh four, two.
+389. Oh five, five.
+390. Oh six, eight.
+391. Oh seven, one.
+392. Oh eight, four.
+393. Oh nine, seven.
+394. Ten, oh.
+395. Eleven, three.
+396. Twelve, six.
+397. Thirteen, nine.
+398. Fourteen, two.
+399. Fifteen, five.
+400. Sixteen, eight.
+401. Seventeen, one.
+402. Eighteen, four.
+403. Nineteen, seven.
+404. Twenty, oh.
+405. Twenty-one, three.
+406. Twenty-two, six.
+407. Twenty-three, nine.
+408. Twenty-four, two.
+409. Twenty-five, five.
+410. Twenty-six, eight.
+411. Twenty-seven, one.
+412. Twenty-eight, four.
+413. Twenty-nine, seven.
+414. Thirty, oh.
+415. Thirty-one, three.
+416. Thirty-two, six.
+417. Thirty-three, nine.
+418. Thirty-four, two.
+419. Thirty-five, five.
+420. Thirty-six, eight.
+421. Thirty-seven, one.
+422. Thirty-eight, four.
+423. Thirty-nine, seven.
+424. Forty, oh.
+425. Forty-one, three.
+426. Forty-two, six.
+427. Forty-three, nine.
+428. Forty-four, two.
+429. Forty-five, five.
+430. Forty-six, eight.
+431. Forty-seven, one.
+432. Forty-eight, four.
+433. Forty-nine, seven.
+434. Fifty, oh.
+435. Fifty-one, three.
+436. Fifty-two, six.
+437. Fifty-three, nine.
+438. Fifty-four, two.
+439. Fifty-five, five.
+440. Fifty-six, eight.
+441. Fifty-seven, one.
+442. Fifty-eight, four.
+443. Fifty-nine, seven.
+
+## Section K (from line 444)
+
+One more corner tip. Say the turn, a short natural pause at the comma, then the tip.
+
+444. Turn eight, more speed, three down.

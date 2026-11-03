@@ -1321,7 +1321,11 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
   ['Laps counted','The clean laps Setup Lab compares setups on: not out laps, first flying laps, laps in traffic or laps far off the pace.'],
   ['Reference lap','Your best clean lap for this car and track, from your telemetry files. With none there, the coach says "Building your reference", and your first clean lap becomes it ("Reference set, one thirty-eight nine"). The coach measures you against it.'],
   ['Focus corner','One of the corners your race reviews or the Corner coach say keep costing you time. With none of those, the coach learns them from this session: the corners where your last clean laps lost the most against your reference. The coach talks about one to three at a time.'],
-  ['Coaching level','How much the coach says. Quiet: your focus corners and your lap time only, at most 2 tips a lap. Normal (the default): up to 4 cues a lap, 3 seconds apart. Busy: up to 6, 2.5 seconds apart. Every level stays quiet under braking, in corners, with a car alongside and on lap 1 of a race.'],
+  ['Coaching level','How much the coach says. Quiet: your focus corners and your lap time only, at most 2 tips a lap. Normal (the default): up to 4 cues a lap, 3 seconds apart. Busy: up to 6, 2.5 seconds apart. Only when I ask: nothing until you ask for your pace. Every level stays quiet under braking, in corners, with a car alongside and on lap 1 of a race.'],
+  ['How\'s my pace?','Press Ctrl+Shift+P, the button on the Coach page or a wheel button you chose: the coach says your last clean lap against your reference and the corner that cost the most there ("Down three tenths, most in T4"). It answers as soon as it is safe to talk, never under braking or in a corner.'],
+  ['Hard zones','From your reference lap, the stretch from hard braking until you are back on full throttle. Sector and lap times and other cues that are not about a corner wait until you are out of one, and only start when they finish before the next one.'],
+  ['Checked before it plays','Every cue is checked again against the car just before it plays. A brake marker that could no longer finish a second before the brake point, a word about a corner once you are braking for the next one, or a sector time once a newer one is done is dropped, never said late. The coach log says "no longer valid" for those.'],
+  ['Say lap times','How the coach reads a lap time. Short, the default, as race engineers do: "thirty-eight nine". Full: "one thirty-eight nine".'],
   ['Sector time','The lap split in three by your reference lap\'s time. On Normal and Busy the coach says each of the first two sectors against your reference ("Sector one, up two tenths"); the lap time covers the rest.'],
   ['Brake marker','The cue the coach says on the straight before a focus corner, so you think about that braking point.'],
   ['Session (Practice)','The telemetry files of one go in the car: the same car and track, with no more than 3 hours between files.'],
@@ -1561,7 +1565,7 @@ function renderCoach(st){co.st=st;const run=!!st.running,state=CO_STATE[st.state
   renderCoFocus(st);renderWheel(st.wheel);
   if(!co.filled||!co.dirty){fillCoachSettings(st.settings||{});co.filled=true}
   coLevelShow(st);coTestResult(st.test_voice);csCoach(st);co2Render(st)}
-// 2.17.2 Coaching level (Quiet / Normal / Busy): saved as soon as it is picked; the coach uses it at once
+// 2.17.2 Coaching level (Quiet / Normal / Busy / Only when I ask): saved as soon as it is picked; the coach uses it at once
 function coLevelShow(st){const lv=(st.settings||{}).level||st.level||'normal';
   if(!co.levelBusy)document.querySelectorAll('input[name=coLevel]').forEach(r=>{r.checked=r.value===lv});
   const fi=st.focus_info,fw=$('coFocusWhy');fw.hidden=!(fi&&fi.text&&st.running);fw.textContent=fi&&fi.text?fi.text:''}
@@ -1570,7 +1574,7 @@ document.querySelectorAll('input[name=coLevel]').forEach(r=>r.addEventListener('
   try{j=await post('coach/settings',{settings:{level:r.value}})}catch(e){co.levelBusy=false;connectionLost();return}
   co.levelBusy=false;if(!j.ok){setMsg('coLevelMsg',j.error,'bad');return}
   setMsg('coLevelMsg',co.st&&co.st.running?'Saved. The coach uses it now.':'Saved.','ok');coachPoll()}));
-function fillCoachSettings(s){$('coInRaces').checked=!!s.in_races;$('coMarkers').checked=s.markers!==false;$('coFeedback').checked=s.feedback!==false;
+function fillCoachSettings(s){$('coLapTimes').value=s.lap_times==='full'?'full':'short';$('coInRaces').checked=!!s.in_races;$('coMarkers').checked=s.markers!==false;$('coFeedback').checked=s.feedback!==false;
   $('coLapDelta').checked=s.lap_delta!==false;$('coBeep').checked=!!s.brake_beep;$('coTopN').value=String(Math.max(1,Math.min(3,s.top_n||2)));
   $('coVol').value=String(ok(s.volume)?s.volume:100);$('coRate').value=String(ok(s.rate)?s.rate:0);coRanges()}
 function coRanges(){$('coVolV').textContent=$('coVol').value+'%';const r=+$('coRate').value;$('coRateV').textContent=r<0?'slower':r>0?'faster':'normal'}
@@ -1581,7 +1585,7 @@ function coCornerLabel(w){const m=/^[A-Za-z](\d+)$/.exec(String(w.name||''));con
 $('fCoach').addEventListener('change',()=>{co.dirty=true});
 $('fCoach').addEventListener('submit',async e=>{e.preventDefault();setMsg('coSetMsg','Saving...');
   const settings={in_races:$('coInRaces').checked,markers:$('coMarkers').checked,feedback:$('coFeedback').checked,lap_delta:$('coLapDelta').checked,
-    brake_beep:$('coBeep').checked,top_n:+$('coTopN').value,volume:+$('coVol').value,rate:+$('coRate').value};
+    brake_beep:$('coBeep').checked,top_n:+$('coTopN').value,volume:+$('coVol').value,rate:+$('coRate').value,lap_times:$('coLapTimes').value};
   let r;try{r=await post('coach/settings',{settings})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('coSetMsg',r.error,'bad');return}co.dirty=false;fillCoachSettings(r.settings||settings);
   setMsg('coSetMsg',co.st&&co.st.running?'Saved. The coach uses them now.':'Saved.','ok')});
@@ -1610,13 +1614,14 @@ function coachMuteKey(){if(co.st&&co.st.running)coachMute()}
 /* ---------- Coach 2.0: Repeat that, Mute for 1 minute, rehearsal, voice and sound, coach log, credits */
 let co2={voices:null,sessions:null,vdirty:false,previewing:false,measuring:false,logName:null};
 const CO2_EV={spoken:'Said',made:'Made',dropped:'Dropped',cancelled:'Cut off',not_made:'Not made',corner_fixed:'Fixed',
-  corner_regressed:'Slipped back',focus_learned:'Focus learned',lap_end:'Lap',repeated:'Repeated',muted:'Muted'};
+  corner_regressed:'Slipped back',focus_learned:'Focus learned',lap_end:'Lap',repeated:'Repeated',asked:'Asked',muted:'Muted'};
 function co2Open(){co2LoadVoices();co2LoadSessions();co2LoadLogs()}
 function co2Render(st){if(current.view!=='coach')return;const run=!!st.running,K=st.keys||{},reh=st.mode==='rehearsal';
   const rp=$('coRepeat');rp.disabled=!run;rp.title=run&&!(K.repeat&&K.repeat.on)?'This key works while the Debrief window is in front.':'Says the last cue again. Works from the car too, while Debrief is open.';
   const q1=$('coQuiet1');q1.disabled=!run;const ql=st.muted&&ok(st.quiet_left)?Math.ceil(st.quiet_left):null;
   q1.replaceChildren(document.createTextNode(ql!=null?'Quiet for '+ql+' s ':'Mute for 1 minute '),h('kbd',null,'Ctrl+Shift+N'));
   q1.title=run&&!(K.quiet&&K.quiet.on)?'This key works while the Debrief window is in front.':'Quiet for a minute, then it talks again by itself.';
+  const pc=$('coPace');pc.disabled=!run;pc.title=run&&!(K.pace&&K.pace.on)?'This key works while the Debrief window is in front.':'Your last lap against your reference and the corner that cost the most. Works from the car too, while Debrief is open.';
   if(run&&reh)$('coStart').textContent='Stop rehearsal';
   const P=st.progress,pr=$('coRhProg');pr.hidden=!(reh&&P&&(run||st.state==='finished'));
   if(!pr.hidden){const pc=Math.round(100*(P.fraction||0)),b=$('coRhBar');b.firstElementChild.style.width=pc+'%';b.setAttribute('aria-valuenow',String(pc));
@@ -1630,13 +1635,14 @@ function co2Render(st){if(current.view!=='coach')return;const run=!!st.running,K
     setMsg('coMeasureMsg',M.state==='measuring'?'Measuring...':M.text||'',M.state==='done'?'ok':M.state==='error'?'bad':'')}
   const PV=st.preview;if(PV&&co2.previewing){if(PV.state!=='starting'&&PV.state!=='playing'){co2.previewing=false;$('coPreview').disabled=false}
     setMsg('coVoiceMsg',PV.state==='starting'?'Getting the voice ready...':PV.text||'',PV.state==='error'?'bad':'ok');if(PV.state==='done')setMsg('coVoiceMsg','')}
-  co2Wheel(st.wheel_repeat)}
+  co2Wheel(st.wheel_repeat);co2Wheel(st.wheel_pace,'P')}
 async function co2Post(p,body,msgId){let r;try{r=await post(p,body)}catch(e){connectionLost();return null}
   if(!r.ok&&msgId)setMsg(msgId,r.error||'That didn\'t work.','bad');return r}
 $('coRepeat').addEventListener('click',async()=>{const r=await co2Post('coach/repeat',{},'coMsg');if(r&&r.ok)setMsg('coMsg',r.said?'Said again: "'+r.text+'"':'Nothing said yet to repeat.',r.said?'ok':'')});
+$('coPace').addEventListener('click',async()=>{const r=await co2Post('coach/pace',{},'coMsg');if(r&&r.ok)setMsg('coMsg','Asked. The coach answers as soon as it is safe to talk.','ok')});
 $('coQuiet1').addEventListener('click',async()=>{const r=await co2Post('coach/quiet',{},'coMsg');if(r&&r.ok){setMsg('coMsg','Quiet for 1 minute. Unmute ends it early.','ok');coachPoll()}});
-document.addEventListener('keydown',e=>{if(!(e.ctrlKey||e.metaKey)||!e.shiftKey||e.altKey)return;const k=e.key.toLowerCase();if(k!=='r'&&k!=='n')return;
-  if(!(co.st&&co.st.running))return;e.preventDefault();$(k==='r'?'coRepeat':'coQuiet1').click()});
+document.addEventListener('keydown',e=>{if(!(e.ctrlKey||e.metaKey)||!e.shiftKey||e.altKey)return;const k=e.key.toLowerCase();if(k!=='r'&&k!=='n'&&k!=='p')return;
+  if(!(co.st&&co.st.running))return;e.preventDefault();$(k==='r'?'coRepeat':k==='p'?'coPace':'coQuiet1').click()});
 // rehearsal: one of his Practice sessions, played through the coach at real speed
 async function co2LoadSessions(){const sel=$('coRhPick');let j;try{j=await api('sessions-ibt')}catch(e){return}
   const S=(j&&j.ok&&j.sessions)||[];co2.sessions=S;const keep=sel.value;
@@ -1680,25 +1686,26 @@ $('coPackZip').addEventListener('change',async()=>{const f=$('coPackZip').files[
   catch(e){setMsg('coPackMsg','Couldn\'t send the file.','bad');return}co2PackResult(r)});
 $('coPackDirBtn').addEventListener('click',async()=>{const v=$('coPackDir').value.trim();if(!v){setMsg('coPackMsg','Type the folder that holds the voice pack.','bad');return}
   setMsg('coPackMsg','Checking the folder...');let r;try{r=await post('coach/import-pack',{folder:v})}catch(e){connectionLost();return}co2PackResult(r)});
-// repeat from a wheel button
-function co2Wheel(w){if(!w)return;const learning=w.state==='learning';$('coWheelRText').textContent=w.text||'';
-  $('coWheelRLearn').disabled=learning;$('coWheelRClear').disabled=learning||!w.label;if(w.note)setMsg('coWheelRMsg',w.note,/^Saved|cleared/.test(w.note)?'ok':'bad')}
-$('coWheelRLearn').addEventListener('click',async()=>{setMsg('coWheelRMsg','Press the button on your wheel now...');const r=await co2Post('coach/wheel-repeat-learn',{},'coWheelRMsg');if(r&&r.wheel)co2Wheel(r.wheel);coachPoll()});
-$('coWheelRClear').addEventListener('click',async()=>{const r=await co2Post('coach/wheel-repeat-clear',{},'coWheelRMsg');if(r&&r.wheel)co2Wheel(r.wheel)});
+// wheel buttons: R repeats the last cue, P asks for the pace (2.17.2)
+function co2Wheel(w,x){if(!w)return;x=x||'R';const learning=w.state==='learning';$('coWheel'+x+'Text').textContent=w.text||'';
+  $('coWheel'+x+'Learn').disabled=learning;$('coWheel'+x+'Clear').disabled=learning||!w.label;if(w.note)setMsg('coWheel'+x+'Msg',w.note,/^Saved|cleared/.test(w.note)?'ok':'bad')}
+[['R','repeat'],['P','pace']].forEach(([x,role])=>{
+  $('coWheel'+x+'Learn').addEventListener('click',async()=>{setMsg('coWheel'+x+'Msg','Press the button on your wheel now...');const r=await co2Post('coach/wheel-'+role+'-learn',{},'coWheel'+x+'Msg');if(r&&r.wheel)co2Wheel(r.wheel,x);coachPoll()});
+  $('coWheel'+x+'Clear').addEventListener('click',async()=>{const r=await co2Post('coach/wheel-'+role+'-clear',{},'coWheel'+x+'Msg');if(r&&r.wheel)co2Wheel(r.wheel,x)})});
 // the coach log
 async function co2LoadLogs(){let j;try{j=await api('coach/logs')}catch(e){return}if(!j||!j.ok)return;const tb=$('coLogList'),L=j.logs||[];
   tb.replaceChildren(...(L.length?L.map(x=>{const tr=h('tr'),b=h('button','btn chipbtn','View');b.type='button';b.addEventListener('click',()=>co2ShowLog(x.name,x.title+(x.mode==='rehearsal'?' (rehearsal)':'')+', '+x.date));
     const td=h('td');td.append(b);tr.append(h('td','num',x.date),h('td',null,x.title+(x.mode==='rehearsal'?' (rehearsal)':'')),h('td','num',String(x.laps)),h('td','num',String(x.spoken)),h('td','num',String(x.dropped)),td);return tr}):
     [(()=>{const tr=h('tr'),td=h('td','note','No coach sessions yet. A log starts when the coach knows the car and track.');td.colSpan=6;tr.append(td);return tr})()]))}
 $('coLogs').addEventListener('toggle',()=>{if($('coLogs').open)co2LoadLogs()});
-function co2Why(r){if(r.dropped)return r.dropped;const m=r.measured||{},b=[];if(r.why)b.push(r.why);
-  if(ok(m.min_kmh))b.push('min '+m.min_kmh+' vs '+m.ref_min_kmh+' km/h');if(ok(m.delta_s))b.push((m.delta_s>0?'+':'')+m.delta_s.toFixed(2)+' s');
+function co2Why(r){if(r.dropped)return r.dropped;const m=r.measured||{},b=[];if(r.why)b.push(mphText(r.why));
+  if(ok(m.min_kmh))b.push('min '+mphOf(m.min_kmh)+' vs '+mphOf(m.ref_min_kmh)+' mph');if(ok(m.delta_s))b.push((m.delta_s>0?'+':'')+m.delta_s.toFixed(2)+' s');
   if(r.ev==='spoken'&&ok(r.next_brake_s))b.push(r.next_brake_s.toFixed(1)+' s to the next brake point');if(r.ev==='lap_end')b.push(r.clean?'clean':'not clean');return b.join('; ')}
 async function co2ShowLog(name,title){co2.logName=name;let j;try{j=await api('coach/log?'+new URLSearchParams({name}))}catch(e){return}
   if(!j||!j.ok){setMsg('coLogMsg',(j&&j.error)||'That log couldn\'t be read.','bad');return}
   $('coLogView').hidden=false;$('coLogTitle').textContent=title;setMsg('coLogMsg','');const C=j.counts||{};
   $('coLogRows').replaceChildren(...(j.rows||[]).filter(r=>CO2_EV[r.ev]).map(r=>{const tr=h('tr','ev-'+r.ev);
-    tr.append(h('td','num',r.lap!=null?String(r.lap):''),h('td','num',ok(r.dist_m)?r.dist_m+' m':''),h('td','num',ok(r.kmh)?String(Math.round(r.kmh)):''),
+    tr.append(h('td','num',r.lap!=null?String(r.lap):''),h('td','num',ok(r.dist_m)?r.dist_m+' m':''),h('td','num',ok(r.kmh)?String(mphOf(r.kmh)):''),
       h('td',null,CO2_EV[r.ev]),h('td',null,r.text||(r.ev==='lap_end'&&ok(r.lap_time)?fmtT(r.lap_time):r.corner||'')),h('td',null,co2Why(r)));return tr}));
   if(!$('coLogRows').children.length){const tr=h('tr'),td=h('td','note','Nothing was said or dropped in this session.');td.colSpan=6;tr.append(td);$('coLogRows').append(tr)}
   setMsg('coLogMsg',plural(C.spoken||0,'cue')+' said, '+(C.dropped||0)+' dropped, '+plural(C.laps||0,'lap')+'.')}
@@ -1707,11 +1714,11 @@ $('coLogCopy').addEventListener('click',async()=>{if(!co2.logName)return;let j;t
   const done=await copyText(j.text);setMsg('coLogMsg',done?'Copied. Paste it to Claude.':'Couldn\'t copy to the clipboard.',done?'ok':'bad')});
 // help: Coach 2.0 and credits
 HELP.tour.push(['Coach voice','The coach speaks with a natural voice, through the headset you pick on the Coach page (Voice and sound). Rehearse plays one of your sessions through it first.']);
-HELP.words.push(['Voice pack','The recorded phrases the coach says. Four come with Debrief; you can add your own.'],
+HELP.words.push(['Voice pack','The recorded phrases the coach says. Six come with Debrief; you can add your own.'],
   ['Audio delay','How long Windows takes to start a sound. The coach starts each cue that much earlier, so it ends before your brake point.'],
   ['Coach log','Every cue the coach made, said or dropped and why. Copy for Claude puts a short summary on the clipboard.'],
   ['Fixed corner','A focus corner where you made a mistake and then drove it well twice in a row. The coach stops talking about it until it slips twice in three laps.']);
-HELP.keys.push(['Ctrl+Shift+R','Say the coach\'s last cue again'],['Ctrl+Shift+N','Mute the coach for 1 minute']);
+HELP.keys.push(['Ctrl+Shift+R','Say the coach\'s last cue again'],['Ctrl+Shift+N','Mute the coach for 1 minute'],['Ctrl+Shift+P','Ask the coach how your pace is']);
 HELP.credits=[['Coach voices','Made with Kokoro-82M by hexgrad, Apache-2.0 licence. The voices were generated once and come with Debrief as sound clips; Kokoro itself is not part of Debrief.'],
   ['Voices','George, Michael, Fenrir, Heart, Kumo and Omega are Kokoro voices.'],
   ['Windows speech','Used only for the rare phrase a voice pack can\'t say.'],
@@ -1935,13 +1942,16 @@ function oneThingSec(o){const sec=slSec('Your one thing','prOneThing');
   if(o.just_scored)sec.append(h('p','note','Scored just now from this session. The Practice page shows your next one thing.'));
   return sec}
 // the Coach page's "This session's one thing": live progress while coaching, else the plan it will watch
+// 2.17.2 speeds on the Coach page are in mph (the owner's choice): km/h numbers from the coach and older logs are shown in mph
+const KM_MI=1.609344;const mphOf=k=>Math.round(k/KM_MI);
+function mphText(s){return String(s==null?'':s).replace(/(-?\d+(?:\.\d+)?) km\/h/g,(m,n)=>mphOf(+n)+' mph')}
 function renderCoFocus(st){const box=$('coFocus');if(!box)return;const F=st&&st.focus,P=co.focusPlan,run=!!(st&&st.running);
   const pill=$('coFocusPill');pill.className='pill';
-  if(F&&(run||(F.measured&&(!P||!F.plan_id||F.plan_id===P.plan_id)))){box.hidden=false;$('coFocusText').textContent=turnWords(F.text||'');$('coFocusProg').textContent=F.progress||'';
+  if(F&&(run||(F.measured&&(!P||!F.plan_id||F.plan_id===P.plan_id)))){box.hidden=false;$('coFocusText').textContent=mphText(turnWords(F.text||''));$('coFocusProg').textContent=F.progress||'';
     pill.textContent=run?'Watching':'Last drive';if(run)pill.className='pill ok';
     $('coFocusNote').textContent=run?'After each clean pass through '+turnWords(F.corner||'the corner')+' the coach checks it and now and then says how it went.':'From your last drive with the coach.';return}
-  if(P){box.hidden=false;$('coFocusText').textContent=turnWords(P.text||'');$('coFocusProg').textContent=run?'Watching for this car and track.':'Not started';pill.textContent='';
-    $('coFocusNote').textContent='Start coaching and drive: the coach measures '+turnWords(P.corner||'the corner')+' each clean lap and keeps count. '+turnWords(P.check||'');return}
+  if(P){box.hidden=false;$('coFocusText').textContent=mphText(turnWords(P.text||''));$('coFocusProg').textContent=run?'Watching for this car and track.':'Not started';pill.textContent='';
+    $('coFocusNote').textContent='Start coaching and drive: the coach measures '+turnWords(P.corner||'the corner')+' each clean lap and keeps count. '+mphText(turnWords(P.check||''));return}
   box.hidden=true}
 // wheel button mute
 function renderWheel(w){if(!w)return;const learning=w.state==='learning';

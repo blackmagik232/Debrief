@@ -1468,8 +1468,9 @@ def _note_token_check(ok: bool, rejected: bool):
     unlocks on a token Garage 61 refused. Other failures (no network) change nothing. Never raises."""
     try:
         fr = app.optional_module("firstrun")
-        if fr is not None and (ok or rejected):
-            fr.mark("token_rejected", value=bool(rejected and not ok))
+        want = bool(rejected and not ok)
+        if fr is not None and (ok or rejected) and fr.token_rejected() != want:   # only a change is written
+            fr.mark("token_rejected", value=want)
     except Exception:  # noqa: BLE001
         pass
 

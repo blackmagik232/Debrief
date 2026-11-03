@@ -27,6 +27,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from .. import app, library
 from ..g61 import Garage61Error
 from . import settings_io
+from . import carsetup    # 2.15 Car and setup
 
 UI = Path(__file__).resolve().parent / "ui"
 ICON_PNG = Path(__file__).resolve().parent / "icon.png"
@@ -1919,8 +1920,10 @@ class DebriefServer(ThreadingHTTPServer):
             except (SystemExit, OSError, KeyError):
                 pass
             self.coach_weak_info = None
+            given = carsetup.coach_reference(self, settings)     # 2.15: a teammate's lap, when he chose it
             r = livecoach.LiveRunner(src, vc, settings=settings, telemetry_dir=folder, weak_for=self.coach_weak_for,
-                                     log=app.say, reference_index=index_of, focus_for=self.coach_focus_for)
+                                     log=app.say, reference_index=index_of, focus_for=self.coach_focus_for,
+                                     reference=given)
             r.start()
         except Exception:  # noqa: BLE001
             app.say("ERROR starting the coach:\n" + traceback.format_exc())
@@ -2031,6 +2034,7 @@ class DebriefServer(ThreadingHTTPServer):
         st["weak_note"] = note
         with self.coach_lock:
             st["test_voice"] = dict(self.test_state) if self.test_state else None
+        carsetup.coach_extra(self, st)      # 2.15: coaching against a teammate's lap
         return _jsonable(st)
 
     def coach_test_voice(self) -> dict:
@@ -2340,7 +2344,21 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 app.say("ERROR in " + r + ":\n" + traceback.format_exc())
                 return self._json({"ok": False, "error": friendly(e)}, 500)
+        if r in carsetup.GET_ROUTES:    # 2.15 Car and setup
+            return self._carsetup_call(lambda: carsetup.get(self, r, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}), r, get=True)
         return self._nf()
+
+    def _carsetup_call(self, fn, r, get=False):
+        """2.15: one Car and setup request, with the same error handling as the other endpoints."""
+        if get and self.headers.get("X-Debrief") != "1":
+            return self._nf()
+        try:
+            return fn()
+        except ValueError as e:
+            return self._json({"ok": False, "error": str(e)}, 400)
+        except Exception as e:  # noqa: BLE001
+            app.say("ERROR in " + r + ":\n" + traceback.format_exc())
+            return self._json({"ok": False, "error": friendly(e)}, 500)
 
     # ---------- feature helpers
     def _cfg(self):
@@ -2885,6 +2903,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._post_discord_stage()
         if r == "api/setuplab/check-file":
             return self._post_setuplab_check_file()
+        if r == carsetup.UPLOAD_ROUTE:      # 2.15: a teammate's .ibt
+            return self._carsetup_call(lambda: carsetup.upload(self), r)
         try:  # read the body first (even for ping/bye) so a kept-alive connection stays in step
             body = self._body()
         except (ValueError, UnicodeDecodeError, RecursionError):
@@ -2956,6 +2976,8 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 app.say("ERROR in " + r + ":\n" + traceback.format_exc())
                 return self._json({"ok": False, "error": friendly(e)}, 500)
+        if r in carsetup.POST_ROUTES:       # 2.15 Car and setup
+            return self._carsetup_call(lambda: carsetup.post(self, r, body), r)
         if r == "api/settings":
             try:
                 view = settings_io.save(body)

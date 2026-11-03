@@ -709,7 +709,15 @@ def _prep_api(card_updated="2026-10-20T10:00:00Z", schedule_warnings=None, confl
     if schedule_warnings is not None:
         sched["warnings"] = schedule_warnings
     wk = {"week": 7, "start": "2026-10-27", "track": "Road Atlanta", "has_notes": False, "history": {}, "track_id": 1, "car_id": 2}
-    api["prepare"] = {"ok": True, "schedule": sched, "chosen": True, "mine": [{"id": "s1", "name": "GT4 Challenge", "cars": ["GT4"], "this_week": wk}]}
+    api["prepare"] = {"ok": True, "schedule": sched, "chosen": True, "mine": [{"id": "s1", "name": "GT4 Challenge", "cars": ["GT4"], "this_week": wk}],
+                      "catalog": {"current_week": 7, "tracks": ["Road Atlanta"], "driven": [{"name": "GT4", "uses": 1, "last": None}], "cars": [{"name": "GT4", "class": "GT4"}],
+                                  "series": [{"id": "s1", "name": "GT4 Challenge", "cars": ["GT4"], "starred": True, "suggested": False,
+                                              "weeks": [{"no": 7, "week": 7, "start": "2026-10-27", "track": "Road Atlanta", "short": "Road Atlanta", "left": True}]}]}}
+    api["prepfocus"] = {"ok": True, "track": "Road Atlanta", "car": "GT4", "series": {"id": "s1", "name": "GT4 Challenge"},
+                        "week": {"no": 7, "week": 7, "start": "2026-10-27", "now": True, "next": False, "cars": ["GT4"], "car_runs": True},
+                        "race": {"length": None, "rain": None, "start_type": None, "cautions": None}, "pace": None, "status": None, "corners": [], "warmups": [],
+                        "card": {"fields": {}, "car_notes": {}}, "has_notes": False, "shared_notes": 0, "track_id": 1, "car_id": 2, "racecraft": None, "rivals": [],
+                        "racecraft_note": None, "racecraft_wait": None, "page": None, "plan": {"state": "ok", "notes": [], "weeks": []}}
     api["notes"] = lambda req: ({"ok": True, "card": {"track": "Road Atlanta", "fields": {"lap1": "x"}, "car_notes": {},
                                                       "updated": card_updated}} if req.method == "GET" else
                                 ({"ok": False, "error": "This track card was changed somewhere else after you opened it. "

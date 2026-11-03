@@ -1284,7 +1284,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._lib(r[len("lib/"):])
         if r == "sample/index.html":
             return self._sample()
-        if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/markers", "api/pages", "api/sessions", "api/prepare",
+        if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/markers", "api/pages", "api/sessions", "api/prepare", "api/prepfocus",
                  "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand",
                  "api/diagnostics"):
             if self.headers.get("X-Debrief") != "1":
@@ -1526,6 +1526,18 @@ class Handler(BaseHTTPRequestHandler):
         prepare = self._module("prepare")
         api = self._cache_api(cfg)
         return self._json(prepare.view(cfg, api, self._synced_sessions(api)))
+
+    def _get_prepfocus(self, q):
+        """One series week, or any track, in one car, for the Prepare view. Never a request."""
+        cfg = self._cfg()
+        prepare = self._module("prepare")
+        wk = q.get("week")
+        if wk is not None and not (wk.isdigit() and 0 < int(wk) < 100):
+            raise ValueError("Pick a week.")
+        args = {k: _short_text(q[k], k) if q.get(k) else None for k in ("series", "car", "track")}
+        api = self._cache_api(cfg)
+        return self._json(prepare.focus(cfg, api, self._synced_sessions(api), args["series"], int(wk) if wk else None,
+                                        args["car"], args["track"], q.get("plan") != "0"))
 
     def _get_notes(self, q):
         cfg = self._cfg()
@@ -1888,7 +1900,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self.server.jobs.start("check"))
         if r == "api/update":
             return self._json(self.server.jobs.start("update"))
-        if r in ("api/prep", "api/team", "api/goals", "api/result", "api/series", "api/notes", "api/schedule",
+        if r in ("api/prep", "api/team", "api/goals", "api/result", "api/series", "api/prepare-choice", "api/notes", "api/schedule",
                  "api/strategy", "api/racecap-link", "api/intel-preview", "api/intel-import", "api/weekly", "api/discord-post",
                  "api/discord-check"):
             try:
@@ -2014,6 +2026,10 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("Load the season schedule first.")
         mine = series.save(cfg["library_folder"], body.get("ids"), sched)
         return self._json({"ok": True, "mine": mine})
+
+    def _post_prepare_choice(self, body):
+        cfg = self._cfg()
+        return self._json({"ok": True, "choice": self._module("series").save_choice(cfg["library_folder"], body)})
 
     def _post_notes(self, body):
         cfg = self._cfg()

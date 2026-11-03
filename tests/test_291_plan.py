@@ -332,7 +332,12 @@ def test_prep_page_shows_the_brief_in_a_browser():
         return
     lib = _zolder_lib()
     pick(lib, GT4)
-    good = prep.write(lib, prep.build(None, lib, None, None, None, log=lambda m: None, track=ZOLDER, car=MCL))
+    real_brief = prep.race_brief       # the conditions come from the schedule's week: hold the clock at week 7
+    prep.race_brief = lambda *x, **k: real_brief(*x, **{**k, "today": TODAY})
+    try:
+        good = prep.write(lib, prep.build(None, lib, None, None, None, log=lambda m: None, track=ZOLDER, car=MCL))
+    finally:
+        prep.race_brief = real_brief
     empty = prep.write(lib, prep.build(None, lib, None, None, None, log=lambda m: None, track="Tsukuba Circuit (2000 Full)", car=MCL))
     try:
         with sync_playwright() as pw:

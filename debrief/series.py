@@ -74,6 +74,39 @@ def save(library_folder, ids: list, sched) -> dict:
     return load(library_folder)
 
 
+# ---------------------------------------------------------------- the Prepare picker's last choice (2.11)
+# Saved beside my-series.json, not in the browser: the window's address changes each launch, and its storage with it.
+def _choice_path(library_folder) -> Path:
+    return Path(library_folder) / "prepare-choice.json"
+
+
+def _clean_choice(d) -> dict:
+    d = d if isinstance(d, dict) else {}
+    def text(k):
+        v = d.get(k)
+        return v if isinstance(v, str) and v.strip() and len(v) <= 200 and not re.search(r"[\x00-\x1f<>]", v) else None
+    wk = d.get("week")
+    wk = wk if isinstance(wk, int) and not isinstance(wk, bool) and 0 < wk < 100 else None
+    return {"car": text("car"), "series": text("series"), "track": text("track"), "week": wk,
+            "follow_now": d.get("follow_now") is True, "season": text("season")}
+
+
+def load_choice(library_folder) -> dict:
+    try:
+        return _clean_choice(json.loads(_choice_path(library_folder).read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return _clean_choice(None)
+
+
+def save_choice(library_folder, d) -> dict:
+    """Only ever what the picker shows. It's a convenience, so anything odd in it is dropped, not an error."""
+    keep = _clean_choice(d)
+    p = _choice_path(library_folder)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    fsutil.write_text(p, json.dumps({"schema": SCHEMA, **keep}, indent=1, ensure_ascii=False))
+    return keep
+
+
 def resolve(mine: dict, sched) -> list:
     """Your saved series as they appear in the loaded schedule (matched by name, then by id), in order.
     Name first: ids made from duplicate names ('-2') depend on the PDF's order and can point at another

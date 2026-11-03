@@ -184,17 +184,39 @@
   </section>
 
   <section id="vPrep" class="view pad" hidden>
-    <div class="col">
-      <span class="eyebrow">Get ready</span>
-      <h1>Prepare</h1>
-      <p class="lede">What your series are racing this week and next, your history at each track, and a short track card for the things telemetry can't see.</p>
-      <div class="callout join" id="prepJoin" hidden>
-        <h3 class="joinTitle">Join Midfield Menace on Garage 61</h3>
-        <p class="joinText"></p>
-        <div class="row"><a class="btn primary joinLink" href="https://garage61.net" target="_blank" rel="noreferrer">Open Garage 61</a></div>
+    <div class="col prepcol">
+      <div class="prephead">
+        <div><span class="eyebrow">Get ready</span><h1>Prepare</h1></div>
+        <span class="schlabel" id="schPill" role="status">Not loaded</span>
       </div>
+      <div class="panel prepbar" id="prepBar">
+        <div class="pkquick" id="pkCarsRow" hidden><span class="pklab">Your cars</span><div class="pkbtns" id="pkCars"></div></div>
+        <div class="pkquick" id="pkStarsRow" hidden><span class="pklab">Starred</span><div class="pkbtns" id="pkStars"></div></div>
+        <div class="pkgrid">
+          <label class="pkfield" for="pkCar"><span>Car</span>
+            <span class="combo"><input id="pkCar" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pkCarList" placeholder="Search for a car" autocomplete="off" spellcheck="false"><ul id="pkCarList" class="combolist" role="listbox" aria-label="Car" hidden></ul></span></label>
+          <div class="pkseries">
+            <label class="pkfield" for="pkSeries"><span>Series</span>
+            <span class="combo"><input id="pkSeries" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pkSeriesList" placeholder="Search for a series" autocomplete="off" spellcheck="false"><ul id="pkSeriesList" class="combolist" role="listbox" aria-label="Series" hidden></ul></span></label>
+            <button type="button" class="pkstar" id="pkStar" aria-pressed="false" disabled>☆</button>
+          </div>
+          <label class="pkfield" for="pkTrack"><span>Track</span>
+            <span class="combo"><input id="pkTrack" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pkTrackList" placeholder="Search for a track" autocomplete="off" spellcheck="false"><ul id="pkTrackList" class="combolist" role="listbox" aria-label="Track" hidden></ul></span></label>
+        </div>
+        <div class="pkquick" id="pkWeeksRow" hidden><span class="pklab">Race week</span><div class="pkbtns" id="pkWeeks" role="group" aria-label="Race week"></div></div>
+        <span class="msg" id="pkMsg" role="status"></span>
+      </div>
+      <div id="mySeries" class="panel prepview" aria-live="polite"></div>
+      <div class="panel planstrip" id="planPanel" hidden>
+        <div class="phead"><h3>Season plan</h3><span class="pill" id="planPill"></span></div>
+        <div id="planWeeks" class="stripweeks"></div>
+        <p class="note" id="planNote"></p>
+        <ul class="warnlist" id="planNotes" hidden></ul>
+      </div>
+      <details class="panel prepmore" id="prepMore">
+        <summary><h3>More</h3><span class="note">Schedule file, Track Intel, any track and car, pages you've built</span></summary>
       <div class="panel" id="schPanel">
-        <div class="phead"><h3>Season schedule</h3><span class="pill" id="schPill">Not loaded</span></div>
+        <div class="phead"><h3>Season schedule</h3></div>
         <p class="note" id="schNote">Debrief reads iRacing's official season schedule PDF on this PC. It's never shared anywhere.</p>
         <div class="row">
           <button type="button" class="btn" id="btnSchDl">Download official schedule</button>
@@ -203,21 +225,6 @@
           <span class="msg" id="schMsg" role="status"></span>
         </div>
         <ul class="warnlist" id="schWarn" hidden></ul>
-      </div>
-      <div class="panel" id="seriesPicker" hidden>
-        <div class="phead"><h3>Which series are you racing?</h3><button type="button" class="btn ghost" id="btnPickClose">Close</button></div>
-        <p class="note" id="pickNote">Debrief matched these from your recent races. Tick the ones you race.</p>
-        <div id="pickSuggest" class="list"></div>
-        <label class="field wide" for="seriesSearch"><span>Browse all series</span><input id="seriesSearch" type="search" placeholder="Search by series, car or track" spellcheck="false"></label>
-        <div id="pickAll" class="list pickall"></div>
-        <div class="row"><button type="button" class="btn primary" id="btnSeriesSave">Show my schedule</button><button type="button" class="btn ghost" id="btnPickSkip">Skip for now</button><span class="msg" id="pickMsg" role="status"></span></div>
-      </div>
-      <div id="mySeries" class="gridf"></div>
-      <div class="panel" id="planPanel" hidden>
-        <div class="phead"><h3>Season plan</h3><span class="pill" id="planPill"></span></div>
-        <p class="note" id="planNote"></p>
-        <ul class="warnlist" id="planNotes" hidden></ul>
-        <div id="planWeeks" class="gridf"></div>
       </div>
       <div class="panel" id="intelPanel">
         <div class="phead"><h3>Import a Track Intel sheet</h3><span class="pill" id="intelPill" hidden></span></div>
@@ -260,6 +267,12 @@
         <div id="prepPages" class="list"></div>
       </div>
       <p class="note">A prep page brings in your teammates' best laps at that track and car from Garage 61.</p>
+      </details>
+      <div class="callout join" id="prepJoin" hidden>
+        <h3 class="joinTitle">Join Midfield Menace on Garage 61</h3>
+        <p class="joinText"></p>
+        <div class="row"><a class="btn primary joinLink" href="https://garage61.net" target="_blank" rel="noreferrer">Open Garage 61</a></div>
+      </div>
       </details>
     </div>
   </section>

@@ -809,7 +809,18 @@ PREPARE = {"ok": True, "schedule": {"season": "2026 Season 4", "series": 150, "w
            "chosen": True, "current_week": 7, "suggestions": [], "all": [], "token": False,
            "mine": [{"id": "gt4-falken", "name": "GT4 Falken Tyre Challenge", "missing": False, "category": "Sports Car",
                      "cars": ["Ford Mustang GT4"], "classes": ["GT4"], "multiclass": False, "setup": "fixed",
-                     "this_week": WEEK, "next_week": None, "season": []}]}
+                     "this_week": WEEK, "next_week": None, "season": []}],
+           "catalog": {"current_week": 7, "tracks": [WEEK["track"]], "driven": [{"name": "Ford Mustang GT4", "uses": 3, "last": "2026-10-01"}],
+                       "cars": [{"name": "Ford Mustang GT4", "class": "GT4"}],
+                       "series": [{"id": "gt4-falken", "name": "GT4 Falken Tyre Challenge", "category": "Sports Car", "cars": ["Ford Mustang GT4"],
+                                   "starred": True, "suggested": False,
+                                   "weeks": [{"no": 7, "week": 7, "start": WEEK["start"], "track": WEEK["track"], "short": "Roval", "left": True}]}]}}
+# 2.11: the one prep view on Prepare reads this for the picked series' week
+FOCUS = {"ok": True, "track": WEEK["track"], "car": "Ford Mustang GT4", "series": {"id": "gt4-falken", "name": "GT4 Falken Tyre Challenge", "setup": "fixed"},
+         "week": {"no": 7, "week": 7, "start": WEEK["start"], "now": True, "next": False, "cars": ["Ford Mustang GT4"], "car_runs": True},
+         "race": {"length": "40 laps", "rain": None, "start_type": None, "cautions": None}, "pace": None, "status": None, "corners": [], "warmups": [],
+         "card": {"fields": {}, "car_notes": {}}, "has_notes": False, "shared_notes": 1, "track_id": 1, "car_id": 2, "racecraft": None, "rivals": [],
+         "racecraft_note": None, "racecraft_wait": None, "page": None, "plan": {"state": "ok", "notes": [], "weeks": []}}
 
 
 def _window():
@@ -828,6 +839,7 @@ def _window():
     pg.route("**/fonts.gstatic.com/**", lambda r: r.abort())
     # the Prepare page needs a loaded season schedule: serve a fixed one; everything else is the real server
     pg.route("**/api/prepare", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(PREPARE)))
+    pg.route("**/api/prepfocus*", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(FOCUS)))
     pg.goto(srv().url)
     pg.wait_for_function("() => document.querySelectorAll('#revlist .rev').length > 0", timeout=15000)
     return pg, ctx, errs
@@ -931,6 +943,7 @@ def test_window_intel_import_flow():
         try:
             pg.click(".navbtn[data-nav=prep]")
             pg.wait_for_function("() => !document.getElementById('intelPanel').hidden", timeout=10000)
+            pg.click("#prepMore summary")      # 2.11: the import lives under More
             f = TMP / "Track Intel.xlsx"
             f.write_bytes(xlsx_bytes())
             pg.set_input_files("#intelFile", str(f))

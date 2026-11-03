@@ -312,7 +312,9 @@ check(cam and cam[0]["confidence"] == "low-medium" and "-4.0 → -3.9" in cam[0]
       "temperature ideas are low-medium, one smallest step with the current and new value")
 check(cam and cam[0]["action"].endswith("Then compare again.") and "Lap time beats temperature rules" in cam[0]["check"],
       "says compare again, and that lap time beats temperature rules")
-check(cam and "after stints of 5+ laps" in cam[0]["data"] and "6–10 °C" in cam[0]["why"], "says which data and target it used")
+check(cam and "after stints of 5+ laps" in cam[0]["data"] and "6 to 10 °C" in cam[0]["why"], "says which data and target it used")
+check(cam and not cam[0]["check"].startswith("Check") and " Check: after a 5-lap run" in cam[0]["text"],
+      "the check has no 'Check:' of its own (the window adds the label); the plain text keeps one")
 check(s["pit_readings"] == 2, f"two pit readings after 5+ lap stints ({s['pit_readings']})")
 
 d = folder("camber_short")
@@ -332,6 +334,13 @@ s = sl.suggestions(recs_of(d), series_setup="open")
 cam = [i for i in s["items"] if i["rule"] == "camber"]
 check(len(cam) == 1 and cam[0]["setting"] == "Left rear camber" and cam[0]["direction"] == "more negative",
       f"outer hotter -> more negative {[i['setting'] for i in cam]}")
+check(cam and cam[0]["why"].startswith("Outside edge of the left rear ran 8 °C hotter than the inside."), cam and cam[0]["why"])
+d = folder("camber_flat")
+mk(d, "2026-11-01 18-00-00", L, pits=(5,), setup=cold_setup(),
+   pit_temps=[(5, {"LF": (76, 77, 78), "RF": (76, 77, 78), "LR": (72, 75, 78), "RR": (72, 75, 78)})])
+cam = [i for i in sl.suggestions(recs_of(d), series_setup="open")["items"] if i["rule"] == "camber"]
+check(cam and cam[0]["why"] == "The inside of both front tyres was only 2 °C hotter than the outside (left 2, right 2). "
+      "For a GT car it is usually 6 to 10 °C hotter.", f"inside only slightly hotter: plain wording ({cam and cam[0]['why']})")
 
 d = folder("crown")
 mk(d, "2026-11-01 18-00-00", L, pits=(5,), setup=cold_setup(),
@@ -375,16 +384,42 @@ s = sl.suggestions(recs_of(d), series_setup="open")
 check(not [i for i in s["items"] if i["rule"] == "axle_pressure"], "5 kPa apart is within the 7 kPa rule")
 
 d = folder("learned")
-for k, (pace, lf) in enumerate([(99.0, 186), (99.6, 194), (99.7, 195), (99.8, 196)]):
+for k, (pace, lf) in enumerate([(99.0, 186), (99.1, 186), (99.6, 194), (99.6, 194), (99.7, 195), (99.7, 195),
+                                (99.8, 196), (99.8, 196)]):
     mk(d, f"2026-11-0{k + 1} 18-00-00", [pace] * 6, pressure={"LF": lf, "RF": lf, "LR": 185, "RR": 185})
 recs = recs_of(d)
 lt = sl.learned_target(recs)
-check(lt and lt["values"]["LF"] == 186 and lt["stints"] == 1 and lt["of"] == 4, f"target learned from the fastest stints {lt}")
+check(lt and lt["values"]["LF"] == 186 and lt["stints"] == 2 and lt["of"] == 8, f"target learned from the fastest stints {lt}")
 s = sl.suggestions(recs[-1:], series_setup="open", history=recs)
-li = [i for i in s["items"] if i["rule"] == "learned_target"]
+hp = [i for i in s["items"] if i["rule"] == "hot_pressure"]
 lg = [i for i in s["items"] if i["rule"] == "learned_target_gap" and i["corners"] == ["LF"]]
-check(li and "not an official target" in li[0]["text"], "learned target labelled as his own, not official")
+check(not [i for i in s["items"] if i["rule"] == "learned_target"] and len(hp) == 1 and hp[0]["setting"] == "Hot tyre pressures",
+      "one 'Hot tyre pressures' card, not a second learned-target item")
+check(hp and hp[0]["lines"][0].startswith("Now: left front 196") and len(hp[0]["lines"]) == 2
+      and hp[0]["lines"][1].startswith("In your fastest stints here (2 of 8): left front 186")
+      and "not an official target" in hp[0]["why"] and not hp[0]["check"], f"now + fastest stints, labelled as his own ({hp and hp[0]['lines']})")
 check(lg and lg[0]["direction"] == "lower" and lg[0]["confidence"] == "guess", "a tyre far from his fastest stints gets a change")
+# the fastest-stint line is left out: from 1 stint, from the run itself, or within 2 kPa of now
+s = sl.suggestions(recs[-1:], series_setup="open", history=recs[:1] + recs[2:])
+hp = [i for i in s["items"] if i["rule"] == "hot_pressure"][0]
+check(len(hp["lines"]) == 1 and hp["learned"] is None and not [i for i in s["items"] if i["rule"] == "learned_target_gap"],
+      "a learned line from one stint is not shown")
+s = sl.suggestions(recs[:1], series_setup="open", history=recs)
+hp = [i for i in s["items"] if i["rule"] == "hot_pressure"][0]
+check(len(hp["lines"]) == 1, "a learned line that includes the current run's stints is not shown")
+d = folder("learned_same")
+for k, (pace, lf) in enumerate([(99.0, 187), (99.1, 187), (99.6, 188), (99.6, 188), (99.7, 188), (99.7, 188),
+                                (99.8, 188), (99.8, 188)]):
+    mk(d, f"2026-11-0{k + 1} 18-00-00", [pace] * 6, pressure={"LF": lf, "RF": lf, "LR": 185, "RR": 185})
+recs2 = recs_of(d)
+hp = [i for i in sl.suggestions(recs2[-1:], series_setup="open", history=recs2)["items"] if i["rule"] == "hot_pressure"][0]
+check(len(hp["lines"]) == 1, "within 2 kPa of now: the learned line says nothing new and is left out")
+check(sl._cold_step(9, 176, 195) == 8 and sl._cold_step(20, 100, 200) == 13,
+      "cold step from absolute pressures (gauge + 101.3 kPa), not gauge ratios")
+d = folder("balance")
+mk(d, "2026-11-01 18-00-00", L, pressure={"LF": 195, "RF": 195, "LR": 185, "RR": 185})
+bal = [i for i in sl.suggestions(recs_of(d), series_setup="open")["items"] if i["rule"] == "pressure_balance"]
+check(bal and bal[0]["setting"] == "Front vs rear (hot)" and bal[0]["kind"] == "info", "front/rear balance is its own info item")
 
 
 def bump(li, p):
@@ -396,7 +431,7 @@ d = folder("bottom")
 mk(d, "2026-11-01 18-00-00", [99.5] * 12, ride=bump)
 s = sl.suggestions(recs_of(d), series_setup="open")
 bt = [i for i in s["items"] if i["rule"] == "bottoming"]
-check(bt and bt[0]["kind"] == "info" and "30–35% of the lap" in bt[0]["why"] and "on 6 of 12 clean laps" in bt[0]["why"]
+check(bt and bt[0]["kind"] == "info" and "30 to 35% of the lap" in bt[0]["why"] and "on 6 of 12 clean laps" in bt[0]["why"]
       and "doesn't cost time" in bt[0]["why"], f"bottoming with no time lost -> inform only {[i['why'] for i in bt]}")
 d = folder("bottom_slow")
 mk(d, "2026-11-01 18-00-00", [100.5 if k % 2 == 0 else 99.5 for k in range(12)], ride=bump)
@@ -495,7 +530,17 @@ mk(d, "2026-11-02 18-00-00", PACE_B, setup=setup_b(), pit_temps=[(-1, hot_in)], 
 mk(d, "2026-11-02 19-00-00", PACE_B, setup=setup_b(), pit_temps=[(-1, hot_in2)], fuel=(58.0, 2.9))
 mk(d, "2026-11-02 20-00-00", [80.0] * 3, car="mx5 mx52016", track="oulton fosters")
 (d / "broken 2026-11-03 10-00-00.ibt").write_bytes(b"\0" * 50)
+(d / "mclaren570sgt4_zolder gp 2026-11-03 11-00-00.ibt").write_bytes(b"\0" * 50)
 rep = sl.report(d, "mclaren570sgt4", "zolder gp", series_setup=None, cache_path=TMP / "rep.json")
+check([b["file"] for b in rep["bad_files"]] == ["mclaren570sgt4_zolder gp 2026-11-03 11-00-00.ibt"]
+      and any(n.startswith("1 file for this car and track could not be read") for n in rep["notes"]),
+      f"unreadable files: only this car + track's are on its report ({rep['bad_files']})")
+other = sl.report(d, "mx5 mx52016", "oulton fosters", cache_path=TMP / "rep.json")
+check(other["bad_files"] == [] and not any("could not be read" in n for n in other["notes"]), "...and not on another car's")
+unk = [i for i in rep["suggestions"]["items"] if i["rule"] == "unknown_series"]
+check(unk and unk[0]["text"].endswith("Set it above, under This series is."), "says where to set the series")
+blob = json.dumps(rep, ensure_ascii=False)
+check("\u2013" not in blob and "\u2014" not in blob, "no long dashes in anything Setup Lab shows")
 check(rep["files"] == 4 and [s["id"] for s in rep["setups"]] == ["A", "B"], "report: this car + track only, two setups")
 check(rep["diffs"] and rep["diffs"][0]["from"] == "A" and rep["diffs"][0]["to"] == "B"
       and any(c["label"] == "Front camber" for c in rep["diffs"][0]["changes"]), "report: diff between consecutive setups")

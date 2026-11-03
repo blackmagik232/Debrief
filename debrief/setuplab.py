@@ -78,6 +78,7 @@ IMBALANCE_KPA = 5.0            # front/rear difference worth reporting
 # No target window is shipped for any car: there is no credible current source for GT4 hot pressures. A target is
 # learned from his own fastest stints instead, or he can pass his own (`targets`).
 HOT_TARGETS: dict = {}
+ATM_KPA = 101.3                # gauge + this = absolute pressure: hot / cold scale as absolute pressures (gas law)
 
 BOTTOM_MM = 1.0                # within 1 mm of the learned floor counts as touching it
 BOTTOM_FRAC = 0.02             # more than 2% of clean-lap samples piled at the floor: a flat bottom on the trace
@@ -1050,7 +1051,7 @@ def _change_item(rule, setting, direction, why, action, check, data, confidence,
     it = {"rule": rule, "setting": setting, "direction": direction, "why": why, "action": action + AFTER,
           "check": check, "data": data, "confidence": confidence, "kind": "change"}
     it.update(extra)
-    it["text"] = f"{why} {it['action']} {check}"
+    it["text"] = f"{why} {it['action']}" + (f" Check: {check}" if check else "")
     return it
 
 
@@ -1058,7 +1059,7 @@ def _info_item(rule, setting, why, check, data, confidence, **extra) -> dict:
     it = {"rule": rule, "setting": setting, "direction": None, "why": why, "check": check, "data": data,
           "confidence": confidence, "kind": "info"}
     it.update(extra)
-    it["text"] = f"{why} {check}".strip()
+    it["text"] = (f"{why} Check: {check}" if check else why).strip()
     return it
 
 
@@ -1096,18 +1097,24 @@ def _camber_items(readings: list, setup: dict) -> list:
             move = f" ({cur_n:.1f} → {new:.1f})" if new is not None else ""
             where = f"both {axle} tyres" if len(cs) == 2 else f"the {CORNER_WORDS[cs[0]]}"
             sides = f" (left {per[cs[0]]['median']:.0f}, right {per[cs[1]]['median']:.0f})" if len(cs) == 2 else ""
-            target = f"For a GT car the inside is usually {lo_t:.0f}–{hi_t:.0f} °C hotter at the {axle}."
+            target = f"For a GT car the inside is usually {lo_t:.0f} to {hi_t:.0f} °C hotter at the {axle}."
             if way == "less":
                 why = f"Inside edge of {where} ran about {med:.0f} °C hotter than the outside{sides}. {target}"
-                check = (f"Check: after a 5-lap run the inside should be about {(lo_t + hi_t) / 2:.0f} °C hotter, "
+                check = (f"after a 5-lap run the inside should be about {(lo_t + hi_t) / 2:.0f} °C hotter, "
                          f"not {med:.0f}. {TEMP_CAVEAT}")
             else:
-                why = (f"Outside edge of {where} ran {abs(med):.0f} °C {'hotter' if med < 0 else 'less cool'} than the "
-                       f"inside{sides} - only {med:.0f} °C apart. {target}")
-                check = f"Check: after a 5-lap run the inside should read {lo_t:.0f}–{hi_t:.0f} °C hotter. {TEMP_CAVEAT}"
+                usual = f"For a GT car it is usually {lo_t:.0f} to {hi_t:.0f} °C hotter."
+                if med >= 0.5:
+                    why = f"The inside of {where} was only {med:.0f} °C hotter than the outside{sides}. {usual}"
+                elif med > -0.5:
+                    why = f"The inside and outside of {where} ran at about the same temperature{sides}. {usual}"
+                else:
+                    why = (f"Outside edge of {where} ran {abs(med):.0f} °C hotter than the inside{sides}. "
+                           f"For a GT car the inside is usually {lo_t:.0f} to {hi_t:.0f} °C hotter.")
+                check = f"after a 5-lap run the inside should read {lo_t:.0f} to {hi_t:.0f} °C hotter. {TEMP_CAVEAT}"
             setting = f"{_cap(axle)} camber" if len(cs) == 2 else _cap(f"{CORNER_WORDS[cs[0]]} camber")
             out.append(_change_item("camber", setting, f"{way} negative", why,
-                                    f"Try 0.1° {way} negative {axle} camber{move} - the smallest step.", check,
+                                    f"Try 0.1° {way} negative {axle} camber{move}, the smallest step.", check,
                                     f"pit-stall tyre carcass temperatures, {_files_text(n, files)}", "low-medium",
                                     explain=EXPLAIN["camber"], corners=list(cs)))
     return out
@@ -1143,8 +1150,8 @@ def _pressure_temp_items(readings: list, setup: dict) -> list:
                        f"in the middle, a sign the pressure is low.")
             setting = f"{_cap(axle)} starting pressure" if len(cs) == 2 else _cap(f"{CORNER_WORDS[cs[0]]} starting pressure")
             out.append(_change_item("pressure_from_temps", setting, way, why,
-                                    f"Try {way} starting pressure by 2 kPa{move} - the smallest useful step.",
-                                    f"Check: after a 5-lap run the middle should be within about 2–3 °C of the edges' "
+                                    f"Try {way} starting pressure by 2 kPa{move}, the smallest useful step.",
+                                    f"after a 5-lap run the middle should be within about 2 to 3 °C of the edges' "
                                     f"average. {TEMP_CAVEAT}",
                                     f"pit-stall tyre carcass temperatures, {_files_text(n, files)}", "low-medium",
                                     explain=EXPLAIN["starting (cold) pressure"], corners=list(cs)))
@@ -1181,7 +1188,26 @@ def learned_target(history: list) -> dict | None:
                 vals[c].append(v)
     if not any(vals.values()):
         return None
-    return {"values": {c: round(float(np.median(v)), 1) for c, v in vals.items() if v}, "stints": len(best), "of": len(ok)}
+    return {"values": {c: round(float(np.median(v)), 1) for c, v in vals.items() if v}, "stints": len(best), "of": len(ok),
+            "files": sorted({f for f, _s in best})}
+
+
+LEARNED_MIN_STINTS = 2         # a "fastest stints" line needs at least this many stints behind it
+LEARNED_SAME_KPA = 2.0         # ...and is left out when every tyre is within this of what it runs now
+
+
+def _learned_usable(lt: dict | None, now: dict, current_files: set) -> bool:
+    """Whether the learned hot pressures say anything: from 2+ stints, none of them from the laps that make the
+    "now" numbers (that would compare the run with itself), and more than 2 kPa from now on at least one tyre."""
+    if not lt or lt["stints"] < LEARNED_MIN_STINTS or set(lt.get("files") or []) & current_files:
+        return False
+    return any(abs(now[c] - v) > LEARNED_SAME_KPA for c, v in lt["values"].items() if c in now)
+
+
+def _cold_step(hot_gap: float, cold: float, hot: float) -> int:
+    """Cold-pressure change (kPa, at least 1) that moves the hot pressure by about hot_gap. Gauge pressures are
+    turned into absolute ones first: hot / cold is a ratio of absolute pressures, not of the gauge readings."""
+    return max(1, int(round(hot_gap * (cold + ATM_KPA) / (hot + ATM_KPA))))
 
 
 def _hot_pressure_items(recs: list, setup: dict, car_path: str, targets: dict | None, history: list) -> list:
@@ -1198,10 +1224,20 @@ def _hot_pressure_items(recs: list, setup: dict, car_path: str, targets: dict | 
     data = (f"live hot tyre pressures at the fastest point of each lap, median of {len(laps)} clean lap"
             f"{'s' if len(laps) != 1 else ''} (lap {HOT_POS} on) from {len(stints)} stint{'s' if len(stints) != 1 else ''}")
     parts = ", ".join(f"{CORNER_WORDS[c]} {v:.0f}" for c, v in med.items())
-    items = [_info_item("hot_pressure", "Tyre pressures (hot)", f"Hot pressures: {parts} kPa.", "", data, conf,
-                        values=med)]
     cold = {c: ibt.number(_pressure_key(setup, _CK[c])[1]) for c in med}
     lt = learned_target(history) if history else None
+    if not _learned_usable(lt, med, {r["file"] for r in recs}):
+        lt = None
+    lines = [f"Now: {parts} kPa."]
+    if lt:
+        n = lt["stints"]
+        vals = ", ".join(f"{CORNER_WORDS[c]} {v:.0f}" for c, v in lt["values"].items())
+        lines.append(f"In your fastest stint{'s' if n != 1 else ''} here ({n} of {lt['of']}): {vals} kPa. "
+                     "Learned from your own laps, not an official target.")
+    items = [_info_item("hot_pressure", "Hot tyre pressures", " ".join(lines), "",
+                        data + ("; the fastest-stint line is from your own fastest stints at this car and track"
+                                if lt else ""), conf, values=med, lines=lines,
+                        learned=({"values": lt["values"], "stints": lt["stints"], "of": lt["of"]} if lt else None))]
     # main rule: a tyre far off its axle partner
     for axle, (l, r) in (("front", ("LF", "RF")), ("rear", ("LR", "RR"))):
         if l not in med or r not in med or abs(med[l] - med[r]) <= AXLE_KPA:
@@ -1214,7 +1250,7 @@ def _hot_pressure_items(recs: list, setup: dict, car_path: str, targets: dict | 
         gap = med[pick] - med[partner]
         c0 = cold.get(pick)
         if c0:
-            step = max(1, int(round(abs(gap) * c0 / med[pick])))
+            step = _cold_step(abs(gap), c0, med[pick])
             rise = f"It rises from {c0:.0f} kPa cold to {med[pick]:.0f} hot, so"
             move = f" ({c0:.0f} → {c0 - step if gap > 0 else c0 + step:.0f} kPa)"
         else:
@@ -1226,32 +1262,26 @@ def _hot_pressure_items(recs: list, setup: dict, car_path: str, targets: dict | 
         act = act.strip()
         items.append(_change_item("axle_pressure", _cap(f"{CORNER_WORDS[pick]} starting pressure"), way, why,
                                   _cap(act),
-                                  f"Check: after a 5-lap run the two {axle} tyres should be within a few kPa when hot.",
+                                  f"after a 5-lap run the two {axle} tyres should be within a few kPa when hot.",
                                   data, conf, corners=[pick]))
     if all(c in med for c in ("LF", "RF", "LR", "RR")):
         fr = (med["LF"] + med["RF"]) / 2 - (med["LR"] + med["RR"]) / 2
         if abs(fr) >= IMBALANCE_KPA:
-            items.append(_info_item("pressure_balance", "Tyre pressures (hot)",
+            items.append(_info_item("pressure_balance", "Front vs rear (hot)",
                                     f"The fronts run {abs(fr):.0f} kPa {'higher' if fr > 0 else 'lower'} than the rears when hot.",
                                     "", data, conf))
     if lt:
-        vals = ", ".join(f"{CORNER_WORDS[c]} {v:.0f}" for c, v in lt["values"].items())
-        items.append(_info_item("learned_target", "Tyre pressures (hot)",
-                                f"In your fastest stints here ({lt['stints']} of {lt['of']}) the tyres ran hot at: {vals} kPa.",
-                                "This is learned from your own laps, not an official target.",
-                                "hot pressures in your fastest stints at this car and track", "guess",
-                                values=lt["values"]))
         for c, v in med.items():
             t = lt["values"].get(c)
             if t is not None and abs(v - t) > AXLE_KPA and cold.get(c):
-                step = max(1, int(round(abs(v - t) * cold[c] / v)))
+                step = _cold_step(abs(v - t), cold[c], v)
                 way = "lower" if v > t else "raise"
                 items.append(_change_item(
                     "learned_target_gap", _cap(f"{CORNER_WORDS[c]} starting pressure"), way,
                     f"The {CORNER_WORDS[c]} runs {v:.0f} kPa hot; in your fastest stints it ran about {t:.0f}.",
                     f"Try {step} kPa {'less' if v > t else 'more'} cold pressure ({cold[c]:.0f} → "
                     f"{cold[c] - step if v > t else cold[c] + step:.0f} kPa).",
-                    "Check: the hot pressure should land near your fastest stints' and the laps should not get slower.",
+                    "the hot pressure should land near your fastest stints' and the laps should not get slower.",
                     data + "; target learned from your own fastest stints", "guess", corners=[c]))
     tg = (targets or {}).get(car_path) if targets else HOT_TARGETS.get(car_path)
     if tg:
@@ -1259,13 +1289,13 @@ def _hot_pressure_items(recs: list, setup: dict, car_path: str, targets: dict | 
         for c, v in med.items():
             if (v < lo or v > hi) and cold.get(c):
                 gap = lo - v if v < lo else v - hi
-                step = max(1, int(round(gap * cold[c] / v)))
+                step = _cold_step(gap, cold[c], v)
                 way = "raise" if v < lo else "lower"
                 items.append(_change_item(
                     "hot_pressure_target", _cap(f"{CORNER_WORDS[c]} starting pressure"), way,
-                    f"The {CORNER_WORDS[c]} ran {v:.0f} kPa hot, outside the {lo:.0f}–{hi:.0f} kPa target you gave.",
+                    f"The {CORNER_WORDS[c]} ran {v:.0f} kPa hot, outside the {lo:.0f} to {hi:.0f} kPa target you gave.",
                     f"Try {step} kPa {'more' if way == 'raise' else 'less'} cold pressure.",
-                    "Check: after a 5-lap run its hot pressure should be inside the target.", data, conf, corners=[c]))
+                    "after a 5-lap run its hot pressure should be inside the target.", data, conf, corners=[c]))
     return items
 
 
@@ -1314,7 +1344,7 @@ def _bottoming_items(recs: list, history: list) -> list:
         if not n or at / n <= BOTTOM_FRAC or len(touch) < max(2, total // 2):
             continue
         b = max(set(pcts), key=pcts.count) if pcts else None
-        where = f"around {b * 5}–{b * 5 + 5}% of the lap, " if b is not None else ""
+        where = f"around {b * 5} to {b * 5 + 5}% of the lap, " if b is not None else ""
         # does it line up with time lost there? compare touching laps with the others near that spot
         loss = None
         if b is not None:
@@ -1338,7 +1368,7 @@ def _bottoming_items(recs: list, history: list) -> list:
             out.append(_change_item("bottoming", f"{_cap(end)} ride height", "raise", why,
                                     f"It may be bottoming: try raising the {end} by the smallest step "
                                     f"(spring perch offset).",
-                                    "Check: the flat spot should go away and that part of the lap should not get slower.",
+                                    "the flat spot should go away and that part of the lap should not get slower.",
                                     data, "guess", corners=[c]))
         else:
             note = (" It doesn't cost time there that we can see, so there is nothing to change for now."
@@ -1386,12 +1416,12 @@ def _fuel_items(recs: list, setup: dict, race_minutes=None, race_laps=None) -> l
                 direction = "less"
                 act = (f"You carry about {setup_fuel - need:.0f} L more than you need: less fuel is less weight, "
                        f"if the series lets you choose.")
-    check = "Check: after the race, the fuel left should be about one lap's worth."
+    check = "after the race, the fuel left should be about one lap's worth."
     extra = {"per_lap_l": round(per, 3), "setup_l": setup_fuel}
     if act:
         it = _change_item("fuel", "Fuel", direction, why, act, check, data, conf, **extra)
         it["action"] = act                     # fuel is not a setup change to compare
-        it["text"] = f"{why} {act} {check}"
+        it["text"] = f"{why} {act} Check: {check}"
         return [it]
     return [_info_item("fuel", "Fuel", why, check, data, conf, **extra)]
 
@@ -1436,7 +1466,7 @@ def suggestions(run_or_files, car: str = "", series_setup=None, race_minutes=Non
                              "confidence": "guess", "data": "series setting", "check": "",
                              "why": "We don't know if this series is open or fixed setup.",
                              "text": "We don't know whether this series is open or fixed setup, so these ideas assume "
-                                     "you can change the setup. You can set it in Setup Lab."})
+                                     "you can change the setup. Set it above, under This series is."})
     setup = recs[-1].get("setup") or {}
     readings, skip = _collect_readings(recs)
     out["readings_left_out"] = skip
@@ -1614,6 +1644,14 @@ def check_setup_file(path) -> dict:
 
 # ================================================================ report
 
+def _bad_for(bad: list, car_path, track_code) -> list:
+    """The unreadable files that belong to this car + track. An unreadable file can't say what it holds, but iRacing
+    names its files '<carpath>_<track code> <date> <time>.ibt', so the name tells. The rest are counted once, in the
+    telemetry panel, not on every car's report."""
+    want = f"{car_path}_{track_code}".lower()
+    return [b for b in bad if str(b.get("file") or "").lower().startswith(want)]
+
+
 def report(folder, car_path, track_code, series_setup=None, cache_path=None, race_minutes=None, race_laps=None,
            targets: dict | None = None, idx: dict | None = None, progress=None, stop=None) -> dict:
     """Everything Setup Lab shows for one car + track, JSON-ready.
@@ -1621,7 +1659,7 @@ def report(folder, car_path, track_code, series_setup=None, cache_path=None, rac
     Pass `idx` (from index()) to skip the scan. Returns {"car", "car_path", "track", "track_code", "series_setup",
     "files": n, "setups": [{"id", "label", "name", "first", "last", "files"}], "runs": [...],
     "diffs": [{"from", "to", "changes": diff()}], "compare": compare(), "suggestions": suggestions() for the most
-    recent setup (with "for_setup"), "notes": [str], "bad_files": [...]}"""
+    recent setup (with "for_setup"), "notes": [str], "bad_files": [...] (only this car + track's)}"""
     idx = idx if idx is not None else index(folder, cache_path=cache_path, progress=progress, stop=stop)
     recs = [r for r in idx.get("files") or [] if _match(r, car_path, track_code)]
     kind = series_setup_kind(series_setup)
@@ -1631,14 +1669,15 @@ def report(folder, car_path, track_code, series_setup=None, cache_path=None, rac
     out = {"car_path": car_path, "track_code": track_code, "car": "", "track": "", "series_setup": kind,
            "series_setup_source": source,
            "files": len(recs), "setups": [], "runs": [], "diffs": [], "compare": None, "suggestions": None,
-           "notes": [], "bad_files": idx.get("bad") or []}
+           "notes": [], "bad_files": _bad_for(idx.get("bad") or [], car_path, track_code)}
     if idx.get("missing_folder"):
         out["notes"].append("The telemetry folder was not found.")
     if idx.get("stopped"):
         out["notes"].append("The scan was stopped early, so some files are missing.")
     if out["bad_files"]:
-        out["notes"].append(f"{len(out['bad_files'])} file{'s' if len(out['bad_files']) != 1 else ''} could not be read "
-                            "(damaged or still being written) and were skipped.")
+        out["notes"].append(f"{len(out['bad_files'])} file{'s' if len(out['bad_files']) != 1 else ''} for this car and "
+                            "track could not be read (damaged or still being written) and "
+                            f"{'were' if len(out['bad_files']) != 1 else 'was'} skipped.")
     if not recs:
         out["notes"].append("No telemetry for this car and track yet.")
         return out

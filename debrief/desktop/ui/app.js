@@ -1462,11 +1462,14 @@ function renderSlReport(R){const out=document.createDocumentFragment();
   if(S.next){const n=S.next,card=h('div','slnextcard');const top=h('div','phead');top.append(h('span','eyebrow','One change to try next'),confBadge(n.confidence));card.append(top);
     card.append(h('p','slaction',n.action||n.text));if(n.why)card.append(h('p',null,n.why));
     if(n.check)card.append(h('p','note','Then check: '+n.check));if(n.data)card.append(h('p','note','From: '+n.data));tn.append(card)}
-  else tn.append(h('p','note',R.suggestions?'Nothing to change from what the telemetry shows so far.':'Nothing to suggest until a setup is recorded.'));
+  else tn.append(h('p','note',R.suggestions?'No setup change to try from what the telemetry shows so far.':'Nothing to suggest until a setup is recorded.'));
   const others=items.filter(i=>i!==S.next&&!i.next&&i.kind!=='note');
-  if(others.length){tn.append(h('h4',null,S.next?'Other ideas, one at a time':'Ideas'));const u=h('ul','pvlist slideas');
-    others.forEach(i=>{const li=h('li'),top=h('div','slidea');top.append(h('b',null,i.setting||'Note'),confBadge(i.confidence));li.append(top);
-      li.append(h('span','sub2',(i.kind==='change'&&i.action?i.action+' ':'')+(i.why||i.text||'')));if(i.check)li.append(h('span','sub2','Check: '+i.check));u.append(li)});tn.append(u)}
+  const slList=(title,list)=>{if(!list.length)return;tn.append(h('h4',null,title));const u=h('ul','pvlist slideas');
+    list.forEach(i=>{const li=h('li'),top=h('div','slidea');top.append(h('b',null,i.setting||'Note'),confBadge(i.confidence));li.append(top);
+      const lines=Array.isArray(i.lines)&&i.lines.length?i.lines:[(i.kind==='change'&&i.action?i.action+' ':'')+(i.why||i.text||'')];
+      lines.forEach(x=>li.append(h('span','sub2',x)));if(i.check)li.append(h('span','sub2','Check: '+i.check));u.append(li)});tn.append(u)};
+  slList(S.next?'Other ideas, one at a time':'Also worth a look',others.filter(i=>i.kind==='change'));
+  slList('What the telemetry shows',others.filter(i=>i.kind!=='change'));
   out.append(tn);
   // notes
   const notes=(R.notes||[]).filter(x=>typeof x==='string'&&x.trim()),bad=R.bad_files||[];

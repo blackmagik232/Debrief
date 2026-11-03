@@ -2109,6 +2109,7 @@ function csRenderBalance(body,j){const R=j.report;body.replaceChildren();
   if(!R){body.append(h('p','note',j.message||'No telemetry with a setup for this car and track yet.'));return}
   body.append(h('p','balsum',csTurn(R.summary||R.message)));
   if(R.ok&&(R.corners||[]).length){body.append(csBalanceGrid(R));body.append(csLegend())}
+  if(R.ok&&R.entry_note)body.append(h('p','note',R.entry_note));
   const CS=(R.countersteer&&R.countersteer.by_corner)||{};
   const cs3=Object.entries(CS).filter(([k])=>k!=='between corners').sort((a,b)=>b[1].events-a[1].events).slice(0,3);
   if(cs3.length)body.append(h('p','note','Catching the rear (countersteer): '+cs3.map(([k,v])=>csTurn(k)+' '+plural(v.events,'time')+' on '+v.laps+' of '+plural(v.of_laps,'lap')).join('; ')+'. Each one is a moment the rear stepped out and you caught it.'));
@@ -2239,7 +2240,12 @@ function csTeamBody(body,T,car,track,where,redraw,onChange){body.replaceChildren
   if(T){const f=h('button','btn ghost','Forget it');f.type='button';f.id=id+'TeamForget';
     f.addEventListener('click',async()=>{let r;try{r=await post('teamref/forget',{car,track})}catch(e){connectionLost();return}if(r.ok)redraw()});row.append(f)}
   row.append(m);body.append(row);
-  body.append(h('p','balsmall','Keep saves only the lap Debrief worked out (not the file) so it is here next time.'));
+  body.append(h('p','balsmall',T?'Keep saves only the lap Debrief worked out (not the file) so it is here next time. Untick it to remove the saved lap.':'Tick Keep before you pick the file to save the lap Debrief works out from it (never the file) for next time.'));
+  if(T)keep.addEventListener('change',async()=>{const want=keep.checked;keep.disabled=true;let r;
+    try{r=await post('teamref/keep',{car,track,keep:want})}catch(e){connectionLost();return}
+    keep.disabled=false;
+    if(!r.ok){keep.checked=!want;setMsg(m.id,r.error||'That didn\'t work.','bad');return}
+    await redraw();setMsg(m.id,want?'Kept for this car and track.':'Not kept: it goes when Debrief closes.','ok')});
   b.addEventListener('click',()=>inp.click());
   inp.addEventListener('change',async()=>{const f=inp.files[0];inp.value='';if(!f)return;
     if(f.size>TEAM_MAX){setMsg(m.id,'That file is far too big to be a telemetry file.','bad');return}
@@ -2249,7 +2255,9 @@ function csTeamBody(body,T,car,track,where,redraw,onChange){body.replaceChildren
     b.disabled=false;
     if(!r||!r.ok){setMsg(m.id,(r&&r.error)||'Couldn\'t read that file.','bad');return}
     if(!r.accepted){setMsg(m.id,r.reason||'This file can\'t be used.','bad');return}
-    await redraw();setMsg(m.id,'Loaded '+r.teammate.label+'.','ok')});
+    await redraw();
+    if(r.still_kept)setMsg(m.id,'Loaded '+r.teammate.label+'. '+r.still_kept+' is still kept for next time: tick Keep to keep this one instead.','ok');
+    else setMsg(m.id,'Loaded '+r.teammate.label+'.','ok')});
   if(where==='session'&&T)body.append(csTeamCards(car,track,T));
   if(where==='coach'&&T){const cl=h('label','check');cl.htmlFor='coTeamOn';const cb=document.createElement('input');cb.type='checkbox';cb.id='coTeamOn';cb.checked=!!T.coach_on;
     cl.append(cb,h('span',null,'Coach against '+T.short));body.append(cl);
@@ -2290,8 +2298,8 @@ function csCoach(st){if(!st||current.view!=='coach')return;const T=st.teammate||
 if(typeof HELP==='object'){
   HELP.tour.push(['How the car handles','Setup Lab shows, corner by corner, where the car pushes (understeer) or rotates (oversteer), with one setup change to try at a time.'],
     ['Teammate\'s lap','On a Practice session or the Coach page, pick a teammate\'s telemetry file to compare your corners with their best lap, or to be coached against it.']);
-  HELP.words.push(['Pushes, Rotates','Pushes (understeer): you needed more steering than this car normally does, so the front was sliding first. Rotates (oversteer): less steering, so the rear was sliding first. Always compared with how this car steers in gentle bends, learned from your own laps.'],
-    ['Not clear yet','The laps don\'t say for sure either way. Debrief shuffles your laps thousands of times and only says Pushes or Rotates when the real pattern beats nearly all the shuffles and is big enough to feel.'],
+  HELP.words.push(['Pushes, Rotates','Pushes (understeer): you needed more steering than this car normally does, so the front was sliding first. Rotates (oversteer): less steering, so the rear was sliding first. Always compared with how this car steers in gentle bends, learned from your own laps; on the way in, with your own typical corner entry (braking always turns a car in more).'],
+    ['Not clear yet','The laps don\'t say for sure either way. Debrief shuffles your laps (every possible way with up to 11 laps, otherwise 4,000 ways) and only says Pushes or Rotates when the real pattern beats 95 in 100 of the shuffles and is big enough to feel.'],
     ['Countersteer','Steering the other way to catch the rear. Each one is a moment of oversteer you had to save.'],
     ['Worth a try, A guess','How sure a setup idea is. Worth a try comes from a clear finding; A guess from a likely one. Change one thing, drive at least 6 clean laps, then compare again.'],
     ['Hot pressure','The tyre pressure once the tyres are warm, read from your laps. The prediction says what a cold pressure comes up to at a track temperature, with how far off it typically is.'],

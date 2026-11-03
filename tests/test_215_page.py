@@ -194,7 +194,11 @@ def test_balance_endpoint_and_cache():
     assert t3["label"] == "push" and t5["label"] == "rotate", (t3, t5)
     assert "pushes in the middle of slow corners (T3)" in R["summary"], R["summary"]
     ideas = R["setup_ideas"]
-    assert ideas and ideas[0]["change"]["text"].startswith("Front anti-roll bar 2 → 1"), ideas[0]
+    mid = next(i for i in ideas if i["phase"] == "mid")
+    assert mid["change"]["text"].startswith("Front anti-roll bar 2 → 1"), mid
+    assert ideas[0]["change"] and ideas[0]["change"]["to"], "the first idea is a change that can be made"
+    ent = next(i for i in ideas if i["phase"] == "entry")
+    assert ent["change"]["text"].startswith("Front anti-roll bar 2 → 3") and "already at its lowest" in ent["text"], ent
     assert ideas[0]["confidence"] in ("worth a try", "a guess") and "compare again" in ideas[0]["then"]
     assert R["cross_check"] and "params" not in R, "small: no parameter dump"
     no_long_dash(R, "balance report")
@@ -276,6 +280,11 @@ def test_pressure_endpoint_and_predict():
     code, p2 = call("api/pressure/predict", {"car": CAR, "track": LR, "cold_front": 172, "cold_rear": 172,
                                              "track_temp": 45})
     assert "stretch" in p2["text"], p2["text"]
+    code, p4 = call("api/pressure/predict", {"car": CAR, "track": LR, "cold_front": 230, "cold_rear": 172,
+                                             "track_temp": 25})
+    assert p4["prediction"]["cold_outside"] == ["front"] and "outside what they show" in p4["text"] \
+        and "rear pressure" not in p4["text"], p4["text"]
+    assert "outside what they show" not in p["text"], p["text"]
     code, p3 = call("api/pressure/predict", {"car": CAR, "track": LR, "cold_front": 172, "cold_rear": 172})
     assert code == 200 and p3["ok"], "track temperature is optional"
     for bad, word in (({"cold_front": "abc", "cold_rear": 172}, "number"), ({"cold_front": 9999, "cold_rear": 172}, "between"),
@@ -385,6 +394,21 @@ def test_teammate_cards_keep_and_forget():
     assert abs(e["livecoach"].lap_time - j["teammate"]["lap_time"]) < 1e-3
     code, j = call("api/teamref/cards" + q(car=CAR, track=ZOL))
     assert j["ok"] and j["message"].startswith("Your typical laps against"), j
+    # a new file picked without Keep never deletes the kept lap: it stays on disk and the answer says so
+    code, r = upload(files["mate"].read_bytes(), files["mate"].name)
+    assert r["accepted"] and not r["teammate"]["kept"] and r["still_kept"] and MATE_NAME in r["still_kept"], r
+    assert len(list((TMP / "cache" / CS.TEAM_DIR).glob("*.json"))) == 1, "the kept lap is still there"
+    # the Keep tick on a lap already loaded: saves it, and unticking removes the saved lap
+    code, r = call("api/teamref/keep", {"car": CAR, "track": ZOL, "keep": True})
+    assert r["ok"] and r["teammate"]["kept"], r
+    code, r = upload(files["mate"].read_bytes(), files["mate"].name, keep=True)
+    assert r["accepted"] and r["teammate"]["kept"] and not r["still_kept"], r
+    code, r = call("api/teamref/keep", {"car": CAR, "track": ZOL, "keep": False})
+    assert r["ok"] and not r["teammate"]["kept"] and not list((TMP / "cache" / CS.TEAM_DIR).glob("*.json")), r
+    code, r = call("api/teamref/keep", {"car": CAR, "track": ZOL, "keep": True})
+    assert r["ok"] and len(list((TMP / "cache" / CS.TEAM_DIR).glob("*.json"))) == 1, r
+    code, r = call("api/teamref/keep", {"car": CAR, "track": LR, "keep": True})
+    assert code == 400 and "Pick a teammate" in r["error"], r
     # forget: memory and the kept lap
     code, r = call("api/teamref/forget", {"car": CAR, "track": ZOL})
     assert r["ok"] and not list((TMP / "cache" / CS.TEAM_DIR).glob("*.json"))
@@ -468,7 +492,7 @@ def test_coach_against_teammate():
         st = coach_until(lambda st: (st.get("last_lap") or {}).get("time"))
         assert st["reference"]["source"]["kind"] == "teammate", "his own laps don't replace their lap"
         assert voices and voices[0].prepared, "the voice got its phrases"
-        assert s.coach.settings.update_reference is False
+        assert s.coach.settings.update_reference is True, "his settings are left alone"
     finally:
         call("api/coach/stop", {})
     # another car + track: the teammate's lap is not used there
@@ -642,6 +666,15 @@ def test_teammate_in_the_window():
         if shots:
             pg.evaluate("() => document.getElementById('prTeam').scrollIntoView()")
             snap(pg, shots / "teammate-light.png")
+        # the Keep tick now saves the lap in use, and unticking removes it
+        assert not pg.is_checked("#prTeamKeep")
+        pg.check("#prTeamKeep")
+        pg.wait_for_function("() => /Kept for this car and track/.test(document.getElementById('prTeamMsg').textContent)")
+        assert "Kept for this car and track" in pg.text_content("#prTeam .teamnow")
+        assert len(list((TMP / "cache" / CS.TEAM_DIR).glob("*.json"))) == 1
+        pg.uncheck("#prTeamKeep")
+        pg.wait_for_function("() => /Not kept/.test(document.getElementById('prTeamMsg').textContent)")
+        assert not list((TMP / "cache" / CS.TEAM_DIR).glob("*.json"))
         # the Coach page: the option, off by default
         use_fakes(s, lambda: Holding(files["zol"][-1]))
         pg.click("#prBack")

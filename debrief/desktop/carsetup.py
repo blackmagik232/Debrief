@@ -11,6 +11,7 @@ post() and upload(); the coach asks coach_reference() and coach_extra()).
     POST api/teamref/upload?name=&car=&track=[&keep=1]   a teammate's .ibt as the raw body
     GET  api/teamref?car=&track=                  the teammate lap kept for this car + track
     GET  api/teamref/cards?car=&track=            corner coach cards against that lap
+    POST api/teamref/keep {car, track, keep}       tick or untick "Keep for this car and track" for the lap in use
     POST api/teamref/forget {car, track}
     POST api/teamref/coach {car, track, on}       coach against that lap (off by default)
 
@@ -29,6 +30,7 @@ import re
 import shutil
 import tempfile
 import threading
+import time
 import traceback
 from dataclasses import asdict
 from pathlib import Path
@@ -49,7 +51,7 @@ NAME_OK = re.compile(r"^[^\x00-\x1f/\\<>:\"|?*]{1,160}$")
 SETUP_ID_OK = re.compile(r"^(all|[A-Z]{1,3})$")
 
 GET_ROUTES = ("api/balance", "api/pressure", "api/setuplab/share", "api/teamref", "api/teamref/cards")
-POST_ROUTES = ("api/pressure/predict", "api/teamref/forget", "api/teamref/coach")
+POST_ROUTES = ("api/pressure/predict", "api/teamref/forget", "api/teamref/coach", "api/teamref/keep")
 UPLOAD_ROUTE = "api/teamref/upload"
 
 
@@ -323,6 +325,12 @@ def post_pressure_predict(h, body):
     if p.get("outside_range"):
         lo, hi = model["temp_range"]
         text += f" Your runs were at {lo:.0f} to {hi:.0f} °C, so this is a stretch."
+    for axle in p.get("cold_outside") or []:
+        lo, hi = (model.get("cold_range") or {}).get(axle) or (None, None)
+        if lo is not None:
+            rng = f"{lo:.0f} kPa" if round(lo) == round(hi) else f"{lo:.0f} to {hi:.0f} kPa"
+            text += (f" Your runs started the {axle} at {rng} cold, so this {axle} pressure is outside what they "
+                     f"show: treat it as a rough guess.")
     return h._json({"ok": True, "prediction": p, "text": text, "basis": model.get("basis")})
 
 
@@ -452,7 +460,10 @@ def _team_public(e, server, car, track) -> dict | None:
 
 def _short_label(s) -> str:
     d = str(s.get("driver") or "").strip()
-    return f"{d}'s lap" if d and d != "Your teammate" else "your teammate's lap"
+    if not d or d == "Your teammate":
+        return "your teammate's lap"
+    from .. import teamref
+    return f"{teamref.possessive(d)} lap"
 
 
 MAX_TEAM_BODY = None    # None: teamref.MAX_IBT (tests set a small one)
@@ -486,6 +497,10 @@ def upload(h):
         return refuse(str(e))
     keep = qs.get("keep") == "1"
     d = Path(tempfile.mkdtemp(prefix="debrief-teamref-"))
+
+    def reply(obj, code=200):
+        _remove_temp(d)                               # gone before the window hears back
+        return h._json(obj, code)
     try:
         # saved under a fixed name: his file's name is only shown, never used as a path
         suf = Path(name).suffix.lower()
@@ -501,35 +516,86 @@ def upload(h):
         h._consumed = not left
         if left:
             h.close_connection = True
-            return h._json({"ok": False, "error": "The file didn't arrive in full. Try again."}, 400)
+            return reply({"ok": False, "error": "The file didn't arrive in full. Try again."}, 400)
         try:
             res = teamref.load_reference(p, car, track)
         except Exception:  # noqa: BLE001
             app.say("ERROR reading a teammate's file:\n" + traceback.format_exc())
-            return h._json({"ok": False, "error": "Debrief couldn't read that file."}, 500)
+            return reply({"ok": False, "error": "Debrief couldn't read that file."}, 500)
         if not res.get("ok"):
             app.say("Teammate lap refused: " + (res.get("check") or {}).get("file", "") + " "
                     + str(res.get("reason") or "")[:160])
-            return h._json({"ok": True, "accepted": False, "reason": res.get("reason") or "This file can't be used.",
+            return reply({"ok": True, "accepted": False, "reason": res.get("reason") or "This file can't be used.",
                             "file": name})
         res["summary"]["file"] = name
         e = _team_entry(res, False)
         st = state(h.server)
         k = _team_key(car, track)
+        before = _kept_label(cfg, car, track)
         with st.lock:
             st.team[k] = e
             st.team_cards = {kk: v for kk, v in st.team_cards.items() if kk[:2] != k}
         if keep:
             e["kept"] = _team_save(cfg, car, track, e)
-        else:
-            try:
-                _team_file(cfg, car, track).unlink()
-            except OSError:
-                pass
         app.say(f"Teammate lap loaded for {car} at {track}" + (" (kept)." if e["kept"] else "."))
-        return h._json({"ok": True, "accepted": True, "teammate": _team_public(e, h.server, car, track)})
+        # a lap kept earlier is never deleted by picking another file without Keep: it stays saved for next time,
+        # and the window says so (tick Keep to keep this one instead, or Forget it)
+        still = before if (before and not e["kept"]) else None
+        return reply({"ok": True, "accepted": True, "teammate": _team_public(e, h.server, car, track),
+                        "still_kept": still})
     finally:
-        shutil.rmtree(d, ignore_errors=True)
+        _remove_temp(d)
+
+
+def _remove_temp(d: Path, wait: float = 0.3) -> bool:
+    """Delete the private temp folder; if Windows still holds the file (an antivirus scan, say), log it, wait a
+    moment and try once more. Never raises."""
+    for attempt in (1, 2):
+        try:
+            shutil.rmtree(d)
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError as e:
+            app.say(f"Car and setup: couldn't delete the teammate file's temp folder (try {attempt}): "
+                    f"{type(e).__name__}: {e}")
+            if attempt == 1:
+                time.sleep(wait)
+    return False
+
+
+def _kept_label(cfg, car, track) -> str | None:
+    """The label of the lap kept on disk for this car + track, or None."""
+    try:
+        raw = json.loads(_team_file(cfg, car, track).read_text(encoding="utf-8"))
+        return str((raw.get("summary") or {}).get("label") or "a teammate's lap")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def post_teamref_keep(h, body):
+    """Tick or untick "Keep for this car and track" for the lap in use: save its worked-out lap, or remove it."""
+    cfg = h._cfg()
+    car, track = _combo(body)
+    keep = body.get("keep") is True
+    e = _team_get(h.server, cfg, car, track)
+    if e is None:
+        raise ValueError("Pick a teammate's file first.")
+    if keep:
+        ok = _team_save(cfg, car, track, e)
+        if not ok:
+            raise ValueError("Debrief couldn't save it. Details were saved to debrief.log.")
+        e["kept"] = True
+    else:
+        try:
+            _team_file(cfg, car, track).unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as x:
+            app.say(f"Car and setup: couldn't remove a kept teammate lap ({type(x).__name__}: {x}).")
+            raise ValueError("Debrief couldn't remove the kept lap. Details were saved to debrief.log.")
+        e["kept"] = False
+    return h._json({"ok": True, "teammate": _team_public(e, h.server, car, track)})
 
 
 def get_teamref(h, q):
@@ -607,8 +673,9 @@ def post_teamref_coach(h, body):
 
 # ---------------------------------------------------------------- the coach's hooks
 def coach_reference(server, settings):
-    """The teammate's Reference when he chose to be coached against it (and stop a new best of his own replacing
-    it), else None (the coach finds his own best lap as before)."""
+    """The teammate's Reference when he chose to be coached against it, else None (the coach finds his own best lap
+    as before). The coach itself keeps it from being replaced by his own new bests, and only while it is the
+    reference in use (that car at that track); settings are left as they are."""
     st = state(server)
     with st.lock:
         k = st.coach_on
@@ -620,10 +687,6 @@ def coach_reference(server, settings):
             e = None
     if e is None or e.get("livecoach") is None:
         return None
-    try:
-        settings.update_reference = False
-    except Exception:  # noqa: BLE001
-        pass
     return e["livecoach"]
 
 
@@ -651,5 +714,5 @@ def get(h, r, q):
 
 def post(h, r, body):
     fn = {"api/pressure/predict": post_pressure_predict, "api/teamref/forget": post_teamref_forget,
-          "api/teamref/coach": post_teamref_coach}[r]
+          "api/teamref/coach": post_teamref_coach, "api/teamref/keep": post_teamref_keep}[r]
     return fn(h, body)

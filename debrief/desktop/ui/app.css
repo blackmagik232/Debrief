@@ -576,3 +576,44 @@ kbd{font-family:var(--mono);font-size:11.5px;border:1px solid var(--axis);border
 #slBalance.busy,#slPress.busy{opacity:.7}
 @media (max-width:760px){.baltbl{min-width:0}.bal{white-space:normal}}
 .teamcards .cccard{border-left-color:var(--b)}
+/* 2.16 Racing: starts and incidents */
+.rctrack{max-width:320px;min-width:200px}
+.rcsec{gap:14px}
+.rcsec h4,.rctrackbox h4{font-family:var(--display);font-weight:700;font-size:19px;margin:0;letter-spacing:.01em}
+.rctrackbox{display:grid;gap:10px;border-top:1px solid var(--grid);padding-top:14px}
+.rcsay{max-width:72ch}
+.rcpat{max-width:72ch;border-left:3px solid var(--me);padding-left:10px}
+.rcbarhead{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.rcbars{display:grid;gap:6px}
+.rcbarlist{list-style:none;margin:0;padding:0;display:grid;gap:4px;max-width:640px}
+.rcbar{display:grid;grid-template-columns:minmax(120px,190px) 34px 1fr 1fr 34px;align-items:center;gap:6px;font-size:13.5px}
+.rcbarlab{overflow-wrap:anywhere}
+.rcbarn{font-size:12.5px}
+.rcbarn.lose{text-align:right}
+.rcl,.rcg{height:14px;display:flex;background:var(--band)}
+.rcl{justify-content:flex-end;border-right:1px solid var(--axis)}
+.rcl i{display:block;height:100%;background:var(--lose)}
+.rcg i{display:block;height:100%;background:var(--good)}
+.rcsec .gain{color:var(--good)} .rcsec .lose{color:var(--lose)}
+.rctbl,.rcgrid,.rclist{max-width:none}
+.rctbl th,.rctbl td,.rclist th,.rclist td{white-space:nowrap;text-align:left;vertical-align:top}
+.rctbl thead th:first-child,.rclist thead th:first-child{padding-left:0}
+.rctbl td:first-child,.rclist td:first-child{padding-left:0}
+.rctbl td.rcsrc{white-space:normal;min-width:160px;font-size:12px;color:var(--fg2)}
+.rctbl td.rcsrc span{display:block}
+.rctbl td .rcwhere{white-space:normal;display:inline-block;min-width:150px;font-size:13px}
+.rctbl tr.rcsub td{white-space:normal;font-size:12.5px;color:var(--fg2);padding-top:0;padding-left:0;text-align:left}
+.rctbl tbody tr:not(.rcsub) td{border-bottom:0}
+.rcgrid th,.rcgrid td{text-align:right}
+.rcgrid thead th:first-child,.rcgrid tbody th{text-align:left;padding-left:0;white-space:nowrap}
+.rcgrid td.rccell.hot{background:color-mix(in srgb,var(--lose) var(--heat,0%),transparent);background:color-mix(in srgb,var(--lose) calc(var(--heat,0%) * .35),var(--panel))}
+.rcgrid tr.rcnone th{color:var(--muted);font-weight:400}
+.rclist td.rcwhy{white-space:normal;min-width:200px;font-size:12.5px;color:var(--fg2)}
+td.rcwhen span,td.rcwhen .linkbtn{display:block}
+td.rcwhen .linkbtn{font-size:12.5px;margin-top:2px}
+.rcincs summary,.rchow summary{cursor:pointer;font-weight:600}
+.rcincs[open] summary{margin-bottom:8px}
+@media (max-width:760px){.rcbar{grid-template-columns:minmax(90px,1fr) 28px 1fr 1fr 28px}}
+#vRacing .col{max-width:1120px;grid-template-columns:minmax(0,1fr)}
+#vRacing .prwrap,#vRacing .slreport,.rcsec,.rctrackbox,.rcraces{grid-template-columns:minmax(0,1fr);min-width:0}
+.rcraces{display:grid;gap:4px}

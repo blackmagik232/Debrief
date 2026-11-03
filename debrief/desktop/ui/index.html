@@ -31,6 +31,7 @@
     <button type="button" class="navbtn" data-nav="goals" title="Goals (Ctrl+4)" aria-keyshortcuts="Control+4">Goals</button>
     <button type="button" class="navbtn" data-nav="sessions" title="Every session Garage 61 has for you (Ctrl+5)" aria-keyshortcuts="Control+5">All sessions</button>
     <button type="button" class="navbtn" data-nav="practice" title="Practice: every time you drove, from iRacing's telemetry files on this PC (Ctrl+0)" aria-keyshortcuts="Control+0">Practice</button>
+    <button type="button" class="navbtn" data-nav="racing" title="Racing: your starts and incidents across your races">Racing</button>
     <button type="button" class="navbtn" data-nav="prep" title="Prepare (Ctrl+6)" aria-keyshortcuts="Control+6">Prepare</button>
     <button type="button" class="navbtn" data-nav="team" title="Team (Ctrl+7)" aria-keyshortcuts="Control+7">Team</button>
     <button type="button" class="navbtn" data-nav="setuplab" title="Setup Lab: your setups from iRacing's telemetry files (Ctrl+8)" aria-keyshortcuts="Control+8">Setup Lab</button>
@@ -349,6 +350,23 @@
       <div id="prOne" class="prwrap" hidden>
         <p><button type="button" class="linkbtn" id="prBack">All your practice sessions</button></p>
         <div id="prReport" class="slreport" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="vRacing" class="view pad" hidden>
+    <div class="col slcol">
+      <div class="prwrap">
+        <span class="eyebrow">From your replay scans and telemetry</span>
+        <h1>Racing</h1>
+        <p class="lede">How your starts and first laps go, and where your incidents happen, across all your races. Debrief only reads your files.</p>
+        <div class="panel" id="rcFound">
+          <div class="phead"><h3>What Debrief found</h3><span class="pill" id="rcPill"></span></div>
+          <p class="note" id="rcFoundNote"></p>
+          <div class="row"><button type="button" class="btn" id="rcAgain">Look again</button><label class="field rctrack" for="rcTrack" id="rcTrackWrap" hidden><span>Track</span><select id="rcTrack"></select></label><span class="msg" id="rcMsg" role="status"></span></div>
+        </div>
+        <div id="rcStarts" class="slreport" aria-live="polite"></div>
+        <div id="rcInc" class="slreport" aria-live="polite"></div>
       </div>
     </div>
   </section>

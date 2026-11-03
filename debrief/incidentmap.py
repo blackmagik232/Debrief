@@ -569,7 +569,12 @@ def _read_review(p: Path) -> dict | None:
     """The few things the racing pages need from one saved review: meta, the official result, corners, lap length."""
     try:
         st = p.stat()
-        key = (str(p), st.st_mtime_ns, st.st_size)
+        try:
+            rs = (p.parent / "result.json").stat()
+            rkey = (rs.st_mtime_ns, rs.st_size)
+        except OSError:
+            rkey = None
+        key = (str(p), st.st_mtime_ns, st.st_size, rkey)      # a result added later is seen too
         if key in _REVIEW_MEMO:
             return _REVIEW_MEMO[key]
         d = json.loads(p.read_text(encoding="utf-8"))

@@ -1337,12 +1337,15 @@ class LiveRunner:
     the file holding the best lap is opened. A reference found (or adopted on track) is kept per car + track for the
     runner's life, so going back to a car + track opens nothing.
     weak_for(car_dict, track_dict) -> weak corner list (e.g. prep.weak_corners rows for that combo), optional.
+    focus_for(car_dict, track_dict, length_m) -> the practice plan's live focus for that combo (2.14:
+    practiceplan.LiveFocus) or None, optional; asked whenever the car + track changes, like weak_for.
     Never raises out of its thread; problems go to log and to status()['error']."""
 
     def __init__(self, source, voice, settings: Settings | None = None, reference: Reference | None = None,
                  weak_corners=None, telemetry_dir=None, weak_for=None, log=None, clock=time.monotonic,
-                 reference_index=None):
+                 reference_index=None, focus_for=None):
         self.source = source
+        self._focus_for = focus_for
         self.voice = voice
         self.settings = settings or Settings()
         self.coach = Coach(None, weak_corners, self.settings, log=log, duration=self._voice_duration)
@@ -1456,7 +1459,8 @@ class LiveRunner:
                 {k: cs["reference"][k] for k in ("lap_time", "lap_text", "text", "source")},
                 "corners": len(cs["reference"]["corners"]) if cs["reference"] else 0,
                 "weak": cs["weak"], "last_lap": cs["last_lap"], "spoken": cs["spoken"], "events": cs["events"],
-                "voice": vs, "error": self._error, "errors": self._errors, "settings": self.settings.to_dict()}
+                "voice": vs, "error": self._error, "errors": self._errors, "settings": self.settings.to_dict(),
+                "focus": cs.get("focus")}
 
     # ---- the loop (its own thread) ----
     def _run(self):
@@ -1563,6 +1567,13 @@ class LiveRunner:
                                  stop=self._stop.is_set)
             if ref is not None:
                 self._refs[key] = ref
+        focus = None
+        if self._focus_for is not None:
+            try:
+                focus = self._focus_for(car, track, info.get("length_m"))
+            except Exception as e:  # noqa: BLE001
+                self._problem(f"practice focus not available ({e.__class__.__name__})")
+        self.coach.set_focus(focus)
         self.coach.hint(info.get("length_m"), car, track)
         self.coach.set_reference(ref, weak or [])
         self._state = "coaching" if ref is not None else "no_reference"

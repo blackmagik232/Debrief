@@ -1418,6 +1418,56 @@ def weak_from_cards(rep: dict) -> list:
     return out
 
 
+# ---------------------------------------------------------------- Practice loop (2.14): one thing this session
+PLAN_DIR = "practice"               # folder next to settings.toml: one plans file per car + track
+
+
+def plans_folder() -> Path:
+    """Where the practice plans are kept: <settings folder>/practice (practiceplan.plan_path names the files)."""
+    return app.settings_path().parent / PLAN_DIR
+
+
+def plan_brief(p: dict) -> dict:
+    """A saved plan as the window's history list needs it (no per-lap rows)."""
+    sc = p.get("score") if isinstance(p.get("score"), dict) else None
+    out = {k: p.get(k) for k in ("plan_id", "made", "kind", "corner", "id", "metric", "text", "confidence",
+                                 "experiment", "repeat")}
+    if sc:
+        out["score"] = {k: sc.get(k) for k in ("text", "hits", "measured", "hit_share", "verdict", "verdict_text",
+                                               "session", "session_date", "scored")}
+        out["score"]["next"] = (sc.get("next") or {}).get("action")
+    else:
+        out["score"] = None
+    return out
+
+
+def plan_view(p: dict | None) -> dict | None:
+    """A plan for the window: everything but the score's per-lap rows are kept small (the last 30)."""
+    if not isinstance(p, dict):
+        return None
+    out = dict(p)
+    sc = out.get("score")
+    if isinstance(sc, dict):
+        out["score"] = dict(sc, per_lap=(sc.get("per_lap") or [])[-30:])
+    return out
+
+
+def _mark_voice_tested():
+    """First-run walkthrough: the voice has been heard (Test voice spoke). Never raises."""
+    try:
+        fr = app.optional_module("firstrun")
+        if fr is not None:
+            fr.mark("voice_tested")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def wheel_saved() -> dict | None:
+    """The wheel button saved for mute (coach.json "wheel"), checked; None when there is none."""
+    from .. import wheelmute
+    return wheelmute.clean_binding(settings_io.load_extra("coach").get("wheel"))
+
+
 # ---------------------------------------------------------------- server
 class DebriefServer(ThreadingHTTPServer):
     daemon_threads = True
@@ -1458,6 +1508,13 @@ class DebriefServer(ThreadingHTTPServer):
         # tests only: callables that replace live iRacing and the Windows voice (e.g. an .ibt playback and FakeVoice)
         self.coach_source_factory = None   # () -> source
         self.coach_voice_factory = None    # (livecoach.Settings) -> voice
+        # 2.14 Practice loop: plans are read and written under this lock (one file per car + track)
+        self.plan_lock = threading.Lock()
+        self.coach_focus_info = None       # {"plan_id", "corner", "text"} of the plan the running coach watches
+        # 2.14 wheel button mute: one poller, started with the coach (or for Learn), stopped with it
+        self.wheel = None                  # wheelmute.WheelMute
+        self.wheel_note = ""               # how the last Learn went, in plain words
+        self.wheel_backend_factory = None  # tests only: () -> a stand-in joystick backend
 
     # errors a request thread didn't catch itself (a crash inside do_GET/do_POST before any reply). The
     # library's default prints them to stderr, which is /dev/null under pythonw: they vanished (2.7.0 M6).
@@ -1596,6 +1653,200 @@ class DebriefServer(ThreadingHTTPServer):
         rep = self.corner_coach_for(cfg, ss, cp, tc)
         return weak_from_cards(rep), int(rep.get("laps") or 0)
 
+    # ---------- Practice loop (2.14): one thing this session, kept per car + track
+    def combo_sessions(self, cfg, car, track) -> tuple:
+        """(this car + track's sessions newest first, every session, Setup Lab's index or None)."""
+        ss, idx = self.practice_sessions(cfg)
+        return [x for x in ss if _same_combo(x, car, track)], ss, idx
+
+    def new_plan(self, cfg, car, track, ss=None, plans=None) -> dict:
+        """A fresh plan from the corner coach over this car + track's latest files, saved as the current one.
+        Call with plan_lock held."""
+        pp = app.optional_module("practiceplan")
+        if ss is None:
+            ss, _idx = self.practice_sessions(cfg)
+        mine = [x for x in ss if _same_combo(x, car, track)]
+        rep = self.corner_coach_for(cfg, ss, car, track) if mine else corner_report([])
+        hist = plans if plans is not None else pp.load_plans(plans_folder(), car, track)
+        plan = pp.make_plan(rep, history=hist, car=car, track=track)
+        plan.update({"car_path": car, "track_code": track,
+                     "car_name": mine[0].get("car") if mine else car, "track_name": mine[0].get("track") if mine else track,
+                     "after_sort": float(mine[0].get("sort") or 0) if mine else 0.0,
+                     "after_date": mine[0].get("date") if mine else None, "made_ts": time.time()})
+        plan = _jsonable(plan)
+        if not pp.save_plan(plans_folder(), car, track, plan):
+            app.say(f"Practice plan: couldn't save the plan for {car} at {track}.")
+        return plan
+
+    def current_plan(self, cfg, car, track, fresh=False) -> tuple:
+        """(the current plan for this car + track, every saved plan newest first). A new plan is made when there is
+        none, when fresh is asked for, or when the current one has been scored (the score says keep or move on;
+        make_plan reads that from the history)."""
+        pp = app.optional_module("practiceplan")
+        with self.plan_lock:
+            plans = pp.load_plans(plans_folder(), car, track)
+            cur = plans[0] if plans else None
+            if fresh or cur is None or isinstance(cur.get("score"), dict):
+                cur = self.new_plan(cfg, car, track, plans=plans)
+                plans = pp.load_plans(plans_folder(), car, track)
+            return cur, plans
+
+    def score_session(self, cfg, me: dict, ss: list, auto=False) -> dict | None:
+        """Score this car + track's current plan on one session (me: a sessions-ibt row with its paths), save the
+        score, and make the next plan. auto: only when the plan is unscored and the session is newer than it (else
+        None). Raises ValueError (plain words) when an asked-for score can't be done."""
+        pp = app.optional_module("practiceplan")
+        if pp is None:
+            raise ValueError("The practice plan isn't available right now.")
+        car, track = me.get("car_path"), me.get("track_code")
+        with self.plan_lock:
+            plans = pp.load_plans(plans_folder(), car, track)
+            cur = plans[0] if plans else None
+            if cur is None or isinstance(cur.get("score"), dict):
+                if auto:
+                    return None
+                raise ValueError("There's no plan waiting to be scored for this car and track. Make one on the "
+                                 "Practice page first.")
+            if float(me.get("sort") or 0) <= float(cur.get("after_sort") or 0) + 1e-6:
+                if auto:
+                    return None
+                raise ValueError("This session was driven before the plan was made. Drive a session with the plan, "
+                                 "then score that one.")
+            rep = self.corner_coach_for(cfg, ss, car, track)
+            sc = pp.score_files(cur, list(me.get("paths") or []), report=rep)
+            sc.pop("next_plan", None)
+            sc.update({"session": me.get("id"), "session_date": me.get("date"), "auto": bool(auto)})
+            sc = _jsonable(sc)
+            if not pp.save_score(plans_folder(), car, track, cur.get("plan_id"), sc):
+                app.say(f"Practice plan: couldn't save the score for {car} at {track}.")
+                raise ValueError("The score couldn't be saved. Details were saved to debrief.log.")
+            plans = pp.load_plans(plans_folder(), car, track)
+            nxt = self.new_plan(cfg, car, track, ss=ss, plans=plans)
+            app.say(f"Practice plan scored on a session of {car} at {track}: {sc.get('text')}")
+        return {"plan": plan_view(dict(cur, score=sc)), "score": sc, "next_plan": plan_view(nxt)}
+
+    def session_score(self, car, track, sid) -> dict | None:
+        """The saved plan scored on this session (with its score), or None."""
+        pp = app.optional_module("practiceplan")
+        if pp is None:
+            return None
+        for p in pp.load_plans(plans_folder(), car, track):
+            sc = p.get("score")
+            if isinstance(sc, dict) and sc.get("session") == sid:
+                return plan_view(p)
+        return None
+
+    def coach_focus_for(self, car: dict, track: dict, length_m=None):
+        """For the live coach (on its own thread, whenever the car + track changes): the current practice plan for
+        that car + track as a live focus, or None. Never makes a new plan (that reads telemetry files)."""
+        self.coach_focus_info = None
+        pp = app.optional_module("practiceplan")
+        cp, tc = (car or {}).get("path"), (track or {}).get("code")
+        if pp is None or not cp or not tc:
+            return None
+        plans = pp.load_plans(plans_folder(), cp, tc)
+        cur = plans[0] if plans else None
+        if not cur or isinstance(cur.get("score"), dict) or cur.get("kind") not in ("focus", "consistency"):
+            return None
+        f = pp.LiveFocus(cur, length_m=length_m)
+        if not f.active:
+            return None
+        self.coach_focus_info = {"plan_id": cur.get("plan_id"), "corner": cur.get("corner"), "text": cur.get("text")}
+        return f
+
+    # ---------- wheel button mute (2.14)
+    def _wheel(self):
+        from .. import wheelmute
+        with self.coach_lock:
+            if self.wheel is None:
+                be = self.wheel_backend_factory() if self.wheel_backend_factory else None
+                self.wheel = wheelmute.WheelMute(on_press=self._wheel_press, binding=wheel_saved(), backend=be,
+                                                 log=app.say)
+            return self.wheel
+
+    def _wheel_press(self):
+        with self.coach_lock:
+            r = self.coach
+        if r is not None and r.running():
+            r.toggle()
+
+    def _wheel_learned(self, binding):
+        """Learn mode ended (on the poller's thread): save the button, or say none was pressed."""
+        if binding:
+            data = settings_io.load_extra("coach")
+            data["wheel"] = binding
+            try:
+                settings_io.save_extra("coach", data)
+                self.wheel_note = f"Saved: {binding.get('label')}."
+                app.say("Wheel mute button saved.")
+            except OSError as e:
+                app.say(f"ERROR saving the wheel button: {type(e).__name__}: {e}")
+                self.wheel_note = "The button couldn't be saved. Details were saved to debrief.log."
+        else:
+            self.wheel_note = "No button was pressed. Try again and press the button within 15 seconds."
+        with self.coach_lock:
+            w, run = self.wheel, self.coach is not None and self.coach.running()
+        if w is not None and not run:
+            w.stop(0)                       # only listened for Learn: the coach isn't on
+
+    def wheel_learn(self) -> dict:
+        w = self._wheel()
+        if not w.available():
+            return {"ok": False, "error": "Wheel buttons can't be read on this computer."}
+        self.wheel_note = ""
+        if not w.learn(on_learned=self._wheel_learned):
+            return {"ok": False, "error": "Wheel buttons can't be read on this computer."}
+        return {"ok": True}
+
+    def wheel_clear(self) -> dict:
+        data = settings_io.load_extra("coach")
+        data.pop("wheel", None)
+        try:
+            settings_io.save_extra("coach", data)
+        except OSError as e:
+            app.say(f"ERROR clearing the wheel button: {type(e).__name__}: {e}")
+            raise ValueError(SETTINGS_WRITE_ERROR)
+        with self.coach_lock:
+            w = self.wheel
+        if w is not None:
+            w.cancel_learn()
+            w.set_binding(None)
+        self.wheel_note = "Wheel button cleared."
+        return {"ok": True}
+
+    def wheel_status(self) -> dict:
+        b = wheel_saved()
+        with self.coach_lock:
+            w = self.wheel
+        st = w.status() if w is not None else {"state": "off", "text": "", "binding": None}
+        state = st.get("state")
+        if state in ("off", "not_set") or (state == "ready" and not b):
+            text = (f"{b['label']}. It mutes the coach while the coach is on." if b else "No wheel button chosen yet.")
+            state = "saved" if b else "not_set"
+        else:
+            text = st.get("text") or ""
+        return {"state": state, "text": text, "binding": b, "label": b["label"] if b else None,
+                "note": self.wheel_note}
+
+    def _start_wheel(self):
+        try:
+            if wheel_saved() is None:
+                return
+            w = self._wheel()
+            w.set_binding(wheel_saved())
+            w.start()
+        except Exception:  # noqa: BLE001  (the coach works without it)
+            app.say("ERROR starting the wheel mute button:\n" + traceback.format_exc())
+
+    def _stop_wheel(self):
+        with self.coach_lock:
+            w = self.wheel
+        if w is not None:
+            try:
+                w.stop()
+            except Exception:  # noqa: BLE001
+                pass
+
     def start_coach(self) -> dict:
         """Start listening to iRacing and coaching. Never raises: a problem is a message, and the log has the rest.
         Two clicks (or two windows) at once start one coach: a start already under way answers "already", and a
@@ -1639,7 +1890,7 @@ class DebriefServer(ThreadingHTTPServer):
                 pass
             self.coach_weak_info = None
             r = livecoach.LiveRunner(src, vc, settings=settings, telemetry_dir=folder, weak_for=self.coach_weak_for,
-                                     log=app.say, reference_index=index_of)
+                                     log=app.say, reference_index=index_of, focus_for=self.coach_focus_for)
             r.start()
         except Exception:  # noqa: BLE001
             app.say("ERROR starting the coach:\n" + traceback.format_exc())
@@ -1667,6 +1918,7 @@ class DebriefServer(ThreadingHTTPServer):
                 hk = None
         if hk is not None:      # stopped while the key was starting
             self._close_coach_parts(None, hk, None)
+        self._start_wheel()
         app.say("Coach started.")
         return {"ok": True}
 
@@ -1701,6 +1953,7 @@ class DebriefServer(ThreadingHTTPServer):
                 self.test_state = None
             tv, self.test_voice = self.test_voice, None
         done = self._close_coach_parts(r, hk, None, timeout)
+        self._stop_wheel()
         if r is not None:
             try:
                 self.coach_last = r.status()
@@ -1728,6 +1981,12 @@ class DebriefServer(ThreadingHTTPServer):
                   "error": "", "errors": 0, "car": last.get("car") or "", "track": last.get("track") or "",
                   "settings": self.coach_settings().to_dict()}
         st["hotkey"] = {"key": "Ctrl+Shift+M", "on": bool(hk is not None and getattr(hk, "registered", False))}
+        try:
+            st["wheel"] = self.wheel_status()
+        except Exception:  # noqa: BLE001
+            st["wheel"] = {"state": "error", "text": "The wheel button couldn't be read.", "binding": None}
+        if r is None:
+            st["focus"] = (self.coach_last or {}).get("focus")
         wi = self.coach_weak_info
         note = None
         if st.get("weak") and wi is not None and wi.get("source") == "corner coach":
@@ -1754,6 +2013,8 @@ class DebriefServer(ThreadingHTTPServer):
         if r is not None and r.running() and vc is not None:
             try:
                 said = bool(vc.say(COACH_TEST_TEXT, priority=3))
+                if said:
+                    _mark_voice_tested()
                 return {"ok": True, "spoken": said, "voice": _jsonable(vc.status())}
             except Exception:  # noqa: BLE001
                 app.say("ERROR testing the voice:\n" + traceback.format_exc())
@@ -1791,6 +2052,7 @@ class DebriefServer(ThreadingHTTPServer):
             said = bool(v.say(COACH_TEST_TEXT, priority=3))
             st = v.status() or {}
             if said:
+                _mark_voice_tested()
                 done("spoken", "Speaking test phrase")
             else:
                 done("silent", "No sound", str(st.get("reason") or "speech isn't available on this computer"))
@@ -2033,7 +2295,8 @@ class Handler(BaseHTTPRequestHandler):
         if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/markers", "api/pages", "api/sessions", "api/prepare", "api/prepfocus",
                  "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand",
                  "api/diagnostics", "api/setuplab/combos", "api/setuplab/report", "api/coach/status",
-                 "api/sessions-ibt", "api/session-review", "api/corner-coach"):
+                 "api/sessions-ibt", "api/session-review", "api/corner-coach", "api/plan", "api/plan/history",
+                 "api/firstrun"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -2068,7 +2331,8 @@ class Handler(BaseHTTPRequestHandler):
         m = app.optional_module(name)
         if m is None:
             raise ValueError({"prep": "Track prep", "goals": "Goals", "results": "Race results", "setuplab": "Setup Lab",
-                              "livecoach": "The coach"}.get(name, name) +
+                              "livecoach": "The coach", "practiceplan": "The practice plan",
+                              "wheelmute": "Wheel button mute", "firstrun": "The first-run checklist"}.get(name, name) +
                              " isn't available right now. Details were saved to debrief.log in " + app.data_folder_label() + ".")
         return m
 
@@ -2653,7 +2917,8 @@ class Handler(BaseHTTPRequestHandler):
         if r in ("api/prep", "api/team", "api/goals", "api/result", "api/series", "api/prepare-choice", "api/notes", "api/schedule",
                  "api/strategy", "api/racecap-link", "api/intel-preview", "api/intel-import", "api/weekly", "api/discord-post",
                  "api/discord-check", "api/setuplab/read", "api/setuplab/stop", "api/setuplab/series", "api/coach/start",
-                 "api/coach/stop", "api/coach/mute", "api/coach/settings", "api/coach/test-voice"):
+                 "api/coach/stop", "api/coach/mute", "api/coach/settings", "api/coach/test-voice", "api/plan/new",
+                 "api/plan/score", "api/coach/wheel-learn", "api/coach/wheel-clear", "api/firstrun/dismiss"):
             try:
                 return getattr(self, "_post_" + r[4:].replace("-", "_").replace("/", "_"))(body)
             except ValueError as e:
@@ -3384,7 +3649,124 @@ class Handler(BaseHTTPRequestHandler):
         cards = self.server.corner_coach_for(cfg, ss, me["car_path"], me["track_code"], upto=me["sort"])
         sess = {k: v for k, v in me.items() if k != "paths"}
         return self._json(_jsonable({"ok": True, "session": sess, "review": rv, "corners": cards,
-                                     "latest": ss[0].get("id") == me.get("id") if ss else False}))
+                                     "latest": ss[0].get("id") == me.get("id") if ss else False,
+                                     "one_thing": self._session_one_thing(cfg, me, ss)}))
+
+    def _session_one_thing(self, cfg, me, ss) -> dict | None:
+        """2.14: the practice plan scored on this session: scored now when this car + track's plan is waiting and
+        this session is newer than it (auto-score), else the score saved for it before. None when there's none.
+        A problem here never stops the session page."""
+        if app.optional_module("practiceplan") is None:
+            return None
+        try:
+            got = self.server.score_session(cfg, me, ss, auto=True)
+            if got is not None:
+                return {"plan": got["plan"], "next_plan": got["next_plan"], "just_scored": True}
+            p = self.server.session_score(me.get("car_path"), me.get("track_code"), me.get("id"))
+            return {"plan": p, "just_scored": False} if p else None
+        except Exception:  # noqa: BLE001
+            app.say("ERROR scoring the practice plan:\n" + traceback.format_exc())
+            return None
+
+    # ---------- Practice loop (2.14): one thing this session
+    def _plan_combo(self, cfg, q) -> tuple:
+        """(car path, track code, this combo's sessions, every session, index) from ?car=&track=, or the newest
+        session's car and track when neither is given. Raises ValueError (plain words)."""
+        self._module("practiceplan")
+        car, track = q.get("car"), q.get("track")
+        ss, idx = self.server.practice_sessions(cfg)
+        if car is None and track is None:
+            if idx is None or not ss:
+                return None, None, [], ss, idx
+            car, track = ss[0].get("car_path"), ss[0].get("track_code")
+        if not isinstance(car, str) or not IDENT_OK.match(car) or not isinstance(track, str) or not IDENT_OK.match(track):
+            raise ValueError("Pick a car and track.")
+        return car, track, [x for x in ss if _same_combo(x, car, track)], ss, idx
+
+    @staticmethod
+    def _combos(ss) -> list:
+        out, seen = [], set()
+        for x in ss:
+            k = (str(x.get("car_path") or "").lower(), str(x.get("track_code") or "").lower())
+            if k in seen or not k[0]:
+                continue
+            seen.add(k)
+            out.append({"car_path": x.get("car_path"), "track_code": x.get("track_code"), "car": x.get("car"),
+                        "track": x.get("track"), "date": x.get("date")})
+            if len(out) >= 30:
+                break
+        return out
+
+    def _plan_reply(self, cfg, q, fresh=False):
+        car, track, mine, ss, idx = self._plan_combo(cfg, q)
+        base = {"ok": True, "indexed": idx is not None, "combos": self._combos(ss) if idx is not None else []}
+        if idx is None:
+            return dict(base, plan=None, message="Read your telemetry first. Then Debrief picks one thing for you to "
+                                                  "work on.")
+        if not car:
+            return dict(base, plan=None, message="No telemetry sessions yet. Drive a few laps with telemetry on, then "
+                                                  "read your telemetry.")
+        if not mine:
+            return dict(base, plan=None, car_path=car, track_code=track, car=car, track=track,
+                        message="No telemetry sessions of this car at this track yet.")
+        cur, plans = self.server.current_plan(cfg, car, track, fresh=fresh)
+        last = next((p for p in plans if isinstance(p.get("score"), dict)), None)
+        return dict(base, car_path=car, track_code=track, car=mine[0].get("car") or car,
+                    track=mine[0].get("track") or track, plan=plan_view(cur), last=plan_view(last),
+                    history=[plan_brief(p) for p in plans[:20]], sessions=len(mine))
+
+    def _get_plan(self, q):
+        """The current practice plan for a car + track (made from the latest Corner coach report when there's none,
+        or when the last one has been scored), the last scored one and the history."""
+        return self._json(_jsonable(self._plan_reply(self._cfg(), q)))
+
+    def _get_plan_history(self, q):
+        cfg = self._cfg()
+        car, track, mine, _ss, idx = self._plan_combo(cfg, q)
+        pp = self._module("practiceplan")
+        plans = pp.load_plans(plans_folder(), car, track) if car else []
+        return self._json(_jsonable({"ok": True, "car_path": car, "track_code": track,
+                                     "history": [plan_brief(p) for p in plans]}))
+
+    def _post_plan_new(self, body):
+        """Pick another: a fresh plan from the latest Corner coach report (the current one stays in the history)."""
+        b = body if isinstance(body, dict) else {}
+        q = {k: b[k] for k in ("car", "track") if k in b}
+        return self._json(_jsonable(self._plan_reply(self._cfg(), q, fresh=True)))
+
+    def _post_plan_score(self, body):
+        """Score this car + track's current plan on one telemetry session (?session= or {"session"})."""
+        self._module("practiceplan")
+        cfg = self._cfg()
+        q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
+        sid = q.get("session") or (body.get("session") if isinstance(body, dict) else None)
+        me, ss, _idx = self._practice_session(cfg, {"id": sid})
+        got = self.server.score_session(cfg, me, ss, auto=False)
+        return self._json(_jsonable({"ok": True, **got}))
+
+    def _get_firstrun(self, q):
+        fr = self._module("firstrun")
+        cfg = self._cfg()
+        return self._json(_jsonable({"ok": True, **fr.walkthrough(cache_file=setuplab_cache_path(cfg))}))
+
+    def _post_firstrun_dismiss(self, body):
+        """Hide the first-run checklist ({"dismissed": false} shows it again, from Help)."""
+        fr = self._module("firstrun")
+        want = not (isinstance(body, dict) and body.get("dismissed") is False)
+        if not (fr.dismiss() if want else fr.undismiss()):
+            raise ValueError(SETTINGS_WRITE_ERROR)
+        cfg = self._cfg()
+        return self._json(_jsonable({"ok": True, **fr.walkthrough(cache_file=setuplab_cache_path(cfg))}))
+
+    def _post_coach_wheel_learn(self, body):
+        self._module("wheelmute")
+        res = self.server.wheel_learn()
+        return self._json({**res, "wheel": self.server.wheel_status()}, 200 if res.get("ok") else 400)
+
+    def _post_coach_wheel_clear(self, body):
+        self._module("wheelmute")
+        res = self.server.wheel_clear()
+        return self._json({**res, "wheel": self.server.wheel_status()})
 
     def _get_corner_coach(self, q):
         """The corner coach for one car + track over its most recent files (what the live coach uses)."""

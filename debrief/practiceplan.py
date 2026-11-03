@@ -640,15 +640,61 @@ PRAISE = {"brake_point": "Good brake point", "trail": "Good, held it in", "coast
           "throttle_point": "Good throttle", "min_speed": "Good speed", "corner_time": "Good, on pace"}
 
 
+# 2.14 review: a live cue is only given when the pass is clearly on one side of the plan's line. Within this of the
+# line the live number (20 samples a second) and the session score (60) can fall on different sides, so it stays quiet.
+DEAD_DIST_M = cc.STEP        # brake point, throttle pick-up: one grid cell (5 m)
+DEAD_T_S = 0.05              # corner time: one live sample at 20 Hz
+DEAD_DEFAULT = {"peak_pct": TOL_PEAK / 2.0, "trail_pct": TOL_TRAIL / 2.0, "coast_s": TOL_COAST / 2.0,
+                "min_kmh": TOL_MIN_KMH / 2.0}
+
+
+def dead_band(plan: dict, lap_phases: dict | None = None) -> float:
+    """How close to the plan's line (in the phase number's own units) a live pass is too close to call: one grid step
+    for distances, half the plan's tolerance for %, km/h and s, DEAD_T_S for corner time. Coasting is counted in 5 m
+    grid cells too, so for it the band is at least one cell's time at this pass's slowest speed."""
+    key = ((plan or {}).get("success_rule") or {}).get("key")
+    if key in ("brake_m", "pickup_m"):
+        return DEAD_DIST_M
+    if key == "t":
+        return DEAD_T_S
+    tol = _num((plan or {}).get("tolerance"))
+    band = tol / 2.0 if tol and tol > 0 else DEAD_DEFAULT.get(key, 0.0)
+    if key == "coast_s":
+        vmin = _num((lap_phases or {}).get("min_kmh")) if isinstance(lap_phases, dict) else None
+        if vmin and vmin > 10:
+            band = max(band, cc.STEP / (vmin / 3.6))
+    return band
+
+
+def near_line(plan: dict, lap_phases: dict | None) -> bool:
+    """True when this pass's number is within dead_band of the plan's line (either end of a "between" rule)."""
+    rule = (plan or {}).get("success_rule") or {}
+    v = _num((lap_phases or {}).get(rule.get("key"))) if isinstance(lap_phases, dict) else None
+    if v is None:
+        return False
+    op = rule.get("op")
+    try:
+        edges = ([(float(rule["value"]), 1 if op == "<=" else -1)] if op in ("<=", ">=") else
+                 [(float(rule["lo"]), -1), (float(rule["hi"]), 1)])
+    except (KeyError, TypeError, ValueError):
+        return False
+    # distances are read on the 5 m grid: the line between a hit and a miss lies half a step outside the rule's own
+    # number (brake point -145 is a hit, -150 a miss: the line is at -147.5)
+    half = cc.STEP / 2.0 if rule.get("key") in ("brake_m", "pickup_m") else 0.0
+    band = dead_band(plan, lap_phases)
+    return any(abs(v - (e + sgn * half)) < band - 1e-9 for e, sgn in edges)
+
+
 def progress_cue(plan: dict, lap_phases: dict | None) -> str | None:
-    """A 2-4 word cue after the focus corner, or None (no plan, no reliable number for this pass). lap_phases may
-    carry "_reliable": False (the live pass was not seen cleanly), then nothing is said."""
+    """A 2-4 word cue after the focus corner, or None (no plan, no reliable number for this pass, or a pass too close
+    to the plan's line to call: near_line). lap_phases may carry "_reliable": False (the live pass was not seen
+    cleanly), then nothing is said."""
     if not isinstance(plan, dict) or plan.get("kind") not in ("focus", "consistency"):
         return None
     if not isinstance(lap_phases, dict) or lap_phases.get("_reliable") is False:
         return None
     val, hit = measure(plan, lap_phases)
-    if hit is None:
+    if hit is None or near_line(plan, lap_phases):
         return None
     m = plan.get("metric")
     if hit:
@@ -688,27 +734,36 @@ def cue_vocabulary(plan: dict) -> list:
 
 class LiveFocus:
     """The plan's corner, watched live: feed(sample, ok, lap) for every sample (livecoach.Coach does this when given
-    one with set_focus). It keeps the samples of each pass through the corner, and when the car leaves the corner
-    forwards it works out the pass's number (livecoach.corner_phases: the corner coach's own phase rules) and
-    returns progress_cue's text, or None.
+    one with set_focus). It keeps the samples of each pass through the corner, and when the car is TAIL_M past the
+    corner it works out the pass's number (livecoach.corner_phases: the corner coach's own phase rules, on the same
+    5 m grid cells as the session score) and returns progress_cue's text, or None.
 
     A pass counts only when every sample was ok (a clean, coachable lap, no car alongside), it started before the
-    corner zone and covered it with no gap over MAX_GAP_M. Cues: always on a change (hit after a miss or the other
-    way round), else at most every repeat_laps laps, so a run of good laps isn't praised every lap. The coach's own
-    limits (gap between cues, per lap, per corner, silence rules) still apply on top."""
-    MAX_GAP_M = 25.0
+    corner zone and covered it with no gap over MAX_GAP_M (the sample after the corner too), samples were on average
+    no further apart than one grid step and came at least MIN_HZ times a second. A pass that fails those is counted in
+    status()["unreliable"], never measured. Cues: never within dead_band of the plan's line (near_line); always on a
+    change (hit after a miss or the other way round), else at most every repeat_laps laps, so a run of good laps
+    isn't praised every lap. The coach's own limits (gap between cues, per lap, per corner, silence rules) still
+    apply on top."""
+    MAX_GAP_M = 2 * cc.STEP         # 10 m: a longer jump between two samples leaves grid cells unread
+    TAIL_M = 2 * cc.STEP            # listen this far past the zone, so the grid cell after its end is read
     MIN_SAMPLES = 10
+    MIN_HZ = 15.0                   # slower live reads than this can't place a brake point to the 5 m grid
 
     def __init__(self, plan: dict, length_m: float | None = None, repeat_laps: int = 3):
         self.plan = plan if isinstance(plan, dict) else {}
         self.zone = self.plan.get("zone") or None
         self.L = _num(length_m) or _num(self.plan.get("length_m"))
         self.corner_id = self.plan.get("id")
+        self.plan_id = self.plan.get("plan_id")
         self.repeat_laps = max(1, int(repeat_laps))
         self.active = bool(self.zone and self.L and self.plan.get("kind") in ("focus", "consistency"))
-        self.passes: list = []          # [{"lap", "value", "hit"}] measured passes this session
+        self.passes: list = []          # [{"lap", "value", "hit", "near"}] measured passes this session
+        self.unreliable = 0             # passes not measured because the samples were too sparse or had a gap
+        self.too_slow = False           # the last unreliable pass was read under MIN_HZ
         self._buf: list = []
         self._ok = True
+        self._gap = False               # this pass had a gap or went backwards (set aside as unreliable)
         self._last_rel = None
         self._last_cue = None           # (lap, hit) of the last cue given
         if self.active:
@@ -723,6 +778,20 @@ class LiveFocus:
         L = self.L
         return ((pct * L - float(self.zone["apex_m"]) + L / 2.0) % L) - L / 2.0
 
+    def _dense(self, pts) -> bool:
+        """Samples close enough to read the 5 m grid: median spacing <= one step, at least MIN_HZ a second."""
+        rel = np.array([self._rel(float(x["LapDistPct"])) for x in pts], float)
+        if len(rel) < 2 or float(np.median(np.diff(rel))) > cc.STEP + 1e-6:
+            self.too_slow = False
+            return False
+        ts = [_num(x.get("SessionTime")) for x in pts]
+        if all(t is not None for t in ts):
+            dt = float(np.median(np.diff(np.asarray(ts, float))))
+            if dt > 1.0 / self.MIN_HZ + 1e-3:
+                self.too_slow = True
+                return False
+        return True
+
     def feed(self, s: dict, ok: bool = True, lap=None) -> str | None:
         if not self.active or not isinstance(s, dict):
             return None
@@ -732,29 +801,37 @@ class LiveFocus:
             return None
         rel = self._rel(pct)
         lo = self._s_rel - 6 * cc.STEP                  # start listening 30 m before the zone
-        inside = lo <= rel <= self._e_rel
+        hi = self._e_rel + self.TAIL_M
+        inside = lo <= rel <= hi
         prev = self._last_rel
         self._last_rel = rel
         if inside:
-            if prev is not None and (rel < prev - 1.0 or rel - prev > self.MAX_GAP_M):
-                self._ok = False                         # went backwards (reset, tow) or a gap in the samples
+            if self._buf and prev is not None and (rel < prev - 1.0 or rel - prev > self.MAX_GAP_M):
+                self._gap = True                         # went backwards (reset, tow) or a gap in the samples
             if not self._buf:
-                self._ok = bool(ok) and rel <= self._s_rel
+                self._ok = bool(ok) and rel <= self._s_rel - cc.STEP
             self._ok = self._ok and bool(ok)
             self._buf.append(s)
             return None
         if not self._buf:
             return None
-        buf, good = self._buf, self._ok
+        buf, good, gap = self._buf, self._ok, self._gap
         self._reset()
-        if not (self._e_rel < rel <= self._e_rel + 200.0) or not good or len(buf) < self.MIN_SAMPLES:
+        if not (hi < rel <= hi + 200.0) or not good or not bool(ok) or len(buf) < self.MIN_SAMPLES:
+            return None
+        if gap or prev is None or rel - prev > self.MAX_GAP_M:          # a gap, the sample after the corner too
+            self.unreliable += 1
+            return None
+        if not self._dense(buf + [s]):
+            self.unreliable += 1
             return None
         from .livecoach import corner_phases
         ph = corner_phases(buf + [s], self.zone, self.L)
         val, hit = measure(self.plan, ph)
         if hit is None:
             return None
-        self.passes.append({"lap": lap, "value": _fmt_val(self.plan, val), "hit": bool(hit)})
+        near = near_line(self.plan, ph)
+        self.passes.append({"lap": lap, "value": _fmt_val(self.plan, val), "hit": bool(hit), "near": near})
         del self.passes[:-200]
         text = progress_cue(self.plan, ph)
         if text is None:
@@ -769,6 +846,7 @@ class LiveFocus:
     def _reset(self):
         self._buf = []
         self._ok = True
+        self._gap = False
 
     def status(self) -> dict:
         n = len(self.passes)
@@ -776,8 +854,10 @@ class LiveFocus:
         return {"plan_id": self.plan.get("plan_id"), "corner": self.plan.get("corner"), "id": self.corner_id,
                 "metric": self.plan.get("metric"),
                 "target": self.plan.get("target"), "text": self.plan.get("text"), "active": self.active,
-                "measured": n, "hits": h, "passes": self.passes[-20:],
-                "progress": (f"Hit {h} of {n} so far" if n else "No clean pass through the corner yet")}
+                "measured": n, "hits": h, "passes": self.passes[-20:], "unreliable": self.unreliable,
+                "progress": (f"Hit {h} of {n} so far" if n else
+                             "Telemetry is read too slowly to measure the corner" if self.too_slow and self.unreliable
+                             else "No clean pass through the corner yet")}
 
 
 # ---------------------------------------------------------------- keeping plans per car + track

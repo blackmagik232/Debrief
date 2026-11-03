@@ -490,7 +490,8 @@ def phases_window(cols: dict, corner, length_m: float) -> dict | None:
     lap. cols: arrays in iRacing's names and units for consecutive samples (SessionTime s, LapDistPct 0..1, Speed m/s,
     Brake and Throttle 0..1, optional SteeringWheelAngle rad and Gear). They are put on the same 5 m grid positions
     as a whole lap (multiples of STEP from the line, shifted by a lap when the corner crosses it), so the numbers are
-    the ones phases() gives for that lap. None unless the samples cover the whole corner zone (start_m .. end_m)."""
+    the ones phases() gives for that lap. None unless the samples cover the whole corner zone (start_m .. end_m) and
+    the grid cell just outside each end of it."""
     try:
         L = float(length_m)
         p = np.asarray(cols["LapDistPct"], float)
@@ -503,7 +504,10 @@ def phases_window(cols: dict, corner, length_m: float) -> dict | None:
         d = d + round((apex - float(np.median(d))) / L) * L          # the lap the corner's apex is on
         d = np.maximum.accumulate(d + np.arange(len(d)) * 1e-6)
         a0, a1 = float(corner["start_m"]), float(corner["end_m"])
-        if d[0] > a0 + 1e-6 or d[-1] < a1 - 1e-6:
+        # the grid cells either side of the zone's ends must be there too: phases() reads the time at start_m and
+        # end_m between two grid points, and a window cut at the last sample before the next cell read it short
+        # (2.14 review: about one 20 Hz sample, 0.05 s, off the session score's corner time)
+        if d[0] > math.floor(a0 / STEP + 1e-9) * STEP + 1e-6 or d[-1] < math.ceil(a1 / STEP - 1e-9) * STEP - 1e-6:
             return None
         grid = np.arange(math.ceil(d[0] / STEP) * STEP, d[-1] + 1e-9, STEP)
         if len(grid) < 5:

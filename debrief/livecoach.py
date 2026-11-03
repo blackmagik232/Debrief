@@ -62,6 +62,7 @@ ABS_IBT = "BrakeABSactive"   # the ABS channel's name in .ibt files (Garage 61's
 MAX_PHRASE = 60             # characters: a corner-coach phrase longer than this is not spoken
 
 KIND_MARKER, KIND_FEEDBACK, KIND_LAP, KIND_BEEP = "marker", "feedback", "lap", "beep"
+FOCUS_MIN_HZ = 15.0         # 2.14 review: live reads at least this often while a practice focus is watched
 PRIORITY = {KIND_MARKER: 3, KIND_FEEDBACK: 2, KIND_LAP: 1}
 
 
@@ -1574,11 +1575,27 @@ class LiveRunner:
             except Exception as e:  # noqa: BLE001
                 self._problem(f"practice focus not available ({e.__class__.__name__})")
         self.coach.set_focus(focus)
+        self._focus_rate(focus)
         self.coach.hint(info.get("length_m"), car, track)
         self.coach.set_reference(ref, weak or [])
         self._state = "coaching" if ref is not None else "no_reference"
         self._prepared = None
         self._prepare()
+
+    def _focus_rate(self, focus):
+        """2.14 review: while a practice focus is watched, live iRacing is read at least FOCUS_MIN_HZ times a second
+        (a slower sample_hz in coach.json can't place a brake point on the 5 m grid); back to sample_hz without one."""
+        src = self.source
+        if not isinstance(src, IrsdkSource):
+            return
+        if self._base_interval is None:
+            self._base_interval = float(src.interval)
+        want = self._base_interval
+        if focus is not None and getattr(focus, "active", False):
+            want = min(want, 1.0 / FOCUS_MIN_HZ)
+        src.interval = want
+
+    _base_interval = None
 
     def _prepare(self):
         """Hand the voice every fixed phrase for this reference, to render ahead of time (once per reference)."""

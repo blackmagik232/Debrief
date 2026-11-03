@@ -1401,6 +1401,8 @@ class LiveRunner:
         self._errors = 0
         self._prepared = None
         self.spoken: list = []
+        self._focus_dirty = threading.Event()    # 2.14 review: look at the practice plan again (refresh_focus)
+        self._focus_lap = None
 
     def _voice_duration(self, text):
         fn = getattr(self.voice, "duration", None)
@@ -1429,6 +1431,11 @@ class LiveRunner:
 
     def running(self) -> bool:
         return bool(self._thread and self._thread.is_alive())
+
+    def refresh_focus(self):
+        """The practice plan for this car + track may have changed (a new plan was made or scored): the loop asks
+        focus_for again before its next sample and switches when the plan_id differs. Also done once a lap."""
+        self._focus_dirty.set()
 
     def mute(self):
         self.coach.mute()
@@ -1516,6 +1523,13 @@ class LiveRunner:
                     continue
                 try:
                     self._ensure_reference()
+                    lap = s.get("Lap")
+                    if lap != self._focus_lap:           # once a lap: has the practice plan changed?
+                        self._focus_lap = lap
+                        self._focus_dirty.set()
+                    if self._focus_dirty.is_set():
+                        self._focus_dirty.clear()
+                        self._check_focus()
                     self._prepare()                  # a new best may have changed the reference
                     cues = self.coach.feed(s)
                     if self.coach.take_cancel():
@@ -1613,6 +1627,24 @@ class LiveRunner:
         self._state = "coaching" if ref is not None else "no_reference"
         self._prepared = None
         self._prepare()
+
+    def _check_focus(self):
+        """Ask focus_for again for the current car + track; switch the coach's focus only when the plan changed (same
+        plan: keep the passes counted so far)."""
+        if self._focus_for is None or self._key is None:
+            return
+        info = self._info or {}
+        try:
+            new = self._focus_for(info.get("car") or {}, info.get("track") or {}, info.get("length_m"))
+        except Exception as e:  # noqa: BLE001
+            self._problem(f"practice focus not available ({e.__class__.__name__})")
+            return
+        old = self.coach.focus
+        if getattr(new, "plan_id", None) == getattr(old, "plan_id", None) and (new is None) == (old is None):
+            return
+        self.coach.set_focus(new)
+        self._focus_rate(new)
+        self._prepared = None                         # the voice gets the new plan's phrases
 
     def _focus_rate(self, focus):
         """2.14 review: while a practice focus is watched, live iRacing is read at least FOCUS_MIN_HZ times a second

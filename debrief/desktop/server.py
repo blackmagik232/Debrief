@@ -1678,7 +1678,19 @@ class DebriefServer(ThreadingHTTPServer):
         plan = _jsonable(plan)
         if not pp.save_plan(plans_folder(), car, track, plan):
             app.say(f"Practice plan: couldn't save the plan for {car} at {track}.")
+        self._refresh_coach_focus()
         return plan
+
+    def _refresh_coach_focus(self):
+        """A new current plan: a running coach picks it up (on its own thread, before its next sample) instead of
+        keeping the plan it started with."""
+        with self.coach_lock:
+            r = self.coach
+        if r is not None:
+            try:
+                r.refresh_focus()
+            except Exception:  # noqa: BLE001
+                pass
 
     def current_plan(self, cfg, car, track, fresh=False) -> tuple:
         """(the current plan for this car + track, every saved plan newest first). A new plan is made when there is
@@ -1722,6 +1734,9 @@ class DebriefServer(ThreadingHTTPServer):
                                  "then score that one.")
             rep = self.corner_coach_for(cfg, ss, car, track)
             sc = pp.score_files(cur, list(me.get("paths") or []), report=rep)
+            focus = cur.get("kind") in ("focus", "consistency")
+            if auto and not (sc.get("measured") if focus else sc.get("laps")):
+                return None                 # no clean lap through the focus corner in this one: wait for the next
             sc.pop("next_plan", None)
             sc.update({"session": me.get("id"), "session_date": me.get("date"), "auto": bool(auto)})
             sc = _jsonable(sc)

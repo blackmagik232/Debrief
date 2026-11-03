@@ -543,7 +543,7 @@ def test_practice_plan_in_the_window():
             top = pg.text_content("#prPlan")
             assert "This session's one thing" in top and "From " in top and "The check" in top, top
             assert pg.is_visible("#ptCoach") and pg.is_visible("#ptAnother")
-            assert pg.text_content("#ptConf") in ("Clear", "Likely", "Few laps", "Experiment"), pg.text_content("#ptConf")
+            assert pg.text_content("#ptConf") in ("Clear pattern", "Likely", "Few laps", "Experiment"), pg.text_content("#ptConf")
             last = pg.text_content("#ptLast")
             assert "Last session" in last and "Next: " in last and ("You hit it on" in last or "didn't get" in last), last
             assert not __import__("re").search(r"\bT\d+\b", pg.text_content("#ptBody")), "corners read Turn N"
@@ -673,6 +673,47 @@ def test_firstrun_in_the_window():
         ctx.close()
         if keep is not None:
             st.write_text(keep, encoding="utf-8")
+
+
+# ================================================================ 2.14 review: N3, N4, N5 through the server
+def test_review_coach_follows_a_new_plan():
+    """N3: a running coach switches to a plan made while it runs (Pick another), keyed by plan_id."""
+    s = srv()
+    stage_scored()
+    cur = call("api/plan" + q(car=CAR, track=TRACK))[1]["plan"]
+    use_fakes(s, lambda: Holding(make_new()))
+    assert call("api/coach/start", {})[1]["ok"]
+    try:
+        st = coach_until(lambda st: (st.get("focus") or {}).get("plan_id") == cur["plan_id"])
+        code, r = call("api/plan/new", {"car": CAR, "track": TRACK})
+        assert code == 200 and r["ok"] and r["plan"]["plan_id"] != cur["plan_id"], r
+        new_id = r["plan"]["plan_id"]
+        st = coach_until(lambda st: (st.get("focus") or {}).get("plan_id") == new_id, timeout=30)
+        assert s.coach_focus_info["plan_id"] == new_id, s.coach_focus_info
+    finally:
+        call("api/coach/stop", {})
+
+
+def test_review_auto_score_waits_for_a_measured_lap():
+    """N4: a newer session with no measured lap through the focus corner doesn't use up the plan's score."""
+    srv()
+    stage_scored()
+    cur = call("api/plan" + q(car=CAR, track=TRACK))[1]["plan"]
+    assert cur["kind"] in ("focus", "consistency") and not cur.get("score"), cur
+    blind = dict(cur, success_rule=dict(cur["success_rule"], key="not_a_phase_number"))
+    assert pp.save_plan(S.plans_folder(), CAR, TRACK, blind)
+    cl.make(TEL / f"{CAR}_{TRACK} 2026-11-06 18-00-00.ibt", 8, seed=41, session="Practice")
+    read_telemetry()
+    sid = sessions()[0]["id"]
+    assert "2026-11-06" in sessions()[0]["date"], sessions()[0]
+    code, rv = call("api/session-review" + q(id=sid))
+    assert code == 200 and rv["ok"] and rv["one_thing"] is None, rv["one_thing"]
+    now = pp.load_plans(S.plans_folder(), CAR, TRACK)[0]
+    assert now["plan_id"] == cur["plan_id"] and not now.get("score"), "not scored: still waiting"
+    assert pp.save_plan(S.plans_folder(), CAR, TRACK, {k: v for k, v in cur.items() if k != "score"})
+    code, rv = call("api/session-review" + q(id=sid))
+    o = rv["one_thing"]
+    assert o and o["just_scored"] and o["plan"]["plan_id"] == cur["plan_id"] and o["plan"]["score"]["measured"] >= 1, o
 
 
 if __name__ == "__main__":

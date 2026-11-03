@@ -479,7 +479,8 @@ def sample_page() -> bytes:
 JOB_TITLES = {"review": "Reviewing your last race", "check": "Checking the connection",
               "prep": "Building your track prep page", "team": "Updating the team hub",
               "sync": "Syncing your Garage 61 history", "schedule": "Loading the iRacing season schedule",
-              "scan": "Scanning the replay", "rival": "Reading a rival's lap", "update": "Updating Debrief", "weekly": "Updating this week's team leaderboards"}
+              "scan": "Scanning the replay", "rival": "Reading a rival's lap", "update": "Updating Debrief", "weekly": "Updating this week's team leaderboards",
+              "setuplab": "Reading your telemetry files"}
 BACKGROUND_TITLES = {"refresh": "Updating your saved reviews to the new page layout"}
 
 
@@ -602,7 +603,7 @@ class Jobs:
             jid = self.seq
             if kind == "sync":
                 self.stop_sync.clear()
-            if kind in ("scan", "rival"):
+            if kind in ("scan", "rival", "setuplab"):
                 self.stop_scan.clear()
             self.thread = threading.Thread(target=self._run, args=(kind, jid, dict(params or {})), daemon=True,
                                            name=f"job-{kind}")
@@ -619,7 +620,8 @@ class Jobs:
                 msg = str(msg)
                 self.st["message"] = msg.strip()
                 # per-lap telemetry ticks update the message only; real steps go in the list
-                if not msg.startswith(("Telemetry for lap ", "Telemetry for session ", "Scanning replay: ", "Reading the lap: ")):
+                if not msg.startswith(("Telemetry for lap ", "Telemetry for session ", "Scanning replay: ", "Reading the lap: ",
+                                       "Reading telemetry file ")):
                     self.st["steps"].append(msg.strip())
                     del self.st["steps"][:-60]
         return cb
@@ -652,6 +654,8 @@ class Jobs:
                     api = None
                 result = rival_read.read_for_review(cfg["library_folder"], params["review_path"], params["car"], api=api, progress=cb,
                                                     should_stop=self.stop_scan.is_set)
+            elif kind == "setuplab":
+                result = _run_setuplab(cfg, cb, self.stop_scan.is_set)
             elif kind == "sync":
                 result = {"sync": app.cmd_sync(cfg, progress=cb, should_stop=self.stop_sync.is_set)}
             elif kind == "prep":
@@ -757,6 +761,251 @@ def _run_schedule(params, cb) -> dict:
                 Path(params["path"]).parent.rmdir()
             except OSError:
                 pass
+
+
+# ---------------------------------------------------------------- Setup Lab and the live coach (2.12)
+SETUPLAB_CACHE = "setuplab-index.json"     # in the cache folder (DEBRIEF_CACHE_DIR in tests)
+NO_TELEMETRY = ("Debrief can't find your telemetry folder ({folder}). If iRacing saves telemetry somewhere else, "
+                "set the folder in Settings > Setup Lab and Coach.")
+IDENT_OK = re.compile(r"^[^\x00-\x1f<>\"|?*]{1,160}$")     # an iRacing car path or track code
+MAX_SERIES_CHOICES = 500
+
+
+def setuplab_cache_path(cfg) -> Path:
+    return Path(cfg["cache_dir"]) / SETUPLAB_CACHE
+
+
+def _run_setuplab(cfg, cb, should_stop) -> dict:
+    """Read every telemetry file once (setuplab.index): the first time all of them, then only new ones. Read
+    only: nothing in iRacing's folders is ever written."""
+    from .. import setuplab
+    folder = settings_io.telemetry_folder(cfg)
+    if not folder.is_dir():
+        raise SystemExit(NO_TELEMETRY.format(folder=folder))
+    cb(0.02, "Looking for telemetry files...")
+
+    def prog(done, total, name):
+        cb(0.02 + 0.96 * done / max(1, total), f"Reading telemetry file {done} of {total}")
+    idx = setuplab.index(folder, cache_path=setuplab_cache_path(cfg), progress=prog, stop=should_stop)
+    n, combos = len(idx["files"]), setuplab.combos(idx)
+    if idx["stopped"]:
+        cb(None, f"Stopped. {idx['read']} file(s) read this time; they are kept and the rest are read next time.")
+    else:
+        cb(1.0, f"{n} telemetry file{'s' if n != 1 else ''} for {len(combos)} car and track"
+                f"{'s' if len(combos) != 1 else ''} ({idx['read']} new).")
+    return {"files": n, "read": idx["read"], "cached": idx["cached"], "bad": len(idx["bad"]),
+            "stopped": bool(idx["stopped"]), "combos": len(combos)}
+
+
+class SetupLabIndex:
+    """Setup Lab's saved index (setuplab.index's cache file) in memory, read again only when the file changes, so
+    the combos list and a report never scan the telemetry folder."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.key, self.idx, self.keys = None, None, frozenset()
+
+    def load(self, cache_path: Path):
+        """(index dict shaped like setuplab.index()'s, the set of cached file keys), or (None, empty) before the
+        first read."""
+        from .. import setuplab
+        try:
+            st = Path(cache_path).stat()
+        except OSError:
+            return None, frozenset()
+        key = (str(cache_path), st.st_mtime_ns, st.st_size)
+        with self.lock:
+            if key == self.key:
+                return self.idx, self.keys
+        try:
+            raw = json.loads(Path(cache_path).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None, frozenset()
+        if not isinstance(raw, dict) or raw.get("version") != setuplab.CACHE_VERSION or not isinstance(raw.get("files"), dict):
+            return None, frozenset()
+        files, bad = [], []
+        for rec in raw["files"].values():
+            if not isinstance(rec, dict) or not isinstance(rec.get("file"), str):
+                continue
+            if rec.get("ok"):
+                files.append(rec)
+            else:
+                bad.append({"file": rec["file"], "error": str(rec.get("error") or "unreadable")[:200]})
+        files.sort(key=lambda r: (r.get("sort") or 0, r["file"]))
+        idx = {"folder": None, "files": files, "read": 0, "cached": len(files), "bad": bad, "stopped": False,
+               "missing_folder": False}
+        keys = frozenset(raw["files"])
+        with self.lock:
+            self.key, self.idx, self.keys = key, idx, keys
+        return idx, keys
+
+
+def unread_files(folder: Path, keys) -> int | None:
+    """Telemetry files in the folder that the saved index doesn't have yet (new or changed). None if unreadable."""
+    n = 0
+    try:
+        for p in folder.iterdir():
+            if p.suffix.lower() != ".ibt":
+                continue
+            st = p.stat()
+            if f"{p.name}|{st.st_size}|{st.st_mtime_ns}" not in keys:
+                n += 1
+    except OSError:
+        return None
+    return n
+
+
+def _words(s) -> list:
+    import unicodedata
+    s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode("ascii").lower()
+    return re.findall(r"[a-z0-9]+", s)
+
+
+def _split_track(name) -> tuple:
+    """'Circuit Zolder (Grand Prix)' or 'Zolder Circuit - Grand Prix' -> ('Circuit Zolder', 'Grand Prix')."""
+    full = re.sub(r"\s+", " ", str(name or "")).strip()
+    m = re.match(r"^(.*?)\s*(?:\((.*)\)|\s[-–]\s(.*))\s*$", full)
+    return (m.group(1), m.group(2) or m.group(3) or "") if m else (full, "")
+
+
+_CONFIG_SKIP = {"pits", "layout", "configuration", "config", "circuit"}
+
+
+def _config_words(cfg_text) -> set:
+    w = [x for x in _words(cfg_text) if x not in _CONFIG_SKIP and not re.fullmatch(r"(19|20)\d\d", x)]
+    out = set()
+    for x in w:
+        out.update(("grand", "prix") if x == "gp" else (x,))
+    return out
+
+
+def track_names_match(a, b) -> bool:
+    """Same track and layout, whoever named it: Garage 61 ('Circuit Zolder (Grand Prix)'), iRacing's files
+    ('Zolder Circuit', 'Grand Prix') or the season schedule. The bases must match word for word after the filler
+    is gone (one may be the other's short form, 'Spa' / 'Spa-Francorchamps'); two named layouts must share a word."""
+    (ba, ca), (bb, cb) = _split_track(a), _split_track(b)
+    wa, wb = set(_words(library.short_track_name(ba))), set(_words(library.short_track_name(bb)))
+    if not wa or not wb or not (wa <= wb or wb <= wa):
+        return False
+    xa, xb = _config_words(ca), _config_words(cb)
+    return not (xa and xb and not (xa & xb))
+
+
+def car_names_match(a, b, path=None) -> bool:
+    """Same car: 'McLaren 570S GT4' (Garage 61, the schedule) and iRacing's own name or car path ('mclaren570sgt4').
+    Garage 61's car and track ids are its own, not iRacing's, so names are all there is to go on."""
+    ca, cb = "".join(_words(a)), "".join(_words(b))
+    if ca and ca == cb:
+        return True
+    cp = "".join(_words(path))
+    if cp and ca and cp == ca:
+        return True
+    wa, wb = set(_words(a)), set(_words(b))
+    return len(wa) >= 2 and len(wb) >= 2 and (wa <= wb or wb <= wa)
+
+
+def ibt_track_label(track: dict) -> str:
+    t = track or {}
+    name, cfg = str(t.get("name") or t.get("code") or ""), str(t.get("config") or "")
+    return f"{name} ({cfg})" if cfg else name
+
+
+def match_setuplab_combo(combos: list, car, track):
+    """The Setup Lab car + track for a Prepare view's car and track, or None."""
+    for c in combos or []:
+        if car_names_match(car, c.get("car"), c.get("car_path")) and track_names_match(track, c.get("track")):
+            return c
+    return None
+
+
+def series_key(car_path: str, track_code: str) -> str:
+    return f"{str(car_path).lower()}|{str(track_code).lower()}"
+
+
+def schedule_series_setup(combo: dict | None, series_id=None) -> tuple:
+    """(open | fixed | None, where it came from) from the season schedule: the series picked on Prepare, else every
+    series that races this car at this track this season, when they all agree."""
+    try:
+        from .. import schedule
+        sched = schedule.load_current()
+    except Exception:  # noqa: BLE001  (no schedule is fine)
+        return None, ""
+    if not sched:
+        return None, ""
+    if series_id:
+        ser = schedule.find_series(sched, series_id)
+        if ser and ser.get("setup") in ("open", "fixed"):
+            return ser["setup"], f"the season schedule ({ser.get('name') or 'this series'})"
+    if not combo:
+        return None, ""
+    names, kinds = [], set()
+    for ser in sched.get("series") or []:
+        if not isinstance(ser, dict):
+            continue
+        for w in ser.get("weeks") or []:
+            cars = (w.get("cars") if isinstance(w, dict) else None) or ser.get("cars") or []
+            if isinstance(w, dict) and track_names_match(w.get("track"), combo.get("track")) and \
+                    any(car_names_match(c, combo.get("car"), combo.get("car_path")) for c in cars):
+                names.append(str(ser.get("name") or "a series"))
+                kinds.add(ser.get("setup"))
+                break
+    known = kinds - {None}
+    if len(known) == 1 and None not in kinds:
+        k = known.pop()
+        return k, "the season schedule (" + ", ".join(names[:2]) + (" and others" if len(names) > 2 else "") + ")"
+    return None, ""
+
+
+def _jsonable(o):
+    """Plain JSON: numpy numbers become Python ones, NaN and infinity become null (the window's JSON.parse would
+    refuse them)."""
+    if isinstance(o, dict):
+        return {str(k): _jsonable(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple, set, frozenset)):
+        return [_jsonable(v) for v in o]
+    if isinstance(o, bool) or o is None or isinstance(o, (str, int)):
+        return o
+    if isinstance(o, float):
+        return o if math.isfinite(o) else None
+    if hasattr(o, "tolist"):
+        return _jsonable(o.tolist())
+    if hasattr(o, "item"):
+        return _jsonable(o.item())
+    return str(o)
+
+
+COACH_FIELDS = {"in_races": bool, "markers": bool, "feedback": bool, "lap_delta": bool, "brake_beep": bool,
+                "top_n": (1, 3, "Focus corners must be 1, 2 or 3."), "volume": (0, 100, "Volume must be 0 to 100."),
+                "rate": (-10, 10, "Speaking speed must be -10 to 10.")}
+COACH_TEST_TEXT = "Debrief coach. Brake marker, T3."
+
+
+def clean_coach_settings(raw) -> dict:
+    """The coach settings the window may change. Raises ValueError (plain words)."""
+    if not isinstance(raw, dict) or not raw or len(raw) > 20:
+        raise ValueError("Bad request.")
+    out = {}
+    for k, v in raw.items():
+        rule = COACH_FIELDS.get(k)
+        if rule is None:
+            raise ValueError("Bad request.")
+        if rule is bool:
+            if not isinstance(v, bool):
+                raise ValueError("Pick on or off.")
+            out[k] = v
+            continue
+        lo, hi, msg = rule
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or (isinstance(v, float) and (not math.isfinite(v) or v != int(v))):
+            raise ValueError(msg)
+        if not lo <= int(v) <= hi:
+            raise ValueError(msg)
+        out[k] = int(v)
+    return out
+
+
+def saved_coach_settings() -> dict:
+    d = settings_io.load_extra("coach").get("settings")
+    return d if isinstance(d, dict) else {}
 
 
 def _rebuild_library(cfg) -> None:
@@ -1030,6 +1279,19 @@ class DebriefServer(ThreadingHTTPServer):
         self.jobs.on_update_started = self._close_for_update
         self.update_outcome = None   # how the last in-app update went (set at start; see updater.pending_result)
         self.exit = os._exit         # replaced in tests
+        # 2.12 Setup Lab: the saved telemetry index, kept in memory
+        self.setuplab = SetupLabIndex()
+        # 2.12 live coach: one runner, never a Jobs job (it runs for an hour and must not block reviews)
+        self.coach_lock = threading.Lock()
+        self.coach = None             # livecoach.LiveRunner while started
+        self.coach_voice = None
+        self.coach_hotkey = None
+        self.coach_last = None        # the last status of a stopped runner (what it said stays on the page)
+        self.coach_weak_info = None   # {"races": n} for the car + track iRacing reports
+        self.test_voice = None
+        # tests only: callables that replace live iRacing and the Windows voice (e.g. an .ibt playback and FakeVoice)
+        self.coach_source_factory = None   # () -> source
+        self.coach_voice_factory = None    # (livecoach.Settings) -> voice
 
     # errors a request thread didn't catch itself (a crash inside do_GET/do_POST before any reply). The
     # library's default prints them to stderr, which is /dev/null under pythonw: they vanished (2.7.0 M6).
@@ -1064,6 +1326,204 @@ class DebriefServer(ThreadingHTTPServer):
             self.shutdown()
             self.exit(0)
         threading.Timer(4.0, stop).start()
+
+    # ---------- the live coach (2.12)
+    def shutdown(self):
+        """Stops the coach (its thread, the mute key and the voice) first, whoever closes Debrief: the window going
+        away, an update or Ctrl+C."""
+        try:
+            self.stop_coach()
+        except Exception:  # noqa: BLE001
+            app.say("ERROR stopping the coach:\n" + traceback.format_exc())
+        super().shutdown()
+
+    def server_close(self):
+        try:
+            self.stop_coach()
+        except Exception:  # noqa: BLE001
+            pass
+        super().server_close()
+
+    def coach_settings(self):
+        from .. import livecoach
+        return livecoach.Settings.from_dict(saved_coach_settings())
+
+    def coach_weak_for(self, car: dict, track: dict) -> list:
+        """The weak corners for the car + track iRacing reports: prep.weak_corners on your saved race reviews of
+        that car at that track, matched by name (Garage 61's ids aren't iRacing's). None found: an empty list, and
+        the coach cues from your best lap only."""
+        self.coach_weak_info = {"races": 0}
+        prep = app.optional_module("prep")
+        try:
+            cfg = app.load_settings()
+        except SystemExit:
+            return []
+        if prep is None:
+            return []
+        rows = library.race_rows(self.profile_cache.rows(Path(cfg["library_folder"])))
+        tname, car = ibt_track_label(track), car or {}
+        mine = [r for r in rows if car_names_match(r.get("car"), car.get("name"), car.get("path"))
+                and track_names_match(r.get("track"), tname)]
+        self.coach_weak_info = {"races": len(mine)}
+        return prep.weak_corners(mine) if mine else []
+
+    def start_coach(self) -> dict:
+        """Start listening to iRacing and coaching. Never raises: a problem is a message, and the log has the rest."""
+        if self.jobs.closing or self.stopping.is_set():
+            return {"ok": False, "error": "Debrief is closing."}
+        from .. import livecoach
+        with self.coach_lock:
+            if self.coach is not None and self.coach.running():
+                return {"ok": True, "already": True}
+            old = (self.coach, self.coach_hotkey, self.coach_voice)
+            self.coach = self.coach_hotkey = self.coach_voice = None
+        self._close_coach_parts(*old)
+        settings = self.coach_settings()
+        settings.muted = False
+        r = vc = None
+        try:
+            from .. import voice as voice_mod
+            src = self.coach_source_factory() if self.coach_source_factory else livecoach.IrsdkSource(rate_hz=settings.sample_hz)
+            vc = self.coach_voice_factory(settings) if self.coach_voice_factory else \
+                voice_mod.make_voice(volume=settings.volume, rate=settings.rate, log=app.say)
+            folder = None
+            try:
+                tf = settings_io.telemetry_folder(app.load_settings())
+                folder = tf if tf.is_dir() else None
+            except (SystemExit, OSError):
+                pass
+            self.coach_weak_info = None
+            r = livecoach.LiveRunner(src, vc, settings=settings, telemetry_dir=folder, weak_for=self.coach_weak_for,
+                                     log=app.say)
+            r.start()
+        except Exception:  # noqa: BLE001
+            app.say("ERROR starting the coach:\n" + traceback.format_exc())
+            self._close_coach_parts(r, None, vc)
+            return {"ok": False, "error": "The coach couldn't start. Details were saved to debrief.log in "
+                                          + app.data_folder_label() + "."}
+        with self.coach_lock:
+            self.coach, self.coach_voice = r, vc
+        hk = None
+        try:   # Windows only; elsewhere, or if another program has the key, the mute button still works
+            hk = livecoach.Hotkey(settings.hotkey, r.toggle, log=app.say)
+            hk.start(timeout=2.0)
+        except Exception:  # noqa: BLE001
+            app.say("ERROR starting the coach's mute key:\n" + traceback.format_exc())
+        with self.coach_lock:
+            if self.coach is r:
+                self.coach_hotkey = hk
+                hk = None
+        if hk is not None:      # stopped while the key was starting
+            self._close_coach_parts(None, hk, None)
+        app.say("Coach started.")
+        return {"ok": True}
+
+    @staticmethod
+    def _close_coach_parts(runner, hotkey, voice, timeout=3.0) -> bool:
+        done = True
+        if hotkey is not None:
+            try:
+                hotkey.stop()
+            except Exception:  # noqa: BLE001
+                pass
+        if runner is not None:
+            try:
+                done = runner.stop(timeout)
+            except Exception:  # noqa: BLE001
+                done = False
+        if voice is not None:
+            try:
+                voice.close()
+            except Exception:  # noqa: BLE001
+                pass
+        return done
+
+    def stop_coach(self, timeout: float = 3.0) -> bool:
+        """Stop the coach and wait for its thread. True when nothing of it is still running."""
+        with self.coach_lock:
+            r, hk, vc = self.coach, self.coach_hotkey, self.coach_voice
+            self.coach = self.coach_hotkey = self.coach_voice = None
+            tv, self.test_voice = self.test_voice, None
+        done = self._close_coach_parts(r, hk, None, timeout)
+        if r is not None:
+            try:
+                self.coach_last = r.status()
+            except Exception:  # noqa: BLE001
+                pass
+            app.say("Coach stopped." if done else "Coach stopped (its thread is still finishing).")
+        self._close_coach_parts(None, None, vc)
+        self._close_coach_parts(None, None, tv)
+        return done
+
+    def coach_status(self) -> dict:
+        with self.coach_lock:
+            r, hk = self.coach, self.coach_hotkey
+        if r is not None:
+            try:
+                st = r.status()
+            except Exception:  # noqa: BLE001
+                app.say("ERROR reading the coach's status:\n" + traceback.format_exc())
+                st = {"state": "error", "text": "The coach's status couldn't be read.", "running": r.running()}
+        else:
+            last = self.coach_last or {}
+            st = {"state": "stopped", "text": "Coach off", "running": False, "muted": False, "quiet_reason": None,
+                  "reference": last.get("reference"), "corners": last.get("corners") or 0, "weak": last.get("weak") or [],
+                  "last_lap": last.get("last_lap"), "spoken": last.get("spoken") or [], "events": [], "voice": None,
+                  "error": "", "errors": 0, "car": last.get("car") or "", "track": last.get("track") or "",
+                  "settings": self.coach_settings().to_dict()}
+        st["hotkey"] = {"key": "Ctrl+Shift+M", "on": bool(hk is not None and getattr(hk, "registered", False))}
+        wi = self.coach_weak_info
+        note = None
+        if st.get("reference") and not st.get("weak"):
+            if wi is not None and not wi.get("races"):
+                note = "No saved race reviews of this car at this track, so the cues come from your best lap only."
+            elif wi is not None:
+                note = "Your race reviews here show no corner that keeps costing time, so the cues come from your best lap only."
+        st["weak_note"] = note
+        return _jsonable(st)
+
+    def coach_test_voice(self) -> dict:
+        """Say one cue now, at the saved volume and speed: through the running coach's voice, or a voice made for
+        this and closed a few seconds later."""
+        with self.coach_lock:
+            r, vc = self.coach, self.coach_voice
+        if r is not None and r.running() and vc is not None:
+            try:
+                said = bool(vc.say(COACH_TEST_TEXT, priority=3))
+                return {"ok": True, "spoken": said, "voice": _jsonable(vc.status())}
+            except Exception:  # noqa: BLE001
+                app.say("ERROR testing the voice:\n" + traceback.format_exc())
+                return {"ok": False, "error": "The voice didn't work. Details were saved to debrief.log."}
+        settings = self.coach_settings()
+        v = None
+        try:
+            from .. import voice as voice_mod
+            v = self.coach_voice_factory(settings) if self.coach_voice_factory else \
+                voice_mod.make_voice(volume=settings.volume, rate=settings.rate, log=app.say)
+            wait = getattr(v, "wait_ready", None)
+            if callable(wait):
+                wait(5.0)
+            said = bool(v.say(COACH_TEST_TEXT, priority=3))
+            st = v.status()
+        except Exception:  # noqa: BLE001
+            app.say("ERROR testing the voice:\n" + traceback.format_exc())
+            self._close_coach_parts(None, None, v)
+            return {"ok": False, "error": "The voice didn't work. Details were saved to debrief.log."}
+        with self.coach_lock:
+            old, self.test_voice = self.test_voice, v
+        self._close_coach_parts(None, None, old)
+
+        def close_later():
+            with self.coach_lock:
+                mine = self.test_voice is v
+                if mine:
+                    self.test_voice = None
+            if mine:
+                self._close_coach_parts(None, None, v)
+        t = threading.Timer(6.0, close_later)
+        t.daemon = True
+        t.start()
+        return {"ok": True, "spoken": said, "voice": _jsonable(st)}
 
     @property
     def url(self):
@@ -1128,7 +1588,7 @@ class DebriefServer(ThreadingHTTPServer):
             idle = now - self.last_ping
             if idle > self.timeout_s and self.jobs.kind == "sync":
                 self.jobs.pause_sync(10.0)   # a sync never keeps Debrief open: it resumes next time
-            if idle > self.timeout_s and self.jobs.kind in ("scan", "rival"):
+            if idle > self.timeout_s and self.jobs.kind in ("scan", "rival", "setuplab"):
                 self.jobs.stop_scan.set()    # a closed window never leaves the replay fast-forwarding
             if idle > self.timeout_s and not self.jobs.busy:
                 app.say(f"Window closed (no heartbeat for {idle:.0f}s). Stopping.")
@@ -1286,12 +1746,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._sample()
         if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/markers", "api/pages", "api/sessions", "api/prepare", "api/prepfocus",
                  "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand",
-                 "api/diagnostics"):
+                 "api/diagnostics", "api/setuplab/combos", "api/setuplab/report", "api/coach/status"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
             try:
-                return getattr(self, "_get_" + r[4:])(q)
+                return getattr(self, "_get_" + r[4:].replace("/", "_"))(q)
             except ValueError as e:
                 return self._json({"ok": False, "error": str(e)}, 400)
             except Garage61Error as e:
@@ -1320,7 +1780,8 @@ class Handler(BaseHTTPRequestHandler):
     def _module(self, name):
         m = app.optional_module(name)
         if m is None:
-            raise ValueError({"prep": "Track prep", "goals": "Goals", "results": "Race results"}.get(name, name) +
+            raise ValueError({"prep": "Track prep", "goals": "Goals", "results": "Race results", "setuplab": "Setup Lab",
+                              "livecoach": "The coach"}.get(name, name) +
                              " isn't available right now. Details were saved to debrief.log in " + app.data_folder_label() + ".")
         return m
 
@@ -1841,6 +2302,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._post_result_csv()
         if r == "api/discord-stage":
             return self._post_discord_stage()
+        if r == "api/setuplab/check-file":
+            return self._post_setuplab_check_file()
         try:  # read the body first (even for ping/bye) so a kept-alive connection stays in step
             body = self._body()
         except (ValueError, UnicodeDecodeError, RecursionError):
@@ -1902,9 +2365,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self.server.jobs.start("update"))
         if r in ("api/prep", "api/team", "api/goals", "api/result", "api/series", "api/prepare-choice", "api/notes", "api/schedule",
                  "api/strategy", "api/racecap-link", "api/intel-preview", "api/intel-import", "api/weekly", "api/discord-post",
-                 "api/discord-check"):
+                 "api/discord-check", "api/setuplab/read", "api/setuplab/stop", "api/setuplab/series", "api/coach/start",
+                 "api/coach/stop", "api/coach/mute", "api/coach/settings", "api/coach/test-voice"):
             try:
-                return getattr(self, "_post_" + r[4:].replace("-", "_"))(body)
+                return getattr(self, "_post_" + r[4:].replace("-", "_").replace("/", "_"))(body)
             except ValueError as e:
                 return self._json({"ok": False, "error": str(e)}, 400)
             except Exception as e:  # noqa: BLE001
@@ -2391,3 +2855,192 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "deleted": bool(results.delete(cfg["library_folder"], d.name))})
         raise ValueError("Bad request.")
 
+
+    # ---------- Setup Lab (2.12): read only, from the telemetry iRacing saves on this PC
+    def _setuplab_index(self, cfg):
+        return self.server.setuplab.load(setuplab_cache_path(cfg))
+
+    def _get_setuplab_combos(self, q):
+        """The cars and tracks in the saved index, newest first, and where the telemetry folder is. Never reads a
+        telemetry file. With car= and track= (a Prepare view) only the matching combo is worked out."""
+        cfg = self._cfg()
+        setuplab = self._module("setuplab")
+        folder = settings_io.telemetry_folder(cfg)
+        try:
+            folder_ok = folder.is_dir()
+        except OSError:
+            folder_ok = False
+        idx, keys = self._setuplab_index(cfg)
+        combos = setuplab.combos(idx) if idx else []
+        if q.get("car") is not None or q.get("track") is not None:
+            car, track = _short_text(q.get("car"), "car"), _short_text(q.get("track"), "track")
+            return self._json(_jsonable({"ok": True, "match": match_setuplab_combo(combos, car, track) if folder_ok else None}))
+        saved = settings_io.load_extra("setuplab").get("series") or {}
+        for c in combos:
+            v = saved.get(series_key(c.get("car_path") or "", c.get("track_code") or "")) if isinstance(saved, dict) else None
+            c["series_override"] = v if v in ("open", "fixed") else None
+        return self._json(_jsonable({
+            "ok": True, "folder": str(folder), "folder_ok": folder_ok, "folder_set": bool(str(cfg.get("iracing_folder") or "").strip()),
+            "indexed": idx is not None, "files": len(idx["files"]) if idx else 0, "bad": len(idx["bad"]) if idx else 0,
+            "unread": unread_files(folder, keys) if folder_ok else None, "combos": combos,
+            "running": self.server.jobs.kind == "setuplab"}))
+
+    def _get_setuplab_report(self, q):
+        """Setup Lab for one car + track from the saved index (fast: no telemetry file is opened)."""
+        cfg = self._cfg()
+        setuplab = self._module("setuplab")
+        car, track = q.get("car"), q.get("track")
+        if not isinstance(car, str) or not IDENT_OK.match(car) or not isinstance(track, str) or not IDENT_OK.match(track):
+            raise ValueError("Pick a car and track.")
+        sid = q.get("series") or None
+        if sid is not None and not self.SERIES_ID_OK.match(sid):
+            raise ValueError("Pick a series from the list.")
+        idx, _keys = self._setuplab_index(cfg)
+        if idx is None:
+            raise ValueError("Read your telemetry first.")
+        folder = settings_io.telemetry_folder(cfg)
+        combo = next((c for c in setuplab.combos(idx) if (c.get("car_path") or "").lower() == car.lower()
+                      and (c.get("track_code") or "").lower() == track.lower()), None)
+        saved = settings_io.load_extra("setuplab").get("series") or {}
+        override = saved.get(series_key(car, track)) if isinstance(saved, dict) else None
+        override = override if override in ("open", "fixed") else None
+        kind, source = (override, "you set this") if override else schedule_series_setup(combo, sid)
+        rep = setuplab.report(folder, car, track, series_setup=kind, idx=dict(idx, missing_folder=not folder.is_dir()))
+        if kind:
+            rep["series_setup_source"] = source
+        rep["series_override"] = override
+        return self._json(_jsonable({"ok": True, "report": rep}))
+
+    def _post_setuplab_read(self, body):
+        cfg = self._cfg()
+        self._module("setuplab")
+        folder = settings_io.telemetry_folder(cfg)
+        if not folder.is_dir():
+            raise ValueError(NO_TELEMETRY.format(folder=folder))
+        return self._json(self.server.jobs.start("setuplab"))
+
+    def _post_setuplab_stop(self, body):
+        if self.server.jobs.kind == "setuplab":
+            self.server.jobs.stop_scan.set()
+        return self._json({"ok": True})
+
+    def _post_setuplab_series(self, body):
+        """Open, fixed or "" (let Debrief tell) for one car + track, saved next to settings.toml."""
+        car, track, v = body.get("car"), body.get("track"), body.get("setup")
+        if not isinstance(car, str) or not IDENT_OK.match(car) or not isinstance(track, str) or not IDENT_OK.match(track):
+            raise ValueError("Pick a car and track.")
+        if v not in ("open", "fixed", "", None):
+            raise ValueError("Pick open, fixed or not sure.")
+        data = settings_io.load_extra("setuplab")
+        series = data.get("series") if isinstance(data.get("series"), dict) else {}
+        k = series_key(car, track)
+        series.pop(k, None)
+        if v:
+            if len(series) >= MAX_SERIES_CHOICES:
+                raise ValueError("Too many saved choices.")
+            series[k] = v
+        data["series"] = series
+        try:
+            settings_io.save_extra("setuplab", data)
+        except OSError as e:
+            app.say(f"ERROR saving Setup Lab's series choice: {type(e).__name__}: {e}")
+            raise ValueError(SETTINGS_WRITE_ERROR)
+        return self._json({"ok": True, "setup": v or None})
+
+    MAX_SETUP_FILE = 50 * 1024 * 1024
+    SETUP_NAME_OK = re.compile(r"^[^\x00-\x1f/\\<>:\"|?*]{1,160}$")
+
+    def _post_setuplab_check_file(self):
+        """A setup file from someone else (.sto or .zip), as the raw body with its name in ?name=. Checked for
+        programs and scripts with setuplab.check_setup_file, which only reads: nothing is extracted or run. The
+        check needs a file on disk, so it sits in a private temp folder for the check and is deleted straight
+        after; Debrief never copies it anywhere else (and never into iRacing)."""
+        cl = (self.headers.get("Content-Length") or "").strip()
+        name = (parse_qs(urlsplit(self.path).query).get("name") or [""])[0]
+        if not cl.isdigit() or self.headers.get("Transfer-Encoding"):
+            self.close_connection = True
+            return self._json({"ok": False, "error": "Bad request."}, 400)
+        n = int(cl)
+        if n > self.MAX_SETUP_FILE:
+            self.close_connection = True
+            return self._json({"ok": False, "error": "That file is far too big to be a setup (over 50 MB)."}, 400)
+        if not self.SETUP_NAME_OK.match(name) or name.strip(". ") == "":
+            self.close_connection = True
+            return self._json({"ok": False, "error": "Pick a setup file (.sto or .zip)."}, 400)
+        setuplab = app.optional_module("setuplab")
+        if setuplab is None:
+            self.close_connection = True
+            return self._json({"ok": False, "error": "Setup Lab isn't available right now."}, 500)
+        import tempfile
+        d = Path(tempfile.mkdtemp(prefix="debrief-setupcheck-"))
+        try:
+            p = d / name
+            left = n
+            with open(p, "wb") as f:
+                while left:
+                    chunk = self.rfile.read(min(65536, left))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    left -= len(chunk)
+            self._consumed = not left
+            if left:
+                self.close_connection = True
+                return self._json({"ok": False, "error": "The file didn't arrive in full. Try again."}, 400)
+            try:
+                res = setuplab.check_setup_file(p)
+            except Exception:  # noqa: BLE001
+                app.say("ERROR checking a setup file:\n" + traceback.format_exc())
+                return self._json({"ok": False, "error": "Debrief couldn't check that file. Don't use it."}, 500)
+            res["file"] = name
+            app.say(f"Checked a setup file: {'no problems' if res.get('ok') else str(len(res.get('problems') or [])) + ' problem(s)'}.")
+            return self._json(_jsonable({"ok": True, "check": res}))
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    # ---------- the live coach (2.12): one runner on the server, never a job
+    def _get_coach_status(self, q):
+        return self._json({"ok": True, **self.server.coach_status()})
+
+    def _post_coach_start(self, body):
+        self._module("livecoach")
+        res = self.server.start_coach()
+        return self._json({**res, "status": self.server.coach_status()} if res.get("ok") else res, 200 if res.get("ok") else 400)
+
+    def _post_coach_stop(self, body):
+        self.server.stop_coach()
+        return self._json({"ok": True, "status": self.server.coach_status()})
+
+    def _post_coach_mute(self, body):
+        with self.server.coach_lock:
+            r = self.server.coach
+        if r is None or not r.running():
+            raise ValueError("Start the coach first.")
+        muted = bool(r.toggle())
+        return self._json({"ok": True, "muted": muted})
+
+    def _post_coach_settings(self, body):
+        livecoach = self._module("livecoach")
+        new = clean_coach_settings(body.get("settings"))
+        merged = livecoach.Settings.from_dict({**saved_coach_settings(), **new}).to_dict()
+        keep = {k: merged[k] for k in COACH_FIELDS}
+        data = settings_io.load_extra("coach")
+        data["settings"] = keep
+        try:
+            settings_io.save_extra("coach", data)
+        except OSError as e:
+            app.say(f"ERROR saving the coach settings: {type(e).__name__}: {e}")
+            raise ValueError(SETTINGS_WRITE_ERROR)
+        with self.server.coach_lock:
+            r = self.server.coach
+        if r is not None:
+            try:
+                r.update_settings(new)
+            except Exception:  # noqa: BLE001
+                app.say("ERROR applying the coach settings:\n" + traceback.format_exc())
+        return self._json({"ok": True, "settings": keep})
+
+    def _post_coach_test_voice(self, body):
+        self._module("voice")
+        res = self.server.coach_test_voice()
+        return self._json(res, 200 if res.get("ok") else 500)

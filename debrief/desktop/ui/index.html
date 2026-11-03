@@ -32,6 +32,8 @@
     <button type="button" class="navbtn" data-nav="sessions" title="Every session Garage 61 has for you (Ctrl+5)" aria-keyshortcuts="Control+5">All sessions</button>
     <button type="button" class="navbtn" data-nav="prep" title="Prepare (Ctrl+6)" aria-keyshortcuts="Control+6">Prepare</button>
     <button type="button" class="navbtn" data-nav="team" title="Team (Ctrl+7)" aria-keyshortcuts="Control+7">Team</button>
+    <button type="button" class="navbtn" data-nav="setuplab" title="Setup Lab: your setups from iRacing's telemetry files (Ctrl+8)" aria-keyshortcuts="Control+8">Setup Lab</button>
+    <button type="button" class="navbtn" data-nav="coach" title="Coach: spoken cues while you drive (Ctrl+9)" aria-keyshortcuts="Control+9">Coach</button>
     <button type="button" class="navbtn" data-nav="settings" title="Settings (Ctrl+,)" aria-keyshortcuts="Control+Comma">Settings</button>
     <button type="button" class="navbtn" id="btnHelp">Help</button>
   </nav>
@@ -287,6 +289,88 @@
     </div>
   </section>
 
+  <section id="vSetupLab" class="view pad" hidden>
+    <div class="col slcol">
+      <span class="eyebrow">Your setups</span>
+      <h1>Setup Lab</h1>
+      <p class="lede">What changed between your setups, which one was faster, and one thing to try next. Read from the telemetry files iRacing saves on this PC.</p>
+      <div class="panel" id="slTel">
+        <div class="phead"><h3>Your telemetry</h3><span class="pill" id="slPill"></span></div>
+        <p class="note" id="slTelNote"></p>
+        <p class="mono path" id="slPath"></p>
+        <div class="progress small" id="slProg" hidden><div class="bar" id="slBar"><i></i></div></div>
+        <p class="now" id="slNow" hidden></p>
+        <div class="row"><button type="button" class="btn primary" id="slRead">Read my telemetry</button><button type="button" class="btn" id="slStop" hidden>Stop</button><button type="button" class="btn ghost" id="slFolderSet" data-nav="settings" hidden>Set the folder in Settings</button><span class="msg" id="slMsg" role="status"></span></div>
+        <p class="note">The first time reads every file, then only new ones. Debrief only reads them: it never changes iRacing's files.</p>
+      </div>
+      <div class="panel" id="slPick" hidden>
+        <div class="phead"><h3>Car and track</h3><span class="note" id="slPickNote"></span></div>
+        <div class="pkbtns" id="slCombos" role="group" aria-label="Your newest cars and tracks"></div>
+        <label class="field" for="slSelect" id="slSelectWrap" hidden><span>Other cars and tracks</span><select id="slSelect"></select></label>
+      </div>
+      <div id="slReport" class="slreport" aria-live="polite"></div>
+      <details class="panel prepmore" id="slMore">
+        <summary><h3>More</h3><span class="note">Check a setup file from someone else</span></summary>
+        <p class="note">Got a setup from a friend or a website? Check it here before it goes into iRacing. Debrief looks inside it for programs and scripts. It never opens or runs the file, and never copies it anywhere.</p>
+        <div class="row"><button type="button" class="btn" id="slCheckBtn">Check a setup file...</button><input type="file" id="slCheckFile" accept=".sto,.zip" hidden><span class="msg" id="slCheckMsg" role="status"></span></div>
+        <ul class="results" id="slCheckOut" hidden></ul>
+      </details>
+    </div>
+  </section>
+
+  <section id="vCoach" class="view pad" hidden>
+    <div class="col">
+      <span class="eyebrow">While you drive</span>
+      <h1>Coach</h1>
+      <p class="lede">A few short spoken cues while you drive: a brake marker before the corners that cost you most, a word after them, and your lap against your best. Only from your own laps.</p>
+      <div class="panel comain">
+        <div class="phead"><h3 id="coTitle">Coach off</h3><span class="pill" id="coPill">Off</span></div>
+        <p class="costatus" id="coText" role="status">Coach off</p>
+        <div class="row">
+          <button type="button" class="btn primary cobig" id="coStart">Start coaching</button>
+          <button type="button" class="btn" id="coMute" aria-pressed="false" disabled>Mute <kbd>Ctrl+Shift+M</kbd></button>
+          <span class="msg" id="coMsg" role="status"></span>
+        </div>
+        <p class="note" id="coQuiet" hidden></p>
+        <p class="note warn">Keep Debrief open while you drive. Unproven in the car until you've driven with it — tell me what it said.</p>
+      </div>
+      <div class="cogrid">
+        <div class="panel">
+          <div class="phead"><h3>Your reference lap</h3></div>
+          <p class="coref" id="coRef">None yet</p>
+          <p class="note" id="coRefNote">Debrief uses your best clean lap for the car and track iRacing shows, from your telemetry files. No lap yet? Drive a clean one and it becomes the reference.</p>
+          <p class="note" id="coLast" hidden></p>
+        </div>
+        <div class="panel">
+          <div class="phead"><h3>Focus corners</h3></div>
+          <ul class="pvlist" id="coWeak"></ul>
+          <p class="note" id="coWeakNote">From your race reviews of this car at this track: the corners that keep costing you time.</p>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="phead"><h3>Last cues</h3><span class="note" id="coSpokenNote"></span></div>
+        <ul class="cospoken" id="coSpoken"></ul>
+      </div>
+      <details class="panel prepmore" id="coSet">
+        <summary><h3>Settings</h3><span class="note">What it says, how loud, races</span></summary>
+        <form class="gridf" id="fCoach" autocomplete="off">
+          <label class="check" for="coInRaces"><input id="coInRaces" type="checkbox"><span>Coach in races too</span></label>
+          <p class="note">Off at first: races are for racing. Lap 1 of a race is always quiet.</p>
+          <label class="check" for="coMarkers"><input id="coMarkers" type="checkbox"><span>Brake marker before a focus corner</span></label>
+          <label class="check" for="coFeedback"><input id="coFeedback" type="checkbox"><span>A word after a focus corner</span></label>
+          <label class="check" for="coLapDelta"><input id="coLapDelta" type="checkbox"><span>Your lap against your best</span></label>
+          <label class="check" for="coBeep"><input id="coBeep" type="checkbox"><span>A short beep at a focus corner's brake point</span></label>
+          <div class="grid3">
+            <label class="field" for="coTopN"><span>Focus corners</span><select id="coTopN"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
+            <label class="field" for="coVol"><span>Volume <b class="num" id="coVolV"></b></span><input id="coVol" type="range" min="0" max="100" step="5"></label>
+            <label class="field" for="coRate"><span>Speaking speed <b class="num" id="coRateV"></b></span><input id="coRate" type="range" min="-10" max="10" step="1"></label>
+          </div>
+          <div class="row"><button type="submit" class="btn">Save</button><button type="button" class="btn" id="coTest">Test voice</button><span class="msg" id="coSetMsg" role="status"></span></div>
+        </form>
+      </details>
+    </div>
+  </section>
+
   <section id="vGoals" class="view pad" hidden>
     <div class="col">
       <span class="eyebrow">Targets</span>
@@ -370,6 +454,14 @@
         <label class="check" for="syncOpen"><input id="syncOpen" type="checkbox"><span>Sync each time Debrief opens</span></label>
         <label class="check" for="syncTel"><input id="syncTel" type="checkbox"><span>Also save telemetry for my best lap of every session (saved once)</span></label>
         <div class="row"><button type="submit" class="btn">Save sync options</button><span class="msg" id="syncOptMsg" role="status"></span></div>
+      </form>
+
+      <form class="panel" id="fTelemetry" autocomplete="off">
+        <div class="phead"><h3>Setup Lab and Coach</h3><span class="pill" id="telPill"></span></div>
+        <p class="note">Both read the telemetry files iRacing saves (Documents\iRacing\telemetry). Debrief only reads them, never changes them. If iRacing saves them somewhere else, paste that folder here; leave it empty to use the usual one.</p>
+        <p class="mono path" id="telPath"></p>
+        <label class="field wide" for="telFolder"><span>iRacing folder (optional)</span><input id="telFolder" type="text" maxlength="400" spellcheck="false" autocomplete="off" placeholder="e.g. D:\iRacing"></label>
+        <div class="row"><button type="submit" class="btn">Save</button><span class="msg" id="telMsg" role="status"></span></div>
       </form>
 
       <form class="panel" id="fUpdate">

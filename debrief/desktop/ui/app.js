@@ -88,26 +88,28 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.class
 new MutationObserver(()=>$('btnMenu').setAttribute('aria-expanded',String(document.body.classList.contains('navopen')))).observe(document.body,{attributes:true,attributeFilter:['class']});
 
 /* ---------- keyboard: Ctrl+R = Review last race (not a reload), Ctrl+, = Settings */
-// 2.8: Ctrl+1 to Ctrl+7 open the pages, in sidebar order; J and K step through your reviews, older and newer
-const PAGE_KEYS=['library','season','skills','goals','sessions','prep','team'];
-const KEY_MSG=/^(review|settings|prev|next|page[1-7])$/;
+// 2.8: Ctrl+1 to Ctrl+9 open the pages, in sidebar order (2.12: Setup Lab and Coach are 8 and 9); J and K step
+// through your reviews, older and newer
+const PAGE_KEYS=['library','season','skills','goals','sessions','prep','team','setuplab','coach'];
+const KEY_MSG=/^(review|settings|prev|next|page[1-9])$/;
 function shortcut(k){if(k==='review'){startReview();return true}if(k==='settings'){openSettings();return true}
   if(document.querySelector('dialog[open]'))return false;
   if(k==='prev'||k==='next'){stepReview(k);return true}
-  const m=/^page([1-7])$/.exec(k);if(m){goNav(PAGE_KEYS[+m[1]-1]);return true}
+  const m=/^page([1-9])$/.exec(k);if(m){goNav(PAGE_KEYS[+m[1]-1]);return true}
   return false}
 document.addEventListener('keydown',e=>{if(!(e.ctrlKey||e.metaKey)||e.altKey)return;const k=e.key.toLowerCase();
   if(k==='r'&&!e.shiftKey){e.preventDefault();shortcut('review')}
   else if(k===','||e.code==='Comma'){e.preventDefault();shortcut('settings')}
-  else if(!e.shiftKey&&/^[1-7]$/.test(k)){e.preventDefault();shortcut('page'+k)}});
+  else if(!e.shiftKey&&/^[1-9]$/.test(k)){e.preventDefault();shortcut('page'+k)}
+  else if(e.shiftKey&&k==='m'){e.preventDefault();coachMuteKey()}});
 document.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;const k=e.key.toLowerCase();if(k!=='j'&&k!=='k')return;
   if(e.target&&e.target.closest&&e.target.closest('input,select,textarea,[contenteditable]'))return;
   if(shortcut(k==='j'?'prev':'next'))e.preventDefault()});
 
 /* ---------- views */
-const VIEWS=['vFrame','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam','vSessions'];
+const VIEWS=['vFrame','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam','vSessions','vSetupLab','vCoach'];
 const FRAME_VIEWS=['review','library','season','skills','goalCharts','prepPage','teamPage','sample'];
-const NAV_OF={weekly:'team',sync:'sessions',sessions:'sessions',library:'library',season:'season',skills:'skills',goals:'goals',goalCharts:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings'};
+const NAV_OF={weekly:'team',sync:'sessions',sessions:'sessions',library:'library',season:'season',skills:'skills',goals:'goals',goalCharts:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings',setuplab:'setuplab',coach:'coach'};
 let current={view:null,dir:null};
 function show(view){VIEWS.forEach(v=>$(v).hidden=(v!==view));if(view!=='vFrame')document.title=appTitle()}
 function markNav(){
@@ -265,7 +267,8 @@ function navGate(){const off=onboarding();
     b.setAttribute('aria-disabled',String(off));b.title=off?'Finish the setup steps first.':b.dataset.t})}
 function goNav(name){
   if(name!=='settings'&&onboarding()){current={view:'welcome'};welcome();banner('Finish the setup steps first, then the rest of Debrief opens up.');return}
-  ({sessions:openSessions,library:openLibrary,season:openSeason,skills:openSkills,goals:openGoals,prep:openPrep,team:openTeam,settings:openSettings})[name]()}
+  ({sessions:openSessions,library:openLibrary,season:openSeason,skills:openSkills,goals:openGoals,prep:openPrep,team:openTeam,settings:openSettings,
+    setuplab:()=>openSetupLab(),coach:openCoach})[name]()}
 $('btnSample').addEventListener('click',openSample);
 $('fbSampleBack').addEventListener('click',()=>{current={view:'welcome'};welcome()});
 $('btnGoalCharts').addEventListener('click',openGoalCharts);
@@ -300,7 +303,7 @@ async function loadReviews(){
 }
 
 /* ---------- jobs: review / prep / team share the progress screen; check stays in Settings */
-const TITLES0={scan:'Scanning the replay',rival:'Reading a rival\'s lap',weekly:'Updating this week\'s team leaderboards',update:'Updating Debrief',sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
+const TITLES0={setuplab:'Reading your telemetry files',scan:'Scanning the replay',rival:'Reading a rival\'s lap',weekly:'Updating this week\'s team leaderboards',update:'Updating Debrief',sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
 const STOPPED={scan:'The scan stopped',rival:'Reading the lap stopped',weekly:'The leaderboard refresh stopped',update:'The update stopped',review:'The review stopped',prep:'The prep page stopped',team:'The team refresh stopped'};
 const TITLES=Object.assign({},TITLES0);   // the review title can change per job; TITLES0 keeps the defaults
 let handled=new Set(),polling=false,lastJob=null,lastStart=null;
@@ -388,6 +391,7 @@ function render(s){
           s.kind==='team'?'Team hub updated.':'Prep page ready.')}if(current.view==='prep')renderPrepPages();if(s.kind==='weekly')loadWeekly()});
     }
   }
+  if(s.kind==='setuplab')renderSlJob(s);
   if(s.kind==='schedule'){
     if(s.state==='running')setMsg('schMsg',s.message||'Loading...');
     if((s.state==='done'||s.state==='error')&&!handled.has(s.id)){handled.add(s.id);schBusy(false);
@@ -803,7 +807,7 @@ function renderFocus(d){const wrap=document.createDocumentFragment();const a=doc
     if(d.page){const o=h('button','btn','Open your last page');o.type='button';o.id='pvOpen';o.addEventListener('click',()=>openPage(d.page,'prepPage'));acts.append(o)}
     const f=h('button','btn','Plan fuel');f.type='button';f.id='pvFuel';f.dataset.fuel='1';
     f.addEventListener('click',()=>openFuel({track:d.track,series:d.series?d.series.id:undefined,week:d.week?d.week.week:undefined,cars:[d.car],length:d.race?d.race.length:null}));acts.append(f)}
-  head.append(acts);wrap.append(head);
+  head.append(acts);wrap.append(head);wrap.append(toolLinks(d));
   const msg=h('p','msg');msg.id='pvMsg';msg.setAttribute('role','status');wrap.append(msg);
   if(d.track&&d.car&&!token)msg.textContent='Add your Garage 61 token in Settings to build a prep page.';
   const flag=stripData&&d.week&&(stripData.weeks||[]).find(w=>w.no===d.week.no&&w.flag);

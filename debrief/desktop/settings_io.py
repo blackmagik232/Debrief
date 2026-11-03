@@ -216,6 +216,70 @@ def clean_team_folder(v) -> str:
     return v
 
 
+# ---------------------------------------------------------------- 2.12 Setup Lab and Coach
+IRACING_FOLDER_BAD = "That folder doesn't exist. Pick iRacing's folder (the one with telemetry in it) or its telemetry folder."
+
+
+def telemetry_folder(raw_or_cfg: dict | None = None) -> Path:
+    """Where iRacing saves telemetry (.ibt): Documents\\iRacing\\telemetry (the real Documents folder, so a
+    OneDrive-moved one is found), or the "iracing_folder" setting: iRacing's own folder (its telemetry folder is
+    used) or the telemetry folder itself. Only ever read: Debrief never writes into iRacing's folders."""
+    v = str((raw_or_cfg or {}).get("iracing_folder") or "").strip()
+    if v:
+        p = Path(expand_folder(v))
+        try:
+            if (p / "telemetry").is_dir():
+                return p / "telemetry"
+        except (OSError, ValueError):
+            pass
+        return p
+    return app.documents_dir() / "iRacing" / "telemetry"
+
+
+def clean_iracing_folder(v) -> str:
+    """The iracing_folder setting: "" (the default) or an existing folder, saved as typed. Raises ValueError."""
+    if v is None:
+        return ""
+    if not isinstance(v, str):
+        raise ValueError(IRACING_FOLDER_BAD)
+    v = v.strip().strip('"').strip()
+    if not v:
+        return ""
+    if len(v) > MAX_FOLDER or re.search(r"[\x00-\x1f<>|?*]", v):
+        raise ValueError(IRACING_FOLDER_BAD)
+    try:
+        ok = Path(expand_folder(v)).is_dir()
+    except (OSError, ValueError):
+        ok = False
+    if not ok:
+        raise ValueError(IRACING_FOLDER_BAD)
+    return v
+
+
+EXTRA_FILES = {"setuplab": "setuplab.json", "coach": "coach.json"}
+
+
+def _extra_path(name: str) -> Path:
+    """Small JSON files next to settings.toml for what doesn't fit its flat keys (Setup Lab's per car + track
+    series choices, the coach's settings)."""
+    return app.settings_path().parent / EXTRA_FILES[name]
+
+
+def load_extra(name: str) -> dict:
+    """The saved JSON for name, or {} when there is none or it is damaged."""
+    try:
+        d = json.loads(_extra_path(name).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def save_extra(name: str, data: dict) -> None:
+    """Raises OSError when it can't be written."""
+    with _SAVE_LOCK:
+        fsutil.write_json(_extra_path(name), data, mkdir=True)
+
+
 def _example_text() -> str:
     ex = app.RES / "settings.example.toml"   # next to the code from source; bundled in the installed app
     try:
@@ -409,6 +473,10 @@ def public_view() -> dict:
         # 2.7.5 RaceCap link: the library folder RaceCap uses. Only its Races folder is ever read.
         "racecap_library": str(raw.get("racecap_library") or "").strip()[:MAX_FOLDER] or None,
         "share_my_cards": raw.get("share_my_cards") is True,
+        # 2.12 Setup Lab and Coach: where iRacing saves telemetry (.ibt). Empty = Documents\iRacing\telemetry.
+        "iracing_folder": str(raw.get("iracing_folder") or "").strip()[:MAX_FOLDER] or None,
+        "telemetry_folder": str(telemetry_folder(raw)),
+        "telemetry_folder_ok": False,
         # 2.5 Discord webhook: saved or not, and the end of the webhook id. Never the address or its token.
         "discord_saved": False,
         "discord_hint": None,
@@ -420,6 +488,10 @@ def public_view() -> dict:
     if hook:
         out["discord_saved"] = True
         out["discord_hint"] = webhook_hint(hook)
+    try:
+        out["telemetry_folder_ok"] = Path(out["telemetry_folder"]).is_dir()
+    except (OSError, ValueError):
+        pass
     out["share_as"] = None
     if out["team_cards_folder"]:
         try:
@@ -648,6 +720,8 @@ def save(updates: dict) -> dict:
         clean["racecap_library"] = v
     if "team_cards_folder" in updates:
         clean["team_cards_folder"] = clean_team_folder(updates["team_cards_folder"])
+    if "iracing_folder" in updates:
+        clean["iracing_folder"] = clean_iracing_folder(updates["iracing_folder"])
     if "share_my_cards" in updates:
         v = updates["share_my_cards"]
         if not isinstance(v, bool):

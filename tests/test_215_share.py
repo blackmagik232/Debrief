@@ -99,6 +99,24 @@ t5 = ss.share_text(with_pair(verdict="not enough to tell",
 check("not enough laps to tell yet" in t5 and "swazi" not in t5.lower(), f"missing laps, file name removed: {t5}")
 t6 = ss.share_text(with_pair(more_laps=None, diff_s=0.04))
 check("smaller than 0.1 s" in t6, t6)
+# a setup named with brackets of its own: nothing of the name may leak (2.15 review)
+for nm in ("Swazi Williams (v2) quali", "Overdriver's, changed", "a (b (c)) d"):
+    rp = with_pair(verdict="confounded",
+                   confounders=[f"the track was 6 °C warmer for Setup B ({nm}) than for Setup A ({nm})"])
+    rp["setups"] = [{"id": "A", "label": f"Setup A ({nm})", "name": nm, "names": [nm], "files": []},
+                    {"id": "B", "label": f"Setup B ({nm})", "name": nm, "names": [nm], "files": []}]
+    tt = ss.share_text(rp)
+    check("for Setup B than for Setup A)." in tt and "quali" not in tt and "Williams" not in tt and "v2" not in tt
+          and "Overdriver" not in tt and "))" not in tt, f"name with brackets removed: {tt}")
+    # without the report knowing the name, brackets inside brackets still go whole
+    rp.pop("setups")
+    tt = ss.share_text(rp)
+    check("quali" not in tt and "Williams" not in tt and "))" not in tt and "Overdriver" not in tt, f"... unknown name: {tt}")
+# a name used on its own in a reason (not in brackets) is removed too
+rp = with_pair(verdict="confounded", confounders=["Swazi Williams (v2) quali was driven 6 °C warmer"])
+rp["setups"] = [{"id": "B", "label": "Setup B (Swazi Williams (v2) quali)", "name": "Swazi Williams (v2) quali"}]
+tt = ss.share_text(rp)
+check("Swazi" not in tt and "quali" not in tt, f"a bare known name is removed: {tt}")
 for x in (t1, t2, t3, t4, t5, t6):
     private_free(x, "verdict text")
 

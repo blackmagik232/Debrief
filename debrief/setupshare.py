@@ -118,15 +118,51 @@ def _result(rep: dict, a: str, b: str) -> str:
             return f"Result: a gap smaller than {setuplab.MIN_DIFF:.1f} s a lap, which counts as no real difference ({laps})."
         return f"Result: no clear difference: too close to tell apart ({laps})."
     if v == "confounded":
-        why = "; ".join(_clean(x) for x in (p.get("confounders") or [])[:2])
+        why = "; ".join(_clean(_strip_names(x, rep)) for x in (p.get("confounders") or [])[:2])
         return f"Result: can't be compared fairly yet ({why})." if why else "Result: can't be compared fairly yet."
-    miss = [_clean(re.sub(r"\s*\(([^()]*)\)", r", \1", _strip_names(x))) for x in (p.get("missing") or [])]
+    miss = [_clean(re.sub(r"\s*\(([^()]*)\)", r", \1", _strip_names(x, rep))) for x in (p.get("missing") or [])]
     return "Result: not enough laps to tell yet" + (f" ({'; '.join(miss)})." if miss else ".")
 
 
-def _strip_names(s: str) -> str:
-    """'Setup B (swazi_zolder.sto)' -> 'Setup B': setup file names often carry a person's name."""
-    return re.sub(r"(Setup [A-Z]+) \([^)]*\)", r"\1", s)
+def _known_names(rep: dict) -> list:
+    """Every setup name, label and file name the report knows (setup names often carry a person's name), longest
+    first so a name containing another is removed whole."""
+    out = set()
+    for st in (rep.get("setups") or []) + ((rep.get("compare") or {}).get("setups") or []):
+        if not isinstance(st, dict):
+            continue
+        for v in [st.get("name")] + list(st.get("names") or []) + list(st.get("files") or []):
+            if isinstance(v, dict):
+                v = v.get("file") or v.get("name")
+            if isinstance(v, str) and v.strip():
+                out.add(v.strip())
+                out.add(v.strip().rsplit(".", 1)[0])
+        lab = str(st.get("label") or "")
+        if lab.startswith("Setup ") and lab.endswith(")") and " (" in lab:
+            out.add(lab[lab.index(" (") + 2:-1])
+    return sorted((x for x in out if len(x) >= 3), key=len, reverse=True)
+
+
+def _strip_names(s: str, rep: dict | None = None) -> str:
+    """'Setup B (Swazi Williams (v2) quali)' -> 'Setup B': every known setup name and label is removed literally
+    (brackets inside a name can't leak part of it), then any "Setup B (...)" left keeps only "Setup B"."""
+    s = str(s or "")
+    for nm in _known_names(rep or {}):
+        s = s.replace(f" ({nm})", "").replace(nm, "")
+    out, i = [], 0
+    for m in re.finditer(r"Setup [A-Z]{1,3} \(", s):
+        if m.start() < i:
+            continue
+        depth, j = 0, m.end() - 1
+        while j < len(s):
+            depth += {"(": 1, ")": -1}.get(s[j], 0)
+            if depth == 0:
+                break
+            j += 1
+        out.append(s[i:m.end() - 2])                   # "...Setup B"
+        i = j + 1 if j < len(s) else len(s)           # an unclosed bracket: drop the rest
+    out.append(s[i:])
+    return "".join(out)
 
 
 def share(report: dict, a: str | None = None, b: str | None = None) -> dict:
@@ -149,7 +185,7 @@ def share(report: dict, a: str | None = None, b: str | None = None) -> dict:
             chg = f"Setup {b} vs {a}: " + ", ".join(shown) + (f", and {more} more change{'s' if more != 1 else ''}" if more > 0 else "") + "."
         else:
             chg = f"Setup {b} vs {a}: only fuel or garage results changed, no settings."
-        res = _strip_names(_result(rep, a, b))
+        res = _strip_names(_result(rep, a, b), rep)
         text = " ".join([head, chg, res])
         while len(text) > MAX_CHARS and shown:
             shown = shown[:-1]

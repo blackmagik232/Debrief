@@ -96,10 +96,10 @@ FRAME_BRIDGE = ("<script>/* debrief-frame-bridge */(function(){if(parent===windo
                 "document.addEventListener('click',function(e){var a=e.target&&e.target.closest&&"
                 "e.target.closest('a[href]');if(!a)return;var u;try{u=new URL(a.getAttribute('href'),"
                 "document.baseURI)}catch(x){return}if(u.origin!==P){a.target='_blank';a.rel='noreferrer'}},true);"
-                # 2.8: the sidebar owns Progress / Season / Skills / Goals, and these keys work inside the page too (2.12: Ctrl+1-9)
+                # 2.8: the sidebar owns Progress / Season / Skills / Goals, and these keys work inside the page too (2.12: Ctrl+1-9, 2.13: Ctrl+0)
                 "document.body&&document.body.classList.add('in-shell');"
                 "addEventListener('keydown',function(e){var k=String(e.key).toLowerCase(),m=null,t=e.target;"
-                "if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&/^[1-9]$/.test(k))m='page'+k;"
+                "if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&/^[0-9]$/.test(k))m='page'+k;"
                 "else if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey&&(k==='j'||k==='k')&&"
                 "!(t&&t.closest&&t.closest('input,select,textarea,[contenteditable]')))m=k==='j'?'prev':'next';"
                 "if(!m)return;e.preventDefault();try{parent.postMessage({type:'debrief-key',key:m},P)}catch(x){}});"
@@ -1273,6 +1273,139 @@ def redact_webhook(text: str, url: str | None) -> str:
     return re.sub(r"(discord(?:app)?\.com/api/webhooks/\d+/)[A-Za-z0-9_-]+", r"\1…", text)
 
 
+# ---------------------------------------------------------------- Practice: session review and corner coach (2.13)
+PRACTICE_CACHE = "practice"         # folder in the cache folder: one JSON file per worked-out result
+PRACTICE_VERSION = 1                # bump when a result's shape changes, so old cache files are not used
+PRACTICE_MEM = 48                   # results kept in memory
+PRACTICE_DISK = 300                 # result files kept in the cache folder (the oldest go first)
+CORNER_FILES = 10                   # the corner coach reads at most this many recent files of one car + track ...
+CORNER_DAYS = 30                    # ... from at most this many days before the newest of them
+SESSION_ID_OK = re.compile(r"^[^\x00-\x1f<>\"]{1,400}$")
+
+
+def practice_key(kind: str, paths, extra=None) -> str:
+    """A name for one result: what it is plus each file's name, size and change time, so a changed or new file
+    makes a new result. Raises OSError when a file is gone."""
+    files = []
+    for p in paths:
+        st = Path(p).stat()
+        files.append([Path(p).name, st.st_size, st.st_mtime_ns])
+    raw = json.dumps([PRACTICE_VERSION, kind, sorted(files), extra], sort_keys=True, default=str)
+    return kind + "-" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:24]
+
+
+class PracticeStore:
+    """Session reviews and corner-coach reports, worked out once per set of files and kept in memory and in the
+    cache folder, so opening a session again is instant. Two requests for the same result wait for one another
+    instead of working it out twice. Only Debrief's own cache files are ever written or removed."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.mem = {}                   # key -> value (insertion order = age)
+        self.busy = {}                  # key -> lock while it is being worked out
+        self.made = 0                   # how many results were worked out (not read back): for tests
+        self.list_key, self.list_val = None, None
+
+    def get(self, cache_dir, key: str, make):
+        with self.lock:
+            if key in self.mem:
+                v = self.mem.pop(key)
+                self.mem[key] = v
+                return v
+            klock = self.busy.setdefault(key, threading.Lock())
+        with klock:
+            with self.lock:
+                if key in self.mem:
+                    return self.mem[key]
+            folder = Path(cache_dir) / PRACTICE_CACHE
+            path = folder / (key + ".json")
+            val = None
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict) and raw.get("key") == key:
+                    val = raw.get("value")
+            except (OSError, ValueError):
+                val = None
+            if val is None:
+                val = _jsonable(make())
+                with self.lock:
+                    self.made += 1
+                try:
+                    folder.mkdir(parents=True, exist_ok=True)
+                    tmp = path.with_suffix(".tmp")
+                    tmp.write_text(json.dumps({"key": key, "value": val}, allow_nan=False), encoding="utf-8")
+                    os.replace(tmp, path)
+                    self._prune(folder)
+                except (OSError, ValueError) as e:
+                    app.say(f"Practice: couldn't save a result to the cache ({type(e).__name__}: {e}).")
+            with self.lock:
+                self.mem[key] = val
+                while len(self.mem) > PRACTICE_MEM:
+                    self.mem.pop(next(iter(self.mem)))
+                self.busy.pop(key, None)
+        return val
+
+    @staticmethod
+    def _prune(folder: Path):
+        files = sorted(folder.glob("*.json"), key=lambda p: p.stat().st_mtime_ns)
+        for p in files[:max(0, len(files) - PRACTICE_DISK)]:
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+
+def _same_combo(s: dict, car_path, track_code) -> bool:
+    return (str(s.get("car_path") or "").lower() == str(car_path or "").lower()
+            and str(s.get("track_code") or "").lower() == str(track_code or "").lower())
+
+
+def corner_paths(sessions: list, car_path, track_code, upto=None) -> list:
+    """The telemetry files the corner coach reads for one car + track: the newest CORNER_FILES files (up to the
+    session that starts at `upto`, when given) from no more than CORNER_DAYS days before the newest. Oldest first."""
+    mine = [s for s in sessions if _same_combo(s, car_path, track_code)
+            and (upto is None or float(s.get("sort") or 0) <= float(upto) + 1e-6)]
+    mine.sort(key=lambda s: -float(s.get("sort") or 0))
+    out, newest = [], None
+    for s in mine:
+        srt = float(s.get("sort") or 0)
+        newest = srt if newest is None else newest
+        if newest - srt > CORNER_DAYS * 86400:
+            break
+        for p in reversed(s.get("paths") or []):
+            if len(out) >= CORNER_FILES:
+                break
+            out.append(p)
+        if len(out) >= CORNER_FILES:
+            break
+    return list(reversed(out))
+
+
+def corner_report(paths: list, sessions_used: int = 0) -> dict:
+    """The corner coach over these files, ready for the window and the live coach."""
+    from .. import cornercoach
+    if not paths:
+        return {"ok": False, "message": "No telemetry files for this car and track yet.", "cards": [], "unclear": [],
+                "fine": [], "summary": None, "laps": 0, "files": 0, "phrases": {}, "sessions": 0}
+    rep = cornercoach.analyze_files([str(p) for p in paths])
+    rep.pop("params", None)
+    rep["files"] = len(paths)
+    rep["sessions"] = sessions_used
+    rep["phrases"] = cornercoach.voice_phrases(rep, top_n=3)
+    return rep
+
+
+def weak_from_cards(rep: dict) -> list:
+    """Corner-coach cards as the live coach's focus corners: biggest loss first, each with its short phrase."""
+    out = []
+    for c in (rep or {}).get("cards") or []:
+        if not c.get("voice"):
+            continue
+        out.append({"id": c.get("id"), "apex_m": c.get("apex_m"), "lost_s": c.get("lost_s"), "phrase": c.get("voice"),
+                    "source": "corner coach"})
+    return out
+
+
 # ---------------------------------------------------------------- server
 class DebriefServer(ThreadingHTTPServer):
     daemon_threads = True
@@ -1296,6 +1429,8 @@ class DebriefServer(ThreadingHTTPServer):
         self.exit = os._exit         # replaced in tests
         # 2.12 Setup Lab: the saved telemetry index, kept in memory
         self.setuplab = SetupLabIndex()
+        # 2.13 Practice: session reviews and corner-coach reports, worked out once per set of files
+        self.practice = PracticeStore()
         # 2.12 live coach: one runner, never a Jobs job (it runs for an hour and must not block reviews)
         self.coach_lock = threading.Lock()
         self.coach = None             # livecoach.LiveRunner while started
@@ -1373,9 +1508,18 @@ class DebriefServer(ThreadingHTTPServer):
         return livecoach.Settings.from_dict(saved_coach_settings())
 
     def coach_weak_for(self, car: dict, track: dict) -> list:
-        """The weak corners for the car + track iRacing reports: prep.weak_corners on your saved race reviews of
-        that car at that track, matched by name (Garage 61's ids aren't iRacing's). None found: an empty list, and
-        the coach cues from your best lap only."""
+        """The weak corners for the car + track iRacing reports. 2.13: the corner coach's cards for that car and
+        track first (each with its short phrase, said after the corner); else prep.weak_corners on your saved race
+        reviews of that car at that track, matched by name (Garage 61's ids aren't iRacing's). None found: an empty
+        list, and the coach cues from your best lap only."""
+        try:
+            weak, laps = self.corner_weak_for(car, track)
+        except Exception:  # noqa: BLE001  (the race reviews still work)
+            app.say("ERROR reading the corner coach for the live coach:\n" + traceback.format_exc())
+            weak, laps = [], 0
+        if weak:
+            self.coach_weak_info = {"races": 0, "source": "corner coach", "laps": laps}
+            return weak
         self.coach_weak_info = {"races": 0}
         prep = app.optional_module("prep")
         try:
@@ -1390,6 +1534,55 @@ class DebriefServer(ThreadingHTTPServer):
                 and track_names_match(r.get("track"), tname)]
         self.coach_weak_info = {"races": len(mine)}
         return prep.weak_corners(mine) if mine else []
+
+    # ---------- Practice (2.13): telemetry sessions, the session review and the corner coach
+    def practice_sessions(self, cfg) -> tuple:
+        """(sessions newest first, with each file's full path; Setup Lab's index or None). Never opens more than
+        each file's header once (sessionibt remembers SubSessionIDs); the list is kept until the index changes."""
+        si = app.optional_module("sessionibt")
+        if si is None:
+            raise ValueError("Practice isn't available right now. Details were saved to debrief.log in "
+                             + app.data_folder_label() + ".")
+        idx, _keys = self.setuplab.load(setuplab_cache_path(cfg))
+        if idx is None:
+            return [], None
+        folder = settings_io.telemetry_folder(cfg)
+        with self.setuplab.lock:
+            lk = (self.setuplab.key, str(folder))
+        with self.practice.lock:
+            if self.practice.list_key == lk:
+                return self.practice.list_val, idx
+        ss = si.sessions(dict(idx, folder=str(folder)))
+        with self.practice.lock:
+            self.practice.list_key, self.practice.list_val = lk, ss
+        return ss, idx
+
+    def corner_coach_for(self, cfg, sessions: list, car_path, track_code, upto=None) -> dict:
+        """The corner coach for one car + track over its recent files (corner_paths), cached per set of files."""
+        paths = corner_paths(sessions, car_path, track_code, upto)
+        used = sum(1 for s in sessions if set(s.get("paths") or []) & set(paths))
+        try:
+            key = practice_key("corners", paths)
+        except OSError:
+            return {"ok": False, "message": "Some telemetry files have gone. Press Read my telemetry again.",
+                    "cards": [], "unclear": [], "fine": [], "summary": None, "laps": 0, "files": 0, "phrases": {}}
+        return self.practice.get(cfg["cache_dir"], key, lambda: corner_report(paths, used))
+
+    def corner_weak_for(self, car: dict, track: dict) -> tuple:
+        """(the corner coach's cards as focus corners, clean laps they come from) for the car + track iRacing
+        reports, or ([], 0)."""
+        cp, tc = (car or {}).get("path"), (track or {}).get("code")
+        if not cp or not tc:
+            return [], 0
+        try:
+            cfg = app.load_settings()
+        except SystemExit:
+            return [], 0
+        ss, idx = self.practice_sessions(cfg)
+        if not idx or not any(_same_combo(s, cp, tc) for s in ss):
+            return [], 0
+        rep = self.corner_coach_for(cfg, ss, cp, tc)
+        return weak_from_cards(rep), int(rep.get("laps") or 0)
 
     def start_coach(self) -> dict:
         """Start listening to iRacing and coaching. Never raises: a problem is a message, and the log has the rest.
@@ -1525,7 +1718,11 @@ class DebriefServer(ThreadingHTTPServer):
         st["hotkey"] = {"key": "Ctrl+Shift+M", "on": bool(hk is not None and getattr(hk, "registered", False))}
         wi = self.coach_weak_info
         note = None
-        if st.get("reference") and not st.get("weak"):
+        if st.get("weak") and wi is not None and wi.get("source") == "corner coach":
+            n = int(wi.get("laps") or 0)
+            note = (f"From the Corner coach: your last {n} clean laps of this car here. After each focus corner it "
+                    "says the one thing to try there.")
+        elif st.get("reference") and not st.get("weak"):
             if wi is not None and not wi.get("races"):
                 note = "No saved race reviews of this car at this track, so the cues come from your best lap only."
             elif wi is not None:
@@ -1823,12 +2020,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._sample()
         if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/markers", "api/pages", "api/sessions", "api/prepare", "api/prepfocus",
                  "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand",
-                 "api/diagnostics", "api/setuplab/combos", "api/setuplab/report", "api/coach/status"):
+                 "api/diagnostics", "api/setuplab/combos", "api/setuplab/report", "api/coach/status",
+                 "api/sessions-ibt", "api/session-review", "api/corner-coach"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
             try:
-                return getattr(self, "_get_" + r[4:].replace("/", "_"))(q)
+                return getattr(self, "_get_" + r[4:].replace("/", "_").replace("-", "_"))(q)
             except ValueError as e:
                 return self._json({"ok": False, "error": str(e)}, 400)
             except Garage61Error as e:
@@ -3124,3 +3322,70 @@ class Handler(BaseHTTPRequestHandler):
         self._module("voice")
         res = self.server.coach_test_voice()
         return self._json(res, 200 if res.get("ok") else 500)
+
+    # ---------- Practice (2.13): read only, from the telemetry iRacing saves on this PC
+    def _get_sessions_ibt(self, q):
+        """The telemetry sessions on this PC, newest first, from Setup Lab's saved index (no telemetry file is read
+        in full). Before the first read: indexed false, and the page offers Read my telemetry."""
+        cfg = self._cfg()
+        folder = settings_io.telemetry_folder(cfg)
+        try:
+            folder_ok = folder.is_dir()
+        except OSError:
+            folder_ok = False
+        ss, idx = self.server.practice_sessions(cfg)
+        _idx, keys = self._setuplab_index(cfg)
+        keep = ("id", "car", "car_path", "track", "track_code", "date", "last", "sort", "subsession", "files",
+                "session_types", "laps", "valid_laps", "clean_laps", "best", "median", "surface_temp")
+        return self._json(_jsonable({
+            "ok": True, "folder": str(folder), "folder_ok": folder_ok, "indexed": idx is not None,
+            "unread": unread_files(folder, keys) if folder_ok else None, "running": self.server.jobs.kind == "setuplab",
+            "sessions": [{k: x.get(k) for k in keep} for x in ss]}))
+
+    def _practice_session(self, cfg, q) -> tuple:
+        sid = q.get("id")
+        if not isinstance(sid, str) or not SESSION_ID_OK.match(sid):
+            raise ValueError("That session wasn't found.")
+        ss, idx = self.server.practice_sessions(cfg)
+        if idx is None:
+            raise ValueError("Read your telemetry first.")
+        me = next((x for x in ss if x.get("id") == sid), None)
+        if me is None:
+            raise ValueError("That session wasn't found. If it is new, press Read my telemetry.")
+        return me, ss, idx
+
+    def _get_session_review(self, q):
+        """One session reviewed (sessionibt.review), with the corner coach for its car and track over the recent
+        files up to this session. Worked out once per set of files, then read from the cache."""
+        cfg = self._cfg()
+        si = self._module("sessionibt")
+        me, ss, idx = self._practice_session(cfg, q)
+        earlier = [{k: v for k, v in x.items() if k != "paths"} for x in ss
+                   if _same_combo(x, me["car_path"], me["track_code"]) and x["sort"] < me["sort"]]
+        hist = [[x.get("id"), x.get("best"), x.get("median")] for x in earlier]
+        try:
+            key = practice_key("review", me.get("paths") or [], hist)
+        except OSError:
+            raise ValueError("Some of this session's telemetry files have gone. Press Read my telemetry again.")
+        rv = self.server.practice.get(cfg["cache_dir"], key,
+                                      lambda: si.review(me.get("paths") or [], history=earlier, idx=idx))
+        cards = self.server.corner_coach_for(cfg, ss, me["car_path"], me["track_code"], upto=me["sort"])
+        sess = {k: v for k, v in me.items() if k != "paths"}
+        return self._json(_jsonable({"ok": True, "session": sess, "review": rv, "corners": cards,
+                                     "latest": ss[0].get("id") == me.get("id") if ss else False}))
+
+    def _get_corner_coach(self, q):
+        """The corner coach for one car + track over its most recent files (what the live coach uses)."""
+        cfg = self._cfg()
+        self._module("cornercoach")
+        car, track = q.get("car"), q.get("track")
+        if not isinstance(car, str) or not IDENT_OK.match(car) or not isinstance(track, str) or not IDENT_OK.match(track):
+            raise ValueError("Pick a car and track.")
+        ss, idx = self.server.practice_sessions(cfg)
+        if idx is None:
+            raise ValueError("Read your telemetry first.")
+        mine = [x for x in ss if _same_combo(x, car, track)]
+        rep = self.server.corner_coach_for(cfg, ss, car, track) if mine else corner_report([])
+        name = {"car": mine[0]["car"], "track": mine[0]["track"]} if mine else {"car": car, "track": track}
+        return self._json(_jsonable({"ok": True, **name, "car_path": car, "track_code": track, "report": rep,
+                                     "focus": weak_from_cards(rep)}))

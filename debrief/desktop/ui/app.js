@@ -1403,6 +1403,7 @@ async function loadSetupLab(withReport){let j;try{j=await api('setuplab/combos')
   if(j.running&&!polling)poll();
   if(!withReport)return;
   if(!j.folder_ok)slEmpty('Debrief can\'t find your telemetry folder','iRacing saves telemetry in Documents\\iRacing\\telemetry. If yours is somewhere else, set the folder in Settings > Setup Lab and Coach. '+TEL_HOW);
+  else if(!j.indexed&&j.unread===0&&!j.running)slEmpty('No telemetry files yet',TEL_HOW+' Then press Read my telemetry.');
   else if(!j.indexed)slEmpty(j.running?'Reading your telemetry...':'Not read yet','Press Read my telemetry. The first time reads every file, so a few hundred files take a few minutes; after that only new ones.');
   else if(!combos.length)slEmpty('No telemetry files yet',TEL_HOW+' Then press Read my telemetry.');
   else loadSlReport()}
@@ -1757,6 +1758,7 @@ function renderPrTel(){const j=pr.data;if(!j)return;const run=!!j.running||(last
 function prEmpty(host,title,text){const e=h('div','panel pvnone');e.append(h('h2','pvtrack',title),h('p','lede',text));host.replaceChildren(e)}
 function renderPrList(){const j=pr.data,host=$('prSessions'),ss=(j&&j.sessions)||[];if(!j)return;
   if(!j.folder_ok){prEmpty(host,'Debrief can\'t find your telemetry folder','iRacing saves telemetry in Documents\\iRacing\\telemetry. If yours is somewhere else, set the folder in Settings > Setup Lab and Coach. '+TEL_HOW);return}
+  if(!j.indexed&&j.unread===0&&!j.running){prEmpty(host,'No telemetry files yet',TEL_HOW+' Then press Read my telemetry.');return}
   if(!j.indexed){prEmpty(host,j.running?'Reading your telemetry...':'Not read yet','Press Read my telemetry. A few hundred files take a few minutes the first time; after that only new ones are read.');return}
   if(!ss.length){prEmpty(host,'No telemetry files yet',TEL_HOW+' Then press Read my telemetry.');return}
   const box=h('div','panel'),top=h('div','phead');top.append(h('h3',null,'Your sessions'),h('span','note','Newest first'));box.append(top);
@@ -1984,7 +1986,7 @@ function renderFirstRun(){const box=$('firstRun'),j=fr.data;if(!box)return;
   const want=!!(j&&where&&(fr.force||j.show));box.hidden=!want;if(!want)return;
   if(where==='wel'){const host=$('vWelcome').querySelector('.col');
     // with the Garage 61 steps showing, the checklist goes above them and leaves its own Garage 61 step to them
-    if(guideOn){if(box.nextElementSibling!==$('guide'))host.insertBefore(box,$('guide'))}else if(box.parentNode!==host||box.nextElementSibling)host.append(box)}
+    if(guideOn){if(box.nextElementSibling!==$('guideHead'))host.insertBefore(box,$('guideHead'))}else if(box.parentNode!==host||box.nextElementSibling)host.append(box)}
   else if(box.previousElementSibling!==$('lastRace'))$('lastRace').after(box);
   const steps=(j.steps||[]).filter(st=>!(where==='wel'&&guideOn&&st.id==='token'));
   const nDone=steps.filter(st=>st.done).length;

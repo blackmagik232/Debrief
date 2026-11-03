@@ -41,6 +41,7 @@ check(list(fr.STEP_IDS) == ["folder", "record", "telemetry", "session", "voice",
       "2.18: telemetry first, Garage 61 last")
 check(all(s["action"] for s in st if s["id"] != "record") and all(s["title"] and s["text"] for s in st),
       "each has a title and text, and an action unless it's done in iRacing")
+check(by_id({"steps": fr.steps({"folder": True})})["telemetry"]["action"] is None, "an empty folder: nothing to read")
 check(by_id({"steps": st})["record"]["action"] is None and "Alt+L" in by_id({"steps": st})["record"]["text"],
       "record: says iRacing records nothing until Alt+L")
 txt = json.dumps(st, ensure_ascii=False)

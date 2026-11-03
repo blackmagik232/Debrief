@@ -18,7 +18,8 @@ the telemetry iRacing saves on this PC; Garage 61 is last and only race reviews,
     token       a Garage 61 personal access token is saved and      (settings.toml, settings_io.token_present;
                 Garage 61 didn't reject it at the last check        firstrun.json "token_rejected")
 "action" is what the window's button for the step does: "settings_token", "settings_folder", "read_telemetry",
-"practice", "test_voice" (None when the step is done, and for "record", which is done in iRacing). Nothing here raises; a damaged state file counts as empty.
+"practice", "test_voice" (None when the step is done, for "record", which is done in iRacing, and for "telemetry"
+while the folder has no .ibt files to read). Nothing here raises; a damaged state file counts as empty.
 """
 from __future__ import annotations
 
@@ -69,7 +70,8 @@ def steps(facts: dict) -> list:
     add("telemetry", files > 0, "Read your telemetry",
         ("Debrief has found telemetry files but hasn't read them yet. Click Read my telemetry." if ibt else
          "Once iRacing has saved some telemetry, Debrief reads it from the folder."),
-        f"{files} telemetry file{'s' if files != 1 else ''} read.", "read_telemetry")
+        f"{files} telemetry file{'s' if files != 1 else ''} read.",
+        "read_telemetry" if ibt or not f.get("folder") else None)   # nothing in the folder yet: nothing to read
     add("session", best >= MIN_CLEAN, f"Drive {MIN_CLEAN} clean laps in one session",
         (f"Your best session so far has {best} clean lap{'s' if best != 1 else ''}. Drive at least {MIN_CLEAN} clean "
          f"laps in one go (no offs, no pit stops) so Debrief can pick one thing for you to work on." if files else

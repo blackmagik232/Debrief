@@ -384,7 +384,7 @@ def friendly(e: BaseException) -> str:
             return "No Garage 61 token saved yet. Open Settings and paste your token."
         m = m.replace("Check settings.toml, or create", "Paste it again in Settings, or create")
         m = m.replace("Open settings.toml and paste", "Open Settings and paste")
-        return m if m.startswith("Garage 61") else f"Garage 61: {m}"
+        return m if m.startswith("Garage 61") or "reach Garage 61" in m else f"Garage 61: {m}"   # 2.18: not twice
     if isinstance(e, SystemExit):
         m = str(e.code) if e.code not in (None, 0) else "Stopped."
         if "settings.toml" in m or "Setup.bat" in m:   # app.load_settings speaks to the from-source setup

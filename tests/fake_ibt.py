@@ -45,11 +45,13 @@ def _yaml_block(d, ind=1):
 def session_text(setup=None, session="Practice", car="Mclaren 570s GT4", car_path="mclaren570sgt4", car_id=135,
                  track="Zolder Circuit", track_code="zolder gp", track_id=200, surface_temp=22.2, wet=False,
                  name="Swazi Williams", setup_name="baseline.sto", other_cars=(), session_secs=None,
-                 fixed_setup=None, official=None, setup_modified=None, setup_load=None):
+                 fixed_setup=None, official=None, setup_modified=None, setup_load=None, subsession=None,
+                 fuel_max=None):
     sessions = session if isinstance(session, (list, tuple)) else [session]
     lines = ["---", "WeekendInfo:", f" TrackName: {track_code}", f" TrackID: {track_id}", " TrackLength: 3.98 km",
              f" TrackDisplayName: {track}", " TrackConfigName: Grand Prix", f" TrackSurfaceTemp: {surface_temp:.2f} C",
-             " TrackAirTemp: 18.00 C"] + ([f" Official: {int(official)}"] if official is not None else []) + [
+             " TrackAirTemp: 18.00 C"] + ([f" Official: {int(official)}"] if official is not None else []) + (
+             [f" SessionID: {int(subsession) + 1000}", f" SubSessionID: {int(subsession)}"] if subsession is not None else []) + [
              " WeekendOptions:", f"  TrackWater: {'Wet' if wet else 'Dry'}"] + (
              [f"  IsFixedSetup: {int(fixed_setup)}"] if fixed_setup is not None else []) + [
              "SessionInfo:", " Sessions:"]
@@ -58,6 +60,8 @@ def session_text(setup=None, session="Practice", car="Mclaren 570s GT4", car_pat
         if session_secs is not None:
             lines += ["   SessionLaps: unlimited", f"   SessionTime: {float(session_secs):.4f} sec"]
     lines += ["DriverInfo:", " DriverCarIdx: 3", f" DriverSetupName: {setup_name}"]
+    if fuel_max is not None:
+        lines += [f" DriverCarFuelMaxLtr: {float(fuel_max):.3f}", " DriverCarMaxFuelPct: 1.000"]
     if setup_modified is not None:
         lines += [f" DriverSetupIsModified: {int(setup_modified)}"]
     if setup_load is not None:
@@ -77,7 +81,7 @@ CORNERS = ("LF", "RF", "LR", "RR")
 
 def make(path, laps, setup=None, session="Practice", rate=60, lead=5.0, offs=(), pits=(), incidents=(), untimed=(),
          corner=None, brake_at=None, traffic=(), pit_temps=None, pressure=None, ride=None, fuel=None, track_temp=None,
-         start_date=1_790_000_000, **kw):
+         start_date=1_790_000_000, pace=None, air_temp=None, **kw):
     """A file of consecutive laps (seconds each) after a `lead`-second out lap. offs/pits/incidents/untimed are lap
     indexes (0 = first timed lap). corner: optional function (lap_index, pct) -> (speed m/s, brake 0..1) to shape a
     lap; default is a simple two-corner lap. Extra channels: tyre carcass temps change only in pits.
@@ -91,7 +95,11 @@ def make(path, laps, setup=None, session="Practice", rate=60, lead=5.0, offs=(),
       fuel:      (start litres, litres per lap) adds a FuelLevel channel falling through each lap.
       track_temp: adds a live TrackTempCrew channel (deg C).
       traffic:   lap indexes with a car alongside (CarLeftRight = 2) for the middle 30% of the lap.
-      start_date: unix seconds in the file header."""
+      start_date: unix seconds in the file header.
+      pace:      function (lap_index, pct) -> relative speed (> 0) that shapes how LapDistPct moves through the lap
+                 (the lap time stays as given), so different laps can be quick in different parts of the lap.
+      air_temp:  adds a live AirTemp channel (deg C).
+      subsession / fuel_max (session text): SubSessionID, and DriverCarFuelMaxLtr (tank size, litres)."""
     times = [lead] + list(laps)
     n = int(sum(times) * rate) + 4 * rate
     lap = np.zeros(n, np.int32)
@@ -112,6 +120,12 @@ def make(path, laps, setup=None, session="Practice", rate=60, lead=5.0, offs=(),
         seg = slice(t0, min(n, t0 + k))
         m = seg.stop - seg.start
         p = (np.arange(m) / k) if i > 0 else (0.6 + 0.4 * np.arange(m) / k)
+        if pace is not None and i > 0:
+            u = np.linspace(0.0, 1.0, 2001)
+            w = np.array([max(1e-3, float(pace(i - 1, float(x)))) for x in u])
+            tau = np.concatenate(([0.0], np.cumsum((1.0 / w[1:] + 1.0 / w[:-1]) / 2)))
+            tau /= tau[-1]
+            p = np.interp(np.arange(m) / k, tau, u)
         lap[seg] = i
         pct[seg] = p
         li = i - 1
@@ -185,5 +199,7 @@ def make(path, laps, setup=None, session="Practice", rate=60, lead=5.0, offs=(),
         cols["FuelLevel"] = ("f", (f0 - used).astype(np.float32))
     if track_temp is not None:
         cols["TrackTempCrew"] = ("f", np.full(n, float(track_temp), np.float32))
+    if air_temp is not None:
+        cols["AirTemp"] = ("f", np.full(n, float(air_temp), np.float32))
     ibt.write_fake(path, session_text(setup=setup, session=session, **kw), cols, tick_rate=rate, start_date=start_date)
     return path

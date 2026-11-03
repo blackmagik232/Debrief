@@ -462,6 +462,8 @@ def public_view() -> dict:
         "sync_telemetry": "none" if str(raw.get("sync_telemetry", "best")).lower() == "none" else "best",
         "check_updates": bool(raw.get("check_updates", True)),
         "salutation": clean_salutation(raw.get("salutation")),
+        # 2.18 Settings > Units: speeds in mph (default) or km/h on every page and in the coach's voice
+        "units": clean_units(raw.get("units")),
         "library_folder": None,
         "team_slug": str(raw.get("team_slug") or app.DEFAULT_TEAM).strip().lower() or app.DEFAULT_TEAM,
         # present/absent only: the values are never sent to the page
@@ -512,6 +514,31 @@ def public_view() -> dict:
             pass
         out["include_practice"] = bool(raw.get("include_practice", False))
     return out
+
+
+def clean_units(v) -> str:
+    """"mph" (the default) or "kmh". Anything odd in a hand-edited file reads as the default."""
+    from .. import units as _u
+    return "kmh" if isinstance(v, str) and _u.norm(v) == "kmh" else "mph"
+
+
+_UNITS_CACHE = {"key": None, "val": "mph"}
+
+
+def units() -> str:
+    """The saved speed unit, read again only when settings.toml changes (the window asks on every reply)."""
+    p = app.settings_path()
+    try:
+        st = p.stat()
+        key = (str(p), st.st_mtime_ns, st.st_size)
+    except OSError:
+        return "mph"
+    if _UNITS_CACHE["key"] == key:
+        return _UNITS_CACHE["val"]
+    raw, _err = _raw()
+    val = clean_units(raw.get("units"))
+    _UNITS_CACHE.update(key=key, val=val)
+    return val
 
 
 def clean_salutation(v) -> str:
@@ -696,6 +723,11 @@ def save(updates: dict) -> dict:
         if re.search(r"[\x00-\x1f\x7f<>]", v):
             raise ValueError("The salutation can't contain < or >.")
         clean["salutation"] = v
+    if "units" in updates:
+        v = updates["units"]
+        if v not in ("mph", "kmh"):
+            raise ValueError("Pick mph or km/h for speeds.")
+        clean["units"] = v
     if "team_slug" in updates:
         slug = str(updates["team_slug"] or "").strip().lower()
         if not _SLUG_OK.match(slug):

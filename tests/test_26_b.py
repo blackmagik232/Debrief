@@ -312,7 +312,7 @@ def test_refresh_all_rebuilds_library_once_at_end():
     finally:
         library.rebuild = real
     assert n >= 5 and len(calls) == 1 and (lib / "index.html").is_file()
-    assert (lib / ".layout").read_text(encoding="utf-8").strip() == report.LAYOUT == "2.10.0"
+    assert (lib / ".layout").read_text(encoding="utf-8").strip() == report.LAYOUT == "2.18.0"
 
 
 def test_lib_page_not_rebuilt_while_refresh_runs():

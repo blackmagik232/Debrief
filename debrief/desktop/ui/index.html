@@ -470,7 +470,7 @@
         <div class="tblwrap"><table class="maptbl" id="coLogTbl"><thead><tr><th>Date</th><th>Car and track</th><th>Laps</th><th>Said</th><th>Dropped</th><th></th></tr></thead><tbody id="coLogList"></tbody></table></div>
         <div id="coLogView" hidden>
           <div class="phead"><h4 id="coLogTitle"></h4><button type="button" class="btn" id="coLogCopy">Copy for Claude</button><span class="msg" id="coLogMsg" role="status"></span></div>
-          <div class="tblwrap colog"><table class="maptbl"><thead><tr><th>Lap</th><th>Where</th><th>km/h</th><th>What</th><th>Cue</th><th>Why</th></tr></thead><tbody id="coLogRows"></tbody></table></div>
+          <div class="tblwrap colog"><table class="maptbl"><thead><tr><th>Lap</th><th>Where</th><th id="coLogSpd">mph</th><th>What</th><th>Cue</th><th>Why</th></tr></thead><tbody id="coLogRows"></tbody></table></div>
         </div>
       </details>
       <details class="panel prepmore" id="coSet">
@@ -581,6 +581,15 @@
         </label>
         <p class="note" id="salutNote">Used in the race summary ("Sir, you completed..."). Up to 20 characters. Leave it empty for a plain "You completed...". New reviews use it.</p>
         <div class="row"><button type="submit" class="btn">Save options</button><span class="msg" id="optMsg" role="status"></span></div>
+      </form>
+
+      <form class="panel" id="fUnits">
+        <div class="phead"><h3>Units</h3></div>
+        <label class="field" for="unitsSel"><span>Speeds</span>
+          <select id="unitsSel"><option value="mph">mph</option><option value="kmh">km/h</option></select>
+        </label>
+        <p class="note">Every page, every review and the coach's voice use this. Lap times are always minutes:seconds.thousandths, like 1:35.849.</p>
+        <div class="row"><button type="submit" class="btn">Save units</button><span class="msg" id="unitsMsg" role="status"></span></div>
       </form>
 
       <form class="panel" id="fSync">

@@ -263,8 +263,9 @@ def _band_report(rs: list) -> dict:
                for c in CORNERS if any(c in r["hot"] for r in g)}
         out["groups"].append({"cold": cold_text(k), "runs": len(g), "median": round(float(np.mean([r["median"] for r in g])), 3),
                               "hot": hot})
+    from .units import lap as _lap   # 2.18: one lap-time format (m:ss.000)
     listing = "; ".join(f"{g['cold']}: {g['runs']} run{'s' if g['runs'] != 1 else ''}, typical lap "
-                        f"{g['median']:.2f} s" for g in out["groups"])
+                        f"{_lap(g['median'])}" for g in out["groups"])
     if len(rs) < MIN_BAND_RUNS:
         out["text"] = (f"At {out['band']} track: only {len(rs)} run so far ({listing or 'no cold pressures recorded'}). "
                        f"Not enough to tell which pressure is quicker.")

@@ -394,7 +394,11 @@ def build(data: dict) -> dict:
                      "Debrief doesn't know what kind of start it was, so this isn't counted as a habit.",
                      round(d, 1), detail=l1_detail, laps=[1], corners=l1_corners)
         elif d <= 0.5 * k and len(laps) >= 5:
-            good("lap1", "Strong first lap", f"Lap 1 was within {max(d, 0):.1f} s of your typical pace.",
+            # 2.18: the words follow the sign (lap 1 quicker than typical was "within 0.0 s")
+            said = (f"Lap 1 was {-d:.1f} s quicker than your typical lap." if d <= -0.05 else
+                    f"Lap 1 was {d:.1f} s slower than your typical lap, close for a lap with a start." if d >= 0.05 else
+                    "Lap 1 was as quick as your typical lap.")
+            good("lap1", "Strong first lap", said,
                  detail=f"Lap 1 {fmt_t(lap1['t'])} against a typical {fmt_t(median)}.", laps=[1])
 
     slow = [n for n in _lap_list(counts.get("slow")) if n != 1 and n not in pit]

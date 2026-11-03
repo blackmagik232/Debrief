@@ -623,7 +623,8 @@ th,td{white-space:normal!important;overflow-wrap:break-word;max-width:none!impor
 
 <section id="corners">
   <div class="sechead"><h2>Corners</h2>
-  <p class="lede"><b>Time to find</b> is how much slower your typical lap is than your better laps in that corner: time you've already shown you can find. Click a corner to see it in Compare laps.</p></div>
+  <p class="lede"><b>Time to find</b> is how much slower your typical lap is than your better laps in that corner: time you've already shown you can find. Click a corner to see it in Compare laps.</p>
+  <p class="note">A corner here runs from its braking zone to its exit. In Best sectors added up each piece is longer (from the fastest point before a corner to the fastest point after it, so the pieces make a whole lap), so the same corner shows a longer time there.</p></div>
   <div class="panel"><div class="tablewrap"><table class="ctab" id="cornerTable"></table></div><div id="cornerMore"></div></div>
 </section>
 
@@ -1292,7 +1293,10 @@ safe('personal best',()=>{if(!PB||typeof D.best.t!=='number')return;const b=$('p
 safe('race result',()=>{if(!RES)return;const host=$('resultStats');const add=(lab,v,ctx)=>{const d=h('div');d.append(h('span',null,lab),h('b',null,v));if(ctx)d.append(h('i',null,ctx));host.append(d)};
   const n=v=>v!=null&&v!==''&&isFinite(+v)?+v:null;const fp=n(RES.finish_pos),sp=n(RES.start_pos),fs=n(RES.field_size);
   add('Finished','P'+fp,fs?'of '+fs:'');
-  if(sp!=null){const g=sp-fp;add('Started','P'+sp,g>0?'Gained '+plural(g,'place'):g<0?'Lost '+plural(-g,'place'):'Held position')}
+  // 2.18: "held" only when the race never moved you; a race that went P5 to P7 and back says so (the chart shows it)
+  const PS=((D.racecap&&Array.isArray(D.racecap.positions))?D.racecap.positions:[]).map(x=>x&&n(x.pos)).filter(x=>x!=null&&x>0);
+  const lo=PS.length?Math.min(...PS):null,hi=PS.length?Math.max(...PS):null;const moved=lo!=null&&hi>lo;
+  if(sp!=null){const g=sp-fp;add('Started','P'+sp,g>0?'Gained '+plural(g,'place')+' start to finish':g<0?'Lost '+plural(-g,'place')+' start to finish':moved?'Finished where you started, after running P'+lo+' to P'+hi:'Finished where you started')}
   if(n(RES.incidents)!=null)add('Incidents',n(RES.incidents)+'x');
   const ib=n(RES.irating_before),ia=n(RES.irating_after);if(ib!=null&&ia!=null)add('iRating',ib+' → '+ia,(ia-ib>=0?'+':'−')+Math.abs(ia-ib));else if(ia!=null)add('iRating',String(ia));
   const sb=n(RES.sr_before),sa=n(RES.sr_after);if(sb!=null&&sa!=null)add('Safety rating',sb.toFixed(2)+' → '+sa.toFixed(2),sg(sa-sb,2));else if(sa!=null)add('Safety rating',sa.toFixed(2));

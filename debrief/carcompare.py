@@ -41,6 +41,7 @@ from itertools import combinations
 from pathlib import Path
 
 import numpy as np
+from . import names as _nm   # 2.18: one display name per track and car
 
 VERSION = 2
 FIELD_FILE = "field.json"           # beside review.json: the parsed results table (server.py writes it on Save)
@@ -88,11 +89,13 @@ def car_key(name) -> str:
 class _Names:
     """One display name per track / car: names that are the same share the first one seen."""
 
-    def __init__(self, same):
-        self.same, self.names = same, []
+    def __init__(self, same, fmt=None):
+        self.same, self.names, self.fmt = same, [], fmt
 
     def key(self, name) -> str:
         name = " ".join(str(name or "").split()) or "Unknown"
+        if self.fmt is not None:   # 2.18: one spelling (names.track / names.car) before matching
+            name = self.fmt(name) or name
         for n in self.names:
             if self.same(n, name):
                 return n
@@ -285,7 +288,7 @@ def _same_venue(a, b) -> bool:
 
 
 def _tracks(races):
-    t = _Names(_same_track)
+    t = _Names(_same_track, _nm.track)
     for r in races:
         r["_track"] = t.key(r["track"])
     return t
@@ -294,7 +297,7 @@ def _tracks(races):
 def options(races) -> list:
     """Track and class pairs with at least two cars, most drivers first."""
     _tracks(races)
-    cars = _Names(_same_car)
+    cars = _Names(_same_car, _nm.car)
     agg = {}
     for r in races:
         for d in r["drivers"]:
@@ -510,7 +513,7 @@ def _person(d) -> str:
 def _observations(races, track, cls, cars_only=None):
     """One row per driver per race at this track and class (finishers only), and the counts."""
     _tracks(races)
-    names = _Names(_same_car)
+    names = _Names(_same_car, _nm.car)
     from .results_csv import clean_name
     obs, counts = [], {"races": 0, "results_races": 0, "scan_races": 0, "left_out": 0}
     for ri, r in enumerate(races):

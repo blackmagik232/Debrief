@@ -35,6 +35,8 @@ from pathlib import Path
 import numpy as np
 
 from debrief import ibt
+from . import names as _names   # 2.18: one display name per track and car
+from .units import lap as _names_lap   # 2.18: one lap-time format (m:ss.000)
 
 CACHE_VERSION = 3
 
@@ -453,8 +455,8 @@ def combos(idx: dict) -> list:
     for r in idx.get("files") or []:
         c, t = r.get("car") or {}, r.get("track") or {}
         key = ((c.get("path") or "").lower(), (t.get("code") or "").lower())
-        e = seen.setdefault(key, {"car_path": c.get("path"), "car": c.get("name"), "track_code": t.get("code"),
-                                  "track": " - ".join(x for x in (t.get("name"), t.get("config")) if x),
+        e = seen.setdefault(key, {"car_path": c.get("path"), "car": _names.car(c.get("name")) or c.get("name"), "track_code": t.get("code"),
+                                  "track": _names.track(t.get("name"), t.get("config")),
                                   "files": 0, "last": "", "_sort": 0})
         e["files"] += 1
         if (r.get("sort") or 0) >= e["_sort"]:
@@ -881,13 +883,13 @@ def _pair(a: dict, b: dict, ctx: dict | None = None) -> dict:
         out["verdict"] = "faster"
         out["faster"] = fast["id"]
         out["text"] = (f"{fast['label']} was faster than {slow['label']} by about {_fmt_s(abs(d))} s a lap "
-                       f"(typical clean lap {fast['pace']['median']:.2f} vs {slow['pace']['median']:.2f} s, "
+                       f"(typical clean lap {_names_lap(fast['pace']['median'])} vs {_names_lap(slow['pace']['median'])}, "
                        f"{fast['pace']['clean_laps']} and {slow['pace']['clean_laps']} clean laps)."
                        + (" " + out["caution"] if out["caution"] else ""))
         return out
     out["verdict"] = "no clear difference"
     out["caution"] = None
-    gap = f"typical laps {pa['median']:.2f} vs {pb['median']:.2f} s"
+    gap = f"typical laps {_names_lap(pa['median'])} vs {_names_lap(pb['median'])}"   # 2.18: one lap-time format
     if real:
         out["text"] = (f"{fast['label']} was about {_fmt_s(abs(d))} s a lap quicker than {slow['label']}: smaller than "
                        f"the {MIN_DIFF:.1f} s Debrief counts as a real difference.")
@@ -1689,9 +1691,9 @@ def report(folder, car_path, track_code, series_setup=None, cache_path=None, rac
     if not recs:
         out["notes"].append("No telemetry for this car and track yet.")
         return out
-    out["car"] = (recs[-1].get("car") or {}).get("name") or car_path
+    out["car"] = _names.car((recs[-1].get("car") or {}).get("name")) or car_path
     t = recs[-1].get("track") or {}
-    out["track"] = " - ".join(x for x in (t.get("name"), t.get("config")) if x) or track_code
+    out["track"] = _names.track(t.get("name"), t.get("config")) or track_code
     no_detail = [r["file"] for r in recs if not r.get("detail")]
     if no_detail:
         out["notes"].append(f"{len(no_detail)} file(s) had a setup but their channels could not be read.")

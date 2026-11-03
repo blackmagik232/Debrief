@@ -271,11 +271,28 @@ def _exit_150(d: dict) -> bool:
 
 
 def _skills(d: dict) -> dict | None:
+    return _skills_and_why(d)[0]
+
+
+def _skills_and_why(d: dict) -> tuple:
+    """(compact skill numbers or None, why there are none or None). 2.18: a review saved without a skills block
+    (made before 2.3 and never re-rendered) gets one worked out here from its saved traces (pure, no requests),
+    so the Skills tab never says "no skill scores yet" while the reviews hold what it needs. why is a
+    skills.for_review reason ("no_traces", "not_enough_clean_laps", ...) or "few_clean" (scored on fewer clean
+    laps than the Skills tab needs)."""
     try:
         from . import skills
-        return skills.compact(d.get("skills"))
+        blk = d.get("skills")
+        if not isinstance(blk, dict):
+            blk = skills.for_review(d)
+        c = skills.compact(blk)
+        if c is not None:
+            n = c.get("n_clean")
+            return c, ("few_clean" if isinstance(n, int) and n < skills.MIN_CLEAN else None)
+        why = blk.get("reason") if isinstance(blk, dict) else None
+        return None, str(why or "bad_data")
     except Exception:
-        return None
+        return None, "bad_data"
 
 
 def clean_best(d: dict):
@@ -343,11 +360,13 @@ def _row_from(d, p: Path) -> dict | None:
     refs = [r for r in (d.get("refs") or []) if isinstance(r, dict) and _num(r.get("t")) and not r.get("rival")]
     main = next((r for r in refs if r.get("main")), refs[0] if refs else None)
     counts = d.get("counts") or {}
-    track = str(m.get("track") or "Unknown track")
-    car = str(m.get("car") or "Unknown car")
+    from . import names   # 2.18: one spelling per track and car (names.track / names.car)
+    track = names.track(m.get("track")) or "Unknown track"
+    car = names.car(m.get("car")) or "Unknown car"
     clean = sum(1 for l in laps if l.get("clean"))
     ids = d.get("combo_ids") if isinstance(d.get("combo_ids"), dict) else {}
     day = local_day(m.get("started_at")) or p.parent.name[:10]
+    sk, sk_why = _skills_and_why(d)
     return {
         "dir": p.parent.name,
         "path": f"reviews/{p.parent.name}/index.html",
@@ -376,7 +395,8 @@ def _row_from(d, p: Path) -> dict | None:
         "result": _result(d, p.parent),
         # 2.3: compact skill numbers (loss per phase, per-mille of lap time) for the Skills tab; None on
         # reviews without a usable skills block (old reviews get one when the library refreshes)
-        "skills": _skills(d),
+        "skills": sk,
+        "skills_why": sk_why,
         # 2.7.1 (L4): reviews before 2.7.0 read exit speed 150 m after the apex; 2.7.0 scales it per corner
         # (corners[].exit_at_m). Old values can't be recomputed (no traces are kept), so they are flagged.
         "exit_150": _exit_150(d),
@@ -728,7 +748,8 @@ def season_summary(rows: list, include_practice: bool = False) -> dict:
 # missing or damaged index, another Debrief version or time zone) is worked out again and the index is
 # rewritten atomically. Losing the index only costs one slow scan.
 INDEX_FILE = ".rows.json"
-INDEX_VERSION = 2   # 2: rows gained "racecap" (the Skills tab's racecraft profile) and "driver"
+INDEX_VERSION = 3   # 2: rows gained "racecap" (the Skills tab's racecraft profile) and "driver"; 3 (2.18): skills
+                    # worked out for reviews saved without them, and "skills_why"
 RACY_NS = 3_000_000_000   # entries for files changed less than 3 s before they were read are re-read
 _INDEX_LOCK = __import__("threading").Lock()
 
@@ -866,6 +887,44 @@ def list_reviews(folder, _pbs: bool = True, include_practice: bool = False) -> l
     return rows
 
 
+def scan_count(folder) -> int:
+    """Races with a saved replay scan in the library (the Racing page's "replay scans")."""
+    try:
+        from . import racecap_link, replay_scan
+        root = replay_scan.scans_root(folder)
+        n = 0
+        for _sub, _slug, d in racecap_link.race_dirs(Path(root)) if Path(root).is_dir() else []:
+            try:
+                if (d / "scan").is_dir() and any((d / "scan").iterdir()):
+                    n += 1
+            except OSError:
+                continue
+        return n
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def counts(folder, rows: list | None = None) -> dict:
+    """2.18: one count of the saved reviews for every page, so they all start from the same numbers.
+    saved: reviews in the window's Saved reviews list; with_laps: those with a timed lap (the library rows the
+    Progress, Season, Skills and Goals tabs use); races / practice: with_laps split by session; no_laps: saved
+    but without a timed lap (counted nowhere else); scanned: race rows with a replay scan; scans: races with a
+    saved replay scan file; skills: race rows with skill scores. Pages that use a part of these say which part."""
+    folder = Path(folder)
+    sums = [s for s in review_summaries(folder) if s.get("n_laps") is not None]
+    rows = list_reviews(folder, _pbs=False) if rows is None else rows
+    races = race_rows(rows)
+    try:
+        from . import profile
+        scanned = len(profile.scanned_rows(races)[0])
+        skilled = sum(1 for r in races if profile._usable(r) is not None)
+    except Exception:  # noqa: BLE001
+        scanned = skilled = 0
+    return {"saved": len(sums), "with_laps": len(rows), "races": len(races), "practice": len(rows) - len(races),
+            "no_laps": max(0, len(sums) - len(rows)), "scanned": scanned, "scans": scan_count(folder),
+            "skills": skilled}
+
+
 def _atomic_write(path: Path, text: str) -> None:
     import os
     import tempfile
@@ -916,6 +975,7 @@ def rebuild(folder, rows: list | None = None) -> Path:
                               "don't set or compare against a personal best unless you tick \"Include practice "
                               "and qualifying\".",
              "n_practice": len(rows) - len(races),
+             "counts": counts(folder, rows),
              "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     html = report.render_library(rows, extra)
     out = folder / "index.html"

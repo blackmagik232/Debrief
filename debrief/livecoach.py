@@ -108,6 +108,7 @@ class Settings:
     quiet_hotkey: str = "ctrl+shift+n"    # mute for a minute
     fixed_laps: int = 2                 # a corner driven well this many passes in a row is left alone
     log_cues: bool = True               # write the cue log (coach-logs/*.jsonl)
+    units: str = "kmh"                  # 2.18: spoken speeds in "kmh" or "mph" (the window passes Settings > Units)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -787,6 +788,11 @@ class Coach:
         self._emit("dropped", cue, dropped=why)
 
     def _push(self, cue: Cue):
+        try:   # 2.18: every speed it says in the one unit from Settings > Units
+            from . import units
+            cue.text = units.convert_text(cue.text, self.settings.units)
+        except Exception:  # noqa: BLE001
+            pass
         self.queue.push(cue)
         self._emit("made", cue)
 
@@ -811,9 +817,13 @@ class Coach:
         for w in self.weak:
             if w.corner.brake_pct is not None:
                 out += [marker_text(w.name), early_text(w.name)]
-            out += [speed_text(w.name, n) for n in range(max(1, int(math.ceil(self.settings.slower_kmh))), 16)]
+            if self.settings.units == "mph":   # 2.18: the same speeds, said in mph
+                out += [speed_text(w.name, n) for n in range(max(1, int(round(self.settings.slower_kmh / 1.609344))), 11)]
+            else:
+                out += [speed_text(w.name, n) for n in range(max(1, int(math.ceil(self.settings.slower_kmh))), 16)]
             if w.phrase:
-                out.append(w.phrase)
+                from . import units
+                out.append(units.convert_text(w.phrase, self.settings.units))
         for k in range(1, 10):
             out += [f"Down {delta_words(k / 10)}", f"New best, up {delta_words(k / 10)}"]
         out.append("New best")
@@ -1188,7 +1198,9 @@ class Coach:
             text, why = w.phrase, "corner coach advice; this pass " + (
                 f"{down:.0f} km/h slow" if down >= st.slower_kmh else f"braked {early:.0f} m early")
         elif down >= st.slower_kmh:
-            text, why = speed_text(w.name, int(round(down))), f"minimum speed {down:.0f} km/h under the reference"
+            from . import units
+            said = units.speed(down, "kmh", st.units) or down    # 2.18: the number in the chosen unit
+            text, why = speed_text(w.name, int(round(said))), f"minimum speed {down:.0f} km/h under the reference"
         else:
             text, why = early_text(w.name), f"braked {early:.0f} m before the reference"
         self._push(Cue(text=text, priority=PRIORITY[KIND_FEEDBACK], key=f"feedback:{c.id}", t=t,
@@ -1706,7 +1718,8 @@ class LiveRunner:
         'Coaching: Mclaren 570s GT4 at Zolder, reference 1:38.874 from Nov 2'."""
         cs = self.coach.status()
         info = self._info or {}
-        car = (info.get("car") or {}).get("name") or ""
+        from . import names
+        car = names.car((info.get("car") or {}).get("name") or "")
         track = short_track((info.get("track") or {}).get("name") or "")
         st = self._state
         if st == "waiting":

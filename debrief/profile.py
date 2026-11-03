@@ -456,6 +456,7 @@ def build(rows: list, include_practice: bool = False) -> dict:
     traffic, so they would make every race look like a step back. "sessions" says which rule was used."""
     from . import library
     items = []
+    why = {}
     n_skipped = 0
     n_old = 0   # 2.7.1 (L4): reviews whose exit speeds were read at a fixed 150 m (before 2.7.0)
     for row in rows or []:
@@ -466,6 +467,9 @@ def build(rows: list, include_practice: bool = False) -> dict:
             n_old += 1
         s = _usable(row)
         if s is None:
+            if isinstance(row, dict):   # 2.18: why this race has no score, so the Skills tab can say so
+                w = row.get("skills_why") or ("few_clean" if isinstance(row.get("skills"), dict) else "no_block")
+                why[w] = why.get(w, 0) + 1
             continue
         try:
             t = _ts(row)
@@ -478,7 +482,8 @@ def build(rows: list, include_practice: bool = False) -> dict:
                       "trend_method": "theil_sen", "trend_test": TREND_TEST, "trend_max_p": TREND_MAX_P,
                       "weakest_last": WEAKEST_LAST},
            "groups": [], "weakest": None, "n_races": len(items),
-           "sessions": "all" if include_practice else "race", "n_practice_skipped": n_skipped}
+           "sessions": "all" if include_practice else "race", "n_practice_skipped": n_skipped,
+           "why": why, "n_rows": sum(why.values()) + len(items)}
     # 2.7.1 (L4): those can't be redone (no traces are kept), so the Skills tab says so
     out["n_exit_150"] = n_old
     if n_old:

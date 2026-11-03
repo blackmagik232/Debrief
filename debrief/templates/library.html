@@ -508,8 +508,11 @@ regroup();
 
 // ---------- header
 const LEDE0=$('lede').textContent;
+// 2.18: library.counts, the same numbers the window's Saved reviews list starts from (EX is declared further down)
+const XC=window.EXTRA&&typeof window.EXTRA==='object'&&window.EXTRA.counts&&typeof window.EXTRA.counts==='object'?window.EXTRA.counts:null;
 function renderHeader(){
-$('count').textContent=plural(R.length,INC?'review':'race review')+(N_PRAC&&!INC?' · '+N_PRAC+' practice/qualifying hidden':'');
+$('count').textContent=plural(R.length,INC?'review':'race review')+(N_PRAC&&!INC?' · '+N_PRAC+' practice/qualifying hidden':'')+
+  (XC&&ok(XC.no_laps)&&XC.no_laps?' · '+XC.no_laps+' of your '+XC.saved+' saved reviews have no lap times and aren\u2019t counted':'');
 $('testchip').classList.toggle('hidden',!R.some(r=>r.test_data));
 (function totals(){
   const host=$('totals');host.replaceChildren();const sum=(f)=>R.reduce((s,r)=>s+(ok(f(r))?f(r):0),0);
@@ -856,10 +859,20 @@ function trendWord(t){if(!t||typeof t!=='object'||t.span_ok===false||!SK_TW[t.di
   SKG.forEach(g=>{const o=h('option',null,String(g.label||g.key)+(ok(g.races)?' ('+g.races+')':''));o.value=String(g.key);sel.append(o)});
   if(SKG.length<2)$('skctl').hidden=true;
   sel.addEventListener('change',()=>{skSel.group=sel.value;renderSkills()})})();
+// 2.18: why the race reviews have no skill scores, from the reviews themselves (EXTRA.skills.why)
+const SK_WHY={no_traces:'were saved without the lap traces the scores are worked out from (open one and press Rebuild to make it again with them)',
+  not_enough_clean_laps:'had fewer than 6 clean laps with telemetry',few_clean:'had fewer than 6 clean laps with telemetry',
+  not_enough_better_laps:'had too few quick laps to compare your typical laps with',no_corners:'have no corners Debrief could find',
+  bad_data:'couldn\u2019t be read',no_block:'couldn\u2019t be scored'};
+function skWhyText(){const W=SKP&&SKP.why&&typeof SKP.why==='object'?SKP.why:{};const n=SKP&&ok(SKP.n_rows)?SKP.n_rows:0;
+  const parts=Object.keys(W).filter(k=>ok(W[k])&&W[k]>0).sort((a,b)=>W[b]-W[a]).map(k=>W[k]+' '+(SK_WHY[k]||SK_WHY.no_block));
+  const base='Skill scores come from a race with at least 6 clean laps with telemetry.';
+  if(!n)return base+' You have no race reviews with lap times yet.';
+  return 'None of your '+plural(n,'race review')+' has a score yet: '+parts.join('; ')+'. '+base}
 function renderSkills(){const tiles=$('sktiles'),pan=$('skpanel');tiles.replaceChildren();pan.replaceChildren();skRedraw=null;
   const g=SKG.find(x=>String(x.key)===skSel.group)||SKG[0];
   if(!g||!SK_PH.some(([k])=>g.phases[k]&&Array.isArray(g.phases[k].races)&&g.phases[k].races.length)){tiles.hidden=true;
-    const e=h('div','empty');e.append(h('b',null,'No skill scores yet'),h('span',null,'Skill scores appear after a race with at least 6 clean laps. Older reviews get them when Debrief refreshes the library.'));pan.append(e);return}
+    const e=h('div','empty');e.append(h('b',null,'No skill scores yet'),h('span',null,skWhyText()));pan.append(e);return}
   tiles.hidden=false;skSel.group=String(g.key);$('skgroup').value=skSel.group;
   const wk=SKP.weakest&&SKP.weakest.group===g.key?SKP.weakest.phase:(SKP.weakest&&g.key==='all'?SKP.weakest.phase:null);
   if(!skSel.phase||!g.phases[skSel.phase])skSel.phase=(wk&&g.phases[wk])?wk:'overall';
@@ -913,7 +926,7 @@ function renderOver(){const sec=$('otsec');otRedraw=null;if(!OT.length){sec.hidd
 function renderCraft(){const host=$('craft');host.replaceChildren();const C=SKP&&SKP.racecraft&&typeof SKP.racecraft==='object'?SKP.racecraft:null;
   const n=C&&ok(C.n)?C.n:0,need=C&&ok(C.min)?C.min:3;
   $('craftlede').textContent=C&&C.note?C.note:'Passes only count cars near the replay camera, so the real number can be higher. Positions are on the road, not official results.';
-  if(!C||!C.enough){const e=h('div','empty');e.append(h('b',null,'Scan more races'),h('span',null,'You have '+plural(n,'scanned race')+'. This needs '+need+' so one odd race can\u2019t set the picture. Open a review and press Scan this race with the replay loaded in iRacing.'+(C&&C.waiting?' '+plural(C.waiting,'older scan')+' will count after the library next refreshes.':'')));host.append(e);return}
+  if(!C||!C.enough){const e=h('div','empty');e.append(h('b',null,'Scan more races'),h('span',null,'You have '+plural(n,'scanned race')+(XC&&ok(XC.scans)&&XC.scans>n?' with a race review here ('+plural(XC.scans,'replay scan')+' saved in all; a scan counts once its race has a review with lap times)':'')+'. This needs '+need+' so one odd race can\u2019t set the picture. Open a review and press Scan this race with the replay loaded in iRacing.'+(C&&C.waiting?' '+plural(C.waiting,'older scan')+' will count after the library next refreshes.':'')));host.append(e);return}
   const signed=v=>ok(v)?(v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(1):'–';
   if(Array.isArray(C.summary)&&C.summary.length){const ul=h('ul','craftsum');C.summary.filter(x=>typeof x==='string').forEach(x=>ul.append(h('li',null,x)));host.append(ul)}
   const stats=h('div','stats craftstats');const L1=C.lap1||{},PS=C.passes||{},RC=C.recovery||{};

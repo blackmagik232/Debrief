@@ -1,0 +1,3017 @@
+{
+ "format": 1,
+ "version": 1,
+ "id": "heart",
+ "name": "Heart (American female)",
+ "voice": "af_heart",
+ "lang": "en-us",
+ "speed": 0.95,
+ "voice_credit": "Kokoro voice af_heart",
+ "license": "Generated with Kokoro-82M, Apache-2.0",
+ "loudness_db": -20.0,
+ "generator": "tools/make_voicepack.py",
+ "sample_rate": 16000,
+ "join_ms": 60,
+ "clips": {
+  "brake_marker_turn_1": {
+   "file": "brake_marker_turn_1.wav",
+   "text": "Brake marker, turn one.",
+   "ms": 1480,
+   "role": "whole"
+  },
+  "brake_marker_turn_2": {
+   "file": "brake_marker_turn_2.wav",
+   "text": "Brake marker, turn two.",
+   "ms": 1510,
+   "role": "whole"
+  },
+  "brake_marker_turn_3": {
+   "file": "brake_marker_turn_3.wav",
+   "text": "Brake marker, turn three.",
+   "ms": 1550,
+   "role": "whole"
+  },
+  "brake_marker_turn_4": {
+   "file": "brake_marker_turn_4.wav",
+   "text": "Brake marker, turn four.",
+   "ms": 1560,
+   "role": "whole"
+  },
+  "brake_marker_turn_5": {
+   "file": "brake_marker_turn_5.wav",
+   "text": "Brake marker, turn five.",
+   "ms": 1650,
+   "role": "whole"
+  },
+  "brake_marker_turn_6": {
+   "file": "brake_marker_turn_6.wav",
+   "text": "Brake marker, turn six.",
+   "ms": 1610,
+   "role": "whole"
+  },
+  "brake_marker_turn_7": {
+   "file": "brake_marker_turn_7.wav",
+   "text": "Brake marker, turn seven.",
+   "ms": 1650,
+   "role": "whole"
+  },
+  "brake_marker_turn_8": {
+   "file": "brake_marker_turn_8.wav",
+   "text": "Brake marker, turn eight.",
+   "ms": 1570,
+   "role": "whole"
+  },
+  "brake_marker_turn_9": {
+   "file": "brake_marker_turn_9.wav",
+   "text": "Brake marker, turn nine.",
+   "ms": 1550,
+   "role": "whole"
+  },
+  "brake_marker_turn_10": {
+   "file": "brake_marker_turn_10.wav",
+   "text": "Brake marker, turn ten.",
+   "ms": 1540,
+   "role": "whole"
+  },
+  "brake_marker_turn_11": {
+   "file": "brake_marker_turn_11.wav",
+   "text": "Brake marker, turn eleven.",
+   "ms": 1670,
+   "role": "whole"
+  },
+  "brake_marker_turn_12": {
+   "file": "brake_marker_turn_12.wav",
+   "text": "Brake marker, turn twelve.",
+   "ms": 1660,
+   "role": "whole"
+  },
+  "brake_marker_turn_13": {
+   "file": "brake_marker_turn_13.wav",
+   "text": "Brake marker, turn thirteen.",
+   "ms": 1780,
+   "role": "whole"
+  },
+  "brake_marker_turn_14": {
+   "file": "brake_marker_turn_14.wav",
+   "text": "Brake marker, turn fourteen.",
+   "ms": 1720,
+   "role": "whole"
+  },
+  "brake_marker_turn_15": {
+   "file": "brake_marker_turn_15.wav",
+   "text": "Brake marker, turn fifteen.",
+   "ms": 1740,
+   "role": "whole"
+  },
+  "brake_marker_turn_16": {
+   "file": "brake_marker_turn_16.wav",
+   "text": "Brake marker, turn sixteen.",
+   "ms": 1720,
+   "role": "whole"
+  },
+  "brake_marker_turn_17": {
+   "file": "brake_marker_turn_17.wav",
+   "text": "Brake marker, turn seventeen.",
+   "ms": 1890,
+   "role": "whole"
+  },
+  "brake_marker_turn_18": {
+   "file": "brake_marker_turn_18.wav",
+   "text": "Brake marker, turn eighteen.",
+   "ms": 1760,
+   "role": "whole"
+  },
+  "brake_marker_turn_19": {
+   "file": "brake_marker_turn_19.wav",
+   "text": "Brake marker, turn nineteen.",
+   "ms": 1720,
+   "role": "whole"
+  },
+  "brake_marker_turn_20": {
+   "file": "brake_marker_turn_20.wav",
+   "text": "Brake marker, turn twenty.",
+   "ms": 1680,
+   "role": "whole"
+  },
+  "brake_marker_turn_21": {
+   "file": "brake_marker_turn_21.wav",
+   "text": "Brake marker, turn twenty-one.",
+   "ms": 1770,
+   "role": "whole"
+  },
+  "brake_marker_turn_22": {
+   "file": "brake_marker_turn_22.wav",
+   "text": "Brake marker, turn twenty-two.",
+   "ms": 1820,
+   "role": "whole"
+  },
+  "brake_marker_turn_23": {
+   "file": "brake_marker_turn_23.wav",
+   "text": "Brake marker, turn twenty-three.",
+   "ms": 1840,
+   "role": "whole"
+  },
+  "brake_marker_turn_24": {
+   "file": "brake_marker_turn_24.wav",
+   "text": "Brake marker, turn twenty-four.",
+   "ms": 1830,
+   "role": "whole"
+  },
+  "brake_marker_turn_25": {
+   "file": "brake_marker_turn_25.wav",
+   "text": "Brake marker, turn twenty-five.",
+   "ms": 1880,
+   "role": "whole"
+  },
+  "turn_1": {
+   "file": "turn_1.wav",
+   "text": "Turn one,",
+   "ms": 610,
+   "role": "lead"
+  },
+  "carry_more_speed": {
+   "file": "carry_more_speed.wav",
+   "text": "carry more speed.",
+   "ms": 990,
+   "role": "tail"
+  },
+  "turn_2": {
+   "file": "turn_2.wav",
+   "text": "Turn two,",
+   "ms": 690,
+   "role": "lead"
+  },
+  "lighter_brake": {
+   "file": "lighter_brake.wav",
+   "text": "lighter brake.",
+   "ms": 770,
+   "role": "tail"
+  },
+  "turn_3": {
+   "file": "turn_3.wav",
+   "text": "Turn three,",
+   "ms": 750,
+   "role": "lead"
+  },
+  "brake_later": {
+   "file": "brake_later.wav",
+   "text": "brake later.",
+   "ms": 650,
+   "role": "tail"
+  },
+  "turn_4": {
+   "file": "turn_4.wav",
+   "text": "Turn four,",
+   "ms": 710,
+   "role": "lead"
+  },
+  "brake_earlier": {
+   "file": "brake_earlier.wav",
+   "text": "brake earlier.",
+   "ms": 750,
+   "role": "tail"
+  },
+  "turn_5": {
+   "file": "turn_5.wav",
+   "text": "Turn five,",
+   "ms": 720,
+   "role": "lead"
+  },
+  "trail_into_it": {
+   "file": "trail_into_it.wav",
+   "text": "trail into it.",
+   "ms": 820,
+   "role": "tail"
+  },
+  "turn_6": {
+   "file": "turn_6.wav",
+   "text": "Turn six,",
+   "ms": 750,
+   "role": "lead"
+  },
+  "no_coasting": {
+   "file": "no_coasting.wav",
+   "text": "no coasting.",
+   "ms": 910,
+   "role": "tail"
+  },
+  "turn_7": {
+   "file": "turn_7.wav",
+   "text": "Turn seven,",
+   "ms": 780,
+   "role": "lead"
+  },
+  "ease_off_slower": {
+   "file": "ease_off_slower.wav",
+   "text": "ease off slower.",
+   "ms": 880,
+   "role": "tail"
+  },
+  "turn_8": {
+   "file": "turn_8.wav",
+   "text": "Turn eight,",
+   "ms": 630,
+   "role": "lead"
+  },
+  "throttle_earlier": {
+   "file": "throttle_earlier.wav",
+   "text": "throttle earlier.",
+   "ms": 980,
+   "role": "tail"
+  },
+  "turn_9": {
+   "file": "turn_9.wav",
+   "text": "Turn nine,",
+   "ms": 730,
+   "role": "lead"
+  },
+  "smoother_throttle": {
+   "file": "smoother_throttle.wav",
+   "text": "smoother throttle.",
+   "ms": 890,
+   "role": "tail"
+  },
+  "turn_10": {
+   "file": "turn_10.wav",
+   "text": "Turn ten,",
+   "ms": 710,
+   "role": "lead"
+  },
+  "smoother_brake": {
+   "file": "smoother_brake.wav",
+   "text": "smoother brake.",
+   "ms": 790,
+   "role": "tail"
+  },
+  "turn_11": {
+   "file": "turn_11.wav",
+   "text": "Turn eleven,",
+   "ms": 820,
+   "role": "lead"
+  },
+  "hold_it_in": {
+   "file": "hold_it_in.wav",
+   "text": "hold it in.",
+   "ms": 670,
+   "role": "tail"
+  },
+  "turn_12": {
+   "file": "turn_12.wav",
+   "text": "Turn twelve,",
+   "ms": 780,
+   "role": "lead"
+  },
+  "same_every_lap": {
+   "file": "same_every_lap.wav",
+   "text": "same every lap.",
+   "ms": 1030,
+   "role": "tail"
+  },
+  "turn_13": {
+   "file": "turn_13.wav",
+   "text": "Turn thirteen,",
+   "ms": 890,
+   "role": "lead"
+  },
+  "braked_early": {
+   "file": "braked_early.wav",
+   "text": "braked early.",
+   "ms": 750,
+   "role": "tail"
+  },
+  "turn_14": {
+   "file": "turn_14.wav",
+   "text": "Turn fourteen,",
+   "ms": 870,
+   "role": "lead"
+  },
+  "more_speed_4_down": {
+   "file": "more_speed_4_down.wav",
+   "text": "more speed, four down.",
+   "ms": 1340,
+   "role": "tail"
+  },
+  "turn_15": {
+   "file": "turn_15.wav",
+   "text": "Turn fifteen,",
+   "ms": 810,
+   "role": "lead"
+  },
+  "more_speed_5_down": {
+   "file": "more_speed_5_down.wav",
+   "text": "more speed, five down.",
+   "ms": 1410,
+   "role": "tail"
+  },
+  "turn_16": {
+   "file": "turn_16.wav",
+   "text": "Turn sixteen,",
+   "ms": 850,
+   "role": "lead"
+  },
+  "more_speed_6_down": {
+   "file": "more_speed_6_down.wav",
+   "text": "more speed, six down.",
+   "ms": 1390,
+   "role": "tail"
+  },
+  "turn_17": {
+   "file": "turn_17.wav",
+   "text": "Turn seventeen,",
+   "ms": 960,
+   "role": "lead"
+  },
+  "more_speed_7_down": {
+   "file": "more_speed_7_down.wav",
+   "text": "more speed, seven down.",
+   "ms": 1570,
+   "role": "tail"
+  },
+  "turn_18": {
+   "file": "turn_18.wav",
+   "text": "Turn eighteen,",
+   "ms": 810,
+   "role": "lead"
+  },
+  "more_speed_8_down": {
+   "file": "more_speed_8_down.wav",
+   "text": "more speed, eight down.",
+   "ms": 1350,
+   "role": "tail"
+  },
+  "turn_19": {
+   "file": "turn_19.wav",
+   "text": "Turn nineteen,",
+   "ms": 810,
+   "role": "lead"
+  },
+  "more_speed_9_down": {
+   "file": "more_speed_9_down.wav",
+   "text": "more speed, nine down.",
+   "ms": 1380,
+   "role": "tail"
+  },
+  "turn_20": {
+   "file": "turn_20.wav",
+   "text": "Turn twenty,",
+   "ms": 730,
+   "role": "lead"
+  },
+  "more_speed_10_down": {
+   "file": "more_speed_10_down.wav",
+   "text": "more speed, ten down.",
+   "ms": 1390,
+   "role": "tail"
+  },
+  "turn_21": {
+   "file": "turn_21.wav",
+   "text": "Turn twenty-one,",
+   "ms": 890,
+   "role": "lead"
+  },
+  "more_speed_11_down": {
+   "file": "more_speed_11_down.wav",
+   "text": "more speed, eleven down.",
+   "ms": 1600,
+   "role": "tail"
+  },
+  "turn_22": {
+   "file": "turn_22.wav",
+   "text": "Turn twenty-two,",
+   "ms": 930,
+   "role": "lead"
+  },
+  "more_speed_12_down": {
+   "file": "more_speed_12_down.wav",
+   "text": "more speed, twelve down.",
+   "ms": 1460,
+   "role": "tail"
+  },
+  "turn_23": {
+   "file": "turn_23.wav",
+   "text": "Turn twenty-three,",
+   "ms": 950,
+   "role": "lead"
+  },
+  "more_speed_13_down": {
+   "file": "more_speed_13_down.wav",
+   "text": "more speed, thirteen down.",
+   "ms": 1560,
+   "role": "tail"
+  },
+  "turn_24": {
+   "file": "turn_24.wav",
+   "text": "Turn twenty-four,",
+   "ms": 960,
+   "role": "lead"
+  },
+  "more_speed_14_down": {
+   "file": "more_speed_14_down.wav",
+   "text": "more speed, fourteen down.",
+   "ms": 1640,
+   "role": "tail"
+  },
+  "turn_25": {
+   "file": "turn_25.wav",
+   "text": "Turn twenty-five,",
+   "ms": 960,
+   "role": "lead"
+  },
+  "more_speed_15_down": {
+   "file": "more_speed_15_down.wav",
+   "text": "more speed, fifteen down.",
+   "ms": 1610,
+   "role": "tail"
+  },
+  "more_speed_16_down": {
+   "file": "more_speed_16_down.wav",
+   "text": "more speed, sixteen down.",
+   "ms": 1580,
+   "role": "tail"
+  },
+  "more_speed_17_down": {
+   "file": "more_speed_17_down.wav",
+   "text": "more speed, seventeen down.",
+   "ms": 1610,
+   "role": "tail"
+  },
+  "more_speed_18_down": {
+   "file": "more_speed_18_down.wav",
+   "text": "more speed, eighteen down.",
+   "ms": 1430,
+   "role": "tail"
+  },
+  "more_speed_19_down": {
+   "file": "more_speed_19_down.wav",
+   "text": "more speed, nineteen down.",
+   "ms": 1620,
+   "role": "tail"
+  },
+  "more_speed_20_down": {
+   "file": "more_speed_20_down.wav",
+   "text": "more speed, twenty down.",
+   "ms": 1400,
+   "role": "tail"
+  },
+  "down_0_1": {
+   "file": "down_0_1.wav",
+   "text": "Down a tenth.",
+   "ms": 870,
+   "role": "whole"
+  },
+  "down_0_2": {
+   "file": "down_0_2.wav",
+   "text": "Down two tenths.",
+   "ms": 1050,
+   "role": "whole"
+  },
+  "down_0_3": {
+   "file": "down_0_3.wav",
+   "text": "Down three tenths.",
+   "ms": 1090,
+   "role": "whole"
+  },
+  "down_0_4": {
+   "file": "down_0_4.wav",
+   "text": "Down four tenths.",
+   "ms": 1090,
+   "role": "whole"
+  },
+  "down_0_5": {
+   "file": "down_0_5.wav",
+   "text": "Down five tenths.",
+   "ms": 1160,
+   "role": "whole"
+  },
+  "down_0_6": {
+   "file": "down_0_6.wav",
+   "text": "Down six tenths.",
+   "ms": 1110,
+   "role": "whole"
+  },
+  "down_0_7": {
+   "file": "down_0_7.wav",
+   "text": "Down seven tenths.",
+   "ms": 1190,
+   "role": "whole"
+  },
+  "down_0_8": {
+   "file": "down_0_8.wav",
+   "text": "Down eight tenths.",
+   "ms": 1070,
+   "role": "whole"
+  },
+  "down_0_9": {
+   "file": "down_0_9.wav",
+   "text": "Down nine tenths.",
+   "ms": 1100,
+   "role": "whole"
+  },
+  "down_1_0": {
+   "file": "down_1_0.wav",
+   "text": "Down one second.",
+   "ms": 1080,
+   "role": "whole"
+  },
+  "down_1_1": {
+   "file": "down_1_1.wav",
+   "text": "Down one point one seconds.",
+   "ms": 1580,
+   "role": "whole"
+  },
+  "down_1_2": {
+   "file": "down_1_2.wav",
+   "text": "Down one point two seconds.",
+   "ms": 1530,
+   "role": "whole"
+  },
+  "down_1_3": {
+   "file": "down_1_3.wav",
+   "text": "Down one point three seconds.",
+   "ms": 1590,
+   "role": "whole"
+  },
+  "down_1_4": {
+   "file": "down_1_4.wav",
+   "text": "Down one point four seconds.",
+   "ms": 1590,
+   "role": "whole"
+  },
+  "down_1_5": {
+   "file": "down_1_5.wav",
+   "text": "Down one point five seconds.",
+   "ms": 1690,
+   "role": "whole"
+  },
+  "down_1_6": {
+   "file": "down_1_6.wav",
+   "text": "Down one point six seconds.",
+   "ms": 1580,
+   "role": "whole"
+  },
+  "down_1_7": {
+   "file": "down_1_7.wav",
+   "text": "Down one point seven seconds.",
+   "ms": 1710,
+   "role": "whole"
+  },
+  "down_1_8": {
+   "file": "down_1_8.wav",
+   "text": "Down one point eight seconds.",
+   "ms": 1620,
+   "role": "whole"
+  },
+  "down_1_9": {
+   "file": "down_1_9.wav",
+   "text": "Down one point nine seconds.",
+   "ms": 1640,
+   "role": "whole"
+  },
+  "down_2_0": {
+   "file": "down_2_0.wav",
+   "text": "Down two seconds.",
+   "ms": 1120,
+   "role": "whole"
+  },
+  "new_best_lead": {
+   "file": "new_best_lead.wav",
+   "text": "New best,",
+   "ms": 690,
+   "role": "lead"
+  },
+  "up_0_1": {
+   "file": "up_0_1.wav",
+   "text": "up a tenth.",
+   "ms": 720,
+   "role": "tail"
+  },
+  "up_0_2": {
+   "file": "up_0_2.wav",
+   "text": "up two tenths.",
+   "ms": 880,
+   "role": "tail"
+  },
+  "up_0_3": {
+   "file": "up_0_3.wav",
+   "text": "up three tenths.",
+   "ms": 920,
+   "role": "tail"
+  },
+  "up_0_4": {
+   "file": "up_0_4.wav",
+   "text": "up four tenths.",
+   "ms": 900,
+   "role": "tail"
+  },
+  "up_0_5": {
+   "file": "up_0_5.wav",
+   "text": "up five tenths.",
+   "ms": 1000,
+   "role": "tail"
+  },
+  "up_0_6": {
+   "file": "up_0_6.wav",
+   "text": "up six tenths.",
+   "ms": 920,
+   "role": "tail"
+  },
+  "up_0_7": {
+   "file": "up_0_7.wav",
+   "text": "up seven tenths.",
+   "ms": 1020,
+   "role": "tail"
+  },
+  "up_0_8": {
+   "file": "up_0_8.wav",
+   "text": "up eight tenths.",
+   "ms": 880,
+   "role": "tail"
+  },
+  "up_0_9": {
+   "file": "up_0_9.wav",
+   "text": "up nine tenths.",
+   "ms": 970,
+   "role": "tail"
+  },
+  "up_1_0": {
+   "file": "up_1_0.wav",
+   "text": "up one second.",
+   "ms": 910,
+   "role": "tail"
+  },
+  "up_1_1": {
+   "file": "up_1_1.wav",
+   "text": "up one point one seconds.",
+   "ms": 1470,
+   "role": "tail"
+  },
+  "up_1_2": {
+   "file": "up_1_2.wav",
+   "text": "up one point two seconds.",
+   "ms": 1400,
+   "role": "tail"
+  },
+  "up_1_3": {
+   "file": "up_1_3.wav",
+   "text": "up one point three seconds.",
+   "ms": 1420,
+   "role": "tail"
+  },
+  "up_1_4": {
+   "file": "up_1_4.wav",
+   "text": "up one point four seconds.",
+   "ms": 1440,
+   "role": "tail"
+  },
+  "up_1_5": {
+   "file": "up_1_5.wav",
+   "text": "up one point five seconds.",
+   "ms": 1520,
+   "role": "tail"
+  },
+  "up_1_6": {
+   "file": "up_1_6.wav",
+   "text": "up one point six seconds.",
+   "ms": 1440,
+   "role": "tail"
+  },
+  "up_1_7": {
+   "file": "up_1_7.wav",
+   "text": "up one point seven seconds.",
+   "ms": 1560,
+   "role": "tail"
+  },
+  "up_1_8": {
+   "file": "up_1_8.wav",
+   "text": "up one point eight seconds.",
+   "ms": 1520,
+   "role": "tail"
+  },
+  "up_1_9": {
+   "file": "up_1_9.wav",
+   "text": "up one point nine seconds.",
+   "ms": 1490,
+   "role": "tail"
+  },
+  "up_2_0": {
+   "file": "up_2_0.wav",
+   "text": "up two seconds.",
+   "ms": 930,
+   "role": "tail"
+  },
+  "good_lead": {
+   "file": "good_lead.wav",
+   "text": "Good,",
+   "ms": 380,
+   "role": "lead"
+  },
+  "num_20": {
+   "file": "num_20.wav",
+   "text": "Twenty.",
+   "ms": 680,
+   "role": "whole"
+  },
+  "num_21": {
+   "file": "num_21.wav",
+   "text": "Twenty-one.",
+   "ms": 730,
+   "role": "whole"
+  },
+  "num_22": {
+   "file": "num_22.wav",
+   "text": "Twenty-two.",
+   "ms": 800,
+   "role": "whole"
+  },
+  "num_23": {
+   "file": "num_23.wav",
+   "text": "Twenty-three.",
+   "ms": 820,
+   "role": "whole"
+  },
+  "num_24": {
+   "file": "num_24.wav",
+   "text": "Twenty-four.",
+   "ms": 820,
+   "role": "whole"
+  },
+  "num_25": {
+   "file": "num_25.wav",
+   "text": "Twenty-five.",
+   "ms": 890,
+   "role": "whole"
+  },
+  "num_26": {
+   "file": "num_26.wav",
+   "text": "Twenty-six.",
+   "ms": 840,
+   "role": "whole"
+  },
+  "num_27": {
+   "file": "num_27.wav",
+   "text": "Twenty-seven.",
+   "ms": 870,
+   "role": "whole"
+  },
+  "num_28": {
+   "file": "num_28.wav",
+   "text": "Twenty-eight.",
+   "ms": 800,
+   "role": "whole"
+  },
+  "num_29": {
+   "file": "num_29.wav",
+   "text": "Twenty-nine.",
+   "ms": 800,
+   "role": "whole"
+  },
+  "num_30": {
+   "file": "num_30.wav",
+   "text": "Thirty.",
+   "ms": 620,
+   "role": "whole"
+  },
+  "num_31": {
+   "file": "num_31.wav",
+   "text": "Thirty-one.",
+   "ms": 760,
+   "role": "whole"
+  },
+  "num_32": {
+   "file": "num_32.wav",
+   "text": "Thirty-two.",
+   "ms": 790,
+   "role": "whole"
+  },
+  "num_33": {
+   "file": "num_33.wav",
+   "text": "Thirty-three.",
+   "ms": 830,
+   "role": "whole"
+  },
+  "num_34": {
+   "file": "num_34.wav",
+   "text": "Thirty-four.",
+   "ms": 840,
+   "role": "whole"
+  },
+  "num_35": {
+   "file": "num_35.wav",
+   "text": "Thirty-five.",
+   "ms": 910,
+   "role": "whole"
+  },
+  "num_36": {
+   "file": "num_36.wav",
+   "text": "Thirty-six.",
+   "ms": 870,
+   "role": "whole"
+  },
+  "num_37": {
+   "file": "num_37.wav",
+   "text": "Thirty-seven.",
+   "ms": 840,
+   "role": "whole"
+  },
+  "num_38": {
+   "file": "num_38.wav",
+   "text": "Thirty-eight.",
+   "ms": 800,
+   "role": "whole"
+  },
+  "num_39": {
+   "file": "num_39.wav",
+   "text": "Thirty-nine.",
+   "ms": 870,
+   "role": "whole"
+  },
+  "num_40": {
+   "file": "num_40.wav",
+   "text": "Forty.",
+   "ms": 620,
+   "role": "whole"
+  },
+  "num_41": {
+   "file": "num_41.wav",
+   "text": "Forty-one.",
+   "ms": 790,
+   "role": "whole"
+  },
+  "num_42": {
+   "file": "num_42.wav",
+   "text": "Forty-two.",
+   "ms": 810,
+   "role": "whole"
+  },
+  "num_43": {
+   "file": "num_43.wav",
+   "text": "Forty-three.",
+   "ms": 850,
+   "role": "whole"
+  },
+  "num_44": {
+   "file": "num_44.wav",
+   "text": "Forty-four.",
+   "ms": 810,
+   "role": "whole"
+  },
+  "num_45": {
+   "file": "num_45.wav",
+   "text": "Forty-five.",
+   "ms": 920,
+   "role": "whole"
+  },
+  "num_46": {
+   "file": "num_46.wav",
+   "text": "Forty-six.",
+   "ms": 880,
+   "role": "whole"
+  },
+  "num_47": {
+   "file": "num_47.wav",
+   "text": "Forty-seven.",
+   "ms": 880,
+   "role": "whole"
+  },
+  "num_48": {
+   "file": "num_48.wav",
+   "text": "Forty-eight.",
+   "ms": 820,
+   "role": "whole"
+  },
+  "num_49": {
+   "file": "num_49.wav",
+   "text": "Forty-nine.",
+   "ms": 870,
+   "role": "whole"
+  },
+  "num_50": {
+   "file": "num_50.wav",
+   "text": "Fifty.",
+   "ms": 670,
+   "role": "whole"
+  },
+  "num_51": {
+   "file": "num_51.wav",
+   "text": "Fifty-one.",
+   "ms": 780,
+   "role": "whole"
+  },
+  "num_52": {
+   "file": "num_52.wav",
+   "text": "Fifty-two.",
+   "ms": 840,
+   "role": "whole"
+  },
+  "num_53": {
+   "file": "num_53.wav",
+   "text": "Fifty-three.",
+   "ms": 870,
+   "role": "whole"
+  },
+  "num_54": {
+   "file": "num_54.wav",
+   "text": "Fifty-four.",
+   "ms": 870,
+   "role": "whole"
+  },
+  "num_55": {
+   "file": "num_55.wav",
+   "text": "Fifty-five.",
+   "ms": 920,
+   "role": "whole"
+  },
+  "num_56": {
+   "file": "num_56.wav",
+   "text": "Fifty-six.",
+   "ms": 910,
+   "role": "whole"
+  },
+  "num_57": {
+   "file": "num_57.wav",
+   "text": "Fifty-seven.",
+   "ms": 890,
+   "role": "whole"
+  },
+  "num_58": {
+   "file": "num_58.wav",
+   "text": "Fifty-eight.",
+   "ms": 840,
+   "role": "whole"
+  },
+  "num_59": {
+   "file": "num_59.wav",
+   "text": "Fifty-nine.",
+   "ms": 890,
+   "role": "whole"
+  },
+  "num_60": {
+   "file": "num_60.wav",
+   "text": "Sixty.",
+   "ms": 710,
+   "role": "whole"
+  },
+  "num_61": {
+   "file": "num_61.wav",
+   "text": "Sixty-one.",
+   "ms": 800,
+   "role": "whole"
+  },
+  "num_62": {
+   "file": "num_62.wav",
+   "text": "Sixty-two.",
+   "ms": 850,
+   "role": "whole"
+  },
+  "num_63": {
+   "file": "num_63.wav",
+   "text": "Sixty-three.",
+   "ms": 900,
+   "role": "whole"
+  },
+  "num_64": {
+   "file": "num_64.wav",
+   "text": "Sixty-four.",
+   "ms": 880,
+   "role": "whole"
+  },
+  "num_65": {
+   "file": "num_65.wav",
+   "text": "Sixty-five.",
+   "ms": 930,
+   "role": "whole"
+  },
+  "num_66": {
+   "file": "num_66.wav",
+   "text": "Sixty-six.",
+   "ms": 920,
+   "role": "whole"
+  },
+  "num_67": {
+   "file": "num_67.wav",
+   "text": "Sixty-seven.",
+   "ms": 940,
+   "role": "whole"
+  },
+  "num_68": {
+   "file": "num_68.wav",
+   "text": "Sixty-eight.",
+   "ms": 860,
+   "role": "whole"
+  },
+  "num_69": {
+   "file": "num_69.wav",
+   "text": "Sixty-nine.",
+   "ms": 860,
+   "role": "whole"
+  },
+  "num_70": {
+   "file": "num_70.wav",
+   "text": "Seventy.",
+   "ms": 740,
+   "role": "whole"
+  },
+  "num_71": {
+   "file": "num_71.wav",
+   "text": "Seventy-one.",
+   "ms": 920,
+   "role": "whole"
+  },
+  "num_72": {
+   "file": "num_72.wav",
+   "text": "Seventy-two.",
+   "ms": 970,
+   "role": "whole"
+  },
+  "num_73": {
+   "file": "num_73.wav",
+   "text": "Seventy-three.",
+   "ms": 990,
+   "role": "whole"
+  },
+  "num_74": {
+   "file": "num_74.wav",
+   "text": "Seventy-four.",
+   "ms": 920,
+   "role": "whole"
+  },
+  "num_75": {
+   "file": "num_75.wav",
+   "text": "Seventy-five.",
+   "ms": 1040,
+   "role": "whole"
+  },
+  "num_76": {
+   "file": "num_76.wav",
+   "text": "Seventy-six.",
+   "ms": 1010,
+   "role": "whole"
+  },
+  "num_77": {
+   "file": "num_77.wav",
+   "text": "Seventy-seven.",
+   "ms": 1030,
+   "role": "whole"
+  },
+  "num_78": {
+   "file": "num_78.wav",
+   "text": "Seventy-eight.",
+   "ms": 930,
+   "role": "whole"
+  },
+  "num_79": {
+   "file": "num_79.wav",
+   "text": "Seventy-nine.",
+   "ms": 1000,
+   "role": "whole"
+  },
+  "num_80": {
+   "file": "num_80.wav",
+   "text": "Eighty.",
+   "ms": 600,
+   "role": "whole"
+  },
+  "num_81": {
+   "file": "num_81.wav",
+   "text": "Eighty-one.",
+   "ms": 690,
+   "role": "whole"
+  },
+  "num_82": {
+   "file": "num_82.wav",
+   "text": "Eighty-two.",
+   "ms": 740,
+   "role": "whole"
+  },
+  "num_83": {
+   "file": "num_83.wav",
+   "text": "Eighty-three.",
+   "ms": 820,
+   "role": "whole"
+  },
+  "num_84": {
+   "file": "num_84.wav",
+   "text": "Eighty-four.",
+   "ms": 770,
+   "role": "whole"
+  },
+  "num_85": {
+   "file": "num_85.wav",
+   "text": "Eighty-five.",
+   "ms": 860,
+   "role": "whole"
+  },
+  "num_86": {
+   "file": "num_86.wav",
+   "text": "Eighty-six.",
+   "ms": 820,
+   "role": "whole"
+  },
+  "num_87": {
+   "file": "num_87.wav",
+   "text": "Eighty-seven.",
+   "ms": 850,
+   "role": "whole"
+  },
+  "num_88": {
+   "file": "num_88.wav",
+   "text": "Eighty-eight.",
+   "ms": 780,
+   "role": "whole"
+  },
+  "num_89": {
+   "file": "num_89.wav",
+   "text": "Eighty-nine.",
+   "ms": 810,
+   "role": "whole"
+  },
+  "num_90": {
+   "file": "num_90.wav",
+   "text": "Ninety.",
+   "ms": 700,
+   "role": "whole"
+  },
+  "num_91": {
+   "file": "num_91.wav",
+   "text": "Ninety-one.",
+   "ms": 860,
+   "role": "whole"
+  },
+  "num_92": {
+   "file": "num_92.wav",
+   "text": "Ninety-two.",
+   "ms": 940,
+   "role": "whole"
+  },
+  "num_93": {
+   "file": "num_93.wav",
+   "text": "Ninety-three.",
+   "ms": 890,
+   "role": "whole"
+  },
+  "num_94": {
+   "file": "num_94.wav",
+   "text": "Ninety-four.",
+   "ms": 870,
+   "role": "whole"
+  },
+  "num_95": {
+   "file": "num_95.wav",
+   "text": "Ninety-five.",
+   "ms": 950,
+   "role": "whole"
+  },
+  "num_96": {
+   "file": "num_96.wav",
+   "text": "Ninety-six.",
+   "ms": 920,
+   "role": "whole"
+  },
+  "num_97": {
+   "file": "num_97.wav",
+   "text": "Ninety-seven.",
+   "ms": 920,
+   "role": "whole"
+  },
+  "num_98": {
+   "file": "num_98.wav",
+   "text": "Ninety-eight.",
+   "ms": 900,
+   "role": "whole"
+  },
+  "num_99": {
+   "file": "num_99.wav",
+   "text": "Ninety-nine.",
+   "ms": 890,
+   "role": "whole"
+  },
+  "num_100": {
+   "file": "num_100.wav",
+   "text": "One hundred.",
+   "ms": 850,
+   "role": "whole"
+  },
+  "good_brake_point": {
+   "file": "good_brake_point.wav",
+   "text": "Good brake point.",
+   "ms": 1060,
+   "role": "whole"
+  },
+  "good_held_it_in": {
+   "file": "good_held_it_in.wav",
+   "text": "Good, held it in.",
+   "ms": 1060,
+   "role": "whole"
+  },
+  "good_no_coasting": {
+   "file": "good_no_coasting.wav",
+   "text": "Good, no coasting.",
+   "ms": 1160,
+   "role": "whole"
+  },
+  "good_throttle": {
+   "file": "good_throttle.wav",
+   "text": "Good throttle.",
+   "ms": 900,
+   "role": "whole"
+  },
+  "good_speed": {
+   "file": "good_speed.wav",
+   "text": "Good speed.",
+   "ms": 840,
+   "role": "whole"
+  },
+  "good_on_pace": {
+   "file": "good_on_pace.wav",
+   "text": "Good, on pace.",
+   "ms": 970,
+   "role": "whole"
+  },
+  "too_much_brake": {
+   "file": "too_much_brake.wav",
+   "text": "Too much brake.",
+   "ms": 930,
+   "role": "whole"
+  },
+  "braked_too_early": {
+   "file": "braked_too_early.wav",
+   "text": "Braked too early.",
+   "ms": 1020,
+   "role": "whole"
+  },
+  "braked_too_late": {
+   "file": "braked_too_late.wav",
+   "text": "Braked too late.",
+   "ms": 1010,
+   "role": "whole"
+  },
+  "hold_the_brake_in": {
+   "file": "hold_the_brake_in.wav",
+   "text": "Hold the brake in.",
+   "ms": 1100,
+   "role": "whole"
+  },
+  "less_coasting": {
+   "file": "less_coasting.wav",
+   "text": "Less coasting.",
+   "ms": 960,
+   "role": "whole"
+  },
+  "more_speed": {
+   "file": "more_speed.wav",
+   "text": "More speed.",
+   "ms": 850,
+   "role": "whole"
+  },
+  "new_best": {
+   "file": "new_best.wav",
+   "text": "New best.",
+   "ms": 750,
+   "role": "whole"
+  },
+  "building_your_reference": {
+   "file": "building_your_reference.wav",
+   "text": "Building your reference.",
+   "ms": 1230,
+   "role": "whole"
+  },
+  "lost_0_1": {
+   "file": "lost_0_1.wav",
+   "text": "a tenth down.",
+   "ms": 850,
+   "role": "tail"
+  },
+  "lost_0_2": {
+   "file": "lost_0_2.wav",
+   "text": "two tenths down.",
+   "ms": 950,
+   "role": "tail"
+  },
+  "lost_0_3": {
+   "file": "lost_0_3.wav",
+   "text": "three tenths down.",
+   "ms": 970,
+   "role": "tail"
+  },
+  "lost_0_4": {
+   "file": "lost_0_4.wav",
+   "text": "four tenths down.",
+   "ms": 1060,
+   "role": "tail"
+  },
+  "lost_0_5": {
+   "file": "lost_0_5.wav",
+   "text": "five tenths down.",
+   "ms": 1140,
+   "role": "tail"
+  },
+  "lost_0_6": {
+   "file": "lost_0_6.wav",
+   "text": "six tenths down.",
+   "ms": 1090,
+   "role": "tail"
+  },
+  "lost_0_7": {
+   "file": "lost_0_7.wav",
+   "text": "seven tenths down.",
+   "ms": 1170,
+   "role": "tail"
+  },
+  "lost_0_8": {
+   "file": "lost_0_8.wav",
+   "text": "eight tenths down.",
+   "ms": 1000,
+   "role": "tail"
+  },
+  "lost_0_9": {
+   "file": "lost_0_9.wav",
+   "text": "nine tenths down.",
+   "ms": 1110,
+   "role": "tail"
+  },
+  "lost_1_0": {
+   "file": "lost_1_0.wav",
+   "text": "one second down.",
+   "ms": 1030,
+   "role": "tail"
+  },
+  "lost_1_1": {
+   "file": "lost_1_1.wav",
+   "text": "one point one seconds down.",
+   "ms": 1580,
+   "role": "tail"
+  },
+  "lost_1_2": {
+   "file": "lost_1_2.wav",
+   "text": "one point two seconds down.",
+   "ms": 1560,
+   "role": "tail"
+  },
+  "lost_1_3": {
+   "file": "lost_1_3.wav",
+   "text": "one point three seconds down.",
+   "ms": 1610,
+   "role": "tail"
+  },
+  "lost_1_4": {
+   "file": "lost_1_4.wav",
+   "text": "one point four seconds down.",
+   "ms": 1650,
+   "role": "tail"
+  },
+  "lost_1_5": {
+   "file": "lost_1_5.wav",
+   "text": "one point five seconds down.",
+   "ms": 1630,
+   "role": "tail"
+  },
+  "lost_1_6": {
+   "file": "lost_1_6.wav",
+   "text": "one point six seconds down.",
+   "ms": 1590,
+   "role": "tail"
+  },
+  "lost_1_7": {
+   "file": "lost_1_7.wav",
+   "text": "one point seven seconds down.",
+   "ms": 1730,
+   "role": "tail"
+  },
+  "lost_1_8": {
+   "file": "lost_1_8.wav",
+   "text": "one point eight seconds down.",
+   "ms": 1610,
+   "role": "tail"
+  },
+  "lost_1_9": {
+   "file": "lost_1_9.wav",
+   "text": "one point nine seconds down.",
+   "ms": 1620,
+   "role": "tail"
+  },
+  "lost_2_0": {
+   "file": "lost_2_0.wav",
+   "text": "two seconds down.",
+   "ms": 1010,
+   "role": "tail"
+  },
+  "sector_1": {
+   "file": "sector_1.wav",
+   "text": "Sector one,",
+   "ms": 740,
+   "role": "lead"
+  },
+  "sector_2": {
+   "file": "sector_2.wav",
+   "text": "Sector two,",
+   "ms": 810,
+   "role": "lead"
+  },
+  "sector_3": {
+   "file": "sector_3.wav",
+   "text": "Sector three,",
+   "ms": 790,
+   "role": "lead"
+  },
+  "reference_set": {
+   "file": "reference_set.wav",
+   "text": "Reference set,",
+   "ms": 760,
+   "role": "lead"
+  },
+  "lap_40": {
+   "file": "lap_40.wav",
+   "text": "Forty,",
+   "ms": 600,
+   "role": "lead"
+  },
+  "tenth_0": {
+   "file": "tenth_0.wav",
+   "text": "oh.",
+   "ms": 400,
+   "role": "tail"
+  },
+  "lap_41": {
+   "file": "lap_41.wav",
+   "text": "Forty-one,",
+   "ms": 690,
+   "role": "lead"
+  },
+  "tenth_7": {
+   "file": "tenth_7.wav",
+   "text": "seven.",
+   "ms": 550,
+   "role": "tail"
+  },
+  "lap_42": {
+   "file": "lap_42.wav",
+   "text": "Forty-two,",
+   "ms": 750,
+   "role": "lead"
+  },
+  "tenth_4": {
+   "file": "tenth_4.wav",
+   "text": "four.",
+   "ms": 520,
+   "role": "tail"
+  },
+  "lap_43": {
+   "file": "lap_43.wav",
+   "text": "Forty-three,",
+   "ms": 790,
+   "role": "lead"
+  },
+  "tenth_1": {
+   "file": "tenth_1.wav",
+   "text": "one.",
+   "ms": 430,
+   "role": "tail"
+  },
+  "lap_44": {
+   "file": "lap_44.wav",
+   "text": "Forty-four,",
+   "ms": 750,
+   "role": "lead"
+  },
+  "tenth_8": {
+   "file": "tenth_8.wav",
+   "text": "eight.",
+   "ms": 400,
+   "role": "tail"
+  },
+  "lap_45": {
+   "file": "lap_45.wav",
+   "text": "Forty-five,",
+   "ms": 840,
+   "role": "lead"
+  },
+  "tenth_5": {
+   "file": "tenth_5.wav",
+   "text": "five.",
+   "ms": 540,
+   "role": "tail"
+  },
+  "lap_46": {
+   "file": "lap_46.wav",
+   "text": "Forty-six,",
+   "ms": 770,
+   "role": "lead"
+  },
+  "tenth_2": {
+   "file": "tenth_2.wav",
+   "text": "two.",
+   "ms": 440,
+   "role": "tail"
+  },
+  "lap_47": {
+   "file": "lap_47.wav",
+   "text": "Forty-seven,",
+   "ms": 840,
+   "role": "lead"
+  },
+  "tenth_9": {
+   "file": "tenth_9.wav",
+   "text": "nine.",
+   "ms": 520,
+   "role": "tail"
+  },
+  "lap_48": {
+   "file": "lap_48.wav",
+   "text": "Forty-eight,",
+   "ms": 680,
+   "role": "lead"
+  },
+  "tenth_6": {
+   "file": "tenth_6.wav",
+   "text": "six.",
+   "ms": 530,
+   "role": "tail"
+  },
+  "lap_49": {
+   "file": "lap_49.wav",
+   "text": "Forty-nine,",
+   "ms": 810,
+   "role": "lead"
+  },
+  "tenth_3": {
+   "file": "tenth_3.wav",
+   "text": "three.",
+   "ms": 520,
+   "role": "tail"
+  },
+  "lap_50": {
+   "file": "lap_50.wav",
+   "text": "Fifty,",
+   "ms": 580,
+   "role": "lead"
+  },
+  "lap_51": {
+   "file": "lap_51.wav",
+   "text": "Fifty-one,",
+   "ms": 710,
+   "role": "lead"
+  },
+  "lap_52": {
+   "file": "lap_52.wav",
+   "text": "Fifty-two,",
+   "ms": 760,
+   "role": "lead"
+  },
+  "lap_53": {
+   "file": "lap_53.wav",
+   "text": "Fifty-three,",
+   "ms": 750,
+   "role": "lead"
+  },
+  "lap_54": {
+   "file": "lap_54.wav",
+   "text": "Fifty-four,",
+   "ms": 800,
+   "role": "lead"
+  },
+  "lap_55": {
+   "file": "lap_55.wav",
+   "text": "Fifty-five,",
+   "ms": 790,
+   "role": "lead"
+  },
+  "lap_56": {
+   "file": "lap_56.wav",
+   "text": "Fifty-six,",
+   "ms": 800,
+   "role": "lead"
+  },
+  "lap_57": {
+   "file": "lap_57.wav",
+   "text": "Fifty-seven,",
+   "ms": 800,
+   "role": "lead"
+  },
+  "lap_58": {
+   "file": "lap_58.wav",
+   "text": "Fifty-eight,",
+   "ms": 630,
+   "role": "lead"
+  },
+  "lap_59": {
+   "file": "lap_59.wav",
+   "text": "Fifty-nine,",
+   "ms": 760,
+   "role": "lead"
+  },
+  "lap_60": {
+   "file": "lap_60.wav",
+   "text": "One oh oh,",
+   "ms": 700,
+   "role": "lead"
+  },
+  "lap_61": {
+   "file": "lap_61.wav",
+   "text": "One oh one,",
+   "ms": 760,
+   "role": "lead"
+  },
+  "lap_62": {
+   "file": "lap_62.wav",
+   "text": "One oh two,",
+   "ms": 750,
+   "role": "lead"
+  },
+  "lap_63": {
+   "file": "lap_63.wav",
+   "text": "One oh three,",
+   "ms": 770,
+   "role": "lead"
+  },
+  "lap_64": {
+   "file": "lap_64.wav",
+   "text": "One oh four,",
+   "ms": 850,
+   "role": "lead"
+  },
+  "lap_65": {
+   "file": "lap_65.wav",
+   "text": "One oh five,",
+   "ms": 770,
+   "role": "lead"
+  },
+  "lap_66": {
+   "file": "lap_66.wav",
+   "text": "One oh six,",
+   "ms": 640,
+   "role": "lead"
+  },
+  "lap_67": {
+   "file": "lap_67.wav",
+   "text": "One oh seven,",
+   "ms": 840,
+   "role": "lead"
+  },
+  "lap_68": {
+   "file": "lap_68.wav",
+   "text": "One oh eight,",
+   "ms": 770,
+   "role": "lead"
+  },
+  "lap_69": {
+   "file": "lap_69.wav",
+   "text": "One oh nine,",
+   "ms": 760,
+   "role": "lead"
+  },
+  "lap_70": {
+   "file": "lap_70.wav",
+   "text": "One ten,",
+   "ms": 620,
+   "role": "lead"
+  },
+  "lap_71": {
+   "file": "lap_71.wav",
+   "text": "One eleven,",
+   "ms": 760,
+   "role": "lead"
+  },
+  "lap_72": {
+   "file": "lap_72.wav",
+   "text": "One twelve,",
+   "ms": 770,
+   "role": "lead"
+  },
+  "lap_73": {
+   "file": "lap_73.wav",
+   "text": "One thirteen,",
+   "ms": 880,
+   "role": "lead"
+  },
+  "lap_74": {
+   "file": "lap_74.wav",
+   "text": "One fourteen,",
+   "ms": 850,
+   "role": "lead"
+  },
+  "lap_75": {
+   "file": "lap_75.wav",
+   "text": "One fifteen,",
+   "ms": 810,
+   "role": "lead"
+  },
+  "lap_76": {
+   "file": "lap_76.wav",
+   "text": "One sixteen,",
+   "ms": 860,
+   "role": "lead"
+  },
+  "lap_77": {
+   "file": "lap_77.wav",
+   "text": "One seventeen,",
+   "ms": 960,
+   "role": "lead"
+  },
+  "lap_78": {
+   "file": "lap_78.wav",
+   "text": "One eighteen,",
+   "ms": 850,
+   "role": "lead"
+  },
+  "lap_79": {
+   "file": "lap_79.wav",
+   "text": "One nineteen,",
+   "ms": 860,
+   "role": "lead"
+  },
+  "lap_80": {
+   "file": "lap_80.wav",
+   "text": "One twenty,",
+   "ms": 760,
+   "role": "lead"
+  },
+  "lap_81": {
+   "file": "lap_81.wav",
+   "text": "One twenty-one,",
+   "ms": 840,
+   "role": "lead"
+  },
+  "lap_82": {
+   "file": "lap_82.wav",
+   "text": "One twenty-two,",
+   "ms": 990,
+   "role": "lead"
+  },
+  "lap_83": {
+   "file": "lap_83.wav",
+   "text": "One twenty-three,",
+   "ms": 910,
+   "role": "lead"
+  },
+  "lap_84": {
+   "file": "lap_84.wav",
+   "text": "One twenty-four,",
+   "ms": 910,
+   "role": "lead"
+  },
+  "lap_85": {
+   "file": "lap_85.wav",
+   "text": "One twenty-five,",
+   "ms": 1010,
+   "role": "lead"
+  },
+  "lap_86": {
+   "file": "lap_86.wav",
+   "text": "One twenty-six,",
+   "ms": 1020,
+   "role": "lead"
+  },
+  "lap_87": {
+   "file": "lap_87.wav",
+   "text": "One twenty-seven,",
+   "ms": 980,
+   "role": "lead"
+  },
+  "lap_88": {
+   "file": "lap_88.wav",
+   "text": "One twenty-eight,",
+   "ms": 790,
+   "role": "lead"
+  },
+  "lap_89": {
+   "file": "lap_89.wav",
+   "text": "One twenty-nine,",
+   "ms": 910,
+   "role": "lead"
+  },
+  "lap_90": {
+   "file": "lap_90.wav",
+   "text": "One thirty,",
+   "ms": 790,
+   "role": "lead"
+  },
+  "lap_91": {
+   "file": "lap_91.wav",
+   "text": "One thirty-one,",
+   "ms": 900,
+   "role": "lead"
+  },
+  "lap_92": {
+   "file": "lap_92.wav",
+   "text": "One thirty-two,",
+   "ms": 960,
+   "role": "lead"
+  },
+  "lap_93": {
+   "file": "lap_93.wav",
+   "text": "One thirty-three,",
+   "ms": 910,
+   "role": "lead"
+  },
+  "lap_94": {
+   "file": "lap_94.wav",
+   "text": "One thirty-four,",
+   "ms": 910,
+   "role": "lead"
+  },
+  "lap_95": {
+   "file": "lap_95.wav",
+   "text": "One thirty-five,",
+   "ms": 970,
+   "role": "lead"
+  },
+  "lap_96": {
+   "file": "lap_96.wav",
+   "text": "One thirty-six,",
+   "ms": 1010,
+   "role": "lead"
+  },
+  "lap_97": {
+   "file": "lap_97.wav",
+   "text": "One thirty-seven,",
+   "ms": 910,
+   "role": "lead"
+  },
+  "lap_98": {
+   "file": "lap_98.wav",
+   "text": "One thirty-eight,",
+   "ms": 770,
+   "role": "lead"
+  },
+  "lap_99": {
+   "file": "lap_99.wav",
+   "text": "One thirty-nine,",
+   "ms": 980,
+   "role": "lead"
+  },
+  "lap_100": {
+   "file": "lap_100.wav",
+   "text": "One forty,",
+   "ms": 770,
+   "role": "lead"
+  },
+  "lap_101": {
+   "file": "lap_101.wav",
+   "text": "One forty-one,",
+   "ms": 940,
+   "role": "lead"
+  },
+  "lap_102": {
+   "file": "lap_102.wav",
+   "text": "One forty-two,",
+   "ms": 940,
+   "role": "lead"
+  },
+  "lap_103": {
+   "file": "lap_103.wav",
+   "text": "One forty-three,",
+   "ms": 930,
+   "role": "lead"
+  },
+  "lap_104": {
+   "file": "lap_104.wav",
+   "text": "One forty-four,",
+   "ms": 930,
+   "role": "lead"
+  },
+  "lap_105": {
+   "file": "lap_105.wav",
+   "text": "One forty-five,",
+   "ms": 990,
+   "role": "lead"
+  },
+  "lap_106": {
+   "file": "lap_106.wav",
+   "text": "One forty-six,",
+   "ms": 1040,
+   "role": "lead"
+  },
+  "lap_107": {
+   "file": "lap_107.wav",
+   "text": "One forty-seven,",
+   "ms": 1010,
+   "role": "lead"
+  },
+  "lap_108": {
+   "file": "lap_108.wav",
+   "text": "One forty-eight,",
+   "ms": 790,
+   "role": "lead"
+  },
+  "lap_109": {
+   "file": "lap_109.wav",
+   "text": "One forty-nine,",
+   "ms": 950,
+   "role": "lead"
+  },
+  "lap_110": {
+   "file": "lap_110.wav",
+   "text": "One fifty,",
+   "ms": 790,
+   "role": "lead"
+  },
+  "lap_111": {
+   "file": "lap_111.wav",
+   "text": "One fifty-one,",
+   "ms": 880,
+   "role": "lead"
+  },
+  "lap_112": {
+   "file": "lap_112.wav",
+   "text": "One fifty-two,",
+   "ms": 970,
+   "role": "lead"
+  },
+  "lap_113": {
+   "file": "lap_113.wav",
+   "text": "One fifty-three,",
+   "ms": 950,
+   "role": "lead"
+  },
+  "lap_114": {
+   "file": "lap_114.wav",
+   "text": "One fifty-four,",
+   "ms": 910,
+   "role": "lead"
+  },
+  "lap_115": {
+   "file": "lap_115.wav",
+   "text": "One fifty-five,",
+   "ms": 990,
+   "role": "lead"
+  },
+  "lap_116": {
+   "file": "lap_116.wav",
+   "text": "One fifty-six,",
+   "ms": 1070,
+   "role": "lead"
+  },
+  "lap_117": {
+   "file": "lap_117.wav",
+   "text": "One fifty-seven,",
+   "ms": 1030,
+   "role": "lead"
+  },
+  "lap_118": {
+   "file": "lap_118.wav",
+   "text": "One fifty-eight,",
+   "ms": 930,
+   "role": "lead"
+  },
+  "lap_119": {
+   "file": "lap_119.wav",
+   "text": "One fifty-nine,",
+   "ms": 1000,
+   "role": "lead"
+  },
+  "lap_120": {
+   "file": "lap_120.wav",
+   "text": "Two oh oh,",
+   "ms": 730,
+   "role": "lead"
+  },
+  "lap_121": {
+   "file": "lap_121.wav",
+   "text": "Two oh one,",
+   "ms": 810,
+   "role": "lead"
+  },
+  "lap_122": {
+   "file": "lap_122.wav",
+   "text": "Two oh two,",
+   "ms": 750,
+   "role": "lead"
+  },
+  "lap_123": {
+   "file": "lap_123.wav",
+   "text": "Two oh three,",
+   "ms": 750,
+   "role": "lead"
+  },
+  "lap_124": {
+   "file": "lap_124.wav",
+   "text": "Two oh four,",
+   "ms": 800,
+   "role": "lead"
+  },
+  "lap_125": {
+   "file": "lap_125.wav",
+   "text": "Two oh five,",
+   "ms": 770,
+   "role": "lead"
+  },
+  "lap_126": {
+   "file": "lap_126.wav",
+   "text": "Two oh six,",
+   "ms": 600,
+   "role": "lead"
+  },
+  "lap_127": {
+   "file": "lap_127.wav",
+   "text": "Two oh seven,",
+   "ms": 810,
+   "role": "lead"
+  },
+  "lap_128": {
+   "file": "lap_128.wav",
+   "text": "Two oh eight,",
+   "ms": 910,
+   "role": "lead"
+  },
+  "lap_129": {
+   "file": "lap_129.wav",
+   "text": "Two oh nine,",
+   "ms": 730,
+   "role": "lead"
+  },
+  "lap_130": {
+   "file": "lap_130.wav",
+   "text": "Two ten,",
+   "ms": 640,
+   "role": "lead"
+  },
+  "lap_131": {
+   "file": "lap_131.wav",
+   "text": "Two eleven,",
+   "ms": 720,
+   "role": "lead"
+  },
+  "lap_132": {
+   "file": "lap_132.wav",
+   "text": "Two twelve,",
+   "ms": 690,
+   "role": "lead"
+  },
+  "lap_133": {
+   "file": "lap_133.wav",
+   "text": "Two thirteen,",
+   "ms": 790,
+   "role": "lead"
+  },
+  "lap_134": {
+   "file": "lap_134.wav",
+   "text": "Two fourteen,",
+   "ms": 760,
+   "role": "lead"
+  },
+  "lap_135": {
+   "file": "lap_135.wav",
+   "text": "Two fifteen,",
+   "ms": 770,
+   "role": "lead"
+  },
+  "lap_136": {
+   "file": "lap_136.wav",
+   "text": "Two sixteen,",
+   "ms": 830,
+   "role": "lead"
+  },
+  "lap_137": {
+   "file": "lap_137.wav",
+   "text": "Two seventeen,",
+   "ms": 890,
+   "role": "lead"
+  },
+  "lap_138": {
+   "file": "lap_138.wav",
+   "text": "Two eighteen,",
+   "ms": 740,
+   "role": "lead"
+  },
+  "lap_139": {
+   "file": "lap_139.wav",
+   "text": "Two nineteen,",
+   "ms": 760,
+   "role": "lead"
+  },
+  "lap_140": {
+   "file": "lap_140.wav",
+   "text": "Two twenty,",
+   "ms": 720,
+   "role": "lead"
+  },
+  "lap_141": {
+   "file": "lap_141.wav",
+   "text": "Two twenty-one,",
+   "ms": 850,
+   "role": "lead"
+  },
+  "lap_142": {
+   "file": "lap_142.wav",
+   "text": "Two twenty-two,",
+   "ms": 910,
+   "role": "lead"
+  },
+  "lap_143": {
+   "file": "lap_143.wav",
+   "text": "Two twenty-three,",
+   "ms": 880,
+   "role": "lead"
+  },
+  "lap_144": {
+   "file": "lap_144.wav",
+   "text": "Two twenty-four,",
+   "ms": 850,
+   "role": "lead"
+  },
+  "lap_145": {
+   "file": "lap_145.wav",
+   "text": "Two twenty-five,",
+   "ms": 940,
+   "role": "lead"
+  },
+  "lap_146": {
+   "file": "lap_146.wav",
+   "text": "Two twenty-six,",
+   "ms": 960,
+   "role": "lead"
+  },
+  "lap_147": {
+   "file": "lap_147.wav",
+   "text": "Two twenty-seven,",
+   "ms": 940,
+   "role": "lead"
+  },
+  "lap_148": {
+   "file": "lap_148.wav",
+   "text": "Two twenty-eight,",
+   "ms": 1050,
+   "role": "lead"
+  },
+  "lap_149": {
+   "file": "lap_149.wav",
+   "text": "Two twenty-nine,",
+   "ms": 880,
+   "role": "lead"
+  },
+  "lap_150": {
+   "file": "lap_150.wav",
+   "text": "Two thirty,",
+   "ms": 650,
+   "role": "lead"
+  },
+  "lap_151": {
+   "file": "lap_151.wav",
+   "text": "Two thirty-one,",
+   "ms": 840,
+   "role": "lead"
+  },
+  "lap_152": {
+   "file": "lap_152.wav",
+   "text": "Two thirty-two,",
+   "ms": 890,
+   "role": "lead"
+  },
+  "lap_153": {
+   "file": "lap_153.wav",
+   "text": "Two thirty-three,",
+   "ms": 900,
+   "role": "lead"
+  },
+  "lap_154": {
+   "file": "lap_154.wav",
+   "text": "Two thirty-four,",
+   "ms": 880,
+   "role": "lead"
+  },
+  "lap_155": {
+   "file": "lap_155.wav",
+   "text": "Two thirty-five,",
+   "ms": 920,
+   "role": "lead"
+  },
+  "lap_156": {
+   "file": "lap_156.wav",
+   "text": "Two thirty-six,",
+   "ms": 980,
+   "role": "lead"
+  },
+  "lap_157": {
+   "file": "lap_157.wav",
+   "text": "Two thirty-seven,",
+   "ms": 940,
+   "role": "lead"
+  },
+  "lap_158": {
+   "file": "lap_158.wav",
+   "text": "Two thirty-eight,",
+   "ms": 1080,
+   "role": "lead"
+  },
+  "lap_159": {
+   "file": "lap_159.wav",
+   "text": "Two thirty-nine,",
+   "ms": 910,
+   "role": "lead"
+  },
+  "lap_160": {
+   "file": "lap_160.wav",
+   "text": "Two forty,",
+   "ms": 740,
+   "role": "lead"
+  },
+  "lap_161": {
+   "file": "lap_161.wav",
+   "text": "Two forty-one,",
+   "ms": 850,
+   "role": "lead"
+  },
+  "lap_162": {
+   "file": "lap_162.wav",
+   "text": "Two forty-two,",
+   "ms": 890,
+   "role": "lead"
+  },
+  "lap_163": {
+   "file": "lap_163.wav",
+   "text": "Two forty-three,",
+   "ms": 880,
+   "role": "lead"
+  },
+  "lap_164": {
+   "file": "lap_164.wav",
+   "text": "Two forty-four,",
+   "ms": 880,
+   "role": "lead"
+  },
+  "lap_165": {
+   "file": "lap_165.wav",
+   "text": "Two forty-five,",
+   "ms": 950,
+   "role": "lead"
+  },
+  "lap_166": {
+   "file": "lap_166.wav",
+   "text": "Two forty-six,",
+   "ms": 1000,
+   "role": "lead"
+  },
+  "lap_167": {
+   "file": "lap_167.wav",
+   "text": "Two forty-seven,",
+   "ms": 990,
+   "role": "lead"
+  },
+  "lap_168": {
+   "file": "lap_168.wav",
+   "text": "Two forty-eight,",
+   "ms": 1050,
+   "role": "lead"
+  },
+  "lap_169": {
+   "file": "lap_169.wav",
+   "text": "Two forty-nine,",
+   "ms": 930,
+   "role": "lead"
+  },
+  "lap_170": {
+   "file": "lap_170.wav",
+   "text": "Two fifty,",
+   "ms": 740,
+   "role": "lead"
+  },
+  "lap_171": {
+   "file": "lap_171.wav",
+   "text": "Two fifty-one,",
+   "ms": 850,
+   "role": "lead"
+  },
+  "lap_172": {
+   "file": "lap_172.wav",
+   "text": "Two fifty-two,",
+   "ms": 930,
+   "role": "lead"
+  },
+  "lap_173": {
+   "file": "lap_173.wav",
+   "text": "Two fifty-three,",
+   "ms": 900,
+   "role": "lead"
+  },
+  "lap_174": {
+   "file": "lap_174.wav",
+   "text": "Two fifty-four,",
+   "ms": 960,
+   "role": "lead"
+  },
+  "lap_175": {
+   "file": "lap_175.wav",
+   "text": "Two fifty-five,",
+   "ms": 930,
+   "role": "lead"
+  },
+  "lap_176": {
+   "file": "lap_176.wav",
+   "text": "Two fifty-six,",
+   "ms": 990,
+   "role": "lead"
+  },
+  "lap_177": {
+   "file": "lap_177.wav",
+   "text": "Two fifty-seven,",
+   "ms": 980,
+   "role": "lead"
+  },
+  "lap_178": {
+   "file": "lap_178.wav",
+   "text": "Two fifty-eight,",
+   "ms": 1060,
+   "role": "lead"
+  },
+  "lap_179": {
+   "file": "lap_179.wav",
+   "text": "Two fifty-nine,",
+   "ms": 930,
+   "role": "lead"
+  },
+  "lap_180": {
+   "file": "lap_180.wav",
+   "text": "Three oh oh,",
+   "ms": 770,
+   "role": "lead"
+  },
+  "down_lead_0_1": {
+   "file": "down_lead_0_1.wav",
+   "text": "Down a tenth,",
+   "ms": 770,
+   "role": "lead"
+  },
+  "most_turn_1": {
+   "file": "most_turn_1.wav",
+   "text": "most in turn one.",
+   "ms": 1070,
+   "role": "tail"
+  },
+  "down_lead_0_2": {
+   "file": "down_lead_0_2.wav",
+   "text": "Down two tenths,",
+   "ms": 900,
+   "role": "lead"
+  },
+  "most_turn_2": {
+   "file": "most_turn_2.wav",
+   "text": "most in turn two.",
+   "ms": 1050,
+   "role": "tail"
+  },
+  "down_lead_0_3": {
+   "file": "down_lead_0_3.wav",
+   "text": "Down three tenths,",
+   "ms": 1000,
+   "role": "lead"
+  },
+  "most_turn_3": {
+   "file": "most_turn_3.wav",
+   "text": "most in turn three.",
+   "ms": 1100,
+   "role": "tail"
+  },
+  "down_lead_0_4": {
+   "file": "down_lead_0_4.wav",
+   "text": "Down four tenths,",
+   "ms": 980,
+   "role": "lead"
+  },
+  "most_turn_4": {
+   "file": "most_turn_4.wav",
+   "text": "most in turn four.",
+   "ms": 1110,
+   "role": "tail"
+  },
+  "down_lead_0_5": {
+   "file": "down_lead_0_5.wav",
+   "text": "Down five tenths,",
+   "ms": 1070,
+   "role": "lead"
+  },
+  "most_turn_5": {
+   "file": "most_turn_5.wav",
+   "text": "most in turn five.",
+   "ms": 1220,
+   "role": "tail"
+  },
+  "down_lead_0_6": {
+   "file": "down_lead_0_6.wav",
+   "text": "Down six tenths,",
+   "ms": 990,
+   "role": "lead"
+  },
+  "most_turn_6": {
+   "file": "most_turn_6.wav",
+   "text": "most in turn six.",
+   "ms": 1170,
+   "role": "tail"
+  },
+  "down_lead_0_7": {
+   "file": "down_lead_0_7.wav",
+   "text": "Down seven tenths,",
+   "ms": 1110,
+   "role": "lead"
+  },
+  "most_turn_7": {
+   "file": "most_turn_7.wav",
+   "text": "most in turn seven.",
+   "ms": 1180,
+   "role": "tail"
+  },
+  "down_lead_0_8": {
+   "file": "down_lead_0_8.wav",
+   "text": "Down eight tenths,",
+   "ms": 990,
+   "role": "lead"
+  },
+  "most_turn_8": {
+   "file": "most_turn_8.wav",
+   "text": "most in turn eight.",
+   "ms": 1050,
+   "role": "tail"
+  },
+  "down_lead_0_9": {
+   "file": "down_lead_0_9.wav",
+   "text": "Down nine tenths,",
+   "ms": 1070,
+   "role": "lead"
+  },
+  "most_turn_9": {
+   "file": "most_turn_9.wav",
+   "text": "most in turn nine.",
+   "ms": 1100,
+   "role": "tail"
+  },
+  "down_lead_1_0": {
+   "file": "down_lead_1_0.wav",
+   "text": "Down one second,",
+   "ms": 920,
+   "role": "lead"
+  },
+  "most_turn_10": {
+   "file": "most_turn_10.wav",
+   "text": "most in turn ten.",
+   "ms": 1140,
+   "role": "tail"
+  },
+  "down_lead_1_1": {
+   "file": "down_lead_1_1.wav",
+   "text": "Down one point one seconds,",
+   "ms": 1510,
+   "role": "lead"
+  },
+  "most_turn_11": {
+   "file": "most_turn_11.wav",
+   "text": "most in turn eleven.",
+   "ms": 1220,
+   "role": "tail"
+  },
+  "down_lead_1_2": {
+   "file": "down_lead_1_2.wav",
+   "text": "Down one point two seconds,",
+   "ms": 1480,
+   "role": "lead"
+  },
+  "most_turn_12": {
+   "file": "most_turn_12.wav",
+   "text": "most in turn twelve.",
+   "ms": 1230,
+   "role": "tail"
+  },
+  "down_lead_1_3": {
+   "file": "down_lead_1_3.wav",
+   "text": "Down one point three seconds,",
+   "ms": 1490,
+   "role": "lead"
+  },
+  "most_turn_13": {
+   "file": "most_turn_13.wav",
+   "text": "most in turn thirteen.",
+   "ms": 1350,
+   "role": "tail"
+  },
+  "down_lead_1_4": {
+   "file": "down_lead_1_4.wav",
+   "text": "Down one point four seconds,",
+   "ms": 1510,
+   "role": "lead"
+  },
+  "most_turn_14": {
+   "file": "most_turn_14.wav",
+   "text": "most in turn fourteen.",
+   "ms": 1320,
+   "role": "tail"
+  },
+  "down_lead_1_5": {
+   "file": "down_lead_1_5.wav",
+   "text": "Down one point five seconds,",
+   "ms": 1610,
+   "role": "lead"
+  },
+  "most_turn_15": {
+   "file": "most_turn_15.wav",
+   "text": "most in turn fifteen.",
+   "ms": 1240,
+   "role": "tail"
+  },
+  "down_lead_1_6": {
+   "file": "down_lead_1_6.wav",
+   "text": "Down one point six seconds,",
+   "ms": 1530,
+   "role": "lead"
+  },
+  "most_turn_16": {
+   "file": "most_turn_16.wav",
+   "text": "most in turn sixteen.",
+   "ms": 1260,
+   "role": "tail"
+  },
+  "down_lead_1_7": {
+   "file": "down_lead_1_7.wav",
+   "text": "Down one point seven seconds,",
+   "ms": 1660,
+   "role": "lead"
+  },
+  "most_turn_17": {
+   "file": "most_turn_17.wav",
+   "text": "most in turn seventeen.",
+   "ms": 1400,
+   "role": "tail"
+  },
+  "down_lead_1_8": {
+   "file": "down_lead_1_8.wav",
+   "text": "Down one point eight seconds,",
+   "ms": 1530,
+   "role": "lead"
+  },
+  "most_turn_18": {
+   "file": "most_turn_18.wav",
+   "text": "most in turn eighteen.",
+   "ms": 1280,
+   "role": "tail"
+  },
+  "down_lead_1_9": {
+   "file": "down_lead_1_9.wav",
+   "text": "Down one point nine seconds,",
+   "ms": 1590,
+   "role": "lead"
+  },
+  "most_turn_19": {
+   "file": "most_turn_19.wav",
+   "text": "most in turn nineteen.",
+   "ms": 1320,
+   "role": "tail"
+  },
+  "down_lead_2_0": {
+   "file": "down_lead_2_0.wav",
+   "text": "Down two seconds,",
+   "ms": 1020,
+   "role": "lead"
+  },
+  "most_turn_20": {
+   "file": "most_turn_20.wav",
+   "text": "most in turn twenty.",
+   "ms": 1170,
+   "role": "tail"
+  },
+  "most_turn_21": {
+   "file": "most_turn_21.wav",
+   "text": "most in turn twenty-one.",
+   "ms": 1330,
+   "role": "tail"
+  },
+  "most_turn_22": {
+   "file": "most_turn_22.wav",
+   "text": "most in turn twenty-two.",
+   "ms": 1370,
+   "role": "tail"
+  },
+  "most_turn_23": {
+   "file": "most_turn_23.wav",
+   "text": "most in turn twenty-three.",
+   "ms": 1380,
+   "role": "tail"
+  },
+  "most_turn_24": {
+   "file": "most_turn_24.wav",
+   "text": "most in turn twenty-four.",
+   "ms": 1400,
+   "role": "tail"
+  },
+  "most_turn_25": {
+   "file": "most_turn_25.wav",
+   "text": "most in turn twenty-five.",
+   "ms": 1450,
+   "role": "tail"
+  },
+  "no_clean_lap_yet": {
+   "file": "no_clean_lap_yet.wav",
+   "text": "No clean lap yet.",
+   "ms": 1260,
+   "role": "whole"
+  },
+  "down_more_than_two_seconds": {
+   "file": "down_more_than_two_seconds.wav",
+   "text": "Down more than two seconds.",
+   "ms": 1420,
+   "role": "whole"
+  },
+  "sec_0": {
+   "file": "sec_0.wav",
+   "text": "Oh oh,",
+   "ms": 550,
+   "role": "lead"
+  },
+  "sec_1": {
+   "file": "sec_1.wav",
+   "text": "Oh one,",
+   "ms": 570,
+   "role": "lead"
+  },
+  "sec_2": {
+   "file": "sec_2.wav",
+   "text": "Oh two,",
+   "ms": 610,
+   "role": "lead"
+  },
+  "sec_3": {
+   "file": "sec_3.wav",
+   "text": "Oh three,",
+   "ms": 620,
+   "role": "lead"
+  },
+  "sec_4": {
+   "file": "sec_4.wav",
+   "text": "Oh four,",
+   "ms": 610,
+   "role": "lead"
+  },
+  "sec_5": {
+   "file": "sec_5.wav",
+   "text": "Oh five,",
+   "ms": 690,
+   "role": "lead"
+  },
+  "sec_6": {
+   "file": "sec_6.wav",
+   "text": "Oh six,",
+   "ms": 710,
+   "role": "lead"
+  },
+  "sec_7": {
+   "file": "sec_7.wav",
+   "text": "Oh seven,",
+   "ms": 670,
+   "role": "lead"
+  },
+  "sec_8": {
+   "file": "sec_8.wav",
+   "text": "Oh eight,",
+   "ms": 580,
+   "role": "lead"
+  },
+  "sec_9": {
+   "file": "sec_9.wav",
+   "text": "Oh nine,",
+   "ms": 630,
+   "role": "lead"
+  },
+  "sec_10": {
+   "file": "sec_10.wav",
+   "text": "Ten,",
+   "ms": 460,
+   "role": "lead"
+  },
+  "sec_11": {
+   "file": "sec_11.wav",
+   "text": "Eleven,",
+   "ms": 560,
+   "role": "lead"
+  },
+  "sec_12": {
+   "file": "sec_12.wav",
+   "text": "Twelve,",
+   "ms": 480,
+   "role": "lead"
+  },
+  "sec_13": {
+   "file": "sec_13.wav",
+   "text": "Thirteen,",
+   "ms": 650,
+   "role": "lead"
+  },
+  "sec_14": {
+   "file": "sec_14.wav",
+   "text": "Fourteen,",
+   "ms": 660,
+   "role": "lead"
+  },
+  "sec_15": {
+   "file": "sec_15.wav",
+   "text": "Fifteen,",
+   "ms": 630,
+   "role": "lead"
+  },
+  "sec_16": {
+   "file": "sec_16.wav",
+   "text": "Sixteen,",
+   "ms": 690,
+   "role": "lead"
+  },
+  "sec_17": {
+   "file": "sec_17.wav",
+   "text": "Seventeen,",
+   "ms": 770,
+   "role": "lead"
+  },
+  "sec_18": {
+   "file": "sec_18.wav",
+   "text": "Eighteen,",
+   "ms": 570,
+   "role": "lead"
+  },
+  "sec_19": {
+   "file": "sec_19.wav",
+   "text": "Nineteen,",
+   "ms": 710,
+   "role": "lead"
+  },
+  "sec_20": {
+   "file": "sec_20.wav",
+   "text": "Twenty,",
+   "ms": 600,
+   "role": "lead"
+  },
+  "sec_21": {
+   "file": "sec_21.wav",
+   "text": "Twenty-one,",
+   "ms": 630,
+   "role": "lead"
+  },
+  "sec_22": {
+   "file": "sec_22.wav",
+   "text": "Twenty-two,",
+   "ms": 730,
+   "role": "lead"
+  },
+  "sec_23": {
+   "file": "sec_23.wav",
+   "text": "Twenty-three,",
+   "ms": 690,
+   "role": "lead"
+  },
+  "sec_24": {
+   "file": "sec_24.wav",
+   "text": "Twenty-four,",
+   "ms": 760,
+   "role": "lead"
+  },
+  "sec_25": {
+   "file": "sec_25.wav",
+   "text": "Twenty-five,",
+   "ms": 730,
+   "role": "lead"
+  },
+  "sec_26": {
+   "file": "sec_26.wav",
+   "text": "Twenty-six,",
+   "ms": 800,
+   "role": "lead"
+  },
+  "sec_27": {
+   "file": "sec_27.wav",
+   "text": "Twenty-seven,",
+   "ms": 770,
+   "role": "lead"
+  },
+  "sec_28": {
+   "file": "sec_28.wav",
+   "text": "Twenty-eight,",
+   "ms": 650,
+   "role": "lead"
+  },
+  "sec_29": {
+   "file": "sec_29.wav",
+   "text": "Twenty-nine,",
+   "ms": 730,
+   "role": "lead"
+  },
+  "sec_30": {
+   "file": "sec_30.wav",
+   "text": "Thirty,",
+   "ms": 540,
+   "role": "lead"
+  },
+  "sec_31": {
+   "file": "sec_31.wav",
+   "text": "Thirty-one,",
+   "ms": 660,
+   "role": "lead"
+  },
+  "sec_32": {
+   "file": "sec_32.wav",
+   "text": "Thirty-two,",
+   "ms": 700,
+   "role": "lead"
+  },
+  "sec_33": {
+   "file": "sec_33.wav",
+   "text": "Thirty-three,",
+   "ms": 720,
+   "role": "lead"
+  },
+  "sec_34": {
+   "file": "sec_34.wav",
+   "text": "Thirty-four,",
+   "ms": 740,
+   "role": "lead"
+  },
+  "sec_35": {
+   "file": "sec_35.wav",
+   "text": "Thirty-five,",
+   "ms": 790,
+   "role": "lead"
+  },
+  "sec_36": {
+   "file": "sec_36.wav",
+   "text": "Thirty-six,",
+   "ms": 730,
+   "role": "lead"
+  },
+  "sec_37": {
+   "file": "sec_37.wav",
+   "text": "Thirty-seven,",
+   "ms": 790,
+   "role": "lead"
+  },
+  "sec_38": {
+   "file": "sec_38.wav",
+   "text": "Thirty-eight,",
+   "ms": 710,
+   "role": "lead"
+  },
+  "sec_39": {
+   "file": "sec_39.wav",
+   "text": "Thirty-nine,",
+   "ms": 790,
+   "role": "lead"
+  },
+  "sec_40": {
+   "file": "sec_40.wav",
+   "text": "Forty,",
+   "ms": 600,
+   "role": "lead"
+  },
+  "sec_41": {
+   "file": "sec_41.wav",
+   "text": "Forty-one,",
+   "ms": 690,
+   "role": "lead"
+  },
+  "sec_42": {
+   "file": "sec_42.wav",
+   "text": "Forty-two,",
+   "ms": 760,
+   "role": "lead"
+  },
+  "sec_43": {
+   "file": "sec_43.wav",
+   "text": "Forty-three,",
+   "ms": 770,
+   "role": "lead"
+  },
+  "sec_44": {
+   "file": "sec_44.wav",
+   "text": "Forty-four,",
+   "ms": 760,
+   "role": "lead"
+  },
+  "sec_45": {
+   "file": "sec_45.wav",
+   "text": "Forty-five,",
+   "ms": 840,
+   "role": "lead"
+  },
+  "sec_46": {
+   "file": "sec_46.wav",
+   "text": "Forty-six,",
+   "ms": 790,
+   "role": "lead"
+  },
+  "sec_47": {
+   "file": "sec_47.wav",
+   "text": "Forty-seven,",
+   "ms": 850,
+   "role": "lead"
+  },
+  "sec_48": {
+   "file": "sec_48.wav",
+   "text": "Forty-eight,",
+   "ms": 740,
+   "role": "lead"
+  },
+  "sec_49": {
+   "file": "sec_49.wav",
+   "text": "Forty-nine,",
+   "ms": 820,
+   "role": "lead"
+  },
+  "sec_50": {
+   "file": "sec_50.wav",
+   "text": "Fifty,",
+   "ms": 580,
+   "role": "lead"
+  },
+  "sec_51": {
+   "file": "sec_51.wav",
+   "text": "Fifty-one,",
+   "ms": 660,
+   "role": "lead"
+  },
+  "sec_52": {
+   "file": "sec_52.wav",
+   "text": "Fifty-two,",
+   "ms": 740,
+   "role": "lead"
+  },
+  "sec_53": {
+   "file": "sec_53.wav",
+   "text": "Fifty-three,",
+   "ms": 740,
+   "role": "lead"
+  },
+  "sec_54": {
+   "file": "sec_54.wav",
+   "text": "Fifty-four,",
+   "ms": 760,
+   "role": "lead"
+  },
+  "sec_55": {
+   "file": "sec_55.wav",
+   "text": "Fifty-five,",
+   "ms": 790,
+   "role": "lead"
+  },
+  "sec_56": {
+   "file": "sec_56.wav",
+   "text": "Fifty-six,",
+   "ms": 870,
+   "role": "lead"
+  },
+  "sec_57": {
+   "file": "sec_57.wav",
+   "text": "Fifty-seven,",
+   "ms": 790,
+   "role": "lead"
+  },
+  "sec_58": {
+   "file": "sec_58.wav",
+   "text": "Fifty-eight,",
+   "ms": 760,
+   "role": "lead"
+  },
+  "sec_59": {
+   "file": "sec_59.wav",
+   "text": "Fifty-nine,",
+   "ms": 800,
+   "role": "lead"
+  },
+  "more_speed_3_down": {
+   "file": "more_speed_3_down.wav",
+   "text": "more speed, three down.",
+   "ms": 1380,
+   "role": "tail"
+  }
+ }
+}

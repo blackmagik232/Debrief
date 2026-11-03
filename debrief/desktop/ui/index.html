@@ -393,7 +393,7 @@
     <div class="col">
       <span class="eyebrow">While you drive</span>
       <h1>Coach</h1>
-      <p class="lede">A few short spoken cues while you drive: a brake marker before the corners that cost you most, a word after them, and your lap against your best. Only from your own laps.</p>
+      <p class="lede">Short spoken cues while you drive: a word after corners where you lost or gained time, sector times, your lap against your best, and a brake marker before the corners that cost you most. Only from your own laps.</p>
       <div class="panel comain">
         <div class="phead"><h3>Status</h3><span class="pill" id="coPill">Off</span></div>
         <p class="costatus" id="coText" role="status">Coach off</p>
@@ -402,8 +402,18 @@
           <button type="button" class="btn" id="coMute" aria-pressed="false" disabled>Mute <kbd>Ctrl+Shift+M</kbd></button>
           <button type="button" class="btn" id="coRepeat" disabled>Repeat that <kbd>Ctrl+Shift+R</kbd></button>
           <button type="button" class="btn" id="coQuiet1" disabled>Mute for 1 minute <kbd>Ctrl+Shift+N</kbd></button>
+          <button type="button" class="btn" id="coPace" disabled>How's my pace? <kbd>Ctrl+Shift+P</kbd></button>
           <span class="msg" id="coMsg" role="status"></span>
         </div>
+        <fieldset class="radios colevel" id="coLevel">
+          <legend>Coaching level</legend>
+          <label class="check" for="coLvQuiet"><input id="coLvQuiet" type="radio" name="coLevel" value="quiet"><span><b>Quiet</b> Your focus corners and your lap time only. At most 2 tips a lap.</span></label>
+          <label class="check" for="coLvNormal"><input id="coLvNormal" type="radio" name="coLevel" value="normal"><span><b>Normal</b> Up to 4 cues a lap: a word after any corner where you lost or gained time, sector times, and focus corners learned from this session.</span></label>
+          <label class="check" for="coLvBusy"><input id="coLvBusy" type="radio" name="coLevel" value="busy"><span><b>Busy</b> Up to 6 cues a lap, closer together, with 3 focus corners.</span></label>
+          <label class="check" for="coLvAsk"><input id="coLvAsk" type="radio" name="coLevel" value="ask"><span><b>Only when I ask</b> Nothing until you ask for your pace (Ctrl+Shift+P or your wheel button): your last lap against your reference and the corner that cost the most.</span></label>
+          <span class="msg" id="coLevelMsg" role="status"></span>
+        </fieldset>
+        <p class="note" id="coFocusWhy" hidden></p>
         <div class="progress small" id="coRhProg" hidden><div class="bar" id="coRhBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Rehearsal"><i></i></div><span class="pct num" id="coRhPct"></span></div>
         <p class="note" id="coQuiet" hidden></p>
         <p class="note" id="coVoiceLine"></p>
@@ -470,11 +480,11 @@
         <div class="tblwrap"><table class="maptbl" id="coLogTbl"><thead><tr><th>Date</th><th>Car and track</th><th>Laps</th><th>Said</th><th>Dropped</th><th></th></tr></thead><tbody id="coLogList"></tbody></table></div>
         <div id="coLogView" hidden>
           <div class="phead"><h4 id="coLogTitle"></h4><button type="button" class="btn" id="coLogCopy">Copy for Claude</button><span class="msg" id="coLogMsg" role="status"></span></div>
-          <div class="tblwrap colog"><table class="maptbl"><thead><tr><th>Lap</th><th>Where</th><th>km/h</th><th>What</th><th>Cue</th><th>Why</th></tr></thead><tbody id="coLogRows"></tbody></table></div>
+          <div class="tblwrap colog"><table class="maptbl"><thead><tr><th>Lap</th><th>Where</th><th>mph</th><th>What</th><th>Cue</th><th>Why</th></tr></thead><tbody id="coLogRows"></tbody></table></div>
         </div>
       </details>
       <details class="panel prepmore" id="coSet">
-        <summary><h3>Settings</h3><span class="note">What it says, how loud, races, wheel button</span></summary>
+        <summary><h3>Settings</h3><span class="note">What it says, how loud, races, wheel buttons</span></summary>
         <form class="gridf" id="fCoach" autocomplete="off">
           <label class="check" for="coInRaces"><input id="coInRaces" type="checkbox"><span>Coach in races too</span></label>
           <p class="note">Off at first: races are for racing. Lap 1 of a race is always quiet.</p>
@@ -482,6 +492,7 @@
           <label class="check" for="coFeedback"><input id="coFeedback" type="checkbox"><span>A word after a focus corner</span></label>
           <label class="check" for="coLapDelta"><input id="coLapDelta" type="checkbox"><span>Your lap against your best</span></label>
           <label class="check" for="coBeep"><input id="coBeep" type="checkbox"><span>A short beep at a focus corner's brake point</span></label>
+          <label class="field" for="coLapTimes"><span>Say lap times</span><select id="coLapTimes"><option value="short">Short: "thirty-eight nine"</option><option value="full">Full: "one thirty-eight nine"</option></select></label>
           <div class="grid3">
             <label class="field" for="coTopN"><span>Focus corners</span><select id="coTopN"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
             <label class="field" for="coVol"><span>Volume <b class="num" id="coVolV"></b></span><input id="coVol" type="range" min="0" max="100" step="5"></label>
@@ -501,6 +512,12 @@
           <p class="note">Pick a button that says the last cue again. Press Learn, then press the button within 15 seconds.</p>
           <p id="coWheelRText" role="status">No wheel button chosen yet.</p>
           <div class="row"><button type="button" class="btn" id="coWheelRLearn">Learn</button><button type="button" class="btn" id="coWheelRClear">Clear</button><span class="msg" id="coWheelRMsg" role="status"></span></div>
+        </div>
+        <div class="cowheel" id="coWheelP">
+          <h4>"How's my pace?" from a wheel button</h4>
+          <p class="note">Pick a button that asks the coach for your pace: your last lap against your reference and the corner that cost the most. It answers as soon as it is safe to talk. Press Learn, then press the button within 15 seconds.</p>
+          <p id="coWheelPText" role="status">No wheel button chosen yet.</p>
+          <div class="row"><button type="button" class="btn" id="coWheelPLearn">Learn</button><button type="button" class="btn" id="coWheelPClear">Clear</button><span class="msg" id="coWheelPMsg" role="status"></span></div>
         </div>
       </details>
     </div>

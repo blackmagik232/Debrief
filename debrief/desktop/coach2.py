@@ -17,6 +17,8 @@ extra() for coach/status, and get()/post()/upload() for the routes below).
     POST api/coach/quiet                      mute for 1 minute
     POST api/coach/rehearse {id}              play one of his Practice sessions through the coach, as if live
     POST api/coach/wheel-repeat-learn / wheel-repeat-clear   a wheel button for "Repeat that"
+    POST api/coach/pace                       2.17.2 "How's my pace?": the coach answers when it is safe to talk
+    POST api/coach/wheel-pace-learn / wheel-pace-clear       a wheel button for "How's my pace?"
 """
 from __future__ import annotations
 
@@ -35,13 +37,17 @@ from . import settings_io
 GET_ROUTES = ("api/coach/voices", "api/coach/logs", "api/coach/log")
 POST_ROUTES = ("api/coach/voice-settings", "api/coach/preview", "api/coach/measure", "api/coach/import-pack",
                "api/coach/repeat", "api/coach/quiet", "api/coach/rehearse", "api/coach/wheel-repeat-learn",
-               "api/coach/wheel-repeat-clear")
+               "api/coach/wheel-repeat-clear", "api/coach/pace", "api/coach/wheel-pace-learn",
+               "api/coach/wheel-pace-clear")
 UPLOAD_ROUTE = "api/coach/import-pack-zip"
 QUIET_S = 60.0
 SIDE_IDLE_S = 30.0               # a voice made for Preview / Measure (coach off) is closed after this long unused
 PACK_ID_OK = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,39}$")
 ZIP_NAME_OK = re.compile(r"^[^\x00-\x1f/\\<>:\"|?*]{1,160}\.zip$", re.I)
-HOTKEY_LABELS = {"repeat": "Ctrl+Shift+R", "quiet": "Ctrl+Shift+N"}
+HOTKEY_LABELS = {"repeat": "Ctrl+Shift+R", "quiet": "Ctrl+Shift+N", "pace": "Ctrl+Shift+P"}
+# wheel buttons (role -> saved key in coach.json, what the button does in plain words, what it calls on the runner)
+WHEEL_ROLES = {"repeat": ("wheel_repeat", "It says the last cue again.", "repeat"),
+               "pace": ("wheel_pace", "It asks the coach for your pace.", "ask_pace")}
 
 
 # ---------------------------------------------------------------- where things live
@@ -93,8 +99,8 @@ class State:
         self.preview = None           # {"state": playing | done | error, "text", "until"}
         self.import_note = None
         self.rehearsal = None         # {"id", "title"} while a rehearsal runs or after it
-        self.wheel = None             # wheelmute.WheelMute for "Repeat that"
-        self.wheel_note = ""
+        self.wheels = {}              # role -> wheelmute.WheelMute ("repeat": Repeat that, "pace": How's my pace?)
+        self.wheel_notes = {}         # role -> a note for the window ("Saved: ...")
 
 
 _STATE_LOCK = threading.Lock()
@@ -125,7 +131,7 @@ def _test_backend(server):
 
 
 class HotkeyGroup:
-    """The coach's system-wide keys (mute, repeat, quiet for a minute), each on its own thread (livecoach.Hotkey).
+    """The coach's system-wide keys (mute, repeat, quiet for a minute, pace), each on its own thread (livecoach.Hotkey).
     .registered is the mute key's (what the server already reports); status() has every key."""
 
     def __init__(self, keys):
@@ -160,7 +166,8 @@ def hotkeys(server, settings, runner):
     return HotkeyGroup({"mute": livecoach.Hotkey(settings.hotkey, runner.toggle, log=app.say),
                         "repeat": livecoach.Hotkey(settings.repeat_hotkey, runner.repeat, log=app.say),
                         "quiet": livecoach.Hotkey(settings.quiet_hotkey, lambda: runner.mute_for(QUIET_S),
-                                                  log=app.say)})
+                                                  log=app.say),
+                        "pace": livecoach.Hotkey(settings.pace_hotkey, runner.ask_pace, log=app.say)})
 
 
 def runner_of(server):
@@ -169,85 +176,87 @@ def runner_of(server):
     return r if r is not None and r.running() else None
 
 
-# ---------------------------------------------------------------- "Repeat that" from a wheel button
-def _wheel_saved():
+# ---------------------------------------------------------------- wheel buttons: "Repeat that" and "How's my pace?"
+def _wheel_saved(role="repeat"):
     from .. import wheelmute
-    return wheelmute.clean_binding(settings_io.load_extra("coach").get("wheel_repeat"))
+    return wheelmute.clean_binding(settings_io.load_extra("coach").get(WHEEL_ROLES[role][0]))
 
 
-def _wheel_press(server):
+def _wheel_press(server, role="repeat"):
     r = runner_of(server)
     if r is not None:
-        r.repeat()
+        getattr(r, WHEEL_ROLES[role][2])()
 
 
-def _wheel(server):
+def _wheel(server, role="repeat"):
     from .. import wheelmute
     st = state(server)
     with st.lock:
-        if st.wheel is None:
+        if st.wheels.get(role) is None:
             f = getattr(server, "wheel_backend_factory", None)
-            st.wheel = wheelmute.WheelMute(on_press=lambda: _wheel_press(server), binding=_wheel_saved(),
-                                           backend=f() if f else None, log=app.say)
-        return st.wheel
+            st.wheels[role] = wheelmute.WheelMute(on_press=lambda: _wheel_press(server, role),
+                                                  binding=_wheel_saved(role), backend=f() if f else None,
+                                                  log=app.say)
+        return st.wheels[role]
 
 
 def start_wheel(server):
-    try:
-        b = _wheel_saved()
-        if b is None:
-            return
-        w = _wheel(server)
-        w.set_binding(b)
-        w.start()
-    except Exception:  # noqa: BLE001
-        app.say("ERROR starting the wheel repeat button:\n" + traceback.format_exc())
+    for role in WHEEL_ROLES:
+        try:
+            b = _wheel_saved(role)
+            if b is None:
+                continue
+            w = _wheel(server, role)
+            w.set_binding(b)
+            w.start()
+        except Exception:  # noqa: BLE001
+            app.say(f"ERROR starting the wheel {role} button:\n" + traceback.format_exc())
 
 
 def stop_wheel(server):
     st = state(server)
     with st.lock:
-        w = st.wheel
-    if w is not None:
+        ws = [w for w in st.wheels.values() if w is not None]
+    for w in ws:
         try:
             w.stop()
         except Exception:  # noqa: BLE001
             pass
 
 
-def wheel_status(server) -> dict:
-    b = _wheel_saved()
+def wheel_status(server, role="repeat") -> dict:
+    b = _wheel_saved(role)
     st = state(server)
     with st.lock:
-        w = st.wheel
+        w = st.wheels.get(role)
     s = w.status() if w is not None else {"state": "off", "text": ""}
     state_ = s.get("state")
     if state_ in ("off", "not_set") or (state_ == "ready" and not b):
-        text = (f"{b['label']}. It says the last cue again." if b else "No wheel button chosen yet.")
+        text = (f"{b['label']}. {WHEEL_ROLES[role][1]}" if b else "No wheel button chosen yet.")
         state_ = "saved" if b else "not_set"
     else:
         text = s.get("text") or ""
-    return {"state": state_, "text": text, "label": b["label"] if b else None, "note": st.wheel_note}
+    return {"state": state_, "text": text, "label": b["label"] if b else None, "note": st.wheel_notes.get(role, "")}
 
 
-def _wheel_learned(server, binding):
+def _wheel_learned(server, binding, role="repeat"):
     st = state(server)
     if binding:
         try:
             with server.coach_json_lock:
                 data = settings_io.load_extra("coach")
-                data["wheel_repeat"] = binding
+                data[WHEEL_ROLES[role][0]] = binding
                 settings_io.save_extra("coach", data)
-            st.wheel_note = f"Saved: {binding.get('label')}."
+            st.wheel_notes[role] = f"Saved: {binding.get('label')}."
         except OSError as e:
-            app.say(f"ERROR saving the wheel repeat button: {type(e).__name__}: {e}")
-            st.wheel_note = "The button couldn't be saved. Details were saved to debrief.log."
+            app.say(f"ERROR saving the wheel {role} button: {type(e).__name__}: {e}")
+            st.wheel_notes[role] = "The button couldn't be saved. Details were saved to debrief.log."
     else:
-        st.wheel_note = "No button was pressed. Try again and press the button within 15 seconds."
+        st.wheel_notes[role] = "No button was pressed. Try again and press the button within 15 seconds."
     with server.coach_lock:
         run = server.coach_starting or (server.coach is not None and server.coach.running())
     with st.lock:
-        w = st.wheel
+        w = st.wheels.get(role)
     if w is not None and not run:
         w.stop(0)
 
@@ -338,7 +347,7 @@ def extra(server, st: dict):
         hk = server.coach_hotkey
     keys = hk.status() if isinstance(hk, HotkeyGroup) else {}
     st["keys"] = {name: {"key": HOTKEY_LABELS.get(name, "Ctrl+Shift+M"), "on": bool(keys.get(name))}
-                  for name in ("repeat", "quiet")}
+                  for name in ("repeat", "quiet", "pace")}
     with s2.lock:
         st["measure"] = dict(s2.measure) if s2.measure else None
         pv = dict(s2.preview) if s2.preview else None
@@ -348,10 +357,11 @@ def extra(server, st: dict):
     if pv:
         pv.pop("until", None)
     st["preview"] = pv
-    try:
-        st["wheel_repeat"] = wheel_status(server)
-    except Exception:  # noqa: BLE001
-        st["wheel_repeat"] = {"state": "error", "text": "The wheel button couldn't be read."}
+    for role in WHEEL_ROLES:
+        try:
+            st[WHEEL_ROLES[role][0]] = wheel_status(server, role)
+        except Exception:  # noqa: BLE001
+            st[WHEEL_ROLES[role][0]] = {"state": "error", "text": "The wheel button couldn't be read."}
     if st.get("mode") != "rehearsal" and st.get("running"):
         with s2.lock:
             if s2.rehearsal and s2.rehearsal.get("state") == "playing":
@@ -408,7 +418,9 @@ def post(h, r, body):
     fn = {"api/coach/voice-settings": post_voice_settings, "api/coach/preview": post_preview,
           "api/coach/measure": post_measure, "api/coach/import-pack": post_import_pack,
           "api/coach/repeat": post_repeat, "api/coach/quiet": post_quiet, "api/coach/rehearse": post_rehearse,
-          "api/coach/wheel-repeat-learn": post_wheel_learn, "api/coach/wheel-repeat-clear": post_wheel_clear}[r]
+          "api/coach/wheel-repeat-learn": post_wheel_learn, "api/coach/wheel-repeat-clear": post_wheel_clear,
+          "api/coach/pace": post_pace, "api/coach/wheel-pace-learn": lambda h, b: post_wheel_learn(h, b, "pace"),
+          "api/coach/wheel-pace-clear": lambda h, b: post_wheel_clear(h, b, "pace")}[r]
     return fn(h, body if isinstance(body, dict) else {})
 
 
@@ -589,6 +601,14 @@ def post_repeat(h, body):
     return h._json({"ok": True, "text": text, "said": bool(text)})
 
 
+def post_pace(h, body):
+    """2.17.2 "How's my pace?": the coach answers on the car's next safe moment (not at once, never under braking)."""
+    r = runner_of(h.server)
+    if r is None:
+        raise ValueError("Start the coach first.")
+    return h._json({"ok": True, "asked": bool(r.ask_pace())})
+
+
 def post_quiet(h, body):
     r = runner_of(h.server)
     if r is None:
@@ -632,36 +652,36 @@ def post_rehearse(h, body):
     return h._json({**res, "status": srv.coach_status()})
 
 
-def post_wheel_learn(h, body):
-    w = _wheel(h.server)
+def post_wheel_learn(h, body, role="repeat"):
+    w = _wheel(h.server, role)
     if not w.available():
         return h._json({"ok": False, "error": "Wheel buttons can't be read on this computer.",
-                        "wheel": wheel_status(h.server)}, 400)
-    state(h.server).wheel_note = ""
-    if not w.learn(on_learned=lambda b: _wheel_learned(h.server, b)):
+                        "wheel": wheel_status(h.server, role)}, 400)
+    state(h.server).wheel_notes[role] = ""
+    if not w.learn(on_learned=lambda b: _wheel_learned(h.server, b, role)):
         return h._json({"ok": False, "error": "Wheel buttons can't be read on this computer.",
-                        "wheel": wheel_status(h.server)}, 400)
-    return h._json({"ok": True, "wheel": wheel_status(h.server)})
+                        "wheel": wheel_status(h.server, role)}, 400)
+    return h._json({"ok": True, "wheel": wheel_status(h.server, role)})
 
 
-def post_wheel_clear(h, body):
+def post_wheel_clear(h, body, role="repeat"):
     from .server import SETTINGS_WRITE_ERROR
     try:
         with h.server.coach_json_lock:
             data = settings_io.load_extra("coach")
-            data.pop("wheel_repeat", None)
+            data.pop(WHEEL_ROLES[role][0], None)
             settings_io.save_extra("coach", data)
     except OSError as e:
-        app.say(f"ERROR clearing the wheel repeat button: {type(e).__name__}: {e}")
+        app.say(f"ERROR clearing the wheel {role} button: {type(e).__name__}: {e}")
         raise ValueError(SETTINGS_WRITE_ERROR)
     st = state(h.server)
     with st.lock:
-        w = st.wheel
+        w = st.wheels.get(role)
     if w is not None:
         w.cancel_learn()
         w.set_binding(None)
-    st.wheel_note = "Wheel button cleared."
-    return h._json({"ok": True, "wheel": wheel_status(h.server)})
+    st.wheel_notes[role] = "Wheel button cleared."
+    return h._json({"ok": True, "wheel": wheel_status(h.server, role)})
 
 
 # ---------------------------------------------------------------- rehearsal source: his files, one after another

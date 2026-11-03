@@ -642,3 +642,8 @@ td.rcwhen .linkbtn{font-size:12.5px;margin-top:2px}
 .cctbl .ccconf{text-align:left;white-space:nowrap;padding-left:20px}
 .cctbl td.gain{font-weight:600}
 .ccwlist{margin:0;padding-left:18px;display:grid;gap:6px;max-width:80ch}
+/* 2.17.2 Coaching level */
+fieldset.colevel{margin:12px 0 4px}
+fieldset.colevel .check{align-items:flex-start}
+fieldset.colevel .check input{margin-top:2px;flex:none}
+fieldset.colevel .check b{margin-right:6px}

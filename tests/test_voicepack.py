@@ -187,7 +187,8 @@ check(np.abs(hp[RATE // 4:-RATE // 4]).max() < 0.1, "high-pass removes 30 Hz rum
 print("-- bundled packs")
 rows = vp.list_packs(None)
 check(bool(rows) and rows[0]["id"] == vp.DEFAULT_PACK and rows[0]["default"], "the default pack (engineer) is first")
-want = {"engineer": "bm_george"}
+want = {"engineer": "bm_george", "michael": "am_michael", "fenrir": "am_fenrir", "heart": "af_heart",
+        "kumo": "jm_kumo", "omega": "hm_omega"}
 have = {r["id"]: r for r in rows}
 for pid, voice in want.items():
     r = have.get(pid)
@@ -220,7 +221,7 @@ for pid in want:
     check(max(jumps) < 0.005, f"{pid}: no clicks at joins ({max(jumps):.4f})")
     secs = [len(x) / pack.rate for x in pack.clips.values()]
     check(0.15 < min(secs) and max(secs) < 4.0, f"{pid}: clip lengths sensible ({min(secs):.2f} .. {max(secs):.2f} s)")
-check(total < 80e6, f"bundled packs total {total / 1e6:.1f} MB")
+check(total < 110e6, f"bundled packs total {total / 1e6:.1f} MB (2.17.2: 500 clips each, about 16 MB a voice)")
 
 # ---------------------------------------------------------------- manifest validation
 print("-- manifest checks")

@@ -17,6 +17,7 @@ say). No preview.wav: Debrief plays the same sample tape from the clips themselv
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -171,8 +172,49 @@ def build(tts, voice, lang, pack_id, name, out, rate=16000, speed=None, credit=N
         speed = pick_speed(tts, voice, lang, log)
     log(f"  using speed {speed:.2f}")
     ref_rate = float(np.median([part_rate(parts_text(t, "whole"), *tts(t, voice, speed, lang)) for t in CALIBRATE]))
+    clips, gaps, problems, takes = speak_lines(tts, voice, lang, speed, vp.lines(), ref_rate, rate, log, t0)
+    pad2 = 2 * vp.PAD_MS
+    join = float(np.clip(np.median(gaps) - pad2, 40, 250)) if gaps else vp.JOIN_MS
+    meta = {"id": pack_id, "name": name, "voice": voice, "lang": lang, "speed": speed,
+            "voice_credit": credit or f"Kokoro voice {voice}", "license": LICENSE,
+            "loudness_db": vp.TARGET_DB, "generator": "tools/make_voicepack.py"}
+    for old in Path(out).glob("*.wav"):                # a rebuild leaves no clip from an older scheme behind
+        old.unlink()
+    vp.write_pack(out, meta, clips, rate, join)
+    return finish_report(out, name, pack_id, rate, speed, join, problems, takes, log, t0)
+
+
+def add_missing(tts, folder, log=print) -> dict:
+    """--add-missing: speak only the lines whose clips an existing pack lacks (new lines after a Debrief update),
+    with the pack's own voice, speed and sample rate, and add them. Clips already there are left exactly as they are
+    (same files, same bytes), and the comma pause (join_ms) is kept."""
+    t0 = time.time()
+    folder = Path(folder)
+    m = json.loads((folder / vp.MANIFEST).read_text(encoding="utf-8"))
+    voice, lang, speed, rate = m["voice"], m.get("lang") or lang_for(m["voice"]), float(m["speed"]), int(m["sample_rate"])
+    have = set(m["clips"])
+    todo = [ln for ln in vp.lines() if any(k not in have for k, _r in ln["clips"])]
+    log(f"{m['name']}: {len(todo)} new lines (voice {voice}, {lang}, speed {speed:.2f}, {rate} Hz)")
+    ref_rate = float(np.median([part_rate(parts_text(t, "whole"), *tts(t, voice, speed, lang)) for t in CALIBRATE]))
+    clips, _gaps, problems, takes = speak_lines(tts, voice, lang, speed, todo, ref_rate, rate, log, t0)
+    order = list(vp.all_keys())
+    for key, (x, text, role) in clips.items():
+        if key in have:
+            continue
+        vp.write_wav(folder / f"{key}.wav", x, rate)
+        m["clips"][key] = {"file": f"{key}.wav", "text": text, "ms": int(round(len(x) * 1000 / rate)), "role": role}
+    m["clips"] = {k: m["clips"][k] for k in sorted(m["clips"], key=lambda k: order.index(k) if k in order else 10 ** 6)}
+    probs = vp.check_manifest(m)
+    if probs:
+        raise vp.VoicePackError(probs)
+    (folder / vp.MANIFEST).write_text(json.dumps(m, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    return finish_report(folder, m["name"], m["id"], rate, speed, float(m["join_ms"]), problems, takes, log, t0,
+                         keep_old=True)
+
+
+def speak_lines(tts, voice, lang, speed, lines, ref_rate, rate, log, t0):
+    """Speak and cut each line: (clips {key: (samples, words, role)}, comma gaps ms, problems, takes)."""
     clips, gaps, problems, takes = {}, [], [], []
-    lines = vp.lines()
     for i, ln in enumerate(lines):
         roles = {r for _k, r in ln["clips"]}
         parts = None
@@ -215,14 +257,10 @@ def build(tts, voice, lang, pack_id, name, out, rate=16000, speed=None, credit=N
         takes.append(take)
         if (i + 1) % 25 == 0:
             log(f"  {i + 1}/{len(lines)} lines ({time.time() - t0:.0f} s)")
-    pad2 = 2 * vp.PAD_MS
-    join = float(np.clip(np.median(gaps) - pad2, 40, 250)) if gaps else vp.JOIN_MS
-    meta = {"id": pack_id, "name": name, "voice": voice, "lang": lang, "speed": speed,
-            "voice_credit": credit or f"Kokoro voice {voice}", "license": LICENSE,
-            "loudness_db": vp.TARGET_DB, "generator": "tools/make_voicepack.py"}
-    for old in Path(out).glob("*.wav"):                # a rebuild leaves no clip from an older scheme behind
-        old.unlink()
-    vp.write_pack(out, meta, clips, rate, join)
+    return clips, gaps, problems, takes
+
+
+def finish_report(out, name, pack_id, rate, speed, join, problems, takes, log, t0, keep_old=False) -> dict:
     pack = vp.load_pack(out, strict=True)
     missing = sorted(set(vp.all_keys()) - set(pack.clips))
     cov, by_design = coverage_of(pack)
@@ -231,9 +269,15 @@ def build(tts, voice, lang, pack_id, name, out, rate=16000, speed=None, credit=N
               f"comma pause {join:.0f} ms"] + coverage_lines(cov, by_design)
     report += [f"  clip missing: {k}" for k in missing] + [f"  problem: {p}" for p in problems]
     qa = check_takes(takes)
-    report.append(f"Takes to listen to: {len(qa)}")
+    report.append(f"Takes to listen to: {len(qa)}" + (" (new lines only)" if keep_old else ""))
     report += [f"  line {n} '{t}': {why}" for n, t, why in qa]
-    (Path(out) / "coverage.txt").write_text("\n".join(report) + "\n", encoding="utf-8")
+    cf = Path(out) / "coverage.txt"
+    if keep_old and cf.exists():                   # keep the notes about the takes made before
+        old = cf.read_text(encoding="utf-8").splitlines()
+        i = next((j for j, x in enumerate(old) if x.startswith("Takes to listen to")), None)
+        if i is not None:
+            report += ["", "Earlier lines:"] + old[i:]
+    cf.write_text("\n".join(report) + "\n", encoding="utf-8")
     for r in report:
         log(r)
     log(f"  done in {time.time() - t0:.0f} s")
@@ -287,12 +331,24 @@ def coach_vocabulary() -> list:
     for n in range(1, vp.MAX_TURN + 1):
         name = f"T{n}"
         out += [livecoach.marker_text(name), livecoach.early_text(name)]
-        out += [livecoach.speed_text(name, k) for k in range(4, 16)]
+        out += [livecoach.speed_text(name, k) for k in range(vp.MIN_MPH, vp.MAX_KMH + 1)]   # mph (2.17.2)
         out += [f"{name}: {v}" for v in cornercoach.VOICE.values()]
         out += [f"{name}: hold it in", f"{name}: same every lap"]
     for k in range(1, 21):                      # lap deltas up to Settings.lap_delta_max_s (2 s)
         out += [f"Down {livecoach.delta_words(k / 10)}", f"New best, up {livecoach.delta_words(k / 10)}"]
     out += ["New best"]
+    for n in range(1, vp.MAX_TURN + 1):         # 2.17.2: time in any corner, sectors, the first laps
+        out += [livecoach.corner_time_text(f"T{n}", k / 10) for k in range(1, 10)]
+        out += [livecoach.good_text(f"T{n}", k / 10) for k in range(1, 10)]
+    for s in range(3):
+        for k in range(1, 21):
+            out += [livecoach.sector_text(s, k / 10), livecoach.sector_text(s, -k / 10)]
+    out += [livecoach.BUILDING_TEXT]
+    out += [livecoach.reference_set_text(k / 10) for k in range(vp.LAP_TENTHS[0], vp.LAP_TENTHS[1])]
+    out += [livecoach.reference_set_text(k / 10, short=True) for k in range(vp.LAP_TENTHS[0], vp.LAP_TENTHS[1])]
+    out += ["Good, on pace", livecoach.NO_CLEAN_TEXT, livecoach.FAR_DOWN_TEXT]     # 2.17.2 "How's my pace?"
+    for n in range(1, vp.MAX_TURN + 1):
+        out += [f"Down {livecoach.delta_words(k / 10)}, most in T{n}" for k in range(1, vp.MAX_TENTHS + 1)]
     for m in ("peak_brake", "brake_point", "trail", "coast", "throttle_point", "min_speed", "corner_time"):
         out += practiceplan.cue_vocabulary({"metric": m})
     return list(dict.fromkeys(out))
@@ -311,12 +367,17 @@ def main(argv=None) -> int:
     ap.add_argument("--speed", type=float, help="Kokoro speed (default: picked from words a second)")
     ap.add_argument("--model-dir", default=os.environ.get("KOKORO_DIR"))
     ap.add_argument("--report", help="only rewrite coverage.txt of this existing pack folder (no Kokoro needed)")
+    ap.add_argument("--add-missing", help="add only the clips this existing pack folder lacks (its own voice and "
+                                          "speed; the clips it has stay as they are)")
     a = ap.parse_args(argv)
     if a.report:
         return report_only(a.report)
     if not a.model_dir:
         ap.error("give --model-dir (or set KOKORO_DIR) to the folder with kokoro.onnx and voices.bin")
     md = Path(a.model_dir)
+    if a.add_missing:
+        r = add_missing(make_tts(md / "kokoro.onnx", md / "voices.bin"), a.add_missing)
+        return 1 if (r["missing"] or r["problems"] or r["coverage"] < 1.0) else 0
     jobs = []
     if a.preset:
         ids = list(PRESETS) if a.preset == "all" else [a.preset]

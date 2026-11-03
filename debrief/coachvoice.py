@@ -182,7 +182,7 @@ class PackVoice:
         v = (self.volume if volume is None else volume) / 100.0
         return voicepack.to_pcm16(np.asarray(x) * v)
 
-    def _play(self, text, x, source, priority, interrupt, kind="cue") -> bool:
+    def _play(self, text, x, source, priority, interrupt, kind="cue", check=None) -> bool:
         if self.player is None:
             return False
         rec = {"text": text, "source": source, "kind": kind, "t_asked": self._clock(), "t_start": None,
@@ -199,16 +199,19 @@ class PackVoice:
         with self._lock:
             self.history.append(rec)
             del self.history[:-50]
+        kw = {"check": check} if check is not None else {}
         return self.player.play(self._pcm(x), self.sr, priority=priority, interrupt=interrupt, on_start=started,
-                                on_end=ended, tag=text)
+                                on_end=ended, tag=text, **kw)
 
-    def say(self, text: str, priority: int = 0, t=None, interrupt: bool = False) -> bool:
+    def say(self, text: str, priority: int = 0, t=None, interrupt: bool = False, check=None) -> bool:
+        """check (2.17.2): asked right before the sound starts; a reason back means the cue no longer fits and it is
+        not played (the coach logs why)."""
         if self._closed or not text:
             return False
         self._ready.wait(5.0)
         x, source = self._samples(text)
         if x is not None:
-            ok = self._play(text, x, source, priority, interrupt)
+            ok = self._play(text, x, source, priority, interrupt, check=check)
             if ok:
                 self.said += 1
                 self.said_fallback += source == "windows"
@@ -231,7 +234,7 @@ class PackVoice:
             if self._clock() - asked > FALLBACK_FRESH_S:
                 self._log(f"voice: '{text}' was ready too late and was not said")
                 return
-            if self._play(text, y, "windows", priority, interrupt):
+            if self._play(text, y, "windows", priority, interrupt, check=check):
                 self.said += 1
                 self.said_fallback += 1
                 self.last = (text, priority)

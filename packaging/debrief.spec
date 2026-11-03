@@ -44,12 +44,14 @@ _on_disk = sorted("debrief." + ".".join(p.relative_to(PKG).with_suffix("").parts
 _missing = [m for m in _on_disk if m not in hiddenimports]
 if _missing:
     print(f"collect_submodules missed {_missing}; adding them by name")
-hiddenimports = sorted(set(hiddenimports) | set(_on_disk) | {"irsdk", "yaml"})
+hiddenimports = sorted(set(hiddenimports) | set(_on_disk) | {"irsdk", "yaml", "winsound", "win32com", "win32com.client",
+                                                          "win32com.client.dynamic", "pythoncom", "pywintypes"})
 for _must in ("debrief.prep", "debrief.goals", "debrief.results", "debrief.team", "debrief.sync",
               "debrief.schedule", "debrief.series", "debrief.notes", "debrief.prepare", "debrief.updater", "debrief.insights",
               "debrief.technique_plus", "debrief.skills", "debrief.session_review", "debrief.profile",
               "debrief.strategy", "debrief.racecraft", "debrief.xlsx", "debrief.intel",
-              "debrief.leaderboards", "debrief.discord", "debrief.ed25519"):
+              "debrief.leaderboards", "debrief.discord", "debrief.ed25519",
+              "debrief.ibt", "debrief.setuplab", "debrief.livecoach", "debrief.voice"):
     if _must not in hiddenimports:
         raise SystemExit(f"Build stopped: {_must} would be left out of Debrief.exe")
 

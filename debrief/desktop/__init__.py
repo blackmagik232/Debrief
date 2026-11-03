@@ -28,7 +28,9 @@ FEATURE_MODULES = ("race_analysis", "racecap_link", "replay_scan", "results_csv"
                    # 2.4 "Race smarter"
                    "strategy", "racecraft", "xlsx", "intel",
                    # 2.5 "Team and sharing"
-                   "leaderboards", "discord", "ed25519")
+                   "leaderboards", "discord", "ed25519",
+                   # 2.12 Setup Lab and live coach
+                   "ibt", "setuplab", "livecoach", "voice")
 
 
 _REFRESH_DONE: set = set()
@@ -233,6 +235,8 @@ def selftest() -> int:
         if getattr(sys, "frozen", False):   # 2.7.6: the replay scan's iRacing connection really is in the build
             import irsdk  # noqa: F401
             import yaml  # noqa: F401
+            import winsound  # noqa: F401  (2.12: the coach's voice clips)
+            import win32com.client  # noqa: F401  (2.12: the Windows voice)
         checks["imports"] = True
         # every page's code must load, including the ones only imported by name (2.1.0 lost prep this way)
         import importlib

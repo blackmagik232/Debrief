@@ -122,6 +122,7 @@ def make(path, laps, session="Practice", lead_pit=True, rate=60, start_date=1_79
     cols["LapLastLapTime"] = last
     cols["PlayerCarMyIncidentCount"] = np.zeros(n, np.int32)
     cols["IsOnTrack"] = np.ones(n, bool)
+    cols["SteeringWheelAngle"] = np.zeros(n, np.float32)
     cols["SessionTime"] = 100.0 + np.arange(n) / rate
     typ = {"Lap": "i", "LapDistPct": "f", "LapDist": "f", "LapLastLapTime": "f", "OnPitRoad": "b",
            "PlayerTrackSurface": "i", "PlayerCarMyIncidentCount": "i", "IsOnTrack": "b", "SessionTime": "d",
@@ -133,16 +134,24 @@ def make(path, laps, session="Practice", lead_pit=True, rate=60, start_date=1_79
 
 
 def play(path, settings=None, weak=None, ref=None, voice=None):
-    """Plays a file as fast as possible straight into a Coach (no thread). Returns (coach, voice, source)."""
+    """Plays a file as fast as possible straight into a Coach (no thread), as LiveRunner does. Returns
+    (coach, voice, source)."""
     src = lc.IbtPlaybackSource(path, speed=0)
-    coach = lc.Coach(ref, weak, settings or lc.Settings())
     v = voice or vc.FakeVoice()
+    coach = lc.Coach(ref, weak, settings or lc.Settings(), duration=v.duration)
     while True:
         s = src.read()
         if s is None:
             break
-        for c in coach.feed(s):
-            v.say(c.text, priority=c.priority, t=c.spoken_t)
+        cues = coach.feed(s)
+        if coach.take_cancel():
+            v.clock = lambda t=s["SessionTime"]: t
+            v.cancel()
+        for c in cues:
+            if c.kind == lc.KIND_BEEP:
+                v.beeps.append(c.spoken_t)
+            else:
+                v.say(c.text, priority=c.priority, t=c.spoken_t)
     return coach, v, src
 
 
@@ -169,8 +178,7 @@ check(ref.source["kind"] == "ibt" and ref.source["lap"] in (1, 2, 3), "reference
 check(ref.car["path"] == "mclaren570sgt4" and ref.track["code"] == "zolder gp", "reference car and track")
 c2 = ref.corner(2)
 _x, _v, _b = profile(BASE)
-true_brake2 = float(_x[np.nonzero(_b[:1500] > 0)[0][-1] - 0])   # last braking metre before apex 2 is the apex
-true_onset2 = float(_x[np.nonzero(np.diff(_b[:1500]) > 0)[0][0] + 1])
+true_onset2 = float(_x[900 + np.nonzero(np.diff(_b[900:1500]) > 0)[0][0] + 1])   # where braking for T2 starts
 check(abs(c2.apex_m - 1500) < 15, f"T2 apex {c2.apex_m:.0f} m")
 check(abs(c2.brake_m - true_onset2) < 15, f"T2 brake point {c2.brake_m:.0f} m (true {true_onset2:.0f})")
 check(abs(c2.min_kmh - 30 * 3.6) < 2.0, f"T2 min speed {c2.min_kmh:.1f} km/h")
@@ -203,40 +211,85 @@ check([w.name for w in lc.match_weak(ref, [{"apex_m": 1000}, 3, "C1"], 3)] == ["
 
 # ---------------------------------------------------------------- settings
 s0 = lc.Settings()
-check(s0.top_n == 3 and not s0.in_races and s0.marker_lead_s == 2.5 and s0.gap_s == 4.0, "settings defaults")
+check(s0.top_n == 2 and s0.max_per_lap == 2 and s0.repeat_laps == 2 and not s0.in_races and s0.gap_s == 4.0
+      and s0.traffic_hold_s == 2.0 and s0.brake_beep is False and s0.marker_min_m == 150.0, "settings defaults")
 s1 = lc.Settings.from_dict(json.loads(json.dumps({**s0.to_dict(), "in_races": "true", "top_n": "2", "rate": 99,
                                                    "bogus": 1, "gap_s": "x"})))
 check(s1.in_races is True and s1.top_n == 2 and s1.rate == 10 and s1.gap_s == 4.0, "settings from JSON: coerced and clamped")
+
+
+def file_cols(path):
+    with ibt.open_ibt(path) as ib:
+        return {k: ib.col(k) for k in ("SessionTime", "Lap", "LapDistPct", "Brake", "Speed")}
+
+
+def at(cols, t):
+    i = int(np.searchsorted(cols["SessionTime"], t))
+    return {k: float(a[min(i, len(a) - 1)]) for k, a in cols.items()}
+
+
+def time_to_next_brake(cols, t, ref):
+    """Seconds from t until the car in the file reaches the next reference brake point."""
+    st_, p = cols["SessionTime"], cols["LapDistPct"]
+    i = int(np.searchsorted(st_, t))
+    best = 1e9
+    for c in ref.braked:
+        d = (c.brake_pct - p[i]) % 1.0
+        for j in range(i, min(len(p) - 1, i + 60 * 40)):
+            if (c.brake_pct - p[j]) % 1.0 > d + 1e-9:     # wrapped past it
+                best = min(best, st_[j] - t)
+                break
+            d = (c.brake_pct - p[j]) % 1.0
+    return best
+
+
+def timing_rules_ok(path, said, ref, label):
+    cols = file_cols(path)
+    bad = []
+    for x in said:
+        smp = at(cols, x["t"])
+        dur = len(x["text"].split()) / 2.5
+        ttb = time_to_next_brake(cols, x["t"], ref)
+        busy = False
+        for c in ref.corners:
+            rel = lc._rel_m(smp["LapDistPct"], c.apex_pct, ref.length_m)
+            lo = c.brake_rel_m if c.brake_rel_m is not None else min(-60.0, 0.5 * c.start_rel_m)
+            busy |= lo <= rel <= max(30.0, 0.3 * c.end_rel_m)
+        if smp["Brake"] > 0.05 or busy or ttb < dur + 1.0 - 0.06:
+            bad.append((round(x["t"] - 100, 1), x["text"], smp["Brake"], busy, round(ttb, 2)))
+    check(not bad, f"{label}: no cue under braking, mid-corner, or ending < 1 s before a brake point {bad}")
+
 
 # ---------------------------------------------------------------- practice session
 SLOW2 = {2: (1500.0, 30.0 - 6 / 3.6, 7.0)}          # T2 braked early AND 6 km/h slower
 EARLY3 = {3: (2400.0, 18.0, 8.0)}                   # T3 braked early, same speed
 FAST4 = {4: (3300.0, 38.0, 10.0)}                   # T4 quicker: a new best
 cur, cur_times = make(TMP / "cur.ibt", [{}, {"corners": SLOW2}, {"corners": EARLY3},
-                                        {"clr": [(0.20, 0.40, 2)]}, {"corners": FAST4}, {}])
+                                        {"clr": [(0.20, 0.40, 2)]}, {"corners": FAST4}, {}, {}])
 coach, fv, _src = play(cur, weak=weak, ref=ref)
 said = fv.said
 texts = fv.texts()
-print("   practice cues:", [(round(x["t"] - 100, 1), x["text"]) for x in said])
-check(len(said) > 5, f"cues spoken ({len(said)})")
+starts = [100.0 + 0.15 * L / 20.0] + list(np.cumsum(cur_times) + 100.0 + 0.15 * L / 20.0)
+lap_of = lambda t: next(i for i, x in enumerate(starts) if x > t)  # noqa: E731
+print("   practice cues:", [(lap_of(x["t"]), round(x["t"] - 100, 1), x["text"]) for x in said])
+check([w.name for w in coach.weak] == ["T2", "T3"], "only the top 2 weak corners are coached by default")
+check(not any("T1" in t or "T4" in t for t in texts), "T1 and T4 (not in the top 2) never mentioned")
 m2 = [x for x in said if x["text"] == "Brake marker, T2"]
-check(len(m2) >= 3, f"T2 marker on the coachable laps ({len(m2)})")
-lap_of = lambda t: next(i for i, x in enumerate([100.0 + 0.15 * L / 20.0] + list(np.cumsum(cur_times) + 100.0 + 0.15 * L / 20.0)) if x > t)  # noqa: E731
-leads = []
-for x in m2:
-    lp = lap_of(x["t"])
-    leads.append(crossing_time(cur, lp, c2.brake_pct) - x["t"])
-check(all(2.2 <= d <= 2.6 for d in leads), f"T2 marker about 2.5 s before the reference brake point: {[round(d, 2) for d in leads]}")
-check(not any("T4" in t for t in texts), "T4 (not in the top 3) is never mentioned")
-fb = [x for x in said if x["text"].startswith("T2: carry more speed")]
-check(len(fb) == 1 and "6 down" in fb[0]["text"], f"feedback after the slow T2: {[x['text'] for x in fb]}")
-apex2_lap2 = crossing_time(cur, 2, c2.apex_pct)
-check(fb and fb[0]["t"] > apex2_lap2 and fb[0]["t"] - apex2_lap2 < 12, "feedback comes after the corner, not long after")
-check(sum(t == "T3: braked early" for t in texts) == 1, "T3 braked early (same speed) said once")
+check([lap_of(x["t"]) for x in m2] == [1, 3], f"T2 focus cue on the first look and after the slow lap only: {[lap_of(x['t']) for x in m2]}")
+leads = [crossing_time(cur, lap_of(x["t"]), c2.brake_pct) - x["t"] for x in m2]
+check(all(2.45 <= d <= 3.2 for d in leads), f"T2 marker 150 m+ before the reference brake point: {[round(d, 2) for d in leads]} s")
+check(all(d - 3 / 2.5 >= 1.0 for d in leads), "T2 marker ENDS at least 1 s before the brake point")
+check(not any(x["text"].startswith("T2") for x in said if lap_of(x["t"]) == 2),
+      "slow T2 on lap 2 right after its lap-1 focus cue: not repeated within 2 laps (the error is new)")
+e3 = [x for x in said if x["text"] == "T3, braked early"]
+check(len(e3) == 1 and lap_of(e3[0]["t"]) == 3, "T3 braked early (same speed) said once, on that lap")
+check(all(len(t.split()) <= 5 for t in texts), "every cue is 2-5 words")
 lapcues = [x for x in said if x["text"].startswith(("Down", "Up", "New best"))]
-check(any(x["text"].startswith("Down") and "tenth" in x["text"] or "seconds" in x["text"] for x in lapcues),
-      f"lap delta after the slow lap: {[x['text'] for x in lapcues]}")
-check(not any(abs(t - cur_times[0]) < 0.1 and False for t in cur_times), "")
+check(any(x["text"].startswith("Down") and lap_of(x["t"]) == 3 for x in lapcues),
+      f"lap delta after the slow lap: {[(lap_of(x['t']), x['text']) for x in lapcues]}")
+for x in lapcues:
+    k = lap_of(x["t"])
+    check(2.0 - 0.06 <= x["t"] - starts[k - 1] <= 4.0, f"lap delta said after LapLastLapTime updated ({x['t'] - starts[k - 1]:.2f} s after the line)")
 d1 = cur_times[0] - ref.lap_time
 check(abs(d1) < 0.1 and len([x for x in lapcues if lap_of(x["t"]) == 2]) == 0, f"no lap cue for a lap within 0.1 s ({d1:+.3f})")
 nb = [x for x in said if x["text"].startswith("New best")]
@@ -244,15 +297,54 @@ check(len(nb) == 1, f"new best said on the quick lap: {[x['text'] for x in nb]}"
 check(any("reference updated" in e["text"] for e in coach.events) and abs(coach.reference.lap_time - cur_times[4]) < 0.05,
       f"reference updated to the new best ({coach.reference.lap_time:.3f})")
 check(coach.reference.source["kind"] == "live" and len(coach.reference.corners) == 4, "the live reference has its corners")
-# car alongside on lap 4 from 20% to 40% (T2's zone): nothing then and for 3 s after
+check(sum(x.get("timed_by") == "iracing" for x in coach.lap_log) >= 4, f"lap times from LapLastLapTime {coach.lap_log}")
+check([x["text"] for x in said if lap_of(x["t"]) == 7] == ["Down four tenths"] and not any(lap_of(x["t"]) == 6 and x["text"] != "New best, up four tenths" for x in said),
+      "after the new best: only the lap delta against it; nothing about corners he drives well")
+# car alongside on lap 4 from 20% to 40% (T2's zone): stop talking, nothing then and for 2 s after
 t_a = crossing_time(cur, 4, 0.20)
-t_b = crossing_time(cur, 4, 0.40) + 3.0
-check(not any(t_a <= x["t"] <= t_b for x in said), "nothing while a car is alongside and 3 s after")
-check(not any(lap_of(x["t"]) == 4 and "T2" in x["text"] for x in said), "no T2 marker or feedback in traffic")
+t_b = crossing_time(cur, 4, 0.40) + 2.0
+check(not any(t_a <= x["t"] <= t_b for x in said), "nothing while a car is alongside and 2 s after")
+check(len(fv.cancels) == 1 and abs(fv.cancels[0] - t_a) < 0.1, f"speech stopped the moment the car came alongside {fv.cancels}")
 check(gaps_ok(said), "never two cues within 4 s")
-check(not any(lap_of(x["t"]) <= 1 and not x["text"].startswith(("Down", "Up", "New")) for x in said),
-      "nothing on the lead-in from the pits (out lap)")
-check(coach.weak and [w.name for w in coach.weak] == ["T2", "T3", "T1"], "weak corners matched again on the new reference")
+check(not any(lap_of(x["t"]) < 1 for x in said), "nothing on the lead-in from the pits (out lap)")
+per_lap = {}
+for x in said:
+    if not x["text"].startswith(("Down", "Up", "New")):
+        per_lap.setdefault(lap_of(x["t"]), []).append(x["text"])
+check(all(len(v_) <= 2 for v_ in per_lap.values()), f"at most 2 corrective cues a lap {per_lap}")
+import re as _re  # noqa: E402
+check(all(len({_re.search(r"T\d+", t).group() for t in v_}) == len(v_) for v_ in per_lap.values()),
+      "at most 1 cue per corner per lap")
+timing_rules_ok(cur, said, ref, "practice")
+
+# an error that persists: the focus cue and the feedback take turns, one per corner per lap
+per, _pt = make(TMP / "persist.ibt", [{"corners": SLOW2}] * 4)
+_c, fpers, _s = play(per, weak=weak, ref=ref)
+st2 = [100.0 + 0.15 * L / 20.0] + list(np.cumsum(_pt) + 100.0 + 0.15 * L / 20.0)
+lap2 = lambda t: next(i for i, x in enumerate(st2) if x > t)  # noqa: E731
+t2 = [(lap2(x["t"]), x["text"]) for x in fpers.said if "T2" in x["text"]]
+check(t2 == [(1, "Brake marker, T2"), (2, "T2: more speed, 6 down"), (3, "Brake marker, T2"), (4, "T2: more speed, 6 down")],
+      f"persisting error: marker and feedback alternate {t2}")
+fbp = [x for x in fpers.said if x["text"] == "T2: more speed, 6 down"]
+ap = crossing_time(per, 2, c2.apex_pct)
+check(fbp and ap < fbp[0]["t"] < ap + 12, f"feedback on the straight after the corner ({fbp[0]['t'] - ap:.1f} s after the apex)")
+timing_rules_ok(per, fpers.said, ref, "persisting")
+# with three weak corners, still no more than two corrective cues a lap
+_c, f3, _s = play(cur, settings=lc.Settings(top_n=3), weak=weak, ref=ref)
+first = [x["text"] for x in f3.said if lap_of(x["t"]) == 1]
+check(len(first) == 2 and all(t.startswith("Brake marker") for t in first), f"top 3: first lap still 2 cues {first}")
+# a pre-rendered (longer) cue is started earlier so it still ends 1 s before the brake point
+fl = vc.FakeVoice(durations={"Brake marker, T2": 2.0})
+_c, fl, _s = play(cur, weak=weak, ref=ref, voice=fl)
+lm = [crossing_time(cur, lap_of(x["t"]), c2.brake_pct) - x["t"] for x in fl.said if x["text"] == "Brake marker, T2"]
+check(lm and all(d >= 2.0 + 1.0 + 0.1 - 0.06 for d in lm), f"rendered length used for timing: {[round(d, 2) for d in lm]}")
+check(any("Brake marker, T2" in p_ for p_ in _c.vocabulary()) and any(p_.startswith("Down two") for p_ in _c.vocabulary()),
+      "vocabulary for pre-rendering")
+# optional beep at the brake point
+_c, fb_, _s = play(cur, settings=lc.Settings(brake_beep=True), weak=weak, ref=ref)
+bt = [crossing_time(cur, lap_of(t), c2.brake_pct) - t for t in fb_.beeps if abs(crossing_time(cur, lap_of(t), c2.brake_pct) - t) < 0.2]
+check(len(fb_.beeps) >= 8 and len(bt) >= 4, f"brake-point beeps when switched on ({len(fb_.beeps)}, at T2: {len(bt)})")
+check(fv.beeps == [], "no beep by default")
 
 # the same through the LiveRunner thread (as fast as possible)
 before = {t.name for t in threading.enumerate()}
@@ -264,6 +356,8 @@ while r.running() and time.monotonic() - t0 < 60:
     time.sleep(0.05)
 check(not r.running() and r.status()["state"] == "finished", f"runner finished the playback ({r.status()['state']})")
 check(fv2.texts() == texts, "runner speaks exactly what the coach says")
+check(len(fv2.cancels) == 1, "runner stops the voice when a car comes alongside")
+check(fv2.prepared and "Brake marker, T2" in fv2.prepared[0], "runner hands the phrases to the voice to pre-render")
 check(r.stop() and "debrief-livecoach" not in {t.name for t in threading.enumerate()} - before, "no thread left")
 
 # ---------------------------------------------------------------- races, pits, out laps
@@ -287,9 +381,9 @@ lap4_start = crossing_time(pits, 4, 0.0001)
 check(not any(pit_in <= x["t"] < lap4_start + 1 for x in fp.said), "nothing on pit road, no lap time for the in lap")
 off, _ot = make(TMP / "off.ibt", [{}, {"off": [(0.36, 0.38)], "corners": SLOW2}, {}])
 _c, fo, _s = play(off, weak=weak, ref=ref)
-check(not any("T2: carry" in t for t in fo.texts()), "no corner feedback when off track there")
-check(not any(t.startswith(("Down", "New")) and crossing_time(off, 3, 0.0001) - 1 < x["t"] < crossing_time(off, 3, 0.0001) + 3
-              for x in fo.said for t in [x["text"]]), "no lap time for a lap with an off")
+check(not any("T2: more" in t for t in fo.texts()), "no corner feedback when off track there")
+check(not any(x["text"].startswith(("Down", "New")) and crossing_time(off, 3, 0.0001) - 1 < x["t"] < crossing_time(off, 3, 0.0001) + 5
+              for x in fo.said), "no lap time for a lap with an off")
 
 # ---------------------------------------------------------------- mute, rate cap, stale cues
 _c, fm, _s = play(cur, settings=lc.Settings(muted=True), weak=weak, ref=ref)
@@ -407,7 +501,7 @@ try:
     r.start()
     time.sleep(1.0)
     st = r.status()
-    check(st["state"] == "coaching" and st["reference"]["source"]["file"].startswith("mclaren570sgt4"),
+    check(st["state"] == "coaching" and st["reference"]["source"]["kind"] in ("ibt", "live") and st["corners"] == 4,
           f"live: reference found in the telemetry folder ({st['text']})")
     check(r.stop(timeout=2.0), "live runner stops")
 finally:
@@ -420,12 +514,17 @@ check(isinstance(nv, vc.NullVoice) and nv.say("hello") is False and nv.status()[
 fk = vc.FakeVoice(clock=lambda: 5.0)
 fk.say("Down two tenths", priority=1, t=10.0)
 fk.say("Brake marker, T2", priority=3, t=10.5)
-fk.say("T2: braked early", priority=2, t=20.0)
+fk.say("T2, braked early", priority=2, t=20.0)
 check([x["purge"] for x in fk.said] == [False, True, False], "a more important cue cuts off one still being spoken")
 check(lc.parse_hotkey("ctrl+shift+m") == (0x6, ord("M")) and lc.parse_hotkey("f9") == (0, 0x78) and lc.parse_hotkey("hyper+q") is None,
       "hotkey text parsed")
-check(lc.Hotkey("ctrl+shift+m", lambda: None).start() is (sys.platform == "win32" and None is not None),
-      "the mute key is a no-op off Windows")
+if sys.platform != "win32":
+    check(lc.Hotkey("ctrl+shift+m", lambda: None).start() is False, "the mute key is a no-op off Windows")
+check(vc.wav_seconds(vc.write_tone(TMP / "beep.wav")) and abs(vc.wav_seconds(TMP / "beep.wav") - 0.12) < 0.01,
+      "the beep tone WAV")
+nv2 = vc.NullVoice("t")
+nv2.prepare(["a"]), nv2.cancel(), nv2.beep()
+check(nv2.duration("a") is None, "the silent voice takes every call")
 src_text = (ROOT / "debrief" / "voice.py").read_text() + (ROOT / "debrief" / "livecoach.py").read_text()
 top = [ln for ln in src_text.splitlines() if ln.startswith(("import ", "from "))]
 check(not any(m in ln for ln in top for m in ("irsdk", "win32", "comtypes", "pythoncom", "ctypes")),

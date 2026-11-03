@@ -44,17 +44,25 @@ def _yaml_block(d, ind=1):
 
 def session_text(setup=None, session="Practice", car="Mclaren 570s GT4", car_path="mclaren570sgt4", car_id=135,
                  track="Zolder Circuit", track_code="zolder gp", track_id=200, surface_temp=22.2, wet=False,
-                 name="Swazi Williams", setup_name="baseline.sto", other_cars=(), session_secs=None):
+                 name="Swazi Williams", setup_name="baseline.sto", other_cars=(), session_secs=None,
+                 fixed_setup=None, official=None, setup_modified=None, setup_load=None):
     sessions = session if isinstance(session, (list, tuple)) else [session]
     lines = ["---", "WeekendInfo:", f" TrackName: {track_code}", f" TrackID: {track_id}", " TrackLength: 3.98 km",
              f" TrackDisplayName: {track}", " TrackConfigName: Grand Prix", f" TrackSurfaceTemp: {surface_temp:.2f} C",
-             " TrackAirTemp: 18.00 C", " WeekendOptions:", f"  TrackWater: {'Wet' if wet else 'Dry'}",
+             " TrackAirTemp: 18.00 C"] + ([f" Official: {int(official)}"] if official is not None else []) + [
+             " WeekendOptions:", f"  TrackWater: {'Wet' if wet else 'Dry'}"] + (
+             [f"  IsFixedSetup: {int(fixed_setup)}"] if fixed_setup is not None else []) + [
              "SessionInfo:", " Sessions:"]
     for i, s in enumerate(sessions):
         lines += [f" - SessionNum: {i}", f"   SessionType: {s}", f"   SessionName: {s.upper()}"]
         if session_secs is not None:
             lines += ["   SessionLaps: unlimited", f"   SessionTime: {float(session_secs):.4f} sec"]
-    lines += ["DriverInfo:", " DriverCarIdx: 3", f" DriverSetupName: {setup_name}", " Drivers:"]
+    lines += ["DriverInfo:", " DriverCarIdx: 3", f" DriverSetupName: {setup_name}"]
+    if setup_modified is not None:
+        lines += [f" DriverSetupIsModified: {int(setup_modified)}"]
+    if setup_load is not None:
+        lines += [f" DriverSetupLoadTypeName: {setup_load}"]
+    lines += [" Drivers:"]
     for idx, (nm, cn, cp, ci) in enumerate([("Other Driver: Jr", "Ligier JS P320", "ligierjsp320", 128)] + list(other_cars)):
         lines += [f" - CarIdx: {idx}", f"   UserName: {nm}", f"   CarScreenName: {cn}", f"   CarPath: {cp}", f"   CarID: {ci}",
                   "   CarClassShortName: LMP3"]
@@ -68,7 +76,7 @@ CORNERS = ("LF", "RF", "LR", "RR")
 
 
 def make(path, laps, setup=None, session="Practice", rate=60, lead=5.0, offs=(), pits=(), incidents=(), untimed=(),
-         corner=None, brake_at=None, pit_temps=None, pressure=None, ride=None, fuel=None, track_temp=None,
+         corner=None, brake_at=None, traffic=(), pit_temps=None, pressure=None, ride=None, fuel=None, track_temp=None,
          start_date=1_790_000_000, **kw):
     """A file of consecutive laps (seconds each) after a `lead`-second out lap. offs/pits/incidents/untimed are lap
     indexes (0 = first timed lap). corner: optional function (lap_index, pct) -> (speed m/s, brake 0..1) to shape a
@@ -82,6 +90,7 @@ def make(path, laps, setup=None, session="Practice", rate=60, lead=5.0, offs=(),
       ride:      function (lap_index, pct) -> metres for the front ride heights (rears +25 mm).
       fuel:      (start litres, litres per lap) adds a FuelLevel channel falling through each lap.
       track_temp: adds a live TrackTempCrew channel (deg C).
+      traffic:   lap indexes with a car alongside (CarLeftRight = 2) for the middle 30% of the lap.
       start_date: unix seconds in the file header."""
     times = [lead] + list(laps)
     n = int(sum(times) * rate) + 4 * rate
@@ -143,6 +152,12 @@ def make(path, laps, setup=None, session="Practice", rate=60, lead=5.0, offs=(),
     for i, T in enumerate(times):
         acc += int(round(T * rate))
         lap_end[i - 1] = min(n, acc)
+    side = np.ones(n, np.int32)
+    for li in traffic:
+        s0, s1 = lap_end.get(li - 1, 0), lap_end.get(li, n)
+        m = s1 - s0
+        side[s0 + int(0.35 * m): s0 + int(0.65 * m)] = 2
+    cols["CarLeftRight"] = ("i", side)
     if ride is not None:
         for j in range(n):
             li = int(lap[j]) - 1

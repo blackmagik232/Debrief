@@ -18,15 +18,21 @@ Pure logic first, then where the samples come from:
   IrsdkSource    live iRacing through pyirsdk (imported only when used). read() is None while iRacing isn't running.
   IbtPlaybackSource  plays an .ibt file as if it were live (real time, faster, or as fast as possible for tests).
 
-Cues are deliberately few and quiet:
-  a) "Brake marker, T3"            about 2.5 s before the reference brake point of a top-3 weak corner
-  b) "T3: carry more speed, 6 down" / "T3: braked early"   just after a weak corner, once per corner per lap
-  c) "Up two tenths" / "Down three tenths" / "New best..."  at the line, clean laps only, |delta| >= 0.1 s
-  d) silence: car alongside (and 3 s after), pit road, off track, out/in laps, a lap not seen from its start,
-     race lap 1 (and races at all unless in_races), at most one cue every 4 s, nothing in the 1.5 s before any
-     brake point except that corner's own marker, nothing that would block a weak corner's marker, mute.
-A cue that can't be said within 2 s (a marker: while there is still >= 1 s to the brake point) is dropped, never
-spoken late.
+Cues are deliberately few, short (2-5 words) and quiet ("one focus at a time"):
+  a) "Brake marker, T3"           focus cue on the straight before one of the top 2 weak corners: at least 150 m
+                                  before the reference brake point and timed so it ENDS >= 1.0 s before it
+                                  (distance = reference speed x (cue length + 1.0 s + 0.1 s audio)); if it can't
+                                  fit, it is dropped
+  b) "T3: more speed, 6 down" / "T3, braked early"   on the straight after a weak corner
+  c) "Down three tenths" / "New best, up two tenths"  once per lap after LapLastLapTime updates, on the first
+                                  straight where it fits (within 10 s); clean laps, 0.1 s <= delta <= 2 s
+  Limits: at most 2 corrective cues (a + b) per lap and 1 per corner per lap; a corner is cued again only after
+  2 laps unless the error persists; nothing about a corner he is driving well; at most one cue every 4 s.
+  d) silence: a car alongside (stop talking at once, forget queued cues, quiet until 2 s after it clears), under
+     braking (pedal > 0.05) or inside any corner's braking/apex zone, pit road, off track, out/in laps, a lap not
+     seen from its start, race lap 1 (and races at all unless in_races), mute. A cue that can't start in time is
+     dropped, never spoken late.
+  Optional: a short tone at a weak corner's brake point (Settings.brake_beep, off by default).
 
 Nothing here imports pyirsdk, Windows modules or the window at import time. CPU: a handful of comparisons per sample.
 """
@@ -50,7 +56,7 @@ KMH = 3.6
 BRAKE_ON = 0.1              # live brake pedal above this (after being below it) is a brake onset
 _LOG = logging.getLogger("debrief.livecoach")
 
-KIND_MARKER, KIND_FEEDBACK, KIND_LAP = "marker", "feedback", "lap"
+KIND_MARKER, KIND_FEEDBACK, KIND_LAP, KIND_BEEP = "marker", "feedback", "lap", "beep"
 PRIORITY = {KIND_MARKER: 3, KIND_FEEDBACK: 2, KIND_LAP: 1}
 
 
@@ -58,21 +64,31 @@ PRIORITY = {KIND_MARKER: 3, KIND_FEEDBACK: 2, KIND_LAP: 1}
 
 @dataclass
 class Settings:
-    markers: bool = True                # cue a)
-    feedback: bool = True               # cue b)
+    markers: bool = True                # cue a): focus cue on the straight before a weak corner
+    feedback: bool = True               # cue b): after a weak corner, on the next straight
     lap_delta: bool = True              # cue c)
-    top_n: int = 3                      # weak corners coached (markers and feedback)
-    marker_lead_s: float = 2.5          # say the marker this long before the brake point
-    marker_min_lead_s: float = 1.0      # ...and never with less than this left (else dropped)
-    slower_kmh: float = 4.0             # min speed this much under the reference -> "carry more speed"
+    top_n: int = 2                      # weak corners coached per session ("one focus at a time")
+    max_per_lap: int = 2                # corrective cues (markers + feedback) per lap, all corners together
+    repeat_laps: int = 2                # a corner is cued at most every this many laps, unless the error persists
+    end_before_brake_s: float = 1.0     # a cue must END at least this long before a brake point
+    audio_latency_s: float = 0.1        # sound card / player start-up allowed for in that sum
+    words_per_s: float = 2.5            # speaking speed for cues with no pre-rendered length
+    marker_min_m: float = 150.0         # the focus cue starts at least this far before the brake point
+    marker_window_s: float = 0.6        # ...within this much time of its latest start; later it is dropped
+    slower_kmh: float = 4.0             # min speed this much under the reference -> "more speed"
     early_m: float = 15.0               # braked this much earlier than the reference -> "braked early"
     delta_min_s: float = 0.1            # lap delta said only from this size
+    lap_cue_wait_s: float = 10.0        # the lap delta may wait this long after LapLastLapTime updates for a free
+                                        # straight (at Zolder the line is only ~165 m before T1's brake point, so a
+                                        # 2 s limit dropped every lap delta on his real files)
+    lap_delta_max_s: float = 2.0        # a lap this far off the reference (traffic, a moment) gets no delta
     in_races: bool = False              # coach in Race sessions too
     update_reference: bool = True       # a new best clean lap becomes the reference
     gap_s: float = 4.0                  # at most one cue every gap_s
-    traffic_hold_s: float = 3.0         # quiet this long after a car was alongside
-    quiet_before_brake_s: float = 1.5   # quiet this long before any brake point (except its own marker)
+    traffic_hold_s: float = 2.0         # quiet this long after a car alongside has cleared
+    braking_pedal: float = 0.05         # no cue starts with the brake pedal above this
     stale_s: float = 2.0                # a cue not said within this is dropped
+    brake_beep: bool = False            # a short tone at a weak corner's brake point
     muted: bool = False
     volume: int = 100                   # 0..100
     rate: int = 0                       # SAPI speaking rate -10..10
@@ -108,11 +124,13 @@ class Settings:
                 continue
             setattr(s, f.name, v)
         s.top_n = max(0, min(10, s.top_n))
+        s.max_per_lap = max(0, min(10, s.max_per_lap))
+        s.repeat_laps = max(1, min(20, s.repeat_laps))
+        s.words_per_s = max(1.0, min(6.0, s.words_per_s))
         s.volume = max(0, min(100, s.volume))
         s.rate = max(-10, min(10, s.rate))
         s.sample_hz = max(5.0, min(60.0, s.sample_hz))
         return s
-
 
 # ---------------------------------------------------------------- reference
 
@@ -496,6 +514,8 @@ class _Lap:
         self.inc0 = inc
         self.incident = False
         self.trace: list = []
+        self.cues = 0                   # corrective cues said this lap
+        self.corners: set = set()       # corner numbers cued this lap
 
 
 class _Obs:
@@ -510,13 +530,24 @@ class _Obs:
         self.n = 0
 
 
+class _Pending:
+    """A finished lap waiting for iRacing's own time (LapLastLapTime updates about 2 s after the line)."""
+    def __init__(self, lap: _Lap, tc: float, measured: float, clean: bool, last0):
+        self.lap, self.tc, self.measured, self.clean, self.last0 = lap, tc, measured, clean, last0
+
+
 class Coach:
-    """feed(sample) -> [Cue] (none or one). Independent of where the samples come from."""
+    """feed(sample) -> [Cue] (none or one; a 'beep' cue when Settings.brake_beep is on). Independent of where the
+    samples come from. After feed, take_cancel() is True when what is being said must stop now (car alongside).
+
+    duration(text) -> seconds: how long a cue takes to say (the voice's pre-rendered length when it has one,
+    else words / Settings.words_per_s). Every cue must end Settings.end_before_brake_s before the next brake point."""
 
     def __init__(self, reference: Reference | None = None, weak_corners=None, settings: Settings | None = None,
-                 log=None):
+                 log=None, duration=None):
         self.settings = settings or Settings()
         self._log = log or _LOG.warning
+        self.duration_fn = duration
         self.weak_input = list(weak_corners or [])
         self.reference = None
         self.weak: list = []
@@ -525,6 +556,10 @@ class Coach:
         self.events: list = []          # notable non-spoken events ("reference updated", ...)
         self.quiet_reason: str | None = None
         self.last_lap: dict | None = None
+        self.lap_log: list = []          # the last laps seen: lap, time, clean, delta, timed_by
+        self._cancel = False
+        self._corner_err: dict = {}      # corner num -> [error on the last pass, error on the pass before]
+        self._corner_last: dict = {}     # corner num -> (lap number, kind) of its last cue
         self._reset_all()
         if reference is not None:
             self.set_reference(reference)
@@ -537,10 +572,12 @@ class Coach:
         self.weak = match_weak(ref, self.weak_input, self.settings.top_n, self.settings.corner_prefix) if ref else []
         self._obs = {}
         self._marker_done = set()
+        self._beep_done = set()
 
     def mute(self):
         self.settings.muted = True
         self.queue.clear()
+        self._cancel = True
 
     def unmute(self):
         self.settings.muted = False
@@ -551,6 +588,33 @@ class Coach:
         else:
             self.mute()
         return self.settings.muted
+
+    def take_cancel(self) -> bool:
+        c, self._cancel = self._cancel, False
+        return c
+
+    def duration(self, text: str) -> float:
+        if self.duration_fn is not None:
+            try:
+                d = self.duration_fn(text)
+                if d:
+                    return float(d)
+            except Exception:  # noqa: BLE001
+                pass
+        return max(0.6, len(str(text).split()) / self.settings.words_per_s)
+
+    def vocabulary(self) -> list:
+        """Every fixed phrase this coach can say with the current reference and weak corners, for the voice to
+        render ahead of time (no speech synthesis while iRacing is running)."""
+        out = []
+        for w in self.weak:
+            if w.corner.brake_pct is not None:
+                out += [marker_text(w.name), early_text(w.name)]
+            out += [speed_text(w.name, n) for n in range(max(1, int(math.ceil(self.settings.slower_kmh))), 16)]
+        for k in range(1, 10):
+            out += [f"Down {delta_words(k / 10)}", f"New best, up {delta_words(k / 10)}"]
+        out.append("New best")
+        return list(dict.fromkeys(out))
 
     def status(self) -> dict:
         r = self.reference
@@ -574,11 +638,19 @@ class Coach:
         self._sn = None
         self._lap: _Lap | None = None
         self._prev_pct = None
+        self._prev_t = None
         self._traffic_until = -1e9
+        self._alongside = False
         self._last_spoken_t = -1e9
         self._obs = {}
         self._marker_done = set()
+        self._beep_done = set()
+        self._pending: _Pending | None = None
         self.queue.clear()
+
+    def _need_s(self, text: str) -> float:
+        st = self.settings
+        return self.duration(text) + st.end_before_brake_s + st.audio_latency_s
 
     def _feed(self, s: dict) -> list:
         st = self.settings
@@ -604,12 +676,17 @@ class Coach:
         clr = s.get("CarLeftRight")
         clr = 0 if clr is None else int(clr)
         inc = int(s.get("PlayerCarMyIncidentCount") or 0)
+        last_lap_time = s.get("LapLastLapTime")
         if pct < 0 or pct > 1.0001:                      # not in the world
             self._prev_pct = None
             return []
         alongside = clr not in (0, 1)
         if alongside:
-            self._traffic_until = t + st.traffic_hold_s
+            if not self._alongside:                      # a car just came alongside: stop talking, forget queued
+                self._cancel = True
+            self.queue.clear()
+            self._traffic_until = t + st.traffic_hold_s  # quiet until 2 s after it clears
+        self._alongside = alongside
         on_track = on and surf == ibt.ON_TRACK and not pit
 
         # ---- the line ----
@@ -622,7 +699,7 @@ class Coach:
                 gap = (1.0 - self._prev_pct) + pct
                 frac = (1.0 - self._prev_pct) / gap if gap > 0 else 1.0
                 tc = self._prev_t + frac * (t - self._prev_t)
-                self._end_lap(lap, tc, stype)
+                self._end_lap(lap, tc, stype, last_lap_time)
             self._lap = lap = _Lap(lapn, tc, valid=crossed and on_track, inc=inc)
         if pit or surf in (ibt.IN_PIT_STALL, ibt.APPROACHING_PITS):
             lap.pit = True
@@ -631,24 +708,33 @@ class Coach:
         if inc != lap.inc0:
             lap.incident = True
         if lap.valid and not lap.pit and len(lap.trace) < 20000:
-            lap.trace.append((t, pct, v, brk, float(s.get("Throttle") or 0.0), float(s.get("Gear") or 0.0),
-                              float(s.get("SteeringWheelAngle") or 0.0)))
+            lap.trace.append((t, pct, v, brk, float(s.get("Throttle") or 0.0), float(s.get("Gear") or 0.0)))
+        if self._pending is not None:
+            self._lap_result(t, last_lap_time)
         start_lap = is_race(stype) and lapn <= 1
         coachable = lap.valid and not lap.pit and not start_lap
 
         # ---- corners ----
         ref = self.reference
         L = ref.length_m if ref else 0.0
-        tts = {}                                          # corner num -> seconds to its brake point (ahead only)
+        dists = {}                                        # corner num -> metres to its brake point (ahead only)
+        busy = False                                      # inside a corner's braking or apex zone
+        beep = None
         if ref:
-            vv = max(v, 5.0)
-            for c in ref.braked:
-                dist = ((c.brake_pct - pct) % 1.0) * L
-                if dist < L / 2:
-                    tts[c.num] = dist / vv
+            for c in ref.corners:
+                rel = _rel_m(pct, c.apex_pct, L)
+                lo = c.brake_rel_m if c.brake_rel_m is not None else min(-60.0, 0.5 * c.start_rel_m)
+                if lo <= rel <= max(30.0, 0.3 * c.end_rel_m):
+                    busy = True
+                if c.brake_pct is not None:
+                    dist = ((c.brake_pct - pct) % 1.0) * L
+                    if dist < L / 2:
+                        dists[c.num] = dist
             for w in self.weak:
-                self._observe(w, pct, v, brk, t, alongside, surf, on, coachable)
-                self._marker(w, tts, t, coachable)
+                self._observe(w, pct, v, brk, t, alongside, surf, on, coachable, lap)
+                self._marker(w, dists, v, t, coachable, lap)
+                b = self._beep(w, dists, v, coachable)
+                beep = beep or b
 
         # ---- speak? ----
         self._prev_pct, self._prev_t = pct, t
@@ -657,20 +743,32 @@ class Coach:
         if st.muted:
             self.queue.clear()
             return []
+        if beep is not None and reason is None:
+            return [Cue(text="", priority=0, key=f"beep:{beep}", t=t, kind=KIND_BEEP, corner=beep, spoken_t=t)]
+        vv = max(v, 5.0)
 
         def allowed(c: Cue) -> bool:
             if reason and not (c.kind == KIND_LAP and reason in ("Out lap or in lap", "Lap not seen from the start")):
                 return False
             if t - self._last_spoken_t < st.gap_s:
                 return False
-            for num, tt in tts.items():          # quiet before any brake point, except this corner's own marker
-                if tt < st.quiet_before_brake_s and not (c.kind == KIND_MARKER and c.corner == f"C{num}"):
+            if brk > st.braking_pedal or busy:            # never under braking or mid-corner
+                return False
+            need = self._need_s(c.text)
+            for num, dist in dists.items():              # must END end_before_brake_s before every brake point
+                if dist / vv < need:
                     return False
-            if c.kind != KIND_MARKER and st.markers and coachable:   # keep room for a weak corner's marker
+            if c.kind in (KIND_MARKER, KIND_FEEDBACK):
+                num = int(c.corner[1:]) if c.corner else None
+                if lap.cues >= st.max_per_lap or num in lap.corners:
+                    return False
+            if c.kind != KIND_MARKER and st.markers and coachable:   # keep room for a weak corner's focus cue
                 for w in self.weak:
-                    tt = tts.get(w.corner.num)
-                    if tt is not None and w.corner.num not in self._marker_done and tt <= st.marker_lead_s + st.gap_s \
-                            and tt > st.marker_min_lead_s:
+                    d = dists.get(w.corner.num)
+                    if d is None or w.corner.num in self._marker_done or not self._marker_wanted(w, lap):
+                        continue
+                    trig, _late = self._marker_span(w, vv)
+                    if d - trig < vv * (st.gap_s + need):
                         return False
             return True
 
@@ -679,6 +777,11 @@ class Coach:
             return []
         self._last_spoken_t = t
         cue.spoken_t = t
+        if cue.kind in (KIND_MARKER, KIND_FEEDBACK):
+            num = int(cue.corner[1:])
+            lap.cues += 1
+            lap.corners.add(num)
+            self._corner_last[num] = (lap.num, cue.kind)
         self.spoken.append(cue)
         del self.spoken[:-50]
         return [cue]
@@ -702,24 +805,69 @@ class Coach:
             return "Out lap or in lap"
         return None
 
-    def _marker(self, w: Weak, tts: dict, t: float, coachable: bool):
+    # -- the focus cue (a) --
+    def _marker_span(self, w: Weak, v: float):
+        """(distance at which the focus cue is made, distance under which it is too late) before the brake point."""
+        st = self.settings
+        c = w.corner
+        vref = max(v, float(np.interp(c.brake_pct, self.reference.pct, self.reference.speed, period=1.0)))
+        late = max(st.marker_min_m, vref * self._need_s(marker_text(w.name)))
+        return late + vref * st.marker_window_s, late
+
+    def _marker_wanted(self, w: Weak, lap: _Lap) -> bool:
+        """Nothing when he is doing well: a focus cue only before the first look at the corner or while the last
+        pass there was off the reference; and not twice running for the same corner (then the feedback gets the
+        turn), not within repeat_laps of its last cue unless the error persists."""
+        n = w.corner.num
+        err = self._corner_err.get(n)
+        if err is not None and not err[0]:
+            return False
+        last = self._corner_last.get(n)
+        if last is not None:
+            gap = lap.num - last[0]
+            if last[1] == KIND_MARKER and gap <= 1 and err is not None:
+                return False
+            if gap < self.settings.repeat_laps and not (err and err[0]):
+                return False
+        return True
+
+    def _marker(self, w: Weak, dists: dict, v: float, t: float, coachable: bool, lap: _Lap):
         st = self.settings
         c = w.corner
         if c.brake_pct is None:
             return
-        tt = tts.get(c.num)
-        if tt is None:                           # behind us: ready for next lap
+        d = dists.get(c.num)
+        if d is None:                            # behind us: ready for next lap
             self._marker_done.discard(c.num)
             return
         if not st.markers or not coachable or c.num in self._marker_done:
             return
-        if st.marker_min_lead_s <= tt <= st.marker_lead_s:
+        vv = max(v, 5.0)
+        trig, late = self._marker_span(w, vv)
+        if late <= d <= trig:
             self._marker_done.add(c.num)
-            self.queue.push(Cue(text=f"Brake marker, {w.name}", priority=PRIORITY[KIND_MARKER],
-                                key=f"marker:{c.id}", t=t, kind=KIND_MARKER, corner=c.id,
-                                expires=t + (tt - st.marker_min_lead_s)))
+            if self._marker_wanted(w, lap):
+                self.queue.push(Cue(text=marker_text(w.name), priority=PRIORITY[KIND_MARKER],
+                                    key=f"marker:{c.id}", t=t, kind=KIND_MARKER, corner=c.id,
+                                    expires=t + (d - late) / vv))
 
-    def _observe(self, w: Weak, pct, v, brk, t, alongside, surf, on, coachable):
+    def _beep(self, w: Weak, dists: dict, v: float, coachable: bool):
+        c = w.corner
+        if not self.settings.brake_beep or c.brake_pct is None:
+            return None
+        d = dists.get(c.num)
+        if d is None or d > 50.0:
+            self._beep_done.discard(c.num)
+            return None
+        if d > max(v, 5.0) * 0.06 + 1.0:                 # not yet within one sample of the brake point
+            return None
+        if c.num in self._beep_done or not coachable:
+            return None
+        self._beep_done.add(c.num)
+        return c.id
+
+    # -- after the corner (b) --
+    def _observe(self, w: Weak, pct, v, brk, t, alongside, surf, on, coachable, lap: _Lap):
         st = self.settings
         c = w.corner
         L = self.reference.length_m
@@ -747,43 +895,65 @@ class Coach:
         del self._obs[c.num]
         if rel < c.end_rel_m or rel > c.end_rel_m + 200.0:   # left backwards or jumped (reset/tow): no verdict
             return
-        if not st.feedback or not o.ok or o.off or o.traffic or o.n < 5:
-            return
+        if not o.ok or o.off or o.traffic or o.n < 5:
+            return                                        # a pass that says nothing about his driving
         down = c.min_kmh - o.min_v * KMH
-        text = None
-        if down >= st.slower_kmh:
-            text = f"{w.name}: carry more speed, {int(round(down))} down"
-        elif c.brake_rel_m is not None and o.brake_rel is not None and c.brake_rel_m - o.brake_rel >= st.early_m:
-            text = f"{w.name}: braked early"
-        if text:
-            self.queue.push(Cue(text=text, priority=PRIORITY[KIND_FEEDBACK], key=f"feedback:{c.id}", t=t,
-                                kind=KIND_FEEDBACK, corner=c.id, expires=t + st.stale_s))
+        early = (c.brake_rel_m - o.brake_rel) if (c.brake_rel_m is not None and o.brake_rel is not None) else 0.0
+        err = down >= st.slower_kmh or early >= st.early_m
+        prev = self._corner_err.get(c.num)
+        self._corner_err[c.num] = [err, bool(prev and prev[0])]
+        if not err or not st.feedback:
+            return
+        last = self._corner_last.get(c.num)
+        persists = bool(prev and prev[0])
+        if last is not None and lap.num - last[0] < st.repeat_laps and not persists:
+            return
+        text = speed_text(w.name, int(round(down))) if down >= st.slower_kmh else early_text(w.name)
+        self.queue.push(Cue(text=text, priority=PRIORITY[KIND_FEEDBACK], key=f"feedback:{c.id}", t=t,
+                            kind=KIND_FEEDBACK, corner=c.id, expires=t + st.stale_s))
 
-    def _end_lap(self, lap: _Lap, tc: float, stype: str):
-        st = self.settings
+    # -- at the line (c) --
+    def _end_lap(self, lap: _Lap, tc: float, stype: str, last_lap_time):
         start_lap = is_race(stype) and lap.num <= 1
         clean = lap.valid and not (lap.pit or lap.off or lap.incident or start_lap)
         lt = (tc - lap.t0) if lap.t0 is not None else None
+        self.last_lap = {"lap": lap.num, "time": round(lt, 3) if lt else None, "clean": clean, "delta": None}
+        self.lap_log.append(self.last_lap)
+        del self.lap_log[:-30]
+        self._pending = _Pending(lap, tc, lt, clean, last_lap_time) if (clean and lt and lt > 0) else None
+
+    def _lap_result(self, t: float, last_lap_time):
+        """iRacing's own lap time once LapLastLapTime has updated (about 2 s after the line); the time measured from
+        the samples if it hasn't within 4 s (or the source has no such channel)."""
+        p = self._pending
+        official = None
+        if last_lap_time is not None and p.last0 is not None and abs(float(last_lap_time) - float(p.last0)) > 1e-6:
+            official = float(last_lap_time) if float(last_lap_time) > 0 else None
+            if official is not None and abs(official - p.measured) > max(2.0, 0.05 * p.measured):
+                official = None                          # not this lap's time
+        elif last_lap_time is not None and t - p.tc < 4.0:
+            return                                       # still waiting for iRacing
+        self._pending = None
+        lt = official if official is not None else p.measured
+        self.last_lap["time"] = round(lt, 3)
+        self.last_lap["timed_by"] = "iracing" if official is not None else "samples"
+        st = self.settings
         ref = self.reference
-        info = {"lap": lap.num, "time": round(lt, 3) if lt else None, "clean": clean, "delta": None}
-        self.last_lap = info
-        if not clean or not lt or lt <= 0:
-            return
         if ref is not None and abs(lt - ref.lap_time) > max(5.0, 0.15 * ref.lap_time):
             return                                        # not a real lap of this track (cut, reset, wrong reference)
         if ref is not None:
             d = lt - ref.lap_time
-            info["delta"] = round(d, 3)
+            self.last_lap["delta"] = round(d, 3)
             text = None
             if d < 0:
                 text = "New best" + (f", up {delta_words(d)}" if -d >= st.delta_min_s - 1e-9 else "")
-            elif d >= st.delta_min_s - 1e-9:
+            elif st.delta_min_s - 1e-9 <= d <= st.lap_delta_max_s:
                 text = f"Down {delta_words(d)}"
             if text and st.lap_delta:
-                self.queue.push(Cue(text=text, priority=PRIORITY[KIND_LAP], key="lap", t=tc, kind=KIND_LAP,
-                                    expires=tc + st.stale_s))
+                self.queue.push(Cue(text=text, priority=PRIORITY[KIND_LAP], key="lap", t=t, kind=KIND_LAP,
+                                    expires=t + st.lap_cue_wait_s))
         if (ref is None or lt < ref.lap_time) and st.update_reference:
-            self._adopt(lap, lt)
+            self._adopt(p.lap, lt)
 
     def _adopt(self, lap: _Lap, lt: float):
         ref = self.reference
@@ -791,8 +961,7 @@ class Coach:
         if len(tr) < 50:
             return
         a = np.array(tr)
-        cols = {"Speed": a[:, 2], "LapDistPct": a[:, 1], "Brake": a[:, 3], "Throttle": a[:, 4], "Gear": a[:, 5],
-                "SteeringWheelAngle": a[:, 6]}
+        cols = {"Speed": a[:, 2], "LapDistPct": a[:, 1], "Brake": a[:, 3], "Throttle": a[:, 4], "Gear": a[:, 5]}
         L = ref.length_m if ref else (self._length_hint or None)
         if not L:
             return
@@ -819,12 +988,22 @@ class Coach:
         self._length_hint, self._car_hint, self._track_hint = length_m, car, track
 
 
+def marker_text(name: str) -> str:
+    return f"Brake marker, {name}"
+
+
+def early_text(name: str) -> str:
+    return f"{name}, braked early"
+
+
+def speed_text(name: str, kmh_down: int) -> str:
+    return f"{name}: more speed, {kmh_down} down"
+
 # ---------------------------------------------------------------- sample sources
 
-CHANNELS = ("SessionTime", "SessionNum", "Lap", "LapDistPct", "LapDist", "Speed", "Throttle", "Brake",
-            "SteeringWheelAngle", "Gear", "LapCurrentLapTime", "LapLastLapTime", "LapDeltaToBestLap",
-            "LapDeltaToBestLap_OK", "OnPitRoad", "PlayerTrackSurface", "CarLeftRight", "PlayerCarMyIncidentCount",
-            "IsOnTrack")
+# only what the coach reads (each live read copies these out of iRacing's buffer)
+CHANNELS = ("SessionTime", "SessionNum", "Lap", "LapDistPct", "LapLastLapTime", "Speed", "Brake", "Throttle",
+            "Gear", "OnPitRoad", "PlayerTrackSurface", "CarLeftRight", "IsOnTrack", "PlayerCarMyIncidentCount")
 
 
 class IbtPlaybackSource:
@@ -903,6 +1082,7 @@ class IrsdkSource:
                 return False
         try:
             if self._ir.is_initialized and self._ir.is_connected:
+                self.state = "connected"
                 return True
             now = time.monotonic()
             if now < self._next_try:
@@ -999,7 +1179,7 @@ class LiveRunner:
         self.source = source
         self.voice = voice
         self.settings = settings or Settings()
-        self.coach = Coach(None, weak_corners, self.settings, log=log)
+        self.coach = Coach(None, weak_corners, self.settings, log=log, duration=self._voice_duration)
         self._given = reference
         self._telemetry_dir = telemetry_dir
         self._weak_for = weak_for
@@ -1014,7 +1194,12 @@ class LiveRunner:
         self._state = "stopped"
         self._error = ""
         self._errors = 0
+        self._prepared = None
         self.spoken: list = []
+
+    def _voice_duration(self, text):
+        fn = getattr(self.voice, "duration", None)
+        return fn(text) if fn else None
 
     # ---- control (window thread) ----
     def start(self) -> bool:
@@ -1042,12 +1227,16 @@ class LiveRunner:
 
     def mute(self):
         self.coach.mute()
+        _call(self.voice, "cancel")
 
     def unmute(self):
         self.coach.unmute()
 
     def toggle(self) -> bool:
-        return self.coach.toggle()
+        m = self.coach.toggle()
+        if m:
+            _call(self.voice, "cancel")
+        return m
 
     def update_settings(self, d: dict):
         """Apply new settings while running (from the window). Volume/rate go to the voice too."""
@@ -1121,10 +1310,17 @@ class LiveRunner:
                     continue
                 try:
                     self._ensure_reference()
-                    for cue in self.coach.feed(s):
-                        self.spoken.append(cue)
-                        del self.spoken[:-50]
+                    self._prepare()                  # a new best may have changed the reference
+                    cues = self.coach.feed(s)
+                    if self.coach.take_cancel():
+                        _call(self.voice, "cancel")
+                    for cue in cues:
                         try:
+                            if cue.kind == KIND_BEEP:
+                                _call(self.voice, "beep")
+                                continue
+                            self.spoken.append(cue)
+                            del self.spoken[:-50]
                             self.voice.say(cue.text, priority=cue.priority, t=cue.spoken_t)
                         except Exception as e:  # noqa: BLE001
                             self._problem(f"speaking failed ({e.__class__.__name__})")
@@ -1186,6 +1382,25 @@ class LiveRunner:
         self.coach.hint(info.get("length_m"), car, track)
         self.coach.set_reference(ref, weak or [])
         self._state = "coaching" if ref is not None else "no_reference"
+        self._prepared = None
+        self._prepare()
+
+    def _prepare(self):
+        """Hand the voice every fixed phrase for this reference, to render ahead of time (once per reference)."""
+        r = self.coach.reference
+        if r is None or self._prepared is r:
+            return
+        self._prepared = r
+        _call(self.voice, "prepare", self.coach.vocabulary())
+
+
+def _call(obj, name, *a):
+    fn = getattr(obj, name, None)
+    if fn is not None:
+        try:
+            fn(*a)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 # ---------------------------------------------------------------- optional global hotkey (Windows)

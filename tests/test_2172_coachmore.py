@@ -115,7 +115,7 @@ for bad in ("loud", 2, None, ""):
         S.clean_coach_settings({"level": bad})
         check(False, f"level {bad!r} refused")
     except ValueError as e:
-        check(str(e) == "Pick Quiet, Normal or Busy.", f"level {bad!r} refused in plain words")
+        check(str(e) == "Pick Quiet, Normal, Busy or Only when I ask.", f"level {bad!r} refused in plain words")
 
 # ---------------------------------------------------------------- words and voice
 print("-- words and George")
@@ -134,10 +134,10 @@ want = {"T3, a tenth down": ["turn_3", "lost_0_1"], "T3, good, up two tenths": [
 for t, k in want.items():
     check(vp.compose(t) == k, f"compose({t!r}) = {vp.compose(t)}")
 for t in ("T3, ten tenths down", "Sector four, up a tenth", "Sector one, good, up a tenth", "Reference set, three oh one one",
-          "Reference set, thirty nine"):
+          "Reference set, sixty nine"):
     check(vp.compose(t) is None, f"compose({t!r}) is None (Windows speech says it)")
 old_lines = [ln for ln in vp.lines() if ln["section"] in "ABCDEF"]
-check(old_lines[-1]["text"] == "Building your reference." and all(ln["section"] in "GH" for ln in vp.lines()[len(old_lines):]),
+check(old_lines[-1]["text"] == "Building your reference." and all(ln["section"] in "GHIJK" for ln in vp.lines()[len(old_lines):]),
       "new lines come after the old ones (earlier line numbers never change)")
 check(PACK is not None and not (set(vp.all_keys()) - set(PACK.clips)), "George has every clip, new ones too")
 rates = [vp.loudness_db(PACK.clips[k], PACK.rate) for k in ("lost_0_2", "sector_1", "reference_set", "lap_98",
@@ -235,8 +235,8 @@ b0 = said1[0][2]
 check(float(b0["Brake"]) <= 0.05 and (bool(b0["OnPitRoad"]) or float(b0["Throttle"]) >= 0.9),
       "...rolling out of the pits or on a straight, never braking")
 rs = [(lap, t) for lap, t in texts if t.startswith("Reference set, ")]
-check(len(rs) == 1 and rs[0][0] == 2 and rs[0][1] == lc.reference_set_text(ftimes[0]),
-      f"after the first clean lap: '{rs and rs[0][1]}' ({vp.lap_time_words(ftimes[0])})")
+check(len(rs) == 1 and rs[0][0] == 2 and rs[0][1] == lc.reference_set_text(ftimes[0], short=True),
+      f"after the first clean lap: '{rs and rs[0][1]}' ({vp.lap_time_short_words(ftimes[0])}, short by default)")
 check(c1.reference is not None and c1.reference.source.get("kind") == "live", "that lap is the reference")
 check(any(lap >= 2 and t.startswith("T2") for lap, t in texts), "from lap 2 the corners are compared with it")
 check(PACK.compose(rs[0][1]) is not None if rs else False, "George says 'Reference set' and the time")
@@ -262,8 +262,8 @@ print("-- the page")
 html = (ROOT / "debrief" / "desktop" / "ui" / "index.html").read_text(encoding="utf-8")
 js = (ROOT / "debrief" / "desktop" / "ui" / "app.js").read_text(encoding="utf-8")
 m = re.search(r'<fieldset class="radios colevel" id="coLevel">(.*?)</fieldset>', html, re.S)
-check(m and [v for v in re.findall(r'value="(\w+)"', m.group(1))] == ["quiet", "normal", "busy"],
-      "the Coach page has the level picker: Quiet, Normal, Busy")
+check(m and [v for v in re.findall(r'value="(\w+)"', m.group(1))] == ["quiet", "normal", "busy", "ask"],
+      "the Coach page has the level picker: Quiet, Normal, Busy, Only when I ask")
 check(m and all(w in m.group(1) for w in ("<b>Quiet</b>", "<b>Normal</b>", "<b>Busy</b>")) and "—" not in m.group(1)
       and "–" not in m.group(1), "each level with a one-line explanation, no long dashes")
 check("coLevelShow" in js and "coach/settings',{settings:{level:" in js and "focus_learned:'Focus learned'" in js,

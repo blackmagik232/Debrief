@@ -412,9 +412,9 @@ _c, fpers, _s = play(per, weak=weak, ref=ref)
 st2 = [100.0 + 0.15 * L / 20.0] + list(np.cumsum(_pt) + 100.0 + 0.15 * L / 20.0)
 lap2 = lambda t: next(i for i, x in enumerate(st2) if x > t)  # noqa: E731
 t2 = [(lap2(x["t"]), x["text"]) for x in fpers.said if "T2" in x["text"]]
-check(t2 == [(1, "Brake marker, T2"), (2, "T2: more speed, 6 down"), (3, "Brake marker, T2"), (4, "T2: more speed, 6 down")],
-      f"persisting error: marker and feedback alternate {t2}")
-fbp = [x for x in fpers.said if x["text"] == "T2: more speed, 6 down"]
+check(t2 == [(1, "Brake marker, T2"), (2, "T2: more speed, 4 down"), (3, "Brake marker, T2"), (4, "T2: more speed, 4 down")],
+      f"persisting error: marker and feedback alternate, the speed in mph {t2}")
+fbp = [x for x in fpers.said if x["text"] == "T2: more speed, 4 down"]
 ap = crossing_time(per, 2, c2.apex_pct)
 check(fbp and ap < fbp[0]["t"] < ap + 12, f"feedback on the straight after the corner ({fbp[0]['t'] - ap:.1f} s after the apex)")
 timing_rules_ok(per, fpers.said, ref, "persisting")

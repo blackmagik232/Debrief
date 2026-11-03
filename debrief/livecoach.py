@@ -655,6 +655,7 @@ class Coach:
         self._corner_err: dict = {}      # corner num -> [error on the last pass, error on the pass before]
         self._corner_last: dict = {}     # corner num -> (lap number, kind) of its last cue
         self.focus = None                # 2.14: the practice plan's focus corner (practiceplan.LiveFocus), optional
+        self.focus_corner = None         # ... that corner on the reference (Corner), matched by its apex
         self._reset_all()
         if reference is not None:
             self.set_reference(reference)
@@ -668,12 +669,42 @@ class Coach:
         self._obs = {}
         self._marker_done = set()
         self._beep_done = set()
+        self._map_focus()
 
     def set_focus(self, focus):
         """2.14: the practice plan's "one thing this session" (practiceplan.LiveFocus or None). After each clean pass
         through its corner it may give a short progress cue ("Good, 84"), queued as that corner's feedback so every
-        limit above (gap, per lap, per corner, silence rules) applies to it."""
+        limit above (gap, per lap, per corner, silence rules) applies to it.
+
+        The plan names its corner by the corner coach's numbering, which can differ from the reference lap's (an
+        extra kink found on one lap shifts every number after it), so the corner is matched to the reference's own by
+        its apex (focus_corner, within max(60 m, 2% of the lap), as match_weak does). Its cue is keyed and limited on
+        that reference corner, and when it is also a weak corner the plan's cue takes the place of that corner's
+        weak-corner cues (its brake marker and its feedback: never two cues about one corner, never two that
+        disagree). No match: the pass is still measured, nothing is said."""
         self.focus = focus
+        self._map_focus()
+
+    def _focus_owns(self, num) -> bool:
+        """The practice plan watches this reference corner: its cue replaces the weak-corner marker and feedback."""
+        fc = self.focus_corner
+        return fc is not None and fc.num == num and bool(getattr(self.focus, "active", True))
+
+    def _map_focus(self):
+        self.focus_corner = None
+        f, ref = self.focus, self.reference
+        if f is None or ref is None or not ref.corners:
+            return
+        try:
+            zone = getattr(f, "zone", None) or {}
+            apex = float(zone["apex_m"])
+            L = ref.length_m
+            pos = apex % L / L
+            best = min(ref.corners, key=lambda c: abs(_rel_m(pos, c.apex_pct, L)))
+            if abs(_rel_m(pos, best.apex_pct, L)) <= max(60.0, 0.02 * L):
+                self.focus_corner = best
+        except (KeyError, TypeError, ValueError, ZeroDivisionError):
+            self.focus_corner = None
 
     def mute(self):
         self.settings.muted = True
@@ -863,11 +894,10 @@ class Coach:
                 if not getattr(self, "_focus_logged", False):     # once, not 20 times a second
                     self._focus_logged = True
                     self._log(f"livecoach: practice focus skipped ({e.__class__.__name__}: {str(e)[:120]})")
-            if said and st.feedback:
-                cid = str(getattr(self.focus, "corner_id", "") or "")
-                if re.fullmatch(r"C\d+", cid):
-                    self.queue.push(Cue(text=said, priority=PRIORITY[KIND_FEEDBACK], key=f"feedback:{cid}", t=t,
-                                        kind=KIND_FEEDBACK, corner=cid, expires=t + st.stale_s))
+            fc = self.focus_corner
+            if said and st.feedback and fc is not None:      # keyed on the reference's own corner (see set_focus)
+                self.queue.push(Cue(text=said, priority=PRIORITY[KIND_FEEDBACK], key=f"feedback:{fc.id}", t=t,
+                                    kind=KIND_FEEDBACK, corner=fc.id, expires=t + st.stale_s))
 
         # ---- speak? ----
         self._prev_pct, self._prev_t = pct, t
@@ -973,7 +1003,7 @@ class Coach:
         if d is None:                            # behind us: ready for next lap
             self._marker_done.discard(c.num)
             return
-        if not st.markers or not coachable or c.num in self._marker_done:
+        if not st.markers or not coachable or c.num in self._marker_done or self._focus_owns(c.num):
             return
         vv = max(v, 5.0)
         trig, late = self._marker_span(w, vv)
@@ -1038,6 +1068,8 @@ class Coach:
         self._corner_err[c.num] = [err, bool(prev and prev[0])]
         if not err or not st.feedback:
             return
+        if self._focus_owns(c.num):
+            return                                        # the practice plan's cue speaks for this corner (2.14)
         last = self._corner_last.get(c.num)
         persists = bool(prev and prev[0])
         if last is not None and lap.num - last[0] < st.repeat_laps and not persists:

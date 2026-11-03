@@ -236,5 +236,66 @@ r2._ensure_reference()
 check(abs(src2.interval - 1.0 / 30.0) < 1e-9, "a faster sample rate is left as it is")
 
 
+# ---------------------------------------------------------------- S3: the plan's corner on the coach's own numbering
+print("== S3: the plan's corner matched to the reference's own corner")
+ref = lc.build_reference([fA])
+check(ref is not None and len(ref.corners) >= 5, "reference from the fake file")
+target = ref.corners[2]
+# the plan numbers this corner one higher (the corner coach found an extra kink before it)
+zone_sh = {"id": f"C{target.num + 1}", "apex_m": target.apex_m + 12.0, "start_m": target.apex_m - 250.0,
+           "end_m": target.apex_m + 150.0}
+offl = {x["lap"]: cc.phases(x["R"], zone_sh) for x in cc.load_laps([fB])[0]}
+mins = [p["min_kmh"] for p in offl.values() if p]
+plan3 = {"kind": "focus", "metric": "min_speed", "id": zone_sh["id"], "corner": f"T{target.num + 1}",
+         "zone": zone_sh, "length_m": LF, "plan_id": "s3", "tolerance": 2.0, "target": 0,
+         "success_rule": {"key": "min_kmh", "op": ">=", "value": float(np.median(mins)) + 0.3}}
+weak = [{"apex_m": target.apex_m, "lost_s": 0.4}]
+coach = lc.Coach(ref, weak, lc.Settings(slower_kmh=0.1, early_m=0.1, repeat_laps=1, top_n=3))
+coach.set_focus(pp.LiveFocus(plan3, repeat_laps=1))
+check(coach.focus_corner is not None and coach.focus_corner.num == target.num,
+      f"plan's {zone_sh['id']} is the reference's {target.id}")
+check(any(w.corner.num == target.num for w in coach.weak), "the same corner is also a weak corner")
+pushed = []
+orig_push = coach.queue.push
+coach.queue.push = lambda c: (pushed.append(c), orig_push(c))
+said = []
+for s in samples_of(fB):
+    said += coach.feed(s)
+fb = [c for c in pushed if c.kind == lc.KIND_FEEDBACK]
+check(fb and all(c.key == f"feedback:{target.id}" and c.corner == target.id for c in fb),
+      f"focus cues keyed on the reference's corner ({sorted(set(c.key for c in fb))})")
+vocab = set(pp.cue_vocabulary(plan3))
+check(all(c.text in vocab for c in fb), "no weak-corner feedback for the focus corner: only the plan's cues "
+                                         f"({sorted(set(c.text for c in fb))})")
+check(len([c for c in said if c.kind == lc.KIND_FEEDBACK]) >= 1, "a plan cue was spoken")
+check(not [c for c in pushed if c.kind == lc.KIND_MARKER and c.corner == target.id],
+      "no weak-corner brake marker for the focus corner either")
+laps_said = {}
+for c in said:
+    if c.kind == lc.KIND_FEEDBACK:
+        laps_said.setdefault(round(c.spoken_t // 90), []).append(c)
+check(all(len(v) == 1 for v in laps_said.values()), "at most one cue about that corner per lap")
+# the weak corner's own feedback comes back without the focus
+coach2 = lc.Coach(ref, weak, lc.Settings(slower_kmh=0.1, early_m=0.1, repeat_laps=1, top_n=3))
+pushed2 = []
+o2 = coach2.queue.push
+coach2.queue.push = lambda c: (pushed2.append(c), o2(c))
+for s in samples_of(fB):
+    coach2.feed(s)
+check(any(c.kind == lc.KIND_FEEDBACK and c.text not in vocab for c in pushed2),
+      "without a focus the weak corner's own feedback is given")
+# a plan corner the reference doesn't have: measured, never spoken
+far = {"id": "C2", "apex_m": (target.apex_m + ref.corners[3].apex_m) / 2.0, "start_m": 0.0, "end_m": 0.0}
+far["start_m"], far["end_m"] = far["apex_m"] - 60.0, far["apex_m"] + 60.0
+coach3 = lc.Coach(ref, [], lc.Settings())
+coach3.set_focus(pp.LiveFocus(dict(plan3, zone=far, id="C2"), repeat_laps=1))
+check(coach3.focus_corner is None, "no reference corner near the plan's apex: no match")
+check(coach3.vocabulary() is not None, "vocabulary still works")
+coach4 = lc.Coach(None, [], lc.Settings())
+coach4.set_focus(pp.LiveFocus(plan3))
+check(coach4.focus_corner is None, "no reference yet: no match")
+coach4.set_reference(ref)
+check(coach4.focus_corner is not None and coach4.focus_corner.num == target.num, "matched once a reference is set")
+
 print(f"\n{'all passed' if not fails else str(fails) + ' FAILED'}")
 sys.exit(1 if fails else 0)

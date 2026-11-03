@@ -190,8 +190,83 @@ fdir = TMP / "telemetry"
 fdir.mkdir()
 make(fdir / "mclaren570sgt4_zolder gp 2026-11-01 10-00-00.ibt", [{}, {}])
 make(fdir / "fordmustanggt4_zolder gp 2026-11-01 11-00-00.ibt", [{"corners": {4: (3300.0, 45.0, 10.0)}}, {}])
+import os  # noqa: E402
+check(lc.find_reference(fdir, "mclaren570sgt4", "zolder gp") is None,
+      "files changed in the last 90 s are skipped (iRacing may still be writing them)")
+OLD = time.time() - 3600
+for f in fdir.iterdir():
+    os.utime(f, (OLD, OLD))
 fr = lc.find_reference(fdir, "mclaren570sgt4", "zolder gp")
 check(fr is not None and fr.source["file"].startswith("mclaren570sgt4"), "find_reference picks this car's files only")
+
+# with Setup Lab's index: only the file holding the best lap is opened
+from debrief import setuplab as _sl  # noqa: E402
+idir = TMP / "telemetry_idx"
+idir.mkdir()
+for k in range(8):
+    make(idir / f"mclaren570sgt4_zolder gp 2026-11-0{k + 1} 10-00-00.ibt", [{}, {}])
+for f in idir.iterdir():
+    os.utime(f, (OLD, OLD))
+sidx = _sl.index(idir)
+best_rec = min(sidx["files"], key=lambda r: r["best"])
+opened = []
+_real_open = ibt.open_ibt
+
+
+def counting_open(path):
+    opened.append(Path(path).name)
+    return _real_open(path)
+
+
+ibt.open_ibt = counting_open
+try:
+    fr = lc.find_reference(idir, "mclaren570sgt4", "zolder gp", index=sidx)
+    check(fr is not None and opened == [best_rec["file"]], f"index: only the best lap's file is opened ({opened})")
+    opened.clear()
+    lc.find_reference(idir, "mclaren570sgt4", "zolder gp")
+    check(len(opened) == lc.SCAN_LIMIT == 5, f"no index: at most the 5 newest files are opened ({len(opened)})")
+    opened.clear()
+    calls = {"n": 0}
+
+    def stop_after_one():
+        calls["n"] += 1
+        return calls["n"] > 1
+    lc.find_reference(idir, "mclaren570sgt4", "zolder gp", stop=stop_after_one)
+    check(len(opened) == 1, f"stop() is checked between files ({len(opened)})")
+    opened.clear()
+    os.utime(idir / best_rec["file"], None)           # just written again: not settled, and not what was indexed
+    fr = lc.find_reference(idir, "mclaren570sgt4", "zolder gp", index=sidx)
+    check(fr is not None and best_rec["file"] not in opened and len(opened) == 1,
+          f"a file changed since it was indexed (or in the last 90 s) is skipped ({opened})")
+    os.utime(idir / best_rec["file"], (OLD, OLD))
+finally:
+    ibt.open_ibt = _real_open
+
+
+class _Info:
+    def __init__(self):
+        self.cur = None
+
+    def info(self):
+        return self.cur
+
+
+src_i = _Info()
+rr = lc.LiveRunner(src_i, vc.FakeVoice(), telemetry_dir=idir, reference_index=lambda: sidx)
+zol = {"car": {"path": "mclaren570sgt4"}, "track": {"code": "zolder gp"}}
+for cur in (zol, {"car": {"path": "fordmustanggt4"}, "track": {"code": "zolder gp"}}, zol):
+    src_i.cur = cur
+    rr._ensure_reference()
+check(rr.reference_searches == 2 and rr.coach.reference is not None and rr._state == "coaching",
+      f"a reference is kept per car + track: going back opens nothing ({rr.reference_searches} searches)")
+check(rr.status()["text"].startswith("Coaching:") and "—" not in rr.status()["text"], rr.status()["text"])
+src_i.cur = {"car": {"path": "fordmustanggt4", "name": "Ford Mustang GT4"}, "track": {"code": "zolder gp", "name": "Zolder"}}
+rr._ensure_reference()
+check(rr.status()["text"] == "Listening: Ford Mustang GT4 at Zolder. No clean lap to coach from yet. Drive a clean lap to set one.",
+      f"no reference: plain words ({rr.status()['text']})")
+rr._state = "waiting"
+rr.source = types.SimpleNamespace(state="not_installed")
+check(rr.status()["text"] == "Waiting: Debrief's iRacing connection is missing. Reinstall Debrief.", rr.status()["text"])
 
 # Garage 61 CSV shape and recorded samples
 T, p, v, b = lap_samples(BASE, 60)
@@ -451,7 +526,7 @@ try:
     r = lc.LiveRunner(lc.IrsdkSource(retry_s=0.1), vc.FakeVoice(), telemetry_dir=fdir)
     r.start()
     time.sleep(0.3)
-    check(r.status()["state"] == "waiting" and r.status()["text"] == "Listening — iRacing not running",
+    check(r.status()["state"] == "waiting" and r.status()["text"] == "Waiting for iRacing to start.",
           f"iRacing not running: {r.status()['text']}")
     check(r.stop(timeout=2.5), "runner waiting for iRacing stops cleanly")
 finally:

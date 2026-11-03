@@ -300,17 +300,20 @@ def best_lap_in(ib) -> dict | None:
     return min(clean, key=lambda x: x["time"]) if clean else None
 
 
-def build_reference(src, lap: int | None = None, prefix: str = "T") -> Reference | None:
+def build_reference(src, lap: int | None = None, prefix: str = "T", stop=None) -> Reference | None:
     """Your best clean lap as a Reference.
 
     src: an .ibt path, an open ibt.Ibt, a list of .ibt paths (the fastest clean lap across them), or a list of
     sample dicts covering one lap (as the coach records them). lap: a lap number to use instead of the fastest
-    (one file only). Returns None when there is no usable clean lap. Never raises for a bad file."""
+    (one file only). stop() returning True ends a list early (the coach is stopping). Returns None when there is no
+    usable clean lap. Never raises for a bad file."""
     if isinstance(src, list) and src and isinstance(src[0], dict):
         return reference_from_samples(src, prefix=prefix)
     paths = src if isinstance(src, (list, tuple)) else [src]
     best = None
     for p in paths:
+        if stop is not None and stop():
+            break
         try:
             if isinstance(p, ibt.Ibt):
                 ref = _ref_from_ibt(p, lap, prefix)
@@ -358,19 +361,68 @@ def reference_from_samples(samples: list, length_m: float | None = None, lap_tim
         return None
 
 
-def find_reference(folder, car_path: str, track_code: str, prefix: str = "T", limit: int = 40) -> Reference | None:
-    """Your best clean lap for this car and track across the .ibt files in folder (Documents\\iRacing\\telemetry).
-    iRacing names its files '<carpath>_<track code> <date> <time>.ibt'; the newest `limit` matching files are read."""
+FRESH_S = 90.0              # a telemetry file changed this recently may still be being written by iRacing: skip it
+SCAN_LIMIT = 5              # without Setup Lab's index, only the newest few matching files are opened
+
+
+def _index_files(index) -> list:
+    if isinstance(index, dict):
+        return list(index.get("files") or [])
+    return list(index or [])
+
+
+def find_reference(folder, car_path: str, track_code: str, prefix: str = "T", limit: int = SCAN_LIMIT, index=None,
+                   stop=None, fresh_s: float | None = None, now: float | None = None) -> Reference | None:
+    """Your best clean lap for this car and track from the .ibt files in folder (Documents\\iRacing\\telemetry).
+
+    index: Setup Lab's saved index (setuplab.index()'s dict or its list of records), which already knows each file's
+    best clean lap: the file with the fastest one is the only file opened (the next is tried only if that one gives
+    no lap). Only files unchanged since they were indexed count. Without an index, or with nothing in it for this
+    car + track, the newest `limit` files named '<carpath>_<track code> <date> <time>.ibt' are read instead.
+    Files changed in the last FRESH_S seconds are skipped (iRacing may still be writing them), and stop() returning
+    True ends the search between files."""
     folder = Path(folder) if folder else None
     if not folder or not folder.is_dir() or not car_path:
         return None
+    fresh = FRESH_S if fresh_s is None else fresh_s
+    now = time.time() if now is None else now
+    cp, tc = str(car_path).lower(), str(track_code or "").lower()
+
+    def settled(p: Path, size=None, mtime_ns=None) -> bool:
+        try:
+            st = p.stat()
+        except OSError:
+            return False
+        if size is not None and (st.st_size != size or st.st_mtime_ns != mtime_ns):
+            return False                                   # changed since Setup Lab read it
+        return now - st.st_mtime >= fresh
+
+    cand = []
+    for r in _index_files(index):
+        if not isinstance(r, dict) or not r.get("ok", True) or not isinstance(r.get("best"), (int, float)):
+            continue
+        if str((r.get("car") or {}).get("path") or "").lower() != cp:
+            continue
+        if tc and str((r.get("track") or {}).get("code") or "").lower() != tc:
+            continue
+        cand.append((float(r["best"]), str(r.get("file") or ""), r))
+    cand.sort(key=lambda x: (x[0], x[1]))
+    for _best, name, r in cand[:max(1, limit)]:
+        if stop is not None and stop():
+            return None
+        p = folder / name
+        if Path(name).name != name or not settled(p, r.get("size"), r.get("mtime")):
+            continue
+        ref = build_reference(p, prefix=prefix)
+        if ref is not None:
+            return ref
     want = f"{car_path}_{track_code}".lower() if track_code else f"{car_path}_".lower()
     try:
-        files = [p for p in folder.glob("*.ibt") if p.name.lower().startswith(want)]
+        files = [p for p in folder.glob("*.ibt") if p.name.lower().startswith(want) and settled(p)]
         files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     except OSError:
         return None
-    return build_reference(files[:limit], prefix=prefix) if files else None
+    return build_reference(files[:limit], prefix=prefix, stop=stop) if files else None
 
 
 # ---------------------------------------------------------------- weak corners
@@ -380,6 +432,7 @@ class Weak:
     corner: Corner
     lost_s: float | None
     name: str                   # spoken name
+    review_id: str | None = None   # what the race review calls it ("C2"), when the weak corner came from one
 
 
 def _rel_m(pct: float, apex_pct: float, L: float) -> float:
@@ -431,7 +484,8 @@ def match_weak(ref: Reference, weak, top_n: int = 3, prefix: str = "T") -> list:
         if c is None or c.num in used:
             continue
         used.add(c.num)
-        out.append((order, Weak(corner=c, lost_s=lost, name=f"{prefix}{num if num is not None else c.num}")))
+        out.append((order, Weak(corner=c, lost_s=lost, name=f"{prefix}{num if num is not None else c.num}",
+                                review_id=f"C{num}" if num is not None else None)))
     # biggest time loss first; items without a number keep their given order, after those with one
     out.sort(key=lambda x: (x[1].lost_s is None, -(x[1].lost_s or 0.0), x[0]))
     return [w for _o, w in out][:max(0, top_n)]
@@ -619,7 +673,8 @@ class Coach:
     def status(self) -> dict:
         r = self.reference
         return {"reference": r.summary() if r else None,
-                "weak": [{"name": w.name, "id": w.corner.id, "lost_s": w.lost_s, "apex_m": round(w.corner.apex_m),
+                "weak": [{"name": w.name, "id": w.corner.id, "review_id": w.review_id, "lost_s": w.lost_s,
+                          "apex_m": round(w.corner.apex_m),
                           "brake_m": round(w.corner.brake_m) if w.corner.brake_m is not None else None} for w in self.weak],
                 "muted": self.settings.muted, "quiet_reason": self.quiet_reason,
                 "last_lap": self.last_lap, "spoken": [c.to_dict() for c in self.spoken[-10:]],
@@ -1171,17 +1226,24 @@ class LiveRunner:
 
     reference: a Reference to use (only while its car/track match the live car/track, when both are known).
     telemetry_dir: where to look for your best lap for whatever car/track iRacing reports (find_reference).
+    reference_index: Setup Lab's saved index of that folder (a dict, or a callable returning one or None), so only
+    the file holding the best lap is opened. A reference found (or adopted on track) is kept per car + track for the
+    runner's life, so going back to a car + track opens nothing.
     weak_for(car_dict, track_dict) -> weak corner list (e.g. prep.weak_corners rows for that combo), optional.
     Never raises out of its thread; problems go to log and to status()['error']."""
 
     def __init__(self, source, voice, settings: Settings | None = None, reference: Reference | None = None,
-                 weak_corners=None, telemetry_dir=None, weak_for=None, log=None, clock=time.monotonic):
+                 weak_corners=None, telemetry_dir=None, weak_for=None, log=None, clock=time.monotonic,
+                 reference_index=None):
         self.source = source
         self.voice = voice
         self.settings = settings or Settings()
         self.coach = Coach(None, weak_corners, self.settings, log=log, duration=self._voice_duration)
         self._given = reference
         self._telemetry_dir = telemetry_dir
+        self._reference_index = reference_index
+        self._refs: dict = {}           # (car path, track code) -> Reference, for the runner's life
+        self.reference_searches = 0     # how many times the telemetry folder was searched (tests)
         self._weak_for = weak_for
         self._weak_static = weak_corners
         self._log = log or _LOG.warning
@@ -1252,7 +1314,7 @@ class LiveRunner:
 
     def status(self) -> dict:
         """What the window can show. state: stopped | starting | waiting | no_reference | coaching | finished | error.
-        text: one line, e.g. 'Listening — iRacing not running' or
+        text: one plain line, e.g. 'Waiting for iRacing to start.' or
         'Coaching: Mclaren 570s GT4 at Zolder, reference 1:38.874 from Nov 2'."""
         cs = self.coach.status()
         info = self._info or {}
@@ -1261,10 +1323,10 @@ class LiveRunner:
         st = self._state
         if st == "waiting":
             src = getattr(self.source, "state", "")
-            text = ("Listening — pyirsdk is not installed" if src == "not_installed"
-                    else "Listening — iRacing not running")
+            text = ("Waiting: Debrief's iRacing connection is missing. Reinstall Debrief." if src == "not_installed"
+                    else "Waiting for iRacing to start.")
         elif st == "no_reference":
-            text = f"Listening: {car} at {track} — no clean lap to coach from yet; drive a clean lap to set one"
+            text = f"Listening: {car} at {track}. No clean lap to coach from yet. Drive a clean lap to set one."
         elif st == "coaching":
             ref = self.coach.reference
             text = f"Coaching: {car} at {track}, reference {ref.describe()}" if ref else f"Coaching: {car} at {track}"
@@ -1364,6 +1426,8 @@ class LiveRunner:
             if self.coach.reference is not None and self._state != "coaching":
                 self._state = "coaching"
             return
+        if self._key and self._key[0] and self.coach.reference is not None:
+            self._refs[self._key] = self.coach.reference      # keep the best so far (a lap adopted on track too)
         self._key, self._info = key, info
         weak = self._weak_static
         if self._weak_for is not None:
@@ -1377,8 +1441,21 @@ class LiveRunner:
                               ((g.car.get("path") or "").lower() == key[0] and
                                (not key[1] or (g.track.get("code") or "").lower() == key[1]))):
             ref = g
+        if ref is None and key[0] and key in self._refs:
+            ref = self._refs[key]
         if ref is None and self._telemetry_dir and key[0]:
-            ref = find_reference(self._telemetry_dir, key[0], key[1], prefix=self.settings.corner_prefix)
+            idx = self._reference_index
+            if callable(idx):
+                try:
+                    idx = idx()
+                except Exception as e:  # noqa: BLE001
+                    self._problem(f"Setup Lab's index not available ({e.__class__.__name__})")
+                    idx = None
+            self.reference_searches += 1
+            ref = find_reference(self._telemetry_dir, key[0], key[1], prefix=self.settings.corner_prefix, index=idx,
+                                 stop=self._stop.is_set)
+            if ref is not None:
+                self._refs[key] = ref
         self.coach.hint(info.get("length_m"), car, track)
         self.coach.set_reference(ref, weak or [])
         self._state = "coaching" if ref is not None else "no_reference"

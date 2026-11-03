@@ -88,28 +88,28 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.class
 new MutationObserver(()=>$('btnMenu').setAttribute('aria-expanded',String(document.body.classList.contains('navopen')))).observe(document.body,{attributes:true,attributeFilter:['class']});
 
 /* ---------- keyboard: Ctrl+R = Review last race (not a reload), Ctrl+, = Settings */
-// 2.8: Ctrl+1 to Ctrl+9 open the pages, in sidebar order (2.12: Setup Lab and Coach are 8 and 9); J and K step
-// through your reviews, older and newer
+// 2.8: Ctrl+1 to Ctrl+9 open the pages, in sidebar order (2.12: Setup Lab and Coach are 8 and 9; 2.13: Ctrl+0 is
+// Practice); J and K step through your reviews, older and newer
 const PAGE_KEYS=['library','season','skills','goals','sessions','prep','team','setuplab','coach'];
-const KEY_MSG=/^(review|settings|prev|next|page[1-9])$/;
+const KEY_MSG=/^(review|settings|prev|next|page[0-9])$/;
 function shortcut(k){if(k==='review'){startReview();return true}if(k==='settings'){openSettings();return true}
   if(document.querySelector('dialog[open]'))return false;
   if(k==='prev'||k==='next'){stepReview(k);return true}
-  const m=/^page([1-9])$/.exec(k);if(m){goNav(PAGE_KEYS[+m[1]-1]);return true}
+  const m=/^page([0-9])$/.exec(k);if(m){goNav(m[1]==='0'?'practice':PAGE_KEYS[+m[1]-1]);return true}
   return false}
 document.addEventListener('keydown',e=>{if(!(e.ctrlKey||e.metaKey)||e.altKey)return;const k=e.key.toLowerCase();
   if(k==='r'&&!e.shiftKey){e.preventDefault();shortcut('review')}
   else if(k===','||e.code==='Comma'){e.preventDefault();shortcut('settings')}
-  else if(!e.shiftKey&&/^[1-9]$/.test(k)){e.preventDefault();shortcut('page'+k)}
+  else if(!e.shiftKey&&/^[0-9]$/.test(k)){e.preventDefault();shortcut('page'+k)}
   else if(e.shiftKey&&k==='m'){e.preventDefault();coachMuteKey()}});
 document.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)return;const k=e.key.toLowerCase();if(k!=='j'&&k!=='k')return;
   if(e.target&&e.target.closest&&e.target.closest('input,select,textarea,[contenteditable]'))return;
   if(shortcut(k==='j'?'prev':'next'))e.preventDefault()});
 
 /* ---------- views */
-const VIEWS=['vFrame','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam','vSessions','vSetupLab','vCoach'];
+const VIEWS=['vFrame','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam','vSessions','vSetupLab','vCoach','vPractice'];
 const FRAME_VIEWS=['review','library','season','skills','goalCharts','prepPage','teamPage','sample'];
-const NAV_OF={weekly:'team',sync:'sessions',sessions:'sessions',library:'library',season:'season',skills:'skills',goals:'goals',goalCharts:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings',setuplab:'setuplab',coach:'coach'};
+const NAV_OF={weekly:'team',sync:'sessions',sessions:'sessions',library:'library',season:'season',skills:'skills',goals:'goals',goalCharts:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings',setuplab:'setuplab',coach:'coach',practice:'practice'};
 let current={view:null,dir:null};
 function show(view){VIEWS.forEach(v=>$(v).hidden=(v!==view));if(view!=='vFrame')document.title=appTitle()}
 function markNav(){
@@ -268,7 +268,7 @@ function navGate(){const off=onboarding();
 function goNav(name){
   if(name!=='settings'&&onboarding()){current={view:'welcome'};welcome();banner('Finish the setup steps first, then the rest of Debrief opens up.');return}
   ({sessions:openSessions,library:openLibrary,season:openSeason,skills:openSkills,goals:openGoals,prep:openPrep,team:openTeam,settings:openSettings,
-    setuplab:()=>openSetupLab(),coach:openCoach})[name]()}
+    setuplab:()=>openSetupLab(),coach:()=>openCoach(),practice:()=>openPractice()})[name]()}
 $('btnSample').addEventListener('click',openSample);
 $('fbSampleBack').addEventListener('click',()=>{current={view:'welcome'};welcome()});
 $('btnGoalCharts').addEventListener('click',openGoalCharts);
@@ -391,7 +391,7 @@ function render(s){
           s.kind==='team'?'Team hub updated.':'Prep page ready.')}if(current.view==='prep')renderPrepPages();if(s.kind==='weekly')loadWeekly()});
     }
   }
-  if(s.kind==='setuplab')renderSlJob(s);
+  if(s.kind==='setuplab'){renderSlJob(s);prJob(s)}
   if(s.kind==='schedule'){
     if(s.state==='running')setMsg('schMsg',s.message||'Loading...');
     if((s.state==='done'||s.state==='error')&&!handled.has(s.id)){handled.add(s.id);schBusy(false);
@@ -1306,7 +1306,8 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
   ['Add the result','On a review, Add race result takes the iRacing results file, so there is little or nothing to type.'],
   ['Prepare and look back','Prepare gets you ready for the next track. Progress, Season and Skills show how you are trending.'],
   ['Setup Lab','Reads the telemetry files iRacing saves on this PC: what changed between your setups, which one was faster (only when the laps clearly say so) and one change to try next.'],
-  ['Coach','Press Start coaching, then drive. A few short spoken cues from your own best lap and the corners your reviews say cost you time. Keep Debrief open while you drive.']],
+  ['Coach','Press Start coaching, then drive. A few short spoken cues from your own best lap and the corners your reviews say cost you time. Keep Debrief open while you drive.'],
+  ['Practice','Every time you drove, from your telemetry files: your best and typical lap, the best possible lap, your laps, fuel and setups, and the Corner coach: one thing to try in each corner. Coach these corners hands those corners to the live coach.']],
  words:[['Clean lap','A full lap Garage 61 didn\'t flag: no incident and not a pit lap.'],['Typical lap','The middle of your clean laps. Half were quicker, half slower.'],
   ['Comparison lap','A lap by a teammate, a followed driver or, with RaceCap, a rival, that yours are measured against.'],['Best sectors added up','Your best time through each part of the track, added together. A guide, not a lap you must be able to drive.'],
   ['Brake point','Where on the track you first brake.'],['Apex','The slowest point of a corner, near the inside.'],['Coasting','Time with neither pedal pressed.'],['Stint','A run of laps between pit stops.'],
@@ -1318,8 +1319,12 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
   ['Laps counted','The clean laps Setup Lab compares setups on: not out laps, first flying laps, laps in traffic or laps far off the pace.'],
   ['Reference lap','Your best clean lap for this car and track. The coach measures you against it.'],
   ['Focus corner','One of the corners your race reviews say keep costing you time. The coach talks about one or two at a time.'],
-  ['Brake marker','The cue the coach says on the straight before a focus corner, so you think about that braking point.']],
- keys:[['Ctrl+R','Review last race'],['Ctrl+,','Settings'],['Ctrl+1 to Ctrl+9','Progress, Season, Skills, Goals, All sessions, Prepare, Team, Setup Lab, Coach'],['Ctrl+Shift+M','Mute or unmute the coach'],['J','The review before this one'],['K','The review after this one'],['Tab','Move to the next button or chart'],['Arrow keys','Move along a chart that has focus'],['Esc','Close a window like this one']]};
+  ['Brake marker','The cue the coach says on the straight before a focus corner, so you think about that braking point.'],
+  ['Session (Practice)','The telemetry files of one go in the car: the same car and track, with no more than 3 hours between files.'],
+  ['Best possible lap','Your best time through each part of the lap, added up. Counted from clean laps once there are 5 of them. A guide, not a lap you can count on.'],
+  ['Corner coach','Your best laps through a corner against your typical ones: what you do differently on the good ones, how to try it and what it gets you. Only said when the laps show it beyond your normal scatter.'],
+  ['Clear, Likely, Few laps','How sure a Corner coach tip is: Clear is seen on many laps, Likely is beyond your lap-to-lap scatter, Few laps is a hint from only a few laps.']],
+ keys:[['Ctrl+R','Review last race'],['Ctrl+,','Settings'],['Ctrl+1 to Ctrl+9','Progress, Season, Skills, Goals, All sessions, Prepare, Team, Setup Lab, Coach'],['Ctrl+0','Practice'],['Ctrl+Shift+M','Mute or unmute the coach'],['J','The review before this one'],['K','The review after this one'],['Tab','Move to the next button or chart'],['Arrow keys','Move along a chart that has focus'],['Esc','Close a window like this one']]};
 function showHelp(k){const b=$('helpBody');b.replaceChildren(...(k==='tour'?[h('p','note','A quick look at how Debrief works.')]:[]),...HELP[k].map(([t,d])=>{const p=h('p');p.append(h('b',null,t+': '),document.createTextNode(d));return p}));
   document.querySelectorAll('[data-help]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.help===k?'true':'false'))}
 function openHelp(k){showHelp(k);openDlg($('dlgHelp'))}
@@ -1492,7 +1497,7 @@ function renderSlJob(s){const pct=Math.round((s.frac||0)*100);$('slBar').firstEl
   if(handled.has(s.id))return;handled.add(s.id);$('slStop').disabled=false;
   if(s.state==='error'){setMsg('slMsg',s.error,'bad');if(current.view!=='setuplab')banner('Reading your telemetry stopped: '+s.error,true,9000)}
   else{const r=s.result||{};setMsg('slMsg',r.stopped?'Stopped. What was read is kept; the rest is read next time.':'Done: '+plural(r.files||0,'file')+' for '+carTracks(r.combos||0)+'.','ok');
-    if(current.view!=='setuplab')banner('Your telemetry has been read. Open Setup Lab to see your setups.')}
+    if(current.view!=='setuplab'&&current.view!=='practice')banner('Your telemetry has been read. Open Setup Lab to see your setups.')}
   if(sl.data)sl.data.running=false;
   if(current.view==='setuplab')loadSetupLab(true);else renderSlTel()}
 $('slCheckBtn').addEventListener('click',()=>$('slCheckFile').click());
@@ -1515,7 +1520,7 @@ let co={st:null,timer:null,seq:0,filled:false,dirty:false,busy:false,testing:nul
 const CO_STATE={coaching:['Coaching','ok'],waiting:['Waiting for iRacing',''],no_reference:['No reference lap yet','no'],starting:['Starting',''],
   finished:['Finished',''],error:['Stopped','no'],stopped:['Off','']};
 const fmtClock=t=>{if(!ok(t))return '';t=Math.max(0,Math.floor(t));const hh=Math.floor(t/3600),m=Math.floor(t%3600/60),s=t%60;return (hh?hh+':'+String(m).padStart(2,'0'):String(m))+':'+String(s).padStart(2,'0')};
-function openCoach(){current={view:'coach',dir:null};show('vCoach');markNav();co.filled=false;coachPoll()}
+function openCoach(plan){current={view:'coach',dir:null};show('vCoach');markNav();co.filled=false;loadCoPlan(plan);coachPoll()}
 async function coachPoll(){const seq=++co.seq;clearTimeout(co.timer);let j;try{j=await api('coach/status')}catch(e){connectionLost();return}
   if(seq!==co.seq)return;if(j&&j.ok)renderCoach(j);
   if(current.view==='coach'||(j&&j.running))co.timer=setTimeout(coachPoll,1000)}
@@ -1535,11 +1540,13 @@ function renderCoach(st){co.st=st;const run=!!st.running,state=CO_STATE[st.state
     'Debrief uses your best clean lap for the car and track iRacing shows, from your telemetry files. No lap yet? Drive a clean one and it becomes the reference.';
   const L=st.last_lap,ll=$('coLast');ll.hidden=!(L&&ok(L.time));
   if(L&&ok(L.time))ll.textContent='Last lap '+fmtT(L.time)+(ok(L.delta)?', '+Math.abs(L.delta).toFixed(2)+' s '+(L.delta>0?'down on':'up on')+' your reference':'')+(L.clean===false?' (not clean)':'')+'.';
-  const W=st.weak||[],wu=$('coWeak');wu.replaceChildren(...W.map(w=>{const li=h('li');li.append(h('b',null,coCornerLabel(w)),h('span','sub2',ok(w.lost_s)?'about '+w.lost_s.toFixed(2)+' s a lap to find':'a corner that keeps costing you'));return li}));
+  const W=st.weak||[],wu=$('coWeak');wu.replaceChildren(...W.map(w=>{const li=h('li');li.append(h('b',null,coCornerLabel(w)),h('span','sub2',ok(w.lost_s)?'about '+w.lost_s.toFixed(2)+' s a lap to find':'a corner that keeps costing you'));
+    if(w.phrase)li.append(h('span','sub2','After it, the coach says: "'+w.phrase+'"'));return li}));
   $('coWeakNote').textContent=st.weak_note||(W.length?'From your race reviews of this car at this track. One focus at a time.':R?'From your race reviews of this car at this track.':'Shows once the coach knows the car and track.');
   const sp=(st.spoken||[]).slice().reverse(),su=$('coSpoken');
   su.replaceChildren(...(sp.length?sp.map(c=>{const li=h('li');li.append(h('span','num cot',fmtClock(c.t)),h('span',null,c.text));return li}):[h('li','note','Nothing said yet.')]));
   $('coSpokenNote').textContent=sp.length?'Newest first, session time':'';
+  coPlanShow(!(run&&W.length));
   if(!co.filled||!co.dirty){fillCoachSettings(st.settings||{});co.filled=true}
   coTestResult(st.test_voice)}
 function fillCoachSettings(s){$('coInRaces').checked=!!s.in_races;$('coMarkers').checked=s.markers!==false;$('coFeedback').checked=s.feedback!==false;
@@ -1578,6 +1585,146 @@ async function coachMute(){let r;try{r=await post('coach/mute')}catch(e){connect
   if(!r.ok){setMsg('coMsg',r.error,'bad');return}coachPoll()}
 $('coMute').addEventListener('click',coachMute);
 function coachMuteKey(){if(co.st&&co.st.running)coachMute()}
+
+/* ---------- Practice (2.13): every time you drove, from the telemetry files iRacing saves (read only). A session
+   page: how it went, the best possible lap, the corner coach, the laps, fuel, conditions and setups */
+let pr={data:null,sel:null,seq:0,more:false,doneId:null};
+const CC_CONF={clear:['Clear','ok','A clear difference, seen on many laps'],likely:['Likely','','Beyond your lap-to-lap scatter'],thin:['Few laps','no','Only a few laps show it, so treat it as a hint']};
+const cap=t=>{t=String(t||'');return t.charAt(0).toUpperCase()+t.slice(1)};
+const setupLetter=t=>{const m=/^Setup (\S+)/.exec(String(t||''));return m?m[1]:(t||'–')};
+async function openPractice(id){current={view:'practice',dir:null};show('vPractice');markNav();pr.sel=id||null;showPrList(!pr.sel);await loadPractice()}
+function showPrList(on){$('prList').hidden=!on;$('prOne').hidden=on}
+async function loadPractice(){let j;try{j=await api('sessions-ibt')}catch(e){connectionLost();return}
+  if(!j.ok){setMsg('prMsg',j.error||'Practice didn\'t load.','bad');return}
+  pr.data=j;renderPrTel();if(j.running&&!polling)poll();
+  if(pr.sel){openPrSession(pr.sel);return}
+  renderPrList()}
+function renderPrTel(){const j=pr.data;if(!j)return;const run=!!j.running||(lastJob&&lastJob.state==='running'&&lastJob.kind==='setuplab'),pill=$('prPill'),n=(j.sessions||[]).length;
+  $('prFolderSet').hidden=!!j.folder_ok;$('prRead').disabled=!j.folder_ok||run;
+  if(run){pill.className='pill';pill.textContent='Reading'}
+  else if(!j.folder_ok){pill.className='pill no';pill.textContent='Folder not found'}
+  else if(!j.indexed){pill.className='pill no';pill.textContent='Not read yet'}
+  else{pill.className='pill ok';pill.textContent=plural(n,'session')}
+  $('prTelNote').textContent=!j.folder_ok?'Debrief can\'t find your telemetry folder ('+(j.folder||'')+'). If iRacing saves telemetry somewhere else, set the folder in Settings.':
+    !j.indexed?'Not read yet. The first read goes through every file, then only new ones. Debrief only reads them: it never changes iRacing\'s files.':
+    plural(n,'session')+' from your telemetry files.'+(ok(j.unread)&&j.unread>0?' '+plural(j.unread,'new file')+' since the last read: press Read my telemetry to add them.':'');
+  $('prNow').hidden=!run}
+function prEmpty(host,title,text){const e=h('div','panel pvnone');e.append(h('h2','pvtrack',title),h('p','lede',text));host.replaceChildren(e)}
+function renderPrList(){const j=pr.data,host=$('prSessions'),ss=(j&&j.sessions)||[];if(!j)return;
+  if(!j.folder_ok){prEmpty(host,'Debrief can\'t find your telemetry folder','iRacing saves telemetry in Documents\\iRacing\\telemetry. If yours is somewhere else, set the folder in Settings > Setup Lab and Coach.');return}
+  if(!j.indexed){prEmpty(host,j.running?'Reading your telemetry...':'Not read yet','Press Read my telemetry. A few hundred files take a few minutes the first time; after that only new ones are read.');return}
+  if(!ss.length){prEmpty(host,'No telemetry files yet','In iRacing, press Alt+L in the car to record telemetry (or switch on automatic recording in iRacing\'s options), then press Read my telemetry.');return}
+  const box=h('div','panel'),top=h('div','phead');top.append(h('h3',null,'Your sessions'),h('span','note','Newest first'));box.append(top);
+  const ul=h('ul','prlist');ul.setAttribute('aria-label','Your sessions, newest first');
+  (pr.more?ss:ss.slice(0,40)).forEach(x=>{const li=h('li'),b=h('button','prrow');b.type='button';b.dataset.id=x.id;
+    const what=h('span','prwhat');what.append(h('b',null,x.track||x.track_code),h('span','sub2',x.car||x.car_path));
+    const types=(x.session_types||[]).join(', ')||'Session';
+    b.append(h('span','prwhen num',slWhen(x.date)),what,h('span','prtypes',types),h('span','prlaps num',(x.clean_laps||0)+' clean of '+plural(x.laps||0,'lap')),
+      h('span','prbest num',ok(x.best)?fmtT(x.best):'No valid lap'));
+    b.setAttribute('aria-label',types+' at '+(x.track||'')+' in the '+(x.car||'')+', '+slWhen(x.date)+', best '+(ok(x.best)?fmtT(x.best):'none'));
+    b.addEventListener('click',()=>openPrSession(x.id));li.append(b);ul.append(li)});
+  box.append(ul);
+  if(ss.length>40&&!pr.more){const m=h('button','btn','Show all '+ss.length);m.type='button';m.addEventListener('click',()=>{pr.more=true;renderPrList()});box.append(m)}
+  host.replaceChildren(box)}
+$('prRead').addEventListener('click',async()=>{
+  if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){banner('Debrief is busy: '+(lastJob.title||TITLES[lastJob.kind]||'a job').toLowerCase()+'. Wait for it to finish.',true);return}
+  setMsg('prMsg','');$('prRead').disabled=true;let r;try{r=await post('setuplab/read')}catch(e){connectionLost();return}
+  if(!r.ok){$('prRead').disabled=false;setMsg('prMsg',r.error||'Could not start.','bad');return}
+  lastJob={state:'running',kind:'setuplab',id:r.id};$('prNow').textContent='Starting...';if(pr.data)pr.data.running=true;renderPrTel();poll()});
+$('prBack').addEventListener('click',()=>{pr.sel=null;pr.seq++;showPrList(true);renderPrList();$('prList').querySelector('h1').scrollIntoView({block:'start'})});
+function prJob(s){if(s.state==='running'){$('prNow').textContent=s.message||'Reading...';if(current.view==='practice'&&pr.data&&!pr.data.running){pr.data.running=true;renderPrTel()}return}
+  if(pr.doneId===s.id)return;pr.doneId=s.id;
+  if(s.state==='error')setMsg('prMsg',s.error,'bad');else{const r=s.result||{};setMsg('prMsg',r.stopped?'Stopped. What was read is kept.':'Done: '+plural(r.files||0,'file')+' read.','ok')}
+  if(pr.data)pr.data.running=false;
+  if(current.view==='practice'&&!pr.sel)loadPractice();else renderPrTel()}
+async function openPrSession(id){pr.sel=id;const seq=++pr.seq,host=$('prReport');showPrList(false);
+  if(current.view!=='practice'){current={view:'practice',dir:null};show('vPractice');markNav()}
+  prEmpty(host,'Reading this session...','A big session takes a second or two the first time.');host.classList.add('busy');
+  let j;try{j=await api('session-review?'+new URLSearchParams({id}))}catch(e){connectionLost();return}
+  if(seq!==pr.seq)return;host.classList.remove('busy');
+  if(!j.ok){prEmpty(host,'That didn\'t load',j.error||'Try again.');return}
+  renderPrSession(j);$('prOne').scrollIntoView({block:'start'})}
+function prFacts(items){const dl=h('dl','factband');items.forEach(([k,v])=>{const d=h('div');d.append(h('dt',null,k),h('dd','num',v));dl.append(d)});return dl}
+function ccBadge(c){const x=CC_CONF[c]||[String(c||''),'',''];const b=h('span','pill'+(x[1]?' '+x[1]:''),x[0]);b.title=x[2]||'How sure this is';return b}
+function ccCard(c){const card=h('article','cccard'),top=h('div','cchead');
+  top.append(h('h4',null,c.corner),h('span','cclost num',ok(c.lost_s)?'about '+c.lost_s.toFixed(2)+' s a lap':''),ccBadge(c.confidence));card.append(top);
+  const row=(k,v,cls)=>{const p=h('p',cls||null);p.append(h('b',null,k+': '),document.createTextNode(cap(v)));return p};
+  card.append(row('What\'s different',c.different),row('How to try it',c.how),row('What it gets you',c.gets));
+  if(c.why)card.append(row('Why',c.why,'note'));if(c.evidence)card.append(row('Evidence',c.evidence,'note'));
+  return card}
+function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{},out=document.createDocumentFragment();
+  const head=h('div','panel slhead'),tt=h('div','pvtt');
+  tt.append(h('h2','pvtrack',R.track||R.track_code||''),h('p','pvby',(R.car||R.car_path||'')+' · '+slWhen(R.date)+' · '+((R.session_types||[]).join(', ')||'Session')));head.append(tt);
+  const files=R.files||[];head.append(h('span','pill',plural(files.length,'file')));out.append(head);
+  // 1. how it went
+  const hw=slSec('How it went','prHead');const bl=S.best_lap||{};
+  hw.append(prFacts([['Best lap',ok(S.best)?fmtT(S.best):'–'],['Typical lap',ok(S.median)?fmtT(S.median):'–'],['Clean laps',(S.clean_laps||0)+' of '+(S.laps||0)]]));
+  if(ok(S.best))hw.append(h('p','note','Best on lap '+bl.lap+(bl.session?' ('+bl.session+')':'')+'. Typical lap: the middle of your clean laps.'));
+  const cons=R.consistency||{};if(cons.text)hw.append(h('p',null,cons.text));
+  if(R.history&&R.history.text)hw.append(h('p','prvs',R.history.text));
+  out.append(hw);
+  // 2. best possible lap
+  const T=R.theoretical||{},bp=slSec('Best possible lap','prTheo');
+  if(T.enough&&ok(T.possible)){bp.append(prFacts([['Best possible',fmtT(T.possible)],['Under your best',ok(T.gap_s)?T.gap_s.toFixed(2)+' s':'–']]));
+    bp.append(h('p','note',T.text));
+    const G=(T.gains||[]).filter(g=>ok(g.gain_s));if(G.length){bp.append(h('h4',null,'Where the time is'));const mx=Math.max(...G.map(g=>g.gain_s));
+      const ul=h('ul','prbars');G.forEach(g=>{const li=h('li'),bar=h('span','prbar'),i=h('i');i.style.width=Math.max(3,Math.round(100*g.gain_s/mx))+'%';bar.append(i);
+        li.append(h('span','prseg',g.segment),bar,h('span','num',g.gain_s.toFixed(2)+' s'),h('span','sub2','best on lap '+g.from_lap));
+        li.setAttribute('aria-label',g.segment+': '+g.gain_s.toFixed(2)+' seconds, best on lap '+g.from_lap);ul.append(li)});bp.append(ul)}}
+  else bp.append(h('p','note',T.text||'Not enough laps yet.'));
+  const SP=R.segment_spread||{};if(SP.text)bp.append(h('p','note',SP.text));
+  out.append(bp);
+  // 3. corner coach
+  const cc=slSec('Corner coach','prCorners'),cards=C.cards||[];
+  cc.append(h('p','note',C.ok?'From your last '+plural(C.laps||0,'clean lap')+' here ('+plural(C.files||0,'telemetry file')+' of this car at this track). Your best laps through each corner against your typical ones.':(C.message||'Not enough clean laps here yet.')));
+  if(cards.length){const box=h('div','cccards');cards.forEach(c=>box.append(ccCard(c)));cc.append(box)}
+  else if(C.ok)cc.append(h('p',null,C.message||'No corner shows a clear pattern yet.'));
+  const U=C.unclear||[];if(U.length){cc.append(h('h4',null,'No clear pattern yet'));const ul=h('ul','pvlist');U.forEach(u=>ul.append(h('li','note',u.text||u.corner)));cc.append(ul)}
+  const fine=(C.fine||[]).map(f=>f.corner).filter(Boolean);if(fine.length)cc.append(h('p','note','Already close to your best: '+fine.join(', ')+'.'));
+  const BS=(C.summary&&C.summary.lines)||[];if(C.ok&&BS.length){cc.append(h('h4',null,'Braking habits'));const ul=h('ul','pvlist');BS.forEach(x=>ul.append(h('li',null,x)));cc.append(ul)}
+  if(cards.length){const row=h('div','row'),b=h('button','btn primary','Coach these corners');b.type='button';b.id='prCoach';
+    b.addEventListener('click',()=>openCoach({car_path:R.car_path,track_code:R.track_code}));
+    row.append(b,h('span','note','The live coach says each corner\'s short tip while you drive.'));cc.append(row)}
+  out.append(cc);
+  // 4. laps
+  const ls=slSec('Laps','prLaps'),L=R.laps||[];
+  if(L.length){const wrap=h('div','tblwrap'),t=h('table','pacetbl prlaptbl'),hr=h('tr');['Lap','Time','Session','Counted','Fuel','Setup'].forEach(x=>hr.append(h('th',null,x)));
+    const thd=h('thead');thd.append(hr);const tb=h('tbody');let st=null;
+    L.forEach(r=>{const tr=h('tr');if(st!==null&&r.stint!==st)tr.className='newrun';st=r.stint;
+      if(ok(S.best)&&r.valid&&Math.abs(r.time-S.best)<1e-6&&bl.lap===r.lap&&bl.file===r.file)tr.classList.add('best');
+      const c0=h('th','num',String(r.lap));c0.scope='row';
+      tr.append(c0,h('td','num',ok(r.time)?fmtT(r.time):'–'),h('td',null,r.session||''),
+        h('td','prwhy'+(r.clean?' okc':''),r.clean?'Yes':cap(r.reason||'no')),h('td','num',ok(r.fuel_used)?r.fuel_used.toFixed(2)+' L':'–'),h('td',null,setupLetter(r.setup)));tb.append(tr)});
+    t.append(thd,tb);wrap.append(t);ls.append(wrap);
+    ls.append(h('p','note','Counted: a clean lap that shows your pace (not an out lap or first flying lap, not off track, no incident, not far off that run\'s pace). A line marks a new run.'))}
+  else ls.append(h('p','note','No laps in these files.'));
+  out.append(ls);
+  // 5. fuel, conditions, setups
+  const fs=slSec('Fuel and strategy','prFuel');fs.append(h('p',null,(R.fuel&&R.fuel.text)||'No fuel readings.'));out.append(fs);
+  const cs=slSec('Conditions','prCond');cs.append(h('p',null,(R.conditions&&R.conditions.text)||'Not recorded.'));out.append(cs);
+  const su=slSec('Setups used','prSetups'),SU=R.setups||[];
+  if(SU.length){const ul=h('ul','pvlist');SU.forEach(x=>{const li=h('li');li.append(h('b',null,x.label||x.name||'Setup'),h('span','sub2',plural((x.files||[]).length,'file')));ul.append(li)});su.append(ul)}
+  else su.append(h('p','note','No setup read from these files.'));
+  const sb=h('button','linkbtn','Open Setup Lab for this car');sb.type='button';sb.id='prSetupLab';
+  sb.addEventListener('click',()=>openSetupLab({car_path:R.car_path,track_code:R.track_code}));const sp=h('p');sp.append(sb);su.append(sp);out.append(su);
+  // notes
+  const notes=(R.notes||[]).filter(x=>typeof x==='string'&&x.trim()),bad=R.bad_files||[];
+  if(notes.length||bad.length){const ns=slSec('Notes','prNotes');const ul=h('ul','pvlist');notes.forEach(x=>ul.append(h('li','note',x)));bad.forEach(b=>ul.append(h('li','note',b.file+': '+b.error)));ns.append(ul);out.append(ns)}
+  $('prReport').replaceChildren(out)}
+/* the Coach page shows the corners the corner coach would have it focus on (from Practice's button, else the newest
+   car and track in the telemetry) */
+async function loadCoPlan(plan){if(plan&&plan.car_path)co.plan=plan;let p=co.plan;
+  if(!p){try{const j=await api('sessions-ibt');const x=j&&j.ok&&(j.sessions||[])[0];if(x)p={car_path:x.car_path,track_code:x.track_code}}catch(e){}}
+  if(!p){co.planRep=null;renderCoPlan();return}
+  let j;try{j=await api('corner-coach?'+new URLSearchParams({car:p.car_path,track:p.track_code}))}catch(e){return}
+  co.planRep=j&&j.ok?j:null;renderCoPlan()}
+function renderCoPlan(){const box=$('coPlan'),j=co.planRep;box.replaceChildren();if(!j){box.hidden=true;return}
+  const F=j.focus||[],R=j.report||{},where=(j.car||j.car_path)+' at '+(j.track||j.track_code);box.append(h('h4',null,'From the Corner coach'));
+  if(F.length){box.append(h('p','note','For the '+where+', from your last '+plural(R.laps||0,'clean lap')+' there. It starts with the biggest and says the tip after the corner:'));
+    const ul=h('ul','pvlist');F.forEach(f=>{const li=h('li');li.append(h('b',null,f.phrase),h('span','sub2',ok(f.lost_s)?'about '+f.lost_s.toFixed(2)+' s a lap':''));ul.append(li)});box.append(ul)}
+  else box.append(h('p','note','For the '+where+': '+(R.message||'no corner shows a clear pattern yet.')+' So the coach uses your race reviews.'));
+  box.hidden=!!co.planHide}
+function coPlanShow(on){co.planHide=!on;if(co.planRep)$('coPlan').hidden=!on}
 
 /* ---------- settings */
 function setMsg(id,t,cls){const e=$(id);e.textContent=t||'';e.className='msg'+(cls?' '+cls:'')}

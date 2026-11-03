@@ -118,7 +118,7 @@ def test_bridge_adds_shell_class_and_keys():
     assert S.with_bridge(b"no head at all").startswith(b"no head at all")
     # the bridge's keys never fire while typing
     assert "closest('input,select,textarea,[contenteditable]')" in S.FRAME_BRIDGE
-    assert "(e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&/^[1-9]$/" in S.FRAME_BRIDGE
+    assert "(e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&/^[0-9]$/" in S.FRAME_BRIDGE
 
 
 # ================================================================ sample review
@@ -292,7 +292,7 @@ def test_sidebar_owns_navigation_keys_and_loading_bar():
         pg.goto(srv().url)
         pg.wait_for_function("() => !document.getElementById('vFrame').hidden")
         names = pg.evaluate("() => [...document.querySelectorAll('.nav .navbtn')].map(b => b.textContent.trim())")
-        assert names == ["Progress", "Season", "Skills", "Goals", "All sessions", "Prepare", "Team", "Setup Lab", "Coach", "Settings", "Help"], names
+        assert names == ["Progress", "Season", "Skills", "Goals", "All sessions", "Practice", "Prepare", "Team", "Setup Lab", "Coach", "Settings", "Help"], names
         wait_nav(pg, "library")
         # the page's own tabs are gone inside the window...
         fr = frame_of(pg)

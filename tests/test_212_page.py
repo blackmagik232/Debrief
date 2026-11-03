@@ -726,7 +726,7 @@ def test_pages_in_the_window():
                 pg.goto(s.url)
                 pg.wait_for_function("() => document.querySelector('.navbtn[data-nav=setuplab]')")
                 names = pg.evaluate("() => [...document.querySelectorAll('.nav .navbtn')].map(b => b.textContent.trim())")
-                assert names[5:10] == ["Prepare", "Team", "Setup Lab", "Coach", "Settings"], names
+                assert names[names.index("Prepare"):][:5] == ["Prepare", "Team", "Setup Lab", "Coach", "Settings"], names
                 # Setup Lab by key (Ctrl+8), newest car and track picked, the report drawn
                 pg.keyboard.press("Control+8")
                 pg.wait_for_selector("#vSetupLab", state="visible")

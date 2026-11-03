@@ -30,6 +30,7 @@
     <button type="button" class="navbtn" data-nav="skills" title="Skills (Ctrl+3)" aria-keyshortcuts="Control+3">Skills</button>
     <button type="button" class="navbtn" data-nav="goals" title="Goals (Ctrl+4)" aria-keyshortcuts="Control+4">Goals</button>
     <button type="button" class="navbtn" data-nav="sessions" title="Every session Garage 61 has for you (Ctrl+5)" aria-keyshortcuts="Control+5">All sessions</button>
+    <button type="button" class="navbtn" data-nav="practice" title="Practice: every time you drove, from iRacing's telemetry files on this PC (Ctrl+0)" aria-keyshortcuts="Control+0">Practice</button>
     <button type="button" class="navbtn" data-nav="prep" title="Prepare (Ctrl+6)" aria-keyshortcuts="Control+6">Prepare</button>
     <button type="button" class="navbtn" data-nav="team" title="Team (Ctrl+7)" aria-keyshortcuts="Control+7">Team</button>
     <button type="button" class="navbtn" data-nav="setuplab" title="Setup Lab: your setups from iRacing's telemetry files (Ctrl+8)" aria-keyshortcuts="Control+8">Setup Lab</button>
@@ -319,6 +320,27 @@
     </div>
   </section>
 
+  <section id="vPractice" class="view pad" hidden>
+    <div class="col slcol">
+      <div id="prList" class="prwrap">
+        <span class="eyebrow">From your telemetry</span>
+        <h1>Practice</h1>
+        <p class="lede">Every time you drove, straight from the telemetry files iRacing saves on this PC. Open one for your laps, where the time is and one thing to try in each corner.</p>
+        <div class="panel" id="prTel">
+          <div class="phead"><h3>Your telemetry</h3><span class="pill" id="prPill"></span></div>
+          <p class="note" id="prTelNote"></p>
+          <p class="now" id="prNow" hidden></p>
+          <div class="row"><button type="button" class="btn primary" id="prRead">Read my telemetry</button><button type="button" class="btn ghost" id="prFolderSet" data-nav="settings" hidden>Set the folder in Settings</button><span class="msg" id="prMsg" role="status"></span></div>
+        </div>
+        <div id="prSessions" aria-live="polite"></div>
+      </div>
+      <div id="prOne" class="prwrap" hidden>
+        <p><button type="button" class="linkbtn" id="prBack">All your practice sessions</button></p>
+        <div id="prReport" class="slreport" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
   <section id="vCoach" class="view pad" hidden>
     <div class="col">
       <span class="eyebrow">While you drive</span>
@@ -346,6 +368,7 @@
           <div class="phead"><h3>Focus corners</h3></div>
           <ul class="pvlist" id="coWeak"></ul>
           <p class="note" id="coWeakNote">From your race reviews of this car at this track: the corners that keep costing you time.</p>
+          <div class="coplan" id="coPlan" hidden></div>
         </div>
       </div>
       <div class="panel">

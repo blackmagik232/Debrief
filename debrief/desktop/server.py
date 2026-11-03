@@ -979,7 +979,16 @@ def _jsonable(o):
 
 COACH_FIELDS = {"in_races": bool, "markers": bool, "feedback": bool, "lap_delta": bool, "brake_beep": bool,
                 "top_n": (1, 3, "Focus corners must be 1, 2 or 3."), "volume": (0, 100, "Volume must be 0 to 100."),
-                "rate": (-10, 10, "Speaking speed must be -10 to 10."), **coach2.EXTRA_FIELDS}
+                "rate": (-10, 10, "Speaking speed must be -10 to 10."), "level": lambda v: clean_level(v),
+                **coach2.EXTRA_FIELDS}
+
+
+def clean_level(v) -> str:
+    """2.17.2 Coaching level: quiet, normal or busy."""
+    from .. import livecoach
+    if not isinstance(v, str) or v.strip().lower() not in livecoach.LEVELS:
+        raise ValueError("Pick Quiet, Normal or Busy.")
+    return v.strip().lower()
 COACH_TEST_TEXT = "Brake marker, T3"     # Coach 2.0: a phrase every voice pack says
 
 
@@ -2035,7 +2044,10 @@ class DebriefServer(ThreadingHTTPServer):
             n = int(wi.get("laps") or 0)
             note = (f"From the Corner coach: your last {n} clean laps of this car here. After each focus corner it "
                     "says the one thing to try there.")
-        elif st.get("reference") and not st.get("weak"):
+        fi = st.get("focus_info") or {}
+        if fi.get("text") and fi.get("level") != "quiet" and (fi.get("source") == "session" or not st.get("weak")):
+            note = fi["text"]           # 2.17.2: focus corners learned from this session (or about to be)
+        elif note is None and st.get("reference") and not st.get("weak"):
             if wi is not None and not wi.get("races"):
                 note = "No saved race reviews of this car at this track, so the cues come from your best lap only."
             elif wi is not None:

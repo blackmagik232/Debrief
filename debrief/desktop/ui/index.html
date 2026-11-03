@@ -386,6 +386,14 @@
           <button type="button" class="btn" id="coQuiet1" disabled>Mute for 1 minute <kbd>Ctrl+Shift+N</kbd></button>
           <span class="msg" id="coMsg" role="status"></span>
         </div>
+        <fieldset class="radios colevel" id="coLevel">
+          <legend>Coaching level</legend>
+          <label class="check" for="coLvQuiet"><input id="coLvQuiet" type="radio" name="coLevel" value="quiet"><span><b>Quiet</b> Your focus corners and your lap time only. At most 2 tips a lap.</span></label>
+          <label class="check" for="coLvNormal"><input id="coLvNormal" type="radio" name="coLevel" value="normal"><span><b>Normal</b> Up to 4 cues a lap: a word after any corner where you lost or gained time, sector times, and focus corners learned from this session.</span></label>
+          <label class="check" for="coLvBusy"><input id="coLvBusy" type="radio" name="coLevel" value="busy"><span><b>Busy</b> Up to 6 cues a lap, closer together, with 3 focus corners.</span></label>
+          <span class="msg" id="coLevelMsg" role="status"></span>
+        </fieldset>
+        <p class="note" id="coFocusWhy" hidden></p>
         <div class="progress small" id="coRhProg" hidden><div class="bar" id="coRhBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Rehearsal"><i></i></div><span class="pct num" id="coRhPct"></span></div>
         <p class="note" id="coQuiet" hidden></p>
         <p class="note" id="coVoiceLine"></p>

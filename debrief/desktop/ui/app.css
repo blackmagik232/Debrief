@@ -633,3 +633,8 @@ td.rcwhen .linkbtn{font-size:12.5px;margin-top:2px}
 #coLogRows tr.ev-dropped td:nth-child(4),#coLogRows tr.ev-cancelled td:nth-child(4){color:var(--lose)}
 #coLogView .phead{margin-top:14px}
 .pvlist.bad li{color:var(--lose)}
+/* 2.17.2 Coaching level */
+fieldset.colevel{margin:12px 0 4px}
+fieldset.colevel .check{align-items:flex-start}
+fieldset.colevel .check input{margin-top:2px;flex:none}
+fieldset.colevel .check b{margin-right:6px}

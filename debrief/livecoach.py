@@ -1609,8 +1609,21 @@ class Coach:
         if ref is not None and len(new.braked) < max(1, len(ref.braked) - 2):
             self.events.append({"t": lap.t0, "text": "new best lap not used as reference (corners did not match)"})
             return
+        hist, base = list(self._loss_hist), dict(lap.closs)
         self.set_reference(new)
         self.events.append({"t": lap.t0, "text": f"reference updated to {fmt_lap(lt)} (lap {lap.num})"})
+        if ref is not None and hist and base:
+            # 2.17.2: what he learned about his corners carries over to the new reference: each lap's loss against
+            # the old one, minus the new reference lap's own (corners matched by apex, as match_weak does)
+            tol = max(60.0, 0.02 * new.length_m)
+            to_new = {}
+            for c in ref.corners:
+                best = min(new.corners, key=lambda x: abs(_rel_m(c.apex_pct, x.apex_pct, new.length_m)), default=None)
+                if best is not None and abs(_rel_m(c.apex_pct, best.apex_pct, new.length_m)) <= tol:
+                    to_new[c.num] = best.num
+            moved = [{to_new[n]: x - base[n] for n, x in h.items() if n in to_new and n in base} for h in hist]
+            self._loss_hist = [h for h in moved if h]
+            self._learn()
 
     _length_hint = None
     _car_hint = None
@@ -2080,7 +2093,7 @@ class LiveRunner:
         elif st == "coaching":
             ref = self.coach.reference
             text = f"Coaching: {car} at {track}, reference {ref.describe()}" if ref else f"Coaching: {car} at {track}"
-            why = reference_why(ref, self._given)
+            why = reference_why(ref, self.coach.keep_reference)
             if why and not self.settings.quiet:
                 text += f" ({why})"
             if cs["muted"]:
@@ -2121,7 +2134,7 @@ class LiveRunner:
                 "weak": cs["weak"], "last_lap": cs["last_lap"], "spoken": cs["spoken"], "events": cs["events"],
                 "voice": vs, "error": self._error, "errors": self._errors, "settings": self.settings.to_dict(),
                 "focus": cs.get("focus"), "level": cs.get("level"), "focus_info": cs.get("focus_info"),
-                "reference_why": reference_why(self.coach.reference, self._given)}
+                "reference_why": reference_why(self.coach.reference, self.coach.keep_reference)}
 
     def _fixed_names(self) -> list:
         ref = self.coach.reference

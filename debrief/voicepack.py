@@ -68,7 +68,7 @@ MAX_NUM = 100              # speech says those few)
 MIN_KMH = 4                # "more speed, 7 down": 4..20 km/h (the coach says it from Settings.slower_kmh, 4)
 MAX_KMH = 20
 MAX_TENTHS = 20            # lap deltas: a tenth .. 2.0 seconds
-LAP_TENTHS = (400, 1800)   # 2.17.2 "Reference set, one thirty-eight nine": lap times 0:40.0 .. 2:59.9 (in tenths)
+LAP_TENTHS = (400, 1800)   # 2.17.2 "Reference set, one thirty-eight nine": lap times 0:40.0 .. 3:00.9 (in tenths)
 
 
 class VoicePackError(Exception):
@@ -193,7 +193,7 @@ def lines() -> list:
     for k, w in enumerate(("one", "two", "three"), 1):
         add("G", f"Sector {w}, up {amount_words(k + 1)}.", [(f"sector_{k}", "lead")])
     add("H", "Reference set, one thirty-eight nine.", [("reference_set", "lead")])
-    for i, n in enumerate(range(LAP_TENTHS[0] // 10, LAP_TENTHS[1] // 10 + 1)):   # whole seconds 40 .. 179
+    for i, n in enumerate(range(LAP_TENTHS[0] // 10, LAP_TENTHS[1] // 10 + 1)):   # whole seconds 40 .. 180
         head, _ = _lap_parts(n * 10)
         digit = (n * 7) % 10                    # each tenth word comes from one of the first lines
         _h, tw = _lap_parts(n * 10 + digit)

@@ -29,6 +29,9 @@ NS["APEXES"] = (420.0, 980.0, 1500.0, 2050.0, 2650.0, 3150.0, 3700.0)
 NS["VMAX"] = 50.0
 VMIN = (21.0, 30.0, 25.0, 18.0, 33.0, 26.0, 23.0)
 FUEL = {"start": 60.0, "per_lap": 2.45}
+# brake fully off 10 m before the apex (still on at turn-in: trail braking, as on his real laps) and throttle back on
+# 5 m after it: about 5 s a lap with both feet off, like his real laps (2.13 review: was 13 s)
+RE_M, PU_M = 10.0, 5.0
 OFFS: dict = {}          # file name -> lap numbers with an off track and an incident
 _real = NS["ibt"]
 
@@ -67,12 +70,12 @@ def lap_params(n: int, seed: int = 213) -> list:
     out = []
     for i in range(n):
         best = i % 3 == 0
-        cs = [dict(base, vmin=v) for v in VMIN]
+        cs = [dict(base, vmin=v, re=RE_M, pu=PU_M) for v in VMIN]
         cs[0]["vmin"] += 0.7 if best else 0.0
         cs[1]["bdist"] = 125.0 if best else 140.0
         cs[1]["vmin"] += 0.4 if best else 0.0
-        cs[3].update({"peak": 0.80, "vmin": VMIN[3] + 1.0} if best else {"peak": 1.0, "rs": 90.0})
-        cs[5].update({"vmin": VMIN[5] + 2.0, "re": 50.0} if best else {"re": 40.0})
+        cs[3].update({"peak": 0.80, "vmin": VMIN[3] + 1.0} if best else {"peak": 1.0, "rs": 75.0})
+        cs[5].update({"vmin": VMIN[5] + 2.0, "re": RE_M + 10.0} if best else {"re": RE_M})
         lap = [jit(c, timing_only=(k == 0)) for k, c in enumerate(cs)]
         out.append(lap)
     order = rng.permutation(n)

@@ -1322,8 +1322,9 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
   ['Brake marker','The cue the coach says on the straight before a focus corner, so you think about that braking point.'],
   ['Session (Practice)','The telemetry files of one go in the car: the same car and track, with no more than 3 hours between files.'],
   ['Best possible lap','Your best time through each part of the lap, added up. Counted from clean laps once there are 5 of them. A guide, not a lap you can count on.'],
-  ['Corner coach','Your best laps through a corner against your typical ones: what you do differently on the good ones, how to try it and what it gets you. Only said when the laps show it beyond your normal scatter.'],
-  ['Clear, Likely, Few laps','How sure a Corner coach tip is: Clear is seen on many laps, Likely is beyond your lap-to-lap scatter, Few laps is a hint from only a few laps.']],
+  ['Corner coach','Your best laps through a corner against your typical ones: what you do differently on the good ones, how to try it and what it changes. A tip is only given when it passes a fair test: Debrief shuffles which laps count as your best 400 times, and if shuffled laps show a pattern as clear in 1 shuffle in 20 or more, it says "no clear pattern yet" instead. Race laps and practice or qualifying laps are compared separately, and so are setups.'],
+  ['Corner time','"Your best laps were about 0.12 s quicker here": each corner\'s share of the gap between your quickest third of laps and the rest, so the corners never add up to more than that gap. It describes your own laps; it is not a promise of lap time, because part of any best lap is luck.'],
+  ['Clear, Likely, Few laps','How sure a Corner coach tip is: Clear passed the shuffle test in fewer than 1 in 100 shuffles, from 12 or more laps, and still passes when every corner is counted at once. Likely passed in fewer than 1 in 20. Few laps passed but from under 9 laps, so treat it as a hint.']],
  keys:[['Ctrl+R','Review last race'],['Ctrl+,','Settings'],['Ctrl+1 to Ctrl+9','Progress, Season, Skills, Goals, All sessions, Prepare, Team, Setup Lab, Coach'],['Ctrl+0','Practice'],['Ctrl+Shift+M','Mute or unmute the coach'],['J','The review before this one'],['K','The review after this one'],['Tab','Move to the next button or chart'],['Arrow keys','Move along a chart that has focus'],['Esc','Close a window like this one']]};
 function showHelp(k){const b=$('helpBody');b.replaceChildren(...(k==='tour'?[h('p','note','A quick look at how Debrief works.')]:[]),...HELP[k].map(([t,d])=>{const p=h('p');p.append(h('b',null,t+': '),document.createTextNode(d));return p}));
   document.querySelectorAll('[data-help]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.help===k?'true':'false'))}
@@ -1540,7 +1541,7 @@ function renderCoach(st){co.st=st;const run=!!st.running,state=CO_STATE[st.state
     'Debrief uses your best clean lap for the car and track iRacing shows, from your telemetry files. No lap yet? Drive a clean one and it becomes the reference.';
   const L=st.last_lap,ll=$('coLast');ll.hidden=!(L&&ok(L.time));
   if(L&&ok(L.time))ll.textContent='Last lap '+fmtT(L.time)+(ok(L.delta)?', '+Math.abs(L.delta).toFixed(2)+' s '+(L.delta>0?'down on':'up on')+' your reference':'')+(L.clean===false?' (not clean)':'')+'.';
-  const W=st.weak||[],wu=$('coWeak');wu.replaceChildren(...W.map(w=>{const li=h('li');li.append(h('b',null,coCornerLabel(w)),h('span','sub2',ok(w.lost_s)?'about '+w.lost_s.toFixed(2)+' s a lap to find':'a corner that keeps costing you'));
+  const W=st.weak||[],wu=$('coWeak');wu.replaceChildren(...W.map(w=>{const li=h('li');li.append(h('b',null,coCornerLabel(w)),h('span','sub2',ok(w.lost_s)?(w.source==='corner coach'?'your best laps were about '+w.lost_s.toFixed(2)+' s quicker here':'about '+w.lost_s.toFixed(2)+' s a lap to find'):'a corner that keeps costing you'));
     if(w.phrase)li.append(h('span','sub2','After it, the coach says: "'+w.phrase+'"'));return li}));
   $('coWeakNote').textContent=st.weak_note||(W.length?'From your race reviews of this car at this track. One focus at a time.':R?'From your race reviews of this car at this track.':'Shows once the coach knows the car and track.');
   const sp=(st.spoken||[]).slice().reverse(),su=$('coSpoken');
@@ -1589,7 +1590,7 @@ function coachMuteKey(){if(co.st&&co.st.running)coachMute()}
 /* ---------- Practice (2.13): every time you drove, from the telemetry files iRacing saves (read only). A session
    page: how it went, the best possible lap, the corner coach, the laps, fuel, conditions and setups */
 let pr={data:null,sel:null,seq:0,more:false,doneId:null};
-const CC_CONF={clear:['Clear','ok','A clear difference, seen on many laps'],likely:['Likely','','Beyond your lap-to-lap scatter'],thin:['Few laps','no','Only a few laps show it, so treat it as a hint']};
+const CC_CONF={clear:['Clear','ok','Passed the shuffle test in fewer than 1 in 100 shuffles, from 12 or more laps'],likely:['Likely','','Passed the shuffle test in fewer than 1 in 20 shuffles'],thin:['Few laps','no','Only a few laps show it, so treat it as a hint']};
 const cap=t=>{t=String(t||'');return t.charAt(0).toUpperCase()+t.slice(1)};
 const setupLetter=t=>{const m=/^Setup (\S+)/.exec(String(t||''));return m?m[1]:(t||'–')};
 async function openPractice(id){current={view:'practice',dir:null};show('vPractice');markNav();pr.sel=id||null;showPrList(!pr.sel);await loadPractice()}
@@ -1652,9 +1653,10 @@ function turnName(x){const n=turnNum(x);return n!==null?'Turn '+n:String(x||'')}
 function turnEl(tag,cls,name,id){const e=h(tag,cls,turnName(name));const n=turnNum(id||name);
   if(n!==null&&turnNum(name)!==null){const s=h('small','prcid','(C'+n+')');s.title='What the race review calls this corner';e.append(' ',s)}return e}
 function ccCard(c){const card=h('article','cccard'),top=h('div','cchead');
-  top.append(turnEl('h4',null,c.corner,c.id),h('span','cclost num',ok(c.lost_s)?'about '+c.lost_s.toFixed(2)+' s a lap':''),ccBadge(c.confidence));card.append(top);
+  const ls=h('span','cclost num',ok(c.lost_s)?'best laps '+c.lost_s.toFixed(2)+' s quicker':'');if(ok(c.lost_s))ls.title='Your best laps were about '+c.lost_s.toFixed(2)+' s quicker here than your typical ones (this corner\'s share of the gap between your quickest laps and the rest). Not a promise of lap time.';
+  top.append(turnEl('h4',null,c.corner,c.id),ls,ccBadge(c.confidence));card.append(top);
   const row=(k,v,cls)=>{const p=h('p',cls||null);p.append(h('b',null,k+': '),document.createTextNode(cap(v)));return p};
-  card.append(row('What\'s different',c.different),row('How to try it',c.how),row('What it gets you',c.gets));
+  card.append(row('What\'s different',c.different),row('How to try it',c.how));if(c.gets)card.append(row('What it gets you',c.gets));
   if(c.why)card.append(row('Why',c.why,'note'));if(c.evidence)card.append(row('Evidence',c.evidence,'note'));
   return card}
 function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{},out=document.createDocumentFragment();
@@ -1681,7 +1683,8 @@ function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{}
   out.append(bp);
   // 3. corner coach
   const cc=slSec('Corner coach','prCorners'),cards=C.cards||[];
-  cc.append(h('p','note',C.ok?'From your last '+plural(C.laps||0,'clean lap')+' here ('+plural(C.files||0,'telemetry file')+' of this car at this track). Your best laps through each corner against your typical ones.':(C.message||'Not enough clean laps here yet.')));
+  const grp=(C.groups||[]).filter(g=>g.used).map(g=>g.label).join('; ');
+  cc.append(h('p','note',C.ok?'From your last '+plural(C.laps||0,'clean lap')+' here ('+(grp?grp+', ':'')+plural(C.files||0,'telemetry file')+' of this car at this track). Your best laps through each corner against your typical ones; a tip only when it passes the shuffle test (Help explains).':(C.message||'Not enough clean laps here yet.')));
   if(cards.length){const box=h('div','cccards');cards.forEach(c=>box.append(ccCard(c)));cc.append(box)}
   else if(C.ok)cc.append(h('p',null,C.message||'No corner shows a clear pattern yet.'));
   const U=C.unclear||[];if(U.length){cc.append(h('h4',null,'No clear pattern yet'));const ul=h('ul','pvlist');U.forEach(u=>{const li=h('li','note'),t=String(u.text||''),m=/^[CT]\d+:\s*/.exec(t);
@@ -1729,7 +1732,7 @@ function renderCoPlan(){const box=$('coPlan'),j=co.planRep;box.replaceChildren()
   const F=j.focus||[],R=j.report||{},where=(j.car||j.car_path)+' at '+(j.track||j.track_code);box.append(h('h4',null,'From the Corner coach'));
   if(F.length){box.append(h('p','note','For the '+where+', from your last '+plural(R.laps||0,'clean lap')+' there. It starts with the biggest and says the tip after the corner:'));
     const ul=h('ul','pvlist');F.forEach(f=>{const li=h('li'),nm=/^([CT]\d+):/.exec(String(f.phrase||''));li.append(nm?turnEl('b',null,nm[1],f.id):h('b',null,turnName(f.id)),
-      h('span','sub2','Says "'+f.phrase+'"'+(ok(f.lost_s)?', about '+f.lost_s.toFixed(2)+' s a lap':'')));ul.append(li)});box.append(ul)}
+      h('span','sub2','Says "'+f.phrase+'"'+(ok(f.lost_s)?', best laps '+f.lost_s.toFixed(2)+' s quicker here':'')));ul.append(li)});box.append(ul)}
   else box.append(h('p','note','For the '+where+': '+(R.message||'no corner shows a clear pattern yet.')+' So the coach uses your race reviews.'));
   box.hidden=!!co.planHide}
 function coPlanShow(on){co.planHide=!on;if(co.planRep)$('coPlan').hidden=!on}

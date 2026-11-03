@@ -229,9 +229,11 @@ class Settings:
     def gap(self) -> float:
         return self.gap_s if self.quiet else float(self.lv("gap_s"))
 
-    def slower_mph(self) -> int:
-        """2.17.2: the "more speed" trigger in whole mph, slower_kmh rounded up (4 km/h, 2.5 mph -> 3 mph)."""
-        return max(1, int(math.ceil(self.slower_kmh / KMH_PER_MPH - 1e-9)))
+    def slower_mph(self) -> float:
+        """2.17.2: the "more speed" trigger in mph: slower_kmh in mph rounded up to a whole mph (4 km/h, 2.5 mph ->
+        3 mph down or more); a threshold under 1 mph (tests) is kept as it is."""
+        m = self.slower_kmh / KMH_PER_MPH
+        return float(math.ceil(m - 1e-9)) if m >= 1.0 else m
 
 # ---------------------------------------------------------------- reference
 
@@ -1175,7 +1177,7 @@ class Coach:
         for w in self.weak:
             if w.corner.brake_pct is not None:
                 out += [marker_text(w.name), early_text(w.name)]
-            out += [speed_text(w.name, n) for n in range(self.settings.slower_mph(), 13)]
+            out += [speed_text(w.name, n) for n in range(max(1, int(self.settings.slower_mph())), 13)]
             if w.phrase:
                 out.append(w.phrase)
         for k in range(1, 10):
@@ -1196,7 +1198,7 @@ class Coach:
             for k in range(2):
                 out += [sector_text(k, d / 10) for d in (-3, -2, -1, 1, 2, 3, 4, 5)]
             for c in self.reference.corners:
-                out += [speed_text(f"{pre}{c.num}", n) for n in range(st.slower_mph(), 9)]
+                out += [speed_text(f"{pre}{c.num}", n) for n in range(max(1, int(st.slower_mph())), 9)]
         if self.focus is not None:                       # 2.14 practice focus cues
             try:
                 out += list(self.focus.vocabulary())
@@ -1652,7 +1654,7 @@ class Coach:
         early = (c.brake_rel_m - o.brake_rel) if (c.brake_rel_m is not None and o.brake_rel is not None) else 0.0
         # early > 0: braked before the reference's brake point; < 0: braked later (an overshoot)
         mph = mph_down(down)
-        slow = mph >= st.slower_mph()
+        slow = down / KMH_PER_MPH >= st.slower_mph() - 1e-9
         err = slow or early >= st.early_m
         prev = self._corner_err.get(c.num)
         self._corner_err[c.num] = [err, bool(prev and prev[0])]
@@ -1743,7 +1745,7 @@ class Coach:
             re_, rd = early / st.early_m, down / st.slower_kmh
             if max(re_, rd) >= 1.0 and re_ >= rd:
                 text, why = early_text(name), f"lost {lost:.2f} s here, braked {early:.0f} m before the reference"
-            elif mph_down(down) >= st.slower_mph() and mph_down(down) <= voicepack.MAX_KMH:
+            elif down / KMH_PER_MPH >= st.slower_mph() - 1e-9 and mph_down(down) <= voicepack.MAX_KMH:
                 text, why = speed_text(name, mph_down(down)), \
                     f"lost {lost:.2f} s here, minimum speed {mph_down(down)} mph under the reference"
             else:

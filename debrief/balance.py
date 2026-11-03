@@ -7,7 +7,13 @@ How balance is measured (the understeer index, in steering-wheel degrees):
     (G) is learned from your own laps, together with the car's normal gentle-bend understeer (K, steering per g):
         steering = G x curvature + K x lateral g        (fitted on 0.10 to 0.40 g, above 40 km/h, no kerbs)
     Only steady driving goes into the fit (brake off, wheel moving slower than 30 degrees a second), so the
-    rotation you get from trail braking can't bend it. With the wheelbase in WHEELBASE_M, G becomes a ratio.
+    rotation you get from trail braking can't bend it. K is only learned when those bends were driven at different
+    speeds (FIT_SPEED_MIN); below FIT_SPEED_SPREAD the fit with K = 0 is a second opinion in the fitting margin.
+    With the wheelbase in WHEELBASE_M, G becomes a ratio.
+  - A real car's rotation follows the wheel a few hundredths of a second later (0.07 to 0.08 s on his McLaren
+    files). That lag is measured per file (the shift, 0 to LAG_MAX_S, where steering and yaw curvature line up best)
+    and the yaw and sideways g are shifted by it, so each moment's steering is compared with the rotation it made.
+    Without this, a 0.07 s lag made noise sessions call "pushes" in about half of them.
     Curvature comes from the yaw rate (YawRate / speed): steering minus G x yaw-curvature is exactly the front
     minus rear slip angle, so it is the textbook balance number even while the car is turning in. The same thing
     from lateral acceleration (LatAccel / speed^2) is worked out as a cross-check.
@@ -24,17 +30,24 @@ How balance is measured (the understeer index, in steering-wheel degrees):
         mid    within 15 m of that lap's slowest point, brake under 10 %. (Real laps showed 20 to 60 % throttle
                already at the slowest point, so the "pedals under 10 %" idea would leave the middle empty.)
         exit   after that, throttle 10 % or more, brake off
-  - Countersteer: the steering points the other way to the car's rotation for at least 0.2 s (above 40 km/h,
-    5 degrees of steering, 0.15 rad/s of yaw). Each one is an oversteer moment you had to catch.
+  - Entry is compared with his own typical corner entry (the median of that lap's entries), not with the brake-off
+    fit: under braking every car turns in with less steering than in steady corners, so an absolute reading said
+    "rotates on the way in" almost everywhere. A corner's way in is called only when it differs from his typical
+    entry by the practical size; the typical entry itself is reported as a plain note.
+  - Countersteer: the steering points the other way to the car's (lag-shifted) rotation for at least 0.25 s (above
+    40 km/h, 8 degrees of steering reaching 12, 0.15 rad/s of yaw), and the rotation isn't falling away through zero
+    for most of it (that is a smooth change of direction, the car following the wheel). Each one is an oversteer
+    moment you had to catch.
 
 Honest statistics (2.13's review lesson): one number per lap per corner and phase (the median excess), so laps are
 the units. A place is called "pushes" or "rotates" only when
   (1) a sign-flip permutation test across laps (the "shuffle" null: each lap's numbers flipped together, so the
-      family of all corners and phases is tested at once, max-|t|) gives a family-wise p below 0.05,
+      family of all corners and phases is tested at once, max-|t|, step-down) gives a family-wise p below 0.05,
       The fit of G and K is shared by every lap, so an error in it moves every lap the same way, which flipping laps
       can't see. So each shuffled pattern also gets the effect of one bootstrap refit (whole laps resampled), and
       the null carries both kinds of noise. (Without this, noisy test sessions made false calls in 15 % of them.)
-  (2) the median is at least the practical size (PRACT_DEG and PRACT_FRAC of the steering used there), and
+  (2) the median is at least the practical size (PRACT_ROAD_DEG at the front wheels, times the steering ratio
+      learned from G, and PRACT_FRAC of the steering used there), and
       bigger than what the fitting error alone could do there (97.5th percentile of the refits' effect), and
   (3) the same fit from ALL gentle-bend samples (not only steady ones) gives the same answer at that size. On his
       real McLaren laps the two fits differ by about 20 %, which moves slow corners (big curvature) the most, so
@@ -55,6 +68,7 @@ Public API (JSON-friendly; nothing raises for bad input):
 from __future__ import annotations
 
 import math
+import re
 from itertools import product
 from pathlib import Path
 
@@ -87,8 +101,11 @@ MIN_LAPS = 6                # laps with a number before a place can be labelled
 OFFPACE_FRAC = 1.07         # laps slower than 107 % of the median are left out (as the corner coach does)
 MIN_COVER = 0.95
 
-PRACT_DEG = 3.0             # practical size: at least 3 degrees of steering wheel ...
-PRACT_FRAC = 0.08           # ... and at least 8 % of the steering used there
+PRACT_ROAD_DEG = 0.5        # practical size: at least half a degree at the front wheels (in steering-wheel degrees:
+                            # x the car's steering ratio, learned from G; about 10 degrees of wheel at 21 to 1) ...
+PRACT_FRAC = 0.20           # ... and at least 20 % of the steering used there (a car whose steering quickens by 10 %
+                            # in hairpins must not read as "pushes")
+WB_DEFAULT_M = 2.6          # wheelbase assumed for that ratio when the car's isn't in WHEELBASE_M
 NOISE_DEG = 0.5             # smallest lap-to-lap spread assumed (a perfectly repeatable number can't be "significant")
 ALPHA = 0.05                # family-wise error rate for "pushes" / "rotates"
 CLEAR_P = 0.01              # ... "clear" below this with CLEAR_LAPS laps, else "likely"
@@ -100,10 +117,21 @@ PERM_SEED = 215
 N_FIT_BOOT = 200            # bootstrap refits of G, K (whole laps resampled)
 N_FIT_NULL = 40             # refits whose effect on every place is put into the permutation null
 STEADY_DEG_S = 30.0         # the fit uses steady driving only: wheel moving slower than this, brake off
+FIT_SPEED_MIN = 1.1         # gentle bends must span this speed ratio (90th / 10th percentile) to learn K at all (else
+                            # K = 0) ...
+FIT_SPEED_SPREAD = 1.5      # ... and this much before K is trusted: below it, the fit with K = 0 is a second opinion and
+                            # its difference goes into the fitting margin (G and K trade off when the bends are at
+                            # one speed, which moves slow corners the most)
+LAG_MAX_S = 0.20            # the car's yaw follows the steering this much later at most (measured per file)
+ENTRY_MIN_CORNERS = 3       # corner entries a lap needs before "his typical entry" is worked out for it
 
-CS_DEG = 5.0                # countersteer: steering at least this many degrees the "wrong" way ...
-CS_YAW = 0.15               # ... while rotating at least this fast (rad/s) ...
-CS_MIN_S = 0.20             # ... for at least this long
+CS_DEG = 8.0                # countersteer: steering at least this many degrees the "wrong" way ...
+CS_PEAK_DEG = 12.0          # ... reaching at least this much opposite lock ...
+CS_YAW = 0.15               # ... while rotating at least this fast (rad/s, compared with the yaw the steering
+                            #     produces: shifted by the measured lag) ...
+CS_MIN_S = 0.25             # ... for at least this long ...
+CS_FALL = 0.5               # ... and not a smooth change of direction: the rotation falling (|yaw| dropping faster than
+CS_FALL_FRAC = 0.75         #     this, rad/s^2) for this share of the time or more is the car already following the wheel
 
 SLOW_KMH = 100.0            # corner class by the slowest point on your fastest lap
 FAST_KMH = 150.0
@@ -320,9 +348,68 @@ def _prep(lap: dict, L: float) -> dict | None:
         fast = v * KMH >= MIN_KMH
         return {"rate": rate, "v": v, "sw": sw, "r": r, "ay": ay, "b": b, "th": th, "kerb": kerb, "d": d % L,
                 "k_yaw": r / vs, "k_ay": ay / vs ** 2, "ok": fast & ~kerb,
-                "dsw": np.gradient(np.abs(sw)) * rate}
+                "dsw": np.gradient(np.abs(sw)) * rate, "file": lap.get("file"), "lag": 0}
     except Exception:  # noqa: BLE001
         return None
+
+
+def _shift(x, n: int) -> np.ndarray:
+    """x moved n samples earlier (x[t + n] at t), the last value held at the end."""
+    x = np.asarray(x, float)
+    if n <= 0 or len(x) <= n:
+        return x
+    return np.concatenate([x[n:], np.repeat(x[-1:], n)])
+
+
+def _apply_lag(p: dict, n: int) -> dict:
+    """Compare the steering at t with the yaw (and sideways g) it produces n samples later."""
+    vs = np.maximum(p["v"], 1.0)
+    r, ay = _shift(p["r"], n), _shift(p["ay"], n)
+    q = dict(p)
+    q.update(r=r, ay=ay, k_yaw=r / vs, k_ay=ay / vs ** 2, lag=int(n))
+    return q
+
+
+def estimate_lag(P: list) -> tuple:
+    """(samples, seconds, correlation): how much later the yaw follows the steering on these laps (one file), the
+    shift between 0 and LAG_MAX_S where steering and yaw curvature line up best (cross-correlation over every
+    sample above MIN_KMH and off the kerbs). On his real McLaren files: 4 or 5 samples, about 0.07 s."""
+    if not P:
+        return 0, 0.0, None
+    rate = float(P[0]["rate"])
+    best, best_c = 0, None
+    for n in range(0, int(round(LAG_MAX_S * rate)) + 1):
+        a, b = [], []
+        for p in P:
+            m = len(p["sw"]) - n
+            if m < 10:
+                continue
+            ok = p["ok"][:m] & p["ok"][n:]
+            a.append(p["sw"][:m][ok])
+            b.append(p["k_yaw"][n:][ok])
+        if not a:
+            continue
+        a, b = np.concatenate(a), np.concatenate(b)
+        if len(a) < 100 or np.std(a) == 0 or np.std(b) == 0:
+            continue
+        c = abs(float(np.corrcoef(a, b)[0, 1]))
+        if best_c is None or c > best_c + 1e-12:
+            best, best_c = n, c
+    return best, best / rate, best_c
+
+
+def _lag_compensate(P: list) -> tuple:
+    """Each file's laps shifted by that file's own steering-to-yaw lag. -> (laps, {file: seconds})."""
+    by = {}
+    for i, p in enumerate(P):
+        by.setdefault(p.get("file"), []).append(i)
+    out, lags = list(P), {}
+    for f, idx in by.items():
+        n, sec, _c = estimate_lag([P[i] for i in idx])
+        lags[str(f)] = round(sec, 3)
+        for i in idx:
+            out[i] = _apply_lag(P[i], n)
+    return out, lags
 
 
 def _corners_from(lap: dict, L: float) -> tuple:
@@ -342,9 +429,9 @@ def _corners_from(lap: dict, L: float) -> tuple:
 
 # ---------------------------------------------------------------- the car's normal steering
 def _fit_samples(P: list, kind: str = "yaw", steady: bool = True) -> tuple:
-    """(steer, curvature, lat g, lap index) arrays from the gentle-bend band of every lap (steady driving only,
-    unless steady=False: then every gentle-bend sample, the sensitivity check)."""
-    S, K, A, I = [], [], [], []
+    """(steer, curvature, lat g, lap index, speed) arrays from the gentle-bend band of every lap (steady driving
+    only, unless steady=False: then every gentle-bend sample, the sensitivity check)."""
+    S, K, A, I, V = [], [], [], [], []
     for i, p in enumerate(P):
         g = np.abs(p["ay"]) / G0
         k = p["k_yaw"] if kind == "yaw" else p["k_ay"]
@@ -355,16 +442,28 @@ def _fit_samples(P: list, kind: str = "yaw", steady: bool = True) -> tuple:
         K.append(k[m])
         A.append(p["ay"][m] / G0)
         I.append(np.full(int(m.sum()), i))
+        V.append(p["v"][m])
     if not S:
-        return np.zeros(0), np.zeros(0), np.zeros(0), np.zeros(0, int)
-    return np.concatenate(S), np.concatenate(K), np.concatenate(A), np.concatenate(I)
+        return np.zeros(0), np.zeros(0), np.zeros(0), np.zeros(0, int), np.zeros(0)
+    return np.concatenate(S), np.concatenate(K), np.concatenate(A), np.concatenate(I), np.concatenate(V)
 
 
-def _robust_fit(sw, k, a) -> tuple | None:
-    """steer = G * curvature + K * lat g, through zero, with Huber weights (a few slides can't drag it)."""
+def speed_spread(v) -> float:
+    """90th / 10th percentile of the speeds the gentle bends were driven at (1.0 = all at one speed)."""
+    v = np.asarray(v, float)
+    if len(v) < 10:
+        return 1.0
+    lo, hi = np.percentile(v, [10, 90])
+    return float(hi / lo) if lo > 0 else 1.0
+
+
+def _robust_fit(sw, k, a, use_k: bool = True) -> tuple | None:
+    """steer = G * curvature + K * lat g, through zero, with Huber weights (a few slides can't drag it).
+    use_k=False: K = 0 (gentle bends all at about one speed, where curvature and lateral g say the same thing and
+    the two can't be told apart)."""
     if len(sw) < 50:
         return None
-    X = np.column_stack([k, a])
+    X = np.column_stack([k, a]) if use_k else np.column_stack([k])
     w = np.ones(len(sw))
     beta = None
     for _ in range(8):
@@ -377,13 +476,17 @@ def _robust_fit(sw, k, a) -> tuple | None:
         s = 1.4826 * float(np.median(np.abs(res))) or 1.0
         u = np.abs(res) / (1.345 * s)
         w = np.where(u <= 1, 1.0, 1.0 / np.maximum(u, 1e-9))
-    return float(beta[0]), float(beta[1])
+    return float(beta[0]), (float(beta[1]) if use_k else 0.0)
 
 
-def fit_car(P: list, kind: str = "yaw", steady: bool = True, boot: bool = True) -> dict | None:
-    """G (steering degrees per 1/m of curvature) and K (steering degrees per g), with a lap-bootstrap interval."""
-    sw, k, a, idx = _fit_samples(P, kind, steady)
-    est = _robust_fit(sw, k, a)
+def fit_car(P: list, kind: str = "yaw", steady: bool = True, boot: bool = True, k_zero: bool = False) -> dict | None:
+    """G (steering degrees per 1/m of curvature) and K (steering degrees per g), with a lap-bootstrap interval.
+    K is only learned when the gentle bends span FIT_SPEED_MIN in speed (or k_zero=False); otherwise K = 0 (said in
+    "k_learned"). "k_trusted": they span FIT_SPEED_SPREAD."""
+    sw, k, a, idx, v = _fit_samples(P, kind, steady)
+    spread = speed_spread(v)
+    use_k = spread >= FIT_SPEED_MIN and not k_zero
+    est = _robust_fit(sw, k, a, use_k)
     if est is None or abs(est[0]) < 1.0:
         return None
     rng = np.random.default_rng(PERM_SEED)
@@ -393,14 +496,15 @@ def fit_car(P: list, kind: str = "yaw", steady: bool = True, boot: bool = True) 
     for _ in range(N_FIT_BOOT if boot else 0):
         pick = rng.integers(0, n, n)
         sel = np.concatenate([by[i] for i in pick])
-        e = _robust_fit(sw[sel], k[sel], a[sel])
+        e = _robust_fit(sw[sel], k[sel], a[sel], use_k)
         if e is not None:
             boots.append(e)
     boots = np.array(boots) if boots else np.array([est])
     lo, hi = np.percentile(boots[:, 0], [5, 95])
     return {"G": est[0], "K": est[1], "G_ci": [float(lo), float(hi)],
             "K_ci": [float(x) for x in np.percentile(boots[:, 1], [5, 95])],
-            "samples": int(len(sw)), "boots": boots}
+            "samples": int(len(sw)), "boots": boots, "speed_spread": round(spread, 2), "k_learned": bool(use_k),
+            "k_trusted": bool(use_k and spread >= FIT_SPEED_SPREAD)}
 
 
 # ---------------------------------------------------------------- per lap, corner and phase
@@ -434,8 +538,28 @@ def _cell_index(P, masks) -> list:
     return out
 
 
+def _relative_entry(vals: dict) -> tuple:
+    """Entry places compared with his own typical entry: each lap's entry numbers minus the median of that lap's
+    corner entries (laps with fewer than ENTRY_MIN_CORNERS entries give no entry numbers). Under braking every car
+    turns in with less steering than in steady corners (the weight is on the front), and the gentle-bend fit is
+    brake-off, so an absolute entry reading would say "rotates" almost everywhere. -> (vals, typical per lap)."""
+    ek = [k for k in vals if k[1] == "entry"]
+    if not ek:
+        return vals, None
+    M = np.column_stack([vals[k] for k in ek])
+    ok = np.isfinite(M).sum(axis=1) >= ENTRY_MIN_CORNERS
+    typ = np.full(M.shape[0], np.nan)
+    if ok.any():
+        typ[ok] = np.nanmedian(M[ok], axis=1)
+    out = dict(vals)
+    for k in ek:
+        out[k] = vals[k] - typ
+    return out, typ
+
+
 def _cell_values(P, cidx, fits, kind="yaw"):
-    """{(corner index, phase): [per-lap median excess or nan]}, and the steering used there (median).
+    """{(corner index, phase): [per-lap median excess or nan]} (entry: relative to his typical entry on that lap),
+    the steering used there (median), and the typical entry per lap (absolute, or None).
     cidx: _cell_index(); fits: one (G, K) or None per lap."""
     nl = len(P)
     keys = set()
@@ -452,7 +576,8 @@ def _cell_values(P, cidx, fits, kind="yaw"):
             expect = G * kk[idx] + K * p["ay"][idx] / G0
             vals[key][i] = float(np.median(np.sign(G * kk[idx]) * (p["sw"][idx] - expect)))
             us[key].append(float(np.median(np.abs(expect))))
-    return vals, {k: (float(np.median(v)) if v else None) for k, v in us.items()}
+    vals, typ = _relative_entry(vals)
+    return vals, {k: (float(np.median(v)) if v else None) for k, v in us.items()}, typ
 
 
 def _sign_patterns(n: int) -> np.ndarray:
@@ -494,8 +619,16 @@ def maxt_pvalues(V: np.ndarray, shifts: np.ndarray | None = None) -> tuple:
     if sh is not None:
         sums = sums + n * sh[np.arange(len(S)) % len(sh)]
     T = np.abs(tstat(sums))                            # patterns x cells
-    mx = T.max(axis=1)
-    p = np.array([(np.sum(mx >= abs(t) - 1e-12)) / len(S) for t in t_obs])
+    # step-down (Westfall and Young): the clearest place is tested against the maximum over every place, the next
+    # against the maximum over the places left, and so on, never smaller than the one before. Same family-wise
+    # error, but one very clear place no longer hides a second one.
+    order = np.argsort(-np.abs(t_obs), kind="stable")
+    p = np.empty(n_c)
+    prev = 0.0
+    for rank, j in enumerate(order):
+        mx = T[:, order[rank:]].max(axis=1)
+        prev = max(prev, float(np.sum(mx >= abs(t_obs[j]) - 1e-12)) / len(S))
+        p[j] = prev
     return t_obs, p
 
 
@@ -505,17 +638,28 @@ def _speed_class(kmh: float) -> str:
 
 # ---------------------------------------------------------------- countersteer
 def _countersteer(P, corners, masks, G, L, prefix):
+    """Moments the steering pointed against the car's rotation: a catch. P must be lag-compensated (each lap's yaw
+    shifted by its file's measured lag), so in a smooth change of direction, where the yaw simply follows the wheel
+    a few hundredths of a second later, the two still point the same way. What is left is also checked: the opposite
+    lock must reach CS_PEAK_DEG, last CS_MIN_S, and the rotation must not be falling away through zero for most of it
+    (that is the car already following the wheel, not a slide being held)."""
     out = []
     sgn = 1.0 if G >= 0 else -1.0
     for i, p in enumerate(P):
         swa = p["sw"] * sgn
-        bad = p["ok"] & (np.abs(p["r"]) >= CS_YAW) & (np.abs(swa) >= CS_DEG) & (swa * p["r"] < 0)
+        r = p["r"]
+        bad = p["ok"] & (np.abs(r) >= CS_YAW) & (np.abs(swa) >= CS_DEG) & (swa * r < 0)
         if not bad.any():
             continue
         edges = np.diff(np.concatenate([[0], bad.astype(int), [0]]))
         starts, ends = np.nonzero(edges == 1)[0], np.nonzero(edges == -1)[0]
         for s, e in zip(starts, ends):
             if (e - s) / p["rate"] < CS_MIN_S:
+                continue
+            if float(np.max(np.abs(swa[s:e]))) < CS_PEAK_DEG:
+                continue
+            fall = np.gradient(np.abs(r[s:e])) * p["rate"] < -CS_FALL
+            if float(np.mean(fall)) >= CS_FALL_FRAC:
                 continue
             where, phase = None, None
             for ci, c in enumerate(corners):
@@ -529,8 +673,9 @@ def _countersteer(P, corners, masks, G, L, prefix):
                             break
                     break
             out.append({"lap": i, "corner": where, "name": f"{prefix}{where + 1}" if where is not None else None,
-                        "phase": phase, "duration_s": round((e - s) / p["rate"], 2),
-                        "kmh": round(float(p["v"][s]) * KMH)})
+                        "phase": phase, "duration_s": round(float((e - s) / p["rate"]), 2),
+                        "peak_deg": round(float(np.max(np.abs(swa[s:e])))),
+                        "kmh": round(float(p["v"][s]) * KMH), "d_m": round(float(p["d"][s]))})
     return out
 
 
@@ -547,6 +692,7 @@ def analyze_laps(laps, info=None, setup=None, series_setup=None, prefix: str = "
      "setup_ideas": [...], "method": {...}, "params": PARAMS, "info": info}"""
     info = dict(info or {})
     base = {"ok": False, "version": VERSION, "laps": 0, "corners": [], "cells": [], "findings": [],
+            "entry_typical": None, "entry_note": None,
             "countersteer": {"events": [], "by_corner": {}}, "car_fit": None, "cross_check": None,
             "summary": "", "setup_ideas": [], "notes": [], "method": _method(), "params": PARAMS, "info": _clean_info(info)}
     try:
@@ -557,7 +703,7 @@ def analyze_laps(laps, info=None, setup=None, series_setup=None, prefix: str = "
         L = _num(info.get("length_m")) or _guess_length(laps)
         if len(laps) < MIN_LAPS or not L:
             base["laps"] = len(laps)
-            base["message"] = (f"{'Only ' + str(len(laps)) if laps else 'No'} clean lap{'s' if len(laps) != 1 else ''}"
+            base["message"] = (f"{'Only ' + _plural(len(laps), 'clean lap') if laps else 'No clean laps'}"
                                f" with steering and yaw rate. The balance map needs at least {MIN_LAPS}.")
             base["summary"] = base["message"]
             return base
@@ -568,9 +714,11 @@ def analyze_laps(laps, info=None, setup=None, series_setup=None, prefix: str = "
                 P.append(p)
                 keep.append(x)
         laps = keep
+        P, lags = _lag_compensate(P)
         base["laps"] = len(P)
         if len(P) < MIN_LAPS:
-            base["message"] = f"Only {len(P)} laps could be read. The balance map needs at least {MIN_LAPS}."
+            base["message"] = (f"Only {_plural(len(P), 'lap')} could be read. The balance map needs at least "
+                               f"{MIN_LAPS}.")
             base["summary"] = base["message"]
             return base
         fastest = min(range(len(laps)), key=lambda i: laps[i]["time"])
@@ -587,6 +735,8 @@ def analyze_laps(laps, info=None, setup=None, series_setup=None, prefix: str = "
             base["summary"] = base["message"]
             return base
         G, K = fit["G"], fit["K"]
+        wb = WHEELBASE_M.get(str(info.get("car_path") or "").lower())
+        floor = PRACT_ROAD_DEG * abs(G) / 57.2958 / (wb[0] if wb else WB_DEFAULT_M)
         masks = []
         for p in P:
             mk = {}
@@ -600,7 +750,18 @@ def analyze_laps(laps, info=None, setup=None, series_setup=None, prefix: str = "
             masks.append(mk)
         cell_masks = _cell_index(P, [{k: v for k, v in m.items() if k[1] != "_zone"} for m in masks])
         nP = len(P)
-        vals, used = _cell_values(P, cell_masks, [(G, K)] * nP)
+        vals, used, typ = _cell_values(P, cell_masks, [(G, K)] * nP)
+        if typ is not None and np.isfinite(typ).sum() >= MIN_LAPS:
+            te = float(np.nanmedian(typ))
+            base["entry_typical"] = {"median_deg": _r(te, 1), "laps": int(np.isfinite(typ).sum())}
+            base["entry_note"] = (
+                "Under braking a car usually turns in with less steering than in steady corners; here your typical "
+                "corner entry needs about the same, and each corner's way in is compared with that typical entry."
+                if abs(te) < 1.0 else
+                "Under braking a car always turns in with "
+                + ("less" if te < 0 else "more") + " steering than in steady corners (on your typical corner entry "
+                f"here, about {_plural(round(abs(te)), 'degree')} {'less' if te < 0 else 'more'}), so each corner's "
+                "way in is compared with your own typical entry, not with steady cornering.")
         keys = sorted(k for k in vals if np.isfinite(vals[k]).sum() >= MIN_LAPS)
         cells = []
         if keys:
@@ -624,6 +785,15 @@ def analyze_laps(laps, info=None, setup=None, series_setup=None, prefix: str = "
             model = np.array([abs(float(np.nanmean(vals_b[key] - vals[key])))
                               if np.isfinite(vals_b[key] - vals[key]).any() else 0.0 for key in keys])
             margin = np.maximum(margin, model)
+            if not fit["k_trusted"]:
+                # gentle bends at about one speed: G and K can't be told apart well, so the fit with K = 0 is a
+                # second opinion, and its difference goes into the margin
+                fit_c = fit_car(P, "yaw", boot=False, k_zero=True)
+                if fit_c:
+                    vals_c = _cell_values(P, cell_masks, [(fit_c["G"], 0.0)] * nP)[0]
+                    model_c = np.array([abs(float(np.nanmean(vals_c[key] - vals[key])))
+                                        if np.isfinite(vals_c[key] - vals[key]).any() else 0.0 for key in keys])
+                    margin = np.maximum(margin, model_c)
             t, padj = maxt_pvalues(V, shifts * infl)
             # cross-check from lateral acceleration
             fit_ay = fit_car(P, "ay", boot=False)
@@ -634,7 +804,7 @@ def analyze_laps(laps, info=None, setup=None, series_setup=None, prefix: str = "
                 med = float(np.median(x))
                 lo, hi = _median_ci(x)
                 u = used.get(key) or 0.0
-                prac = max(PRACT_DEG, PRACT_FRAC * u)
+                prac = max(floor, PRACT_FRAC * u)
                 ci, ph = key
                 label = "unclear"
                 mg = float(margin[j])
@@ -677,17 +847,18 @@ def analyze_laps(laps, info=None, setup=None, series_setup=None, prefix: str = "
         base["countersteer"] = {"events": ev, "by_corner": {k: {"events": v["events"], "laps": len(v["laps"]),
                                                                 "of_laps": len(P), "phases": v["phases"]}
                                                             for k, v in byc.items()}}
-        wb = WHEELBASE_M.get(str(info.get("car_path") or "").lower())
         base["car_fit"] = {"G": _r(G, 1), "G_ci": [_r(x, 1) for x in fit["G_ci"]], "K": _r(K, 1),
                            "K_ci": [_r(x, 1) for x in fit["K_ci"]], "samples": fit["samples"], "kind": "yaw rate",
                            "ratio_estimate": _r(G / 57.2958 / wb[0], 1) if wb else None,
-                           "wheelbase_source": wb[1] if wb else None,
-                           "text": _fit_text(G, K, wb)}
+                           "wheelbase_source": wb[1] if wb else None, "yaw_lag_s": lags,
+                           "speed_spread": fit["speed_spread"], "k_learned": fit["k_learned"],
+                           "practical_floor_deg": _r(floor, 1),
+                           "text": _fit_text(G, K, wb, lags, fit["k_learned"])}
         base["summary"] = summary_text(base)
         base["ok"] = True
         n = len(base["findings"])
-        base["message"] = (f"{n} place{'s' if n != 1 else ''} where the balance is clear, from {len(P)} clean laps."
-                           if n else f"No place shows a clear push or rotation yet, from {len(P)} clean laps.")
+        base["message"] = (f"{_plural(n, 'place')} where the balance is clear, from {_plural(len(P), 'clean lap')}."
+                           if n else f"No place shows a clear push or rotation yet, from {_plural(len(P), 'clean lap')}.")
         if len(set(x.get("setup") for x in laps if x.get("setup"))) > 1:
             base["notes"].append("These laps were driven on more than one setup, so the map mixes them. Pick one "
                                  "setup's files for a cleaner read.")
@@ -720,28 +891,53 @@ def _method() -> dict:
             "filter": f"{ORDER}th-order Butterworth response at {FC_HZ:g} Hz, forwards and backwards",
             "ignored": f"under {MIN_KMH:g} km/h, under {EVAL_G:g} g, within {KERB_PAD_S:g} s of a kerb strike",
             "test": (f"sign-flip permutation across laps with the fitting error of the car's normal steering in the "
-                     f"null, whole map at once (family-wise {ALPHA:g}); at least {PRACT_DEG:g} degrees and "
-                     f"{PRACT_FRAC:.0%} of the steering used, and more than the fitting error alone could do"),
+                     f"null, whole map at once (family-wise {ALPHA:g}); at least {PRACT_ROAD_DEG:g} degrees at the "
+                     f"front wheels (times the car's steering ratio) and {PRACT_FRAC:.0%} of the steering used, and "
+                     f"more than the fitting error alone could do"),
+            "entry": "the way in is compared with his own typical corner entry on the same lap (braking always "
+                     "turns the car in more than steady cornering)",
+            "lag": f"the yaw is compared with the steering that produced it: shifted by the lag measured per file "
+                   f"(0 to {LAG_MAX_S:g} s)",
             "neutral": f"{CI_LEVEL:.0%} interval of the median inside the practical size",
             "min_laps": MIN_LAPS}
 
 
-def _fit_text(G, K, wb) -> str:
-    s = (f"Learned from your laps: in gentle bends this car needs about {abs(K):.0f} degrees of steering wheel "
-         f"per g {'more' if K >= 0 else 'less'} than the pure geometry")
+def _plural(n, word: str) -> str:
+    n = int(n)
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
+def _fit_text(G, K, wb, lags=None, k_learned=True) -> str:
+    if k_learned:
+        s = (f"Learned from your laps: in gentle bends this car needs about {_plural(round(abs(K)), 'degree')} of "
+             f"steering wheel per g {'more' if K >= 0 else 'less'} than the pure geometry")
+    else:
+        s = ("Learned from your laps: your gentle bends were all at about the same speed, so only the steering for "
+             "each bend is learned, not how it changes with sideways g")
     if wb:
         s += (f"; with a {wb[0]:.2f} m wheelbase ({wb[1]}) that is a steering ratio of about "
               f"{abs(G) / 57.2958 / wb[0]:.0f} to 1")
     else:
         s += "; the steering ratio and wheelbase are not in the telemetry, so their product was learned instead"
-    return s + "."
+    s += "."
+    v = sorted(x for x in (lags or {}).values() if x is not None)
+    if v and v[len(v) // 2] >= 0.01:
+        mid = v[len(v) // 2]
+        s += (f" The car's rotation follows your steering about {mid:.2f} s later, so each moment's steering is "
+              f"compared with the rotation it produced.")
+    return s
 
 
 def _cell_text(c: dict) -> str:
     if c["label"] in ("push", "rotate"):
         more = "more" if c["label"] == "push" else "less"
+        deg = _plural(round(abs(c["median_deg"])), "degree")
+        if c["phase"] == "entry":
+            return (f"{c['corner']} {c['phase_words']}: the car {c['label_words']} more than on your other corner "
+                    f"entries. You used about {deg} {more} steering than on your typical entry "
+                    f"({c['laps']} laps, {c['confidence']}).")
         return (f"{c['corner']} {c['phase_words']}: the car {c['label_words']}. You used about "
-                f"{abs(c['median_deg']):.0f} degrees {more} steering than this car normally needs there "
+                f"{deg} {more} steering than this car normally needs there "
                 f"({c['laps']} laps, {c['confidence']}).")
     if c["label"] == "neutral":
         return f"{c['corner']} {c['phase_words']}: neutral ({c['laps']} laps)."
@@ -767,7 +963,8 @@ def summary_text(rep: dict) -> str:
     verbs = {"push": "pushes", "rotate": "rotates"}
     parts = []
     for (lab, ph, cls), cs in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-        parts.append(f"{verbs[lab]} {PHASE_OF[ph]} {cls} corners ({_names(cs)})")
+        usual = " more than usual" if ph == "entry" else ""
+        parts.append(f"{verbs[lab]}{usual} {PHASE_OF[ph]} {cls} corners ({_names(cs)})")
     neutral = [c for c in cells if c["label"] == "neutral"]
     unclear = [c for c in cells if c["label"] == "unclear"]
     if parts:
@@ -790,8 +987,8 @@ def summary_text(rep: dict) -> str:
     many = sorted(((k, v) for k, v in cs.items() if k != "between corners"), key=lambda kv: -kv[1]["events"])
     if many:
         k, v = many[0]
-        s += (f" You had to catch the rear (countersteer) {v['events']} time{'s' if v['events'] != 1 else ''} at {k}"
-              f" ({v['laps']} of {v['of_laps']} laps).")
+        s += (f" You had to catch the rear (countersteer) {_plural(v['events'], 'time')} at {k}"
+              f" ({v['laps']} of {_plural(v['of_laps'], 'lap')}).")
     return s
 
 
@@ -838,18 +1035,19 @@ TARGETS = {
     "tc": (_TC, None, "Traction control", {1: "one step more", -1: "one step less"}),
     "wing": (_WING, None, "Rear wing", {-1: "one step less", 1: "one step more"}),
 }
-# (phase, label, speed class or None) -> options in order; the first one the car has is suggested
+# (phase, label, speed class or None) -> options in order; the first one that can be made on this car is suggested.
+# Each list ends with the other axle, so a bar already at its lowest falls through to a change that can be made.
 IDEAS = {
     ("mid", "push", "slow"): [("front_arb", -1), ("rear_arb", 1)],
     ("mid", "push", "medium"): [("front_arb", -1), ("rear_arb", 1)],
-    ("mid", "push", "fast"): [("wing", -1), ("front_arb", -1)],
+    ("mid", "push", "fast"): [("wing", -1), ("front_arb", -1), ("rear_arb", 1)],
     ("mid", "rotate", "slow"): [("rear_arb", -1), ("front_arb", 1)],
     ("mid", "rotate", "medium"): [("rear_arb", -1), ("front_arb", 1)],
-    ("mid", "rotate", "fast"): [("wing", 1), ("rear_arb", -1)],
-    ("entry", "push", None): [("bias", -1), ("front_arb", -1)],
-    ("entry", "rotate", None): [("bias", 1), ("rear_arb", -1)],
+    ("mid", "rotate", "fast"): [("wing", 1), ("rear_arb", -1), ("front_arb", 1)],
+    ("entry", "push", None): [("bias", -1), ("front_arb", -1), ("rear_arb", 1)],
+    ("entry", "rotate", None): [("bias", 1), ("rear_arb", -1), ("front_arb", 1)],
     ("exit", "push", None): [("front_arb", -1), ("rear_arb", 1)],
-    ("exit", "rotate", None): [("rear_arb", -1), ("tc", 1)],
+    ("exit", "rotate", None): [("rear_arb", -1), ("tc", 1), ("front_arb", 1)],
 }
 WHY = {
     "front_arb": "a softer front bar (or stiffer rear) lets the front tyres grip more in the corner",
@@ -858,33 +1056,91 @@ WHY = {
     "tc": "more traction control holds the rear when you get on the throttle",
     "wing": "the rear wing sets how much the rear grips at speed compared with the front",
 }
+WHY_WAY = {
+    ("front_arb", -1): "a softer front bar lets the front tyres grip more in the corner",
+    ("front_arb", 1): "a stiffer front bar takes a little grip from the front, which calms a rear that slides first",
+    ("rear_arb", -1): "a softer rear bar lets the rear tyres grip more",
+    ("rear_arb", 1): "a stiffer rear bar frees the rear to turn, which helps a front that slides first",
+    ("bias", 1): "more brake to the front keeps the rear steadier as you brake and turn in",
+    ("bias", -1): "more brake to the rear takes braking work off the front tyres, so they have more left to turn",
+    ("tc", 1): "more traction control holds the rear when you get on the throttle",
+    ("wing", 1): "more rear wing gives the rear more grip at speed",
+    ("wing", -1): "less rear wing lets the front do more of the turning at speed",
+}
 NUMBER_CAVEAT = ("On most cars in iRacing a higher number is stiffer (or more), but check the garage's own help "
                  "text for this car.")
+TC_CAVEAT = ("On most cars in iRacing a higher traction control number means more help, but on some cars it is the "
+             "other way round: check the garage's own help text for this car.")
 THEN = "Change only this, then drive at least 6 clean laps and compare again in Setup Lab."
 
 
+def _parts(text: str):
+    """(prefix letters, number text) of a setup value: 'P2' -> ('P', '2'), '3 (TC1)' -> ('', '3')."""
+    from . import setuplab
+    s = setuplab._num_text(text)
+    if s is None:
+        return "", None
+    k = str(text).find(s)
+    pre = str(text)[:k].strip()
+    return (pre if re.fullmatch(r"[A-Za-z]{1,3}", pre) else ""), s
+
+
+def _step(key: str, text: str, way: int):
+    """(new text value, step) one step `way` (+1 up, -1 down) from the current value; None if not a number."""
+    from . import setuplab
+    _pre, s = _parts(text)
+    if s is None:
+        return None
+    dec = setuplab._decimals(s)
+    leaf = key.rsplit(".", 1)[-1]
+    step = 0.5 if (leaf in _BIAS or (leaf in _WING and dec)) else (1.0 if dec == 0 else 10 ** -dec)
+    new = float(s) + way * step
+    if leaf in _ARB + _TC and new < 1:
+        return None                                  # already at the lowest number (the range isn't in the file)
+    return (f"{new:.{max(dec, 1 if step == 0.5 else 0)}f}" if dec or step == 0.5 else f"{int(round(new))}"), s
+
+
 def _option(flat, target, way):
+    """One change on this car: {"target", "way", "key", "label", "from", "to", "unit", "text"}; "to" is None when it
+    can't be made (already at its lowest, or not a number). None when the car has no such setting."""
     leaves, side, lab, words = TARGETS[target]
     key, val = _find_key(flat, leaves, side)
     if key is None:
         return None
+    pre, _num_txt = _parts(str(val))
     st = _step(key, str(val), way)
     unit = ibt.unit(val)
+    name = lab
+    if unit.startswith("(") and unit.endswith(")") and len(unit) <= 12:
+        name, unit = f"{lab} {unit[1:-1]}", ""      # '3 (TC1)': "Traction control TC1 3 → 4", no doubled brackets
     if st is None:
-        why = ("which may already be the lowest" if ibt.number(val) is not None else "which isn't a number to step")
-        return {"target": target, "key": key, "label": lab, "from": str(val), "to": None,
-                "text": f"{lab}: {words[way]} (it is set to {val}, {why})"}
+        why = ("already at its lowest" if ibt.number(val) is not None else "not a number Debrief can step")
+        return {"target": target, "way": way, "key": key, "label": lab, "from": str(val), "to": None,
+                "text": f"{name} {words[way]}", "blocked": f"it is set to {val}, {why}"}
     new, old = st
-    return {"target": target, "key": key, "label": lab, "from": old, "to": new, "unit": unit,
-            "text": f"{lab} {old} → {new}{(' ' + unit) if unit else ''} ({words[way]})"}
+    old, new = pre + old, pre + new
+    if unit == "%":
+        shown = f"{old}% → {new}%"
+    else:
+        shown = f"{old} → {new}{(' ' + unit) if unit else ''}"
+    return {"target": target, "way": way, "key": key, "label": lab, "from": old, "to": new, "unit": unit,
+            "text": f"{name} {shown} ({words[way]})"}
+
+
+def _lower_first(t: str) -> str:
+    return t[0].lower() + t[1:] if t else t
 
 
 def setup_ideas(report: dict, setup: dict | None, series_setup=None) -> list:
-    """Conventional, one-change-at-a-time setup ideas for the clearest balance findings (most certain first).
+    """Conventional, one-change-at-a-time setup ideas for the clearest balance findings. Ideas with a change that
+    can actually be made come first, then the most certain, then the most places.
 
     idea: {"finding": cell text, "corner", "phase", "label", "change": {"key","label","from","to","text"} | None,
            "alternative": same | None, "why", "confidence" ("worth a try" | "a guess"), "text", "then"}
-    A fixed-setup series gives no ideas (a note instead). Never raises."""
+    "Try one change" is only said for a change that can be made on this car; when the usual change can't be (a bar
+    already at its lowest, or the setting isn't in this car's setup), the next one on the list is offered and the
+    text says why, or it says plainly that there is nothing to change. A fixed-setup series gives no ideas (a note
+    instead). Never raises."""
     try:
         if str(series_setup or "").lower() == "fixed":
             return [{"finding": None, "change": None, "alternative": None, "confidence": None,
@@ -894,8 +1150,8 @@ def setup_ideas(report: dict, setup: dict | None, series_setup=None) -> list:
         out, seen = [], set()
         for f in (report or {}).get("findings") or []:
             opts = IDEAS.get((f["phase"], f["label"], f["class"])) or IDEAS.get((f["phase"], f["label"], None)) or []
-            found = [o for o in (_option(flat, t, w) for t, w in opts) if o is not None]
-            found.sort(key=lambda o: o["to"] is None)          # a change that can actually be made first
+            cand = [(t, w, _option(flat, t, w)) for t, w in opts]
+            found = [o for _t, _w, o in cand if o is not None and o["to"] is not None]
             key = (f["phase"], f["label"], f["class"] if f["phase"] == "mid" else None)
             if key in seen:
                 continue
@@ -903,28 +1159,44 @@ def setup_ideas(report: dict, setup: dict | None, series_setup=None) -> list:
             same = [c for c in report["findings"] if (c["phase"], c["label"]) == (f["phase"], f["label"])
                     and (f["phase"] != "mid" or c["class"] == f["class"])]
             where = f"{PHASE_OF[f['phase']]} {_names(same)}"
-            verb = "pushes" if f["label"] == "push" else "rotates"
+            verb = ("pushes" if f["label"] == "push" else "rotates") + (" more than usual" if f["phase"] == "entry"
+                                                                        else "")
             conf = "worth a try" if f["confidence"] == "clear" else "a guess"
             first = found[0] if found else None
             alt = found[1] if len(found) > 1 else None
+            # the usual change(s) ahead of the one offered, which this car can't make
+            skipped = []
+            for t, w, o in cand:
+                if first is not None and o is first:
+                    break
+                if o is not None and o["to"] is None:
+                    skipped.append(o)
             if first:
-                text = (f"The car {verb} {where}. Try one change: {first['text']}. Why: "
-                        f"{WHY[first['target']]}.")
+                text = f"The car {verb} {where}."
+                if skipped:
+                    s0 = skipped[0]
+                    text += (f" The usual change, {_lower_first(s0['text'])}, can't be made here "
+                             f"({s0['blocked']}).")
+                text += (f" Try one change: {first['text']}. Why: {WHY_WAY.get((first['target'], first['way']), WHY[first['target']])}.")
                 if alt:
-                    text += f" If that doesn't help, put it back and try {alt['text'][0].lower() + alt['text'][1:]}."
-                if (f["phase"], f["label"]) == ("entry", "rotate"):
+                    text += f" If that doesn't help, put it back and try {_lower_first(alt['text'])}."
+                if f["phase"] == "entry" and f["label"] == "rotate":
                     text += (" Rotation on the way in also comes from how much brake you carry into the turn: "
                              "if you like how it turns in, leave it.")
-                text += " " + NUMBER_CAVEAT + " " + THEN
+                text += " " + (TC_CAVEAT if first["target"] == "tc" else NUMBER_CAVEAT) + " " + THEN
+            elif skipped:
+                s0 = skipped[0]
+                text = (f"The car {verb} {where}. The usual change is {_lower_first(s0['text'])}, but {s0['blocked']}, "
+                        f"and this car's setup shows nothing else Debrief knows how to change for this.")
             else:
                 lab = TARGETS[opts[0][0]][2].lower() if opts else "balance"
                 text = (f"The car {verb} {where}. The usual fix is the {lab}, but this car's setup doesn't show one "
                         f"to change.")
             out.append({"finding": f["text"], "corner": _names(same), "phase": f["phase"], "label": f["label"],
-                        "change": first, "alternative": alt, "why": WHY[first["target"]] if first else None,
+                        "change": first, "alternative": alt,
+                        "why": WHY_WAY.get((first["target"], first["way"])) if first else None,
                         "confidence": conf, "text": text, "then": THEN, "_n": len(same)})
-        out.sort(key=lambda i: (i["confidence"] != "worth a try", i["change"] is None or i["change"]["to"] is None,
-                                -i["_n"]))
+        out.sort(key=lambda i: (i["change"] is None, i["confidence"] != "worth a try", -i["_n"]))
         for k, i in enumerate(out):
             i.pop("_n")
             i["first"] = k == 0

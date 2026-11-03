@@ -51,7 +51,16 @@ LAT_G = 1.25             # lateral g at the slowest point
 SWEEPERS = [(500.0, 900.0, -1), (1300.0, 1300.0, 1), (1720.0, 800.0, -1), (2200.0, 1100.0, 1)]   # (middle, radius, dir)
 
 
-def _profiles(d):
+# multi-speed laps: the sweepers driven at different speeds (lifting or in traffic), so curvature and lateral g
+# say different things in the gentle bends and K can be learned apart from G
+SWEEP_KMH = (125.0, 150.0, 170.0, 187.0)
+# a chicane after T2 taken at 24 m/s: a left, a quick flick of the wheel, then a right. As on his real laps (Zolder
+# T5), the wheel leads the car through the flick: it crosses zero about 0.2 s before the car's rotation does
+CHICANE = (900.0, 50.0, 1 / 45.0, 24.0)                                  # middle, half length, curvature, speed
+CHICANE_LEAD_S = 0.2
+
+
+def _profiles(d, multi=False):
     v = np.full_like(d, VMAX)
     kap = np.zeros_like(d)
     brake = np.zeros_like(d)
@@ -69,28 +78,60 @@ def _profiles(d):
         brake[(rel >= -25) & (rel < -12)] = 30.0
         thr[bz | ((rel > -12) & (rel < 8))] = 0.0
         thr[(rel >= 8) & (rel < 120)] = np.minimum(thr[(rel >= 8) & (rel < 120)], 30 + (rel[(rel >= 8) & (rel < 120)] - 8))
-    for M, R, s in SWEEPERS:
+    for k, (M, R, s) in enumerate(SWEEPERS):
         kap += s * np.clip(1 - np.abs(d - M) / 110.0, 0, 1) ** 0.5 / R
+        if multi:                                     # eased down to the sweeper's speed and back up
+            vs = SWEEP_KMH[k] / 3.6
+            w = np.clip(1 - (np.abs(d - M) - 110.0) / 80.0, 0, 1)
+            v = np.minimum(v, VMAX - (VMAX - vs) * w)
     v = np.maximum(v, 5.0)
     return v, kap, brake, thr
 
 
 D = np.arange(0.0, L, 0.25)
 V0, KAP0, BRK0, THR0 = _profiles(D)
+V0M, _K, _B, _T = _profiles(D, multi=True)
+_cd = D - CHICANE[0]
+KAPC = CHICANE[2] * np.clip((CHICANE[1] - np.abs(_cd)) / 15.0, 0, 1) * -np.tanh(_cd / 1.5)
+VCH = np.sqrt(CHICANE[3] ** 2 + 2 * 6.0 * np.clip(np.abs(_cd) - CHICANE[1], 0, None))
 
 
-def make_lap(rng, extra=None, scale=1.0, lap_noise=0.5, corner_noise=1.5, white=2.0, countersteer=False, kerb=False):
-    """One lap as balance.load_laps gives it. extra(d, kap, ay) -> steering degrees added (turn direction sign)."""
-    v_d = V0 * scale * (1 + 0.01 * rng.standard_normal())
+def first_order(x, tau):
+    """x as a real car's yaw follows the wheel: a first-order lag of tau seconds."""
+    if not tau:
+        return np.asarray(x, float)
+    a = 1.0 / (1.0 + tau * RATE)
+    y = np.empty(len(x))
+    y[0] = x[0]
+    for i in range(1, len(x)):
+        y[i] = y[i - 1] + a * (x[i] - y[i - 1])
+    return y
+
+
+def make_lap(rng, extra=None, scale=1.0, lap_noise=0.5, corner_noise=1.5, white=2.0, countersteer=False, kerb=False,
+             lag=0.0, multi=False, progressive=0.0, chicane=False):
+    """One lap as balance.load_laps gives it. extra(d, kap, ay) -> steering degrees added (turn direction sign).
+    lag: the yaw and sideways g follow the steering with a first-order lag of this many seconds (real cars: about
+    0.07 s); multi: sweepers at different speeds; progressive: steering quickens by up to this share at the
+    tightest corners (a geometry effect, not a slide); chicane: a quick left-right flick after T2."""
+    v_d = (V0M if multi else V0) * scale * (1 + 0.01 * rng.standard_normal())
+    if chicane:
+        v_d = np.minimum(v_d, VCH * scale)
     t_d = np.concatenate([[0.0], np.cumsum(np.diff(D) / v_d[:-1])])
     T = float(t_d[-1] + 0.25 / v_d[-1])
     t = np.arange(0.0, T, 1.0 / RATE)
     d = np.interp(t, t_d, D)
     v = np.interp(d, D, v_d)
-    kap = np.interp(d, D, KAP0)
+    kap = np.interp(d, D, KAP0 + (KAPC if chicane else 0.0))
     ay = v ** 2 * kap
     r = v * kap
     sw = G_TRUE * kap + K_TRUE * ay / 9.81
+    if chicane:                                    # the wheel leads the car through the flick
+        ahead = np.interp(d + v * CHICANE_LEAD_S, D, KAPC) - np.interp(d, D, KAPC)
+        sw = sw + G_TRUE * ahead + K_TRUE * v ** 2 * ahead / 9.81
+    if progressive:
+        sw = sw + G_TRUE * kap * np.clip(np.abs(kap) / 0.03, 0, 1) * progressive
+    r, ay = first_order(r, lag), first_order(ay, lag)
     n = len(t)
     # noise: white, a slow wander over the lap, and an offset per corner (all symmetric)
     wander = np.cumsum(rng.standard_normal(n))
@@ -149,9 +190,9 @@ T5 = CORNERS[4][0]
 def push_t3_rot_t5(d, kap, ay):
     out = np.zeros_like(d)
     m = np.abs(d - T3) < 18
-    out[m] += np.sign(kap[m]) * 12.0                       # 12 degrees more steering mid-corner at T3
+    out[m] += np.sign(kap[m]) * 16.0                       # 16 degrees more steering mid-corner at T3
     m = (d > T5 - 70) & (d < T5 - 18)
-    out[m] -= np.sign(kap[m]) * 9.0                        # 9 degrees less on the way into T5
+    out[m] -= np.sign(kap[m]) * 14.0                       # 14 degrees less on the way into T5
     return out
 
 
@@ -168,11 +209,35 @@ G = rep["car_fit"]["G"]
 check(abs(G - G_TRUE) / G_TRUE < 0.08, f"car's steering learned from the laps ({G} vs {G_TRUE})")
 check(rep["car_fit"]["ratio_estimate"] is not None, "with a sourced wheelbase, a steering ratio is estimated")
 check("pushes in the middle of slow corners (T3)" in rep["summary"], f"summary names it: {rep['summary']}")
-check("rotates on the way into slow corners (T5)" in rep["summary"], "summary names the rotation")
+check("rotates more than usual on the way into slow corners (T5)" in rep["summary"], "summary names the rotation")
+# the way in is compared with his typical entry: a rotation added to every corner entry is not a finding
+check(rep["entry_note"] and "typical entry" in rep["entry_note"], f"entry note: {rep['entry_note']}")
+
+
+def rot_all_entries(d, kap, ay):
+    out = np.zeros_like(d)
+    for A, _v, _s in CORNERS:
+        m = (d > A - 70) & (d < A - 18)
+        out[m] -= np.sign(kap[m]) * 14.0
+    return out
+
+
+repe = bl.analyze_laps(session(1, n_laps=10, extra=rot_all_entries), info=INFO)
+check(not [x for x in repe["findings"] if x["phase"] == "entry"],
+      f"the same rotation on every entry: no entry finding ({[(x['corner'], x['label']) for x in repe['findings']]})")
+check(repe["entry_typical"] and repe["entry_typical"]["median_deg"] < -10,
+      f"... and the typical entry carries it ({repe['entry_typical']})")
+check(not [i for i in bl.setup_ideas(repe, fi.SETUP_GT4) if i["phase"] == "entry"], "... so no entry setup idea")
+cell5 = cell(rep, "T5", "entry")
+check("more than on your other corner entries" in cell5["text"] and "typical entry" in cell5["text"], cell5["text"])
 rep20 = bl.analyze_laps(session(11, n_laps=20, extra=push_t3_rot_t5), info=INFO)
 check(any(x["label"] == "neutral" for x in rep20["cells"]),
       f"with 20 laps some places are positively neutral ({sum(x['label'] == 'neutral' for x in rep20['cells'])})")
-check(any(x["label"] == "unclear" for x in rep["cells"]), "with 10 laps the fitting margin leaves places not clear yet")
+repn = bl.analyze_laps(session(1, n_laps=8, extra=push_t3_rot_t5, lap_noise=3.0, corner_noise=4.0), info=INFO)
+check(any(x["label"] == "unclear" for x in repn["cells"]), "8 noisy laps: some places are not clear yet")
+check(all(x["ci_deg"][0] - x["fit_margin_deg"] > -x["practical_deg"] - 0.11 and
+          x["ci_deg"][1] + x["fit_margin_deg"] < x["practical_deg"] + 0.11 for x in rep["cells"] + repn["cells"]
+          if x["label"] == "neutral"), "neutral only when the interval and fitting margin sit inside the practical size")
 no_long_dash(rep, "report")
 
 # ---------------------------------------------------------------- 2. pure noise
@@ -209,6 +274,39 @@ for k in range(N2):
 rate2 = fp / N2
 print(f"     whole map on noise sessions: {fp}/{N2} with any false push/rotate = {rate2:.1%}")
 check(rate2 <= 0.05, f"whole balance map: false-positive rate {rate2:.1%} (target 5%)")
+# (b2) the same with what real cars do and the simple model leaves out: the yaw follows the wheel a few hundredths
+# of a second later (0.04 and 0.07 s; his McLaren files measure 0.07 to 0.08 s), the gentle bends at several
+# speeds, and steering that quickens by 10 % in the tightest corners (geometry, not a slide)
+for name, kw in (("yaw lag 0.04 s", {"lag": 0.04}), ("yaw lag 0.07 s", {"lag": 0.07}),
+                 ("bends at several speeds, 10 % progressive steering", {"multi": True, "progressive": 0.10}),
+                 ("all three, lag 0.07 s", {"lag": 0.07, "multi": True, "progressive": 0.10})):
+    fp, Gs = 0, []
+    for k in range(N2):
+        noise = {"lap_noise": 3.0, "corner_noise": 4.0} if k % 2 == 0 else {}
+        r = bl.analyze_laps(session(300 + k, n_laps=int(6 + k % 6), **noise, **kw), info=INFO)
+        fp += int(bool(r["findings"]))
+        if r["car_fit"]:
+            Gs.append(r["car_fit"]["G"])
+    rr = fp / N2
+    print(f"     {name}: {fp}/{N2} sessions with any false push/rotate = {rr:.1%}; learned G median "
+          f"{np.median(Gs):.0f} (true {G_TRUE:.0f})")
+    check(rr <= 0.05, f"{name}: false-positive rate {rr:.1%} (target 5%)")
+    check(abs(np.median(Gs) - G_TRUE) / G_TRUE < 0.10, f"{name}: the car's steering doesn't collapse "
+          f"({np.median(Gs):.0f} vs {G_TRUE:.0f})")
+# the lag is measured: 0 for in-phase laps, about 0.07 s for a 0.07 s lag
+lg = bl._lag_compensate([bl._prep(x, L) for x in session(7, n_laps=3, lag=0.07)])[1]
+check(0.04 <= list(lg.values())[0] <= 0.10, f"a 0.07 s yaw lag is measured ({lg})")
+lg0 = bl._lag_compensate([bl._prep(x, L) for x in session(7, n_laps=3)])[1]
+check(list(lg0.values())[0] <= 0.02, f"no lag measured on in-phase laps ({lg0})")
+# K is only learned when the gentle bends span speeds; one speed: K = 0, and said so
+rm = bl.analyze_laps(session(8, n_laps=8, multi=True), info=INFO)
+check(rm["car_fit"]["k_learned"] and rm["car_fit"]["speed_spread"] >= bl.FIT_SPEED_MIN,
+      f"bends at several speeds: K learned (spread {rm['car_fit']['speed_spread']})")
+P1 = [bl._prep(x, L) for x in session(8, n_laps=8)]
+for p in P1:
+    p["v"] = np.full(len(p["v"]), 45.0)               # every gentle bend at one speed
+f1 = bl.fit_car(P1, boot=False)
+check(f1 is not None and not f1["k_learned"] and f1["K"] == 0.0, f"one speed: K left at 0 ({f1 and f1['speed_spread']})")
 # (c) shuffled real-shaped signal: the T3 push, but with each lap's sign flipped at random -> no claim allowed
 rngs = np.random.default_rng(77)
 fp = 0
@@ -234,6 +332,31 @@ check(cs.get("T2", {}).get("phases", {}).get("exit", 0) >= 1, "countersteer plac
 check(not [k for k in cs if k != "T2"], "no countersteer anywhere else")
 check("countersteer" in repc["summary"] and "T2" in repc["summary"], "summary mentions it")
 check(not bl.analyze_laps(session(2, n_laps=8), info=INFO)["countersteer"]["events"], "noise: no countersteer")
+# a quick left-right flick with a realistic yaw lag (0.07 s, as on his real laps): the wheel crosses zero before the
+# car's rotation does, which the old check took for a catch. Must not count.
+for tau in (0.04, 0.07, 0.10):
+    rch = bl.analyze_laps(session(4, n_laps=8, chicane=True, lag=tau), info=INFO)
+    check(not rch["countersteer"]["events"], f"chicane with yaw lag {tau} s: no countersteer "
+          f"({rch['countersteer']['events'][:2]})")
+# the old rule (5 degrees against 0.15 rad/s of yaw for 0.2 s, no lag) counted the chicane on these laps
+Pc = [bl._prep(x, L) for x in session(4, n_laps=8, chicane=True, lag=0.07)]
+raw = 0
+for p in Pc:
+    bad = p["ok"] & (np.abs(p["r"]) >= 0.15) & (np.abs(p["sw"]) >= 5) & (p["sw"] * p["r"] < 0)
+    e = np.diff(np.concatenate([[0], bad.astype(int), [0]]))
+    raw += int(any((b - a) >= 0.2 * RATE for a, b in zip(np.nonzero(e == 1)[0], np.nonzero(e == -1)[0])))
+check(raw >= 6, f"(the old rule saw a catch at the chicane on {raw} of 8 laps)")
+# with the yaw shifted by only the car's own 0.07 s lag (on these featureless synthetic laps the chicane pulls the
+# measured lag up; on his real files it measures 0.07 to 0.08 s with Zolder's chicane in), what is left of the
+# mismatch is too short and the rotation is falling through zero: still not a catch
+ev = bl._countersteer([bl._apply_lag(p, int(round(0.07 * RATE))) for p in Pc], [], [{}] * len(Pc), G_TRUE, L, "T")
+check(not ev, f"chicane, yaw shifted by the true 0.07 s lag only: no countersteer ({ev[:2]})")
+# a real catch on lagged laps (opposite lock held while the car keeps rotating): counted
+rcc = bl.analyze_laps(session(4, n_laps=8, chicane=True, lag=0.07, countersteer=True), info=INFO)
+cs = rcc["countersteer"]["by_corner"]
+check("T2" in cs and cs["T2"]["laps"] == 8 and len(cs) == 1, f"a real catch with yaw lag: counted at T2 only ({cs})")
+ev = rcc["countersteer"]["events"][0]
+check(ev["duration_s"] >= bl.CS_MIN_S and ev["peak_deg"] >= bl.CS_PEAK_DEG, f"its length and lock are kept ({ev})")
 
 # ---------------------------------------------------------------- 5. kerb strikes are ignored
 repk = bl.analyze_laps(session(5, n_laps=8, kerb=True), info=INFO)
@@ -257,12 +380,55 @@ check(mid is not None and mid["change"]["text"].startswith("Front anti-roll bar 
       f"mid-corner push in a slow corner: front bar one step softer ({mid and mid['change']['text']})")
 check(mid is not None and "Setup Lab" in mid["text"] and "Change only this" in mid["text"], "one change, then compare")
 ent = next((i for i in ideas if i["phase"] == "entry"), None)
-check(ent is not None and ent["change"] is not None and "Rear anti-roll bar" in ent["change"]["text"],
-      f"entry rotation without a brake-bias setting: rear bar ({ent and ent['change']['text']})")
+# his McLaren: no brake bias in the setup and the rear bar at 1 (its lowest), so the usual "rear bar softer" can't be
+# made: it falls through to the other axle, and says why
+check(ent is not None and ent["change"] is not None and ent["change"]["text"].startswith("Front anti-roll bar 2 → 3"),
+      f"entry rotation, rear bar already at 1: front bar one step stiffer ({ent and ent['change']['text']})")
+check(ent is not None and "The usual change, rear anti-roll bar one step softer, can't be made here (it is set to 1, "
+      "already at its lowest)" in ent["text"] and "Try one change: Front anti-roll bar 2 → 3" in ent["text"]
+      and "may already be" not in ent["text"], f"says the usual change can't be made ({ent and ent['text'][:160]})")
+check(all(i["change"] is None or i["change"]["to"] is not None for i in ideas), "no idea offers a change that can't be made")
 s2 = json.loads(json.dumps(setup))
 s2["Chassis"]["FrontBrakes"]["BrakePressureBias"] = "58.7%"
 ent2 = next(i for i in bl.setup_ideas(rep, s2) if i["phase"] == "entry")
-check(ent2["change"]["text"].startswith("Brake bias 58.7 → 59.2"), f"with brake bias: forward a little ({ent2['change']['text']})")
+check(ent2["change"]["text"].startswith("Brake bias 58.7% → 59.2%"), f"with brake bias: forward a little ({ent2['change']['text']})")
+# nothing that can be changed: said plainly, no "Try one change", and ranked after an idea that can be made
+s4 = json.loads(json.dumps(setup))
+s4["Chassis"]["FrontBrakes"]["ArbSetting"] = "1"
+s4["Chassis"]["Rear"]["ArbBlades"] = "1"
+I4 = bl.setup_ideas(rep, s4)
+e4 = next(i for i in I4 if i["phase"] == "entry")
+# (entry rotate: rear bar can't go softer; front bar 1 -> 2 stiffer is still possible)
+check(e4["change"]["text"].startswith("Front anti-roll bar 1 → 2"), f"rear bar at its lowest: front bar stiffer ({e4['change']['text']})")
+
+
+def F(phase, label, conf="clear", corner="T9", cls="slow"):
+    return {"corner": corner, "corner_index": 8, "phase": phase, "label": label, "class": cls, "confidence": conf,
+            "text": f"{corner} {phase}", "p_family": 0.001, "median_deg": 12.0}
+
+
+ex = bl.setup_ideas({"findings": [F("exit", "rotate")]}, {"Chassis": {"FrontBrakes": {"ArbSetting": "3"},
+                                                                      "Rear": {"ArbBlades": "1"}}})[0]
+check(ex["change"] is not None and ex["change"]["text"].startswith("Front anti-roll bar 3 → 4"),
+      f"exit rotation, rear bar at its lowest, no traction control: front bar stiffer ({ex['change'] and ex['change']['text']})")
+# ranking: a "worth a try" idea that can't be made goes after "a guess" that can
+I8 = bl.setup_ideas({"findings": [F("exit", "rotate", "clear", "T2"), F("mid", "push", "likely", "T3")]},
+                    {"Chassis": {"FrontBrakes": {"ArbSetting": "Locked"}, "Rear": {"ArbBlades": "1"}}})
+check(len(I8) == 2 and I8[0]["phase"] == "mid" and I8[0]["change"] is not None and I8[1]["change"] is None,
+      f"an idea that can be made comes first, whatever its confidence "
+      f"({[(i['phase'], i['confidence'], i['change'] and i['change']['text']) for i in I8]})")
+I9 = I8[1]
+check("already at its lowest" in I9["text"] and "Try one change" not in I9["text"],
+      f"nothing can be changed: says so plainly ({I9['text']})")
+# Ford-style values: a letter in front is kept; traction control's own name in brackets isn't doubled up
+o = bl._option({"Chassis.Front.ArbSetting": "P2"}, "front_arb", 1)
+check(o["from"] == "P2" and o["to"] == "P3" and o["text"] == "Front anti-roll bar P2 → P3 (one step stiffer)", o["text"])
+o = bl._option({"Chassis.InCarDials.Tc1_Long": "3 (TC1)"}, "tc", 1)
+check(o["text"] == "Traction control TC1 3 → 4 (one step more)" and ") (" not in o["text"], o["text"])
+I10 = bl.setup_ideas({"findings": [F("exit", "rotate")]},
+                     {"Chassis": {"Rear": {"ArbBlades": "1"}, "InCarDials": {"Tc1_Long": "3 (TC1)"}}})
+check(I10 and "Traction control TC1 3 → 4" in I10[0]["text"] and "other way round" in I10[0]["text"],
+      f"a traction control idea says the number may run the other way on this car ({I10 and I10[0]['text']})")
 fixed = bl.setup_ideas(rep, setup, series_setup="fixed")
 check(len(fixed) == 1 and "fixed setup" in fixed[0]["text"] and fixed[0]["change"] is None, "fixed series: no changes")
 s3 = json.loads(json.dumps(setup))

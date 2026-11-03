@@ -38,12 +38,12 @@ T5 = NS["CORNERS"][4][0]
 
 
 def push_t3_rot_t5(d, kap, ay):
-    """12 degrees more steering in the middle of T3 (pushes), 9 less on the way into T5 (rotates)."""
+    """16 degrees more steering in the middle of T3 (pushes), 14 less on the way into T5 (rotates)."""
     out = np.zeros_like(d)
     m = np.abs(d - T3) < 18
-    out[m] += np.sign(kap[m]) * 12.0
+    out[m] += np.sign(kap[m]) * 16.0
     m = (d > T5 - 70) & (d < T5 - 18)
-    out[m] -= np.sign(kap[m]) * 9.0
+    out[m] -= np.sign(kap[m]) * 14.0
     return out
 
 

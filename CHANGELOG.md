@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.17.1
+
+- **Five more coach voices.** Besides George (British male, still the default), the Coach page's voice list now has **Michael (American male)**, **Fenrir (American male)**, **Heart (American female)**, **Kumo (Japanese accent, male)** and **Omega (Indian accent, male)**. Pick one and press **Preview** to hear it. Each covers every phrase the coach can say, at the same loudness as George. Like George they were made once with Kokoro-82M (Apache-2.0) and ship as sound clips; nothing goes online.
+- Size: each voice is about 7.5 to 8 MB of sound clips, so the six voices take about 46 MB in Debrief (George alone was about 8 MB); the download is that much bigger.
+- Not proven yet: the new voices have only been checked by measurement (coverage, loudness, clipping, joins), not heard on your PC in a car.
+
 ## 2.17.0
 
 - **Coach 2.0: a natural voice.** The live coach now speaks with recorded neural voices instead of Windows speech. It comes with one voice, **George (British male)**, tuned for the coach. George covers every phrase the coach can say (785 phrases, corners T1 to T25), at the same loudness, and the coach times each cue with the clip's exact length, so it finishes before your brake point. Windows speech is only used for a phrase a voice can't say (the "Good, 0" to "Good, 19" plan words). The voices were made with Kokoro-82M (Apache-2.0) and ship as sound clips (about 8 MB); Kokoro itself is not part of Debrief and nothing goes online. More voices (Michael, Fenrir, Heart, Kumo, Omega) are coming later; you can already add your own voice pack.

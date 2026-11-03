@@ -1702,7 +1702,7 @@ HELP.words.push(['Voice pack','The recorded phrases the coach says. Four come wi
   ['Fixed corner','A focus corner where you made a mistake and then drove it well twice in a row. The coach stops talking about it until it slips twice in three laps.']);
 HELP.keys.push(['Ctrl+Shift+R','Say the coach\'s last cue again'],['Ctrl+Shift+N','Mute the coach for 1 minute']);
 HELP.credits=[['Coach voices','Made with Kokoro-82M by hexgrad, Apache-2.0 licence. The voices were generated once and come with Debrief as sound clips; Kokoro itself is not part of Debrief.'],
-  ['Voice','George (bm_george) is a Kokoro voice.'],
+  ['Voices','George, Michael, Fenrir, Heart, Kumo and Omega are Kokoro voices.'],
   ['Windows speech','Used only for the rare phrase a voice pack can\'t say.'],
   ['Fonts and the rest','See the README for every part Debrief uses and its licence.']];
 

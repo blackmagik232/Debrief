@@ -571,8 +571,8 @@ def coach_status():
 
 s = srv()
 code, j = call("api/coach/voices")
-check(code == 200 and j["ok"] and [p["id"] for p in j["packs"]][0] == "engineer" and len(j["packs"]) == 1,
-      f"voices: George is the one bundled voice ({[p['id'] for p in j.get('packs', [])]})")
+check(code == 200 and j["ok"] and [p["id"] for p in j["packs"]][0] == "engineer" and len(j["packs"]) == 6,
+      f"voices: the six bundled voices, George first ({[p['id'] for p in j.get('packs', [])]})")
 check(j["devices"] == ["Speakers", "Headset"] and j["settings"]["voice_pack"] == "engineer" and j["settings"]["device"] == "",
       "voices: the device list and the defaults")
 code, _ = call("api/coach/voices", header=False)

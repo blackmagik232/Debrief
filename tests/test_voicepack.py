@@ -187,7 +187,8 @@ check(np.abs(hp[RATE // 4:-RATE // 4]).max() < 0.1, "high-pass removes 30 Hz rum
 print("-- bundled packs")
 rows = vp.list_packs(None)
 check(bool(rows) and rows[0]["id"] == vp.DEFAULT_PACK and rows[0]["default"], "the default pack (engineer) is first")
-want = {"engineer": "bm_george"}
+want = {"engineer": "bm_george", "michael": "am_michael", "fenrir": "am_fenrir", "heart": "af_heart",
+        "kumo": "jm_kumo", "omega": "hm_omega"}
 have = {r["id"]: r for r in rows}
 for pid, voice in want.items():
     r = have.get(pid)

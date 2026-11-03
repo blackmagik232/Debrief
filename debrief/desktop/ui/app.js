@@ -1549,7 +1549,8 @@ function renderCoach(st){co.st=st;const run=!!st.running,state=CO_STATE[st.state
   const L=st.last_lap,ll=$('coLast');ll.hidden=!(L&&ok(L.time));
   if(L&&ok(L.time))ll.textContent='Last lap '+fmtT(L.time)+(ok(L.delta)?', '+Math.abs(L.delta).toFixed(2)+' s '+(L.delta>0?'down on':'up on')+' your reference':'')+(L.clean===false?' (not clean)':'')+'.';
   const W=st.weak||[],wu=$('coWeak');wu.replaceChildren(...W.map(w=>{const li=h('li');li.append(h('b',null,coCornerLabel(w)),h('span','sub2',ok(w.lost_s)?(w.source==='corner coach'?'your best laps were about '+w.lost_s.toFixed(2)+' s quicker here':'about '+w.lost_s.toFixed(2)+' s a lap to find'):'a corner that keeps costing you'));
-    if(w.phrase)li.append(h('span','sub2','After it, the coach says: "'+w.phrase+'"'));return li}));
+    if(w.plan_owns)li.append(h('span','sub2','This session the coach watches your one thing here instead.'));
+    else if(w.phrase)li.append(h('span','sub2','After it, the coach says: "'+w.phrase+'"'));return li}));
   $('coWeakNote').textContent=st.weak_note||(W.length?'From your race reviews of this car at this track. One focus at a time.':R?'From your race reviews of this car at this track.':'Shows once the coach knows the car and track.');
   const sp=(st.spoken||[]).slice().reverse(),su=$('coSpoken');
   su.replaceChildren(...(sp.length?sp.map(c=>{const li=h('li');li.append(h('span','num cot',fmtClock(c.t)),h('span',null,c.text));return li}):[h('li','note','Nothing said yet.')]));

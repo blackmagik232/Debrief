@@ -153,7 +153,7 @@ def _detail(path) -> dict:
         with ibt.open_ibt(path) as ib:
             return _detail_of(ib)
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": str(e)[:200]}
+        return {"ok": False, "error": str(e)[:200], "os_error": isinstance(e, OSError)}
 
 
 def _detail_of(ib) -> dict:
@@ -328,6 +328,8 @@ def _read_file(path: Path) -> dict:
         else:
             rec["detail"] = None
             rec["detail_error"] = det.get("error")
+            if det.get("os_error"):
+                rec["os_error"] = True
     return rec
 
 
@@ -375,12 +377,13 @@ def index(folder, cache_path=None, progress=None, stop=None) -> dict:
             try:
                 rec = _read_file(p)
             except Exception as e:  # noqa: BLE001
-                rec = {"file": p.name, "ok": False, "error": str(e)[:200]}
+                rec = {"file": p.name, "ok": False, "error": str(e)[:200], "os_error": isinstance(e, OSError)}
             rec["size"] = st.st_size
             rec["mtime"] = st.st_mtime_ns
             rec["when"], rec["sort"] = _when(p.name, rec.get("start"))
             out["read"] += 1
-        new_cache[key] = rec
+        if not rec.get("os_error"):       # a lock or a file still being written is not remembered: read it next time
+            new_cache[key] = rec
         if rec.get("ok"):
             out["files"].append(rec)
         else:
@@ -1507,7 +1510,8 @@ MAX_ZIP = 500 * 1024 * 1024
 MAX_MEMBERS = 500
 _SCRIPT = re.compile(rb"powershell|cmd\.exe|cmd /c|wscript|cscript|vbscript|createobject|invoke-expression|"
                      rb"frombase64string|rundll32|regsvr32|mshta|<script|javascript:|@echo off|sub autoopen|"
-                     rb"document_open|shell\(|start-process|#!/", re.I)
+                     rb"document_open|shell\(|start-process", re.I)
+# "#!" starts a script only at the very first byte; anywhere else in an encrypted .sto it is just two random bytes
 _BAD_EXT = {".exe", ".dll", ".scr", ".com", ".bat", ".cmd", ".ps1", ".psm1", ".vbs", ".vbe", ".js", ".jse", ".wsf",
             ".wsh", ".hta", ".msi", ".msp", ".lnk", ".jar", ".reg", ".sys", ".cpl", ".pif", ".docm", ".xlsm", ".pptm",
             ".dotm", ".xlam", ".iso", ".img", ".vhd", ".appx", ".msix", ".py", ".sh"}
@@ -1524,6 +1528,8 @@ def _scan_bytes(head: bytes, what: str) -> list:
     if b"This program cannot be run in DOS mode" in head or b"This program must be run under Win32" in head:
         if not probs:
             probs.append(f"{what} has a Windows program hidden inside it")
+    if head[:2] == b"#!":
+        probs.append(f"{what} is a script (it starts with '#!')")
     m = _SCRIPT.search(head)
     if m:
         probs.append(f"{what} contains script or command text ('{m.group().decode('latin-1', 'replace')}')")

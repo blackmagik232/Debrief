@@ -98,6 +98,33 @@ check(sl.index(TMP / "nowhere")["missing_folder"], "a missing folder is reported
 ibt.summary = real_summary
 check(idx["files"][0]["detail"]["setup_name"] == "baseline.sto", "setup name read from DriverInfo")
 
+# a file that can't be opened just now (iRacing writing it, a lock) is not remembered as bad: read again next time
+d = folder("locked")
+mk(d, "2026-11-01 18-00-00", PACE_A)
+lp = mk(d, "2026-11-01 19-00-00", PACE_A)
+real_open = ibt.open_ibt
+
+
+def locked(path):
+    if Path(path).name == lp.name:
+        raise PermissionError(13, "The process cannot access the file because it is being used by another process")
+    return real_open(path)
+
+
+ibt.open_ibt = locked
+lc_cache = TMP / "locked.json"
+i1 = sl.index(d, cache_path=lc_cache)
+ibt.open_ibt = real_open
+check(len(i1["files"]) == 1 and len(i1["bad"]) == 1 and not any(lp.name in k for k in json.loads(lc_cache.read_text())["files"]),
+      "a locked file is listed as unreadable but not cached")
+i2 = sl.index(d, cache_path=lc_cache)
+check(len(i2["files"]) == 2 and i2["read"] == 1 and i2["cached"] == 1, "...and is read on the next scan")
+bad_cache = TMP / "bad.json"
+d = folder("damaged")
+(d / "x 2026-11-01 18-00-00.ibt").write_bytes(b"\0" * 400)
+sl.index(d, cache_path=bad_cache)
+check(len(json.loads(bad_cache.read_text())["files"]) == 1, "a damaged file is cached (it won't get better)")
+
 # ---------------------------------------------------------------- fingerprint
 base = copy.deepcopy(fi.SETUP_GT4)
 moved = copy.deepcopy(base)
@@ -489,6 +516,13 @@ check(not sl.check_setup_file(sd / "hidden.sto")["ok"], "an embedded program is 
 check(not sl.check_setup_file(sd / "empty.sto")["ok"], "an empty .sto is refused")
 (sd / "big.sto").write_bytes(b"\x01" * (sl.MAX_STO + 10))
 check(not sl.check_setup_file(sd / "big.sto")["ok"], "an oversized .sto is refused")
+noise = bytearray(rnd.getrandbits(8) for _ in range(8192))
+noise[3000:3003] = b"#!/"
+(sd / "shebang_inside.sto").write_bytes(bytes(noise))
+check(sl.check_setup_file(sd / "shebang_inside.sto")["ok"], "'#!/' in the middle of encrypted bytes is not a script")
+(sd / "shebang.sto").write_bytes(b"#!/bin/sh\nrm -rf ~\n")
+r = sl.check_setup_file(sd / "shebang.sto")
+check(not r["ok"] and any("starts with '#!'" in x for x in r["problems"]), "a file starting with #! is a script")
 (sd / "setup.exe.sto").write_bytes(clean.read_bytes())
 check(not sl.check_setup_file(sd / "setup.exe.sto")["ok"], "a double extension is refused")
 (sd / "x.exe").write_bytes(b"MZ")

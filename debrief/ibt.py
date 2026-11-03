@@ -74,7 +74,10 @@ class Ibt:
         return name in self.vars
 
     def col(self, name: str) -> np.ndarray:
-        """One channel as a numpy array, one value per sample (shape (n, count) for array channels)."""
+        """One channel as a numpy array, one value per sample (shape (n, count) for array channels).
+        Raises IbtError once the file is closed (the map is gone: reading it would give garbage, not an error)."""
+        if self._mm is None:
+            raise IbtError("file closed")
         if name in self._cache:
             return self._cache[name]
         v = self.vars.get(name)
@@ -359,7 +362,8 @@ def summary(path) -> dict:
                     "laps": len(lp), "clean_laps": len(clean), "best": min(clean) if clean else None,
                     "setup": ib.setup, "setup_name": str((ib.session.get("DriverInfo") or {}).get("DriverSetupName") or "")}
     except Exception as e:  # noqa: BLE001
-        return {"file": Path(path).name, "ok": False, "error": str(e)[:200]}
+        # os_error: the file couldn't be opened just now (iRacing still writing it, a lock): try again next scan
+        return {"file": Path(path).name, "ok": False, "error": str(e)[:200], "os_error": isinstance(e, OSError)}
 
 
 # ---------------------------------------------------------------- writing fake files (tests only)

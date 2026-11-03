@@ -61,6 +61,17 @@ except ibt.IbtError:
 check(ibt.summary(bad)["ok"] is False, "summary never raises")
 sm = ibt.summary(p)
 check(sm["ok"] and sm["clean_laps"] == 3 and abs(sm["best"] - 98.9) < 0.01, "summary")
+check(ibt.summary(bad).get("os_error") is False, "a damaged file is not an os_error (it won't get better)")
+check(ibt.summary(TMP / "missing.ibt").get("os_error") is True, "a file that can't be opened is marked os_error (try again)")
+ib = ibt.open_ibt(p)
+ib.col("Speed")
+ib.close()
+for ch in ("Speed", "Lap"):
+    try:
+        ib.col(ch)
+        check(False, f"col({ch}) after close raises")
+    except ibt.IbtError as e:
+        check(str(e) == "file closed", f"col({ch}) after close: IbtError('file closed')")
 
 print("FAILED" if fails else "ALL OK", fails)
 sys.exit(1 if fails else 0)

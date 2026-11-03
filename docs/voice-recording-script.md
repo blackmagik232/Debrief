@@ -236,3 +236,179 @@ Short practice cues. Each one on its own.
 188. Less coasting.
 189. More speed.
 190. New best.
+191. Building your reference.
+
+## Section G (from line 192)
+
+Time in a corner or a sector. Say the turn or sector, a short pause at the comma, then the time.
+
+192. Turn four, a tenth down.
+193. Turn five, two tenths down.
+194. Turn six, three tenths down.
+195. Turn seven, four tenths down.
+196. Turn eight, five tenths down.
+197. Turn nine, six tenths down.
+198. Turn ten, seven tenths down.
+199. Turn eleven, eight tenths down.
+200. Turn twelve, nine tenths down.
+201. Turn thirteen, one second down.
+202. Turn fourteen, one point one seconds down.
+203. Turn fifteen, one point two seconds down.
+204. Turn sixteen, one point three seconds down.
+205. Turn seventeen, one point four seconds down.
+206. Turn eighteen, one point five seconds down.
+207. Turn nineteen, one point six seconds down.
+208. Turn twenty, one point seven seconds down.
+209. Turn twenty-one, one point eight seconds down.
+210. Turn twenty-two, one point nine seconds down.
+211. Turn twenty-three, two seconds down.
+212. Sector one, up two tenths.
+213. Sector two, up three tenths.
+214. Sector three, up four tenths.
+
+## Section H (from line 215)
+
+Lap times. Like reading a stopwatch: a short pause at the comma before the last number.
+
+215. Reference set, one thirty-eight nine.
+216. Forty, oh.
+217. Forty-one, seven.
+218. Forty-two, four.
+219. Forty-three, one.
+220. Forty-four, eight.
+221. Forty-five, five.
+222. Forty-six, two.
+223. Forty-seven, nine.
+224. Forty-eight, six.
+225. Forty-nine, three.
+226. Fifty, oh.
+227. Fifty-one, seven.
+228. Fifty-two, four.
+229. Fifty-three, one.
+230. Fifty-four, eight.
+231. Fifty-five, five.
+232. Fifty-six, two.
+233. Fifty-seven, nine.
+234. Fifty-eight, six.
+235. Fifty-nine, three.
+236. One oh oh, oh.
+237. One oh one, seven.
+238. One oh two, four.
+239. One oh three, one.
+240. One oh four, eight.
+241. One oh five, five.
+242. One oh six, two.
+243. One oh seven, nine.
+244. One oh eight, six.
+245. One oh nine, three.
+246. One ten, oh.
+247. One eleven, seven.
+248. One twelve, four.
+249. One thirteen, one.
+250. One fourteen, eight.
+251. One fifteen, five.
+252. One sixteen, two.
+253. One seventeen, nine.
+254. One eighteen, six.
+255. One nineteen, three.
+256. One twenty, oh.
+257. One twenty-one, seven.
+258. One twenty-two, four.
+259. One twenty-three, one.
+260. One twenty-four, eight.
+261. One twenty-five, five.
+262. One twenty-six, two.
+263. One twenty-seven, nine.
+264. One twenty-eight, six.
+265. One twenty-nine, three.
+266. One thirty, oh.
+267. One thirty-one, seven.
+268. One thirty-two, four.
+269. One thirty-three, one.
+270. One thirty-four, eight.
+271. One thirty-five, five.
+272. One thirty-six, two.
+273. One thirty-seven, nine.
+274. One thirty-eight, six.
+275. One thirty-nine, three.
+276. One forty, oh.
+277. One forty-one, seven.
+278. One forty-two, four.
+279. One forty-three, one.
+280. One forty-four, eight.
+281. One forty-five, five.
+282. One forty-six, two.
+283. One forty-seven, nine.
+284. One forty-eight, six.
+285. One forty-nine, three.
+286. One fifty, oh.
+287. One fifty-one, seven.
+288. One fifty-two, four.
+289. One fifty-three, one.
+290. One fifty-four, eight.
+291. One fifty-five, five.
+292. One fifty-six, two.
+293. One fifty-seven, nine.
+294. One fifty-eight, six.
+295. One fifty-nine, three.
+296. Two oh oh, oh.
+297. Two oh one, seven.
+298. Two oh two, four.
+299. Two oh three, one.
+300. Two oh four, eight.
+301. Two oh five, five.
+302. Two oh six, two.
+303. Two oh seven, nine.
+304. Two oh eight, six.
+305. Two oh nine, three.
+306. Two ten, oh.
+307. Two eleven, seven.
+308. Two twelve, four.
+309. Two thirteen, one.
+310. Two fourteen, eight.
+311. Two fifteen, five.
+312. Two sixteen, two.
+313. Two seventeen, nine.
+314. Two eighteen, six.
+315. Two nineteen, three.
+316. Two twenty, oh.
+317. Two twenty-one, seven.
+318. Two twenty-two, four.
+319. Two twenty-three, one.
+320. Two twenty-four, eight.
+321. Two twenty-five, five.
+322. Two twenty-six, two.
+323. Two twenty-seven, nine.
+324. Two twenty-eight, six.
+325. Two twenty-nine, three.
+326. Two thirty, oh.
+327. Two thirty-one, seven.
+328. Two thirty-two, four.
+329. Two thirty-three, one.
+330. Two thirty-four, eight.
+331. Two thirty-five, five.
+332. Two thirty-six, two.
+333. Two thirty-seven, nine.
+334. Two thirty-eight, six.
+335. Two thirty-nine, three.
+336. Two forty, oh.
+337. Two forty-one, seven.
+338. Two forty-two, four.
+339. Two forty-three, one.
+340. Two forty-four, eight.
+341. Two forty-five, five.
+342. Two forty-six, two.
+343. Two forty-seven, nine.
+344. Two forty-eight, six.
+345. Two forty-nine, three.
+346. Two fifty, oh.
+347. Two fifty-one, seven.
+348. Two fifty-two, four.
+349. Two fifty-three, one.
+350. Two fifty-four, eight.
+351. Two fifty-five, five.
+352. Two fifty-six, two.
+353. Two fifty-seven, nine.
+354. Two fifty-eight, six.
+355. Two fifty-nine, three.
+356. Three oh oh, oh.

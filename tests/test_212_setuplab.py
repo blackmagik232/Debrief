@@ -191,7 +191,7 @@ mk(d, "2026-11-02 19-00-00", PACE_B, setup=setup_b())
 cmp_ = sl.compare(recs_of(d))
 p = cmp_["pairs"][0]
 check(p["verdict"] == "faster" and p["faster"] == "B", f"enough laps + clear gap -> verdict ({p['text']})")
-check("faster than Setup A (baseline.sto) by about 0.5 s a lap" in p["text"], "plain wording")
+check("faster than Setup A (baseline.sto, first driven Nov 1) by about 0.5 s a lap" in p["text"], "plain wording (2.18: setups sharing a file name carry the day)")
 check(p["ci90"] and p["ci90"][0] > 0, f"90% bootstrap interval excludes zero {p['ci90']}")
 check(sl.compare(recs_of(d))["pairs"][0]["ci90"] == p["ci90"], "fixed seed: same laps, same interval")
 sa = cmp_["setups"][0]["pace"]
@@ -211,7 +211,7 @@ check(p["verdict"] == "no clear difference" and "No clear difference yet" in p["
 
 p = sl.compare(recs_of(folder("gate_ok")))["pairs"][0]
 check(p["interleaved"] is False and p["caution"] and "also driven later" in p["text"]
-      and "Go back to Setup A (baseline.sto) for a few laps to be sure." in p["text"],
+      and "Go back to Setup A (baseline.sto, first driven Nov 1) for a few laps to be sure." in p["text"],
       "B driven after A: a 'faster' verdict says part of it may be him getting quicker")
 check(p["ci_level"] == 95 and p["ci_method"] == "laps" and p["ci90"] == p["ci"], "under 10 laps a setup: a 95% interval")
 

@@ -3518,6 +3518,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(_jsonable({
             "ok": True, "folder": str(folder), "folder_ok": folder_ok, "folder_set": bool(str(cfg.get("iracing_folder") or "").strip()),
             "indexed": idx is not None, "files": len(idx["files"]) if idx else 0, "bad": len(idx["bad"]) if idx else 0,
+            "bad_files": [{"file": Path(str(b.get("file") or "")).name, "why": str(b.get("error") or "unreadable")[:160]}
+                          for b in (idx["bad"] if idx else [])[:20]],
             "unread": unread_files(folder, keys) if folder_ok else None, "combos": combos,
             "running": self.server.jobs.kind == "setuplab"}))
 

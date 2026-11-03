@@ -38,7 +38,7 @@ import numpy as np
 from . import ibt, setuplab
 
 BAND_C = 5.0                # track temperature band width (°C)
-MIN_RUN_LAPS = 3            # pace laps a stint needs to count as a run
+MIN_RUN_LAPS = setuplab.HOT_RUN_LAPS  # pace laps a stint needs to count as a run (3; Setup Lab's "Now" uses the same)
 MIN_BAND_RUNS = 2           # runs in a band before anything is said about it
 MIN_GAP_S = 0.10            # s a lap: a smaller gap is never called a difference
 ALPHA = 0.05                # shuffle test level
@@ -264,7 +264,7 @@ def _band_report(rs: list) -> dict:
         out["groups"].append({"cold": cold_text(k), "runs": len(g), "median": round(float(np.mean([r["median"] for r in g])), 3),
                               "hot": hot})
     listing = "; ".join(f"{g['cold']}: {g['runs']} run{'s' if g['runs'] != 1 else ''}, typical lap "
-                        f"{g['median']:.2f} s" for g in out["groups"])
+                        f"{setuplab.lap_text(g['median'])}" for g in out["groups"])
     if len(rs) < MIN_BAND_RUNS:
         out["text"] = (f"At {out['band']} track: only {len(rs)} run so far ({listing or 'no cold pressures recorded'}). "
                        f"Not enough to tell which pressure is quicker.")
@@ -298,15 +298,15 @@ def _band_report(rs: list) -> dict:
                           "runs": len(best), "of": len(usable), "blocks": len(bl), "driven_later": bool(later)}
         out["text"] = (f"At {out['band']} track your fastest runs were on {cold_text(t['best'])}{hot_txt}: about "
                        f"{t['gap']:.1f} s a lap quicker than your other runs ({len(best)} of {len(usable)} runs, "
-                       f"driven back and forth in {len(bl)} goes; a shuffle test across those goes says this is "
-                       f"unlikely to be luck).")
+                       f"driven back and forth in {len(bl)} goes; shuffling which pressure each go was on, again and "
+                       f"again, rarely gives a gap this big, so it is unlikely to be luck).")
         if later:
             out["text"] += (" Those runs were also your latest, so part of it may be you getting quicker: "
                             "go back to the other pressure for a run to be sure.")
     else:
         if t["p_min"] >= ALPHA:
-            why = ("with this few goes no gap could pass the shuffle test: about 4 goes on each pressure, back and "
-                   "forth, are needed")
+            why = ("with this few goes no gap could pass the luck check (shuffling which pressure each go was on): "
+                   "about 4 goes on each pressure, back and forth, are needed")
         elif t["gap"] < MIN_GAP_S:
             why = f"the gap is only {t['gap']:.2f} s"
         else:
@@ -438,7 +438,7 @@ def learn(idx, car_path: str, track_code: str | None = None) -> dict:
             if not any(b["finding"] for b in out["bands"]):
                 lines.append(f"Not enough runs to learn the quickest pressure yet: that needs at least "
                              f"{MIN_BAND_RUNS} runs in the same {BAND_C:.0f} °C band on different cold pressures, "
-                             f"and a gap a shuffle test can't explain.")
+                             f"and a gap too big to be luck (checked by shuffling which pressure each run was on).")
         lines.append(out["prediction_text"])
         out["text"] = lines
         return out

@@ -61,7 +61,7 @@ Public API (JSON-friendly; nothing raises for bad input):
     load_laps(paths)                    -> (laps, info): clean laps as time series
     analyze_laps(laps, info=None, setup=None, series_setup=None) -> report (see analyze_laps)
     analyze_files(paths, series_setup=None) -> report, with setup ideas from the newest file's setup
-    setup_ideas(report, setup, series_setup=None) -> [idea]
+    setup_ideas(report, setup, series_setup=None, last_change=None, dials=None) -> [idea]
     lowpass(x, rate, fc)                -> zero-phase low-pass
     WHEELBASE_M                         -> road-car wheelbases we could source (only used to turn G into a ratio)
 """
@@ -76,7 +76,7 @@ import numpy as np
 
 from . import engine, ibt
 
-VERSION = 1
+VERSION = 2                 # 2 (2.18): info["dials"] (the car's in-car dials, for a fixed-setup series)
 G0 = 9.80665
 KMH = 3.6
 
@@ -268,7 +268,7 @@ def load_laps(src) -> tuple:
     paths = src if isinstance(src, (list, tuple)) else [src]
     laps = []
     info = {"files": [], "skipped": [], "car": None, "car_path": None, "track": None, "track_code": None,
-            "length_m": None, "setups": [], "setup": None, "missing": []}
+            "length_m": None, "setups": [], "setup": None, "missing": [], "dials": []}
     combo, newest = None, -1
     for p in paths:
         name = Path(str(p)).name
@@ -297,6 +297,9 @@ def load_laps(src) -> tuple:
                 shocks = [col[c] for c in ("LFshockVel", "RFshockVel", "LRshockVel", "RRshockVel") if c in col]
                 smax = np.max(np.abs(np.stack(shocks)), axis=0) if shocks else None
                 kerb = kerb_mask(col.get("VertAccel"), smax, rate)
+                for dial, chans in DIAL_CHANNELS.items():
+                    if dial not in info["dials"] and any(ib.has(c) for c in chans):
+                        info["dials"].append(dial)
                 fp = setuplab.fingerprint(ib.setup)
                 if fp and fp not in info["setups"]:
                     info["setups"].append(fp)
@@ -704,7 +707,8 @@ def analyze_laps(laps, info=None, setup=None, series_setup=None, prefix: str = "
         if len(laps) < MIN_LAPS or not L:
             base["laps"] = len(laps)
             base["message"] = (f"{'Only ' + _plural(len(laps), 'clean lap') if laps else 'No clean laps'}"
-                               f" with steering and yaw rate. The balance map needs at least {MIN_LAPS}.")
+                               f" with steering and yaw rate (how fast the car turns). The balance map needs at "
+                               f"least {MIN_LAPS}.")
             base["summary"] = base["message"]
             return base
         P, keep = [], []
@@ -863,7 +867,7 @@ def analyze_laps(laps, info=None, setup=None, series_setup=None, prefix: str = "
             base["notes"].append("These laps were driven on more than one setup, so the map mixes them. Pick one "
                                  "setup's files for a cleaner read.")
         if setup is not None:
-            base["setup_ideas"] = setup_ideas(base, setup, series_setup=series_setup)
+            base["setup_ideas"] = setup_ideas(base, setup, series_setup=series_setup, dials=info.get("dials"))
         return base
     except Exception as e:  # noqa: BLE001
         base["ok"] = False
@@ -1131,71 +1135,231 @@ def _lower_first(t: str) -> str:
     return t[0].lower() + t[1:] if t else t
 
 
-def setup_ideas(report: dict, setup: dict | None, series_setup=None) -> list:
+def _cap(t: str) -> str:
+    return t[:1].upper() + t[1:] if t else t
+
+
+def _short(o: dict) -> str:
+    """'Front anti-roll bar 2 → 3 (one step stiffer)' -> 'Front anti-roll bar 2 → 3' (for inside brackets)."""
+    t = str(o.get("text") or "")
+    return t.rsplit(" (", 1)[0] if t.endswith(")") and " → " in t else t
+
+
+# ---- in-car dials and driving advice for a fixed-setup series (2.18)
+# iRacing names the live in-car adjustments dc...; a car without the dial has no such channel.
+DIAL_CHANNELS = {"bias": ("dcBrakeBias",), "tc": ("dcTractionControl", "dcTractionControl1"), "abs": ("dcABS",)}
+# where it is sound to answer a balance finding with an in-car dial: brake bias for the way in, traction control for
+# a rear that slides as the throttle goes on. Mid-corner balance and a push on the way out have no sound dial answer.
+FIXED_DIAL = {("entry", "push"): ("bias", -1), ("entry", "rotate"): ("bias", 1), ("exit", "rotate"): ("tc", 1)}
+DIAL_WORDS = {("bias", -1): "move brake bias a little to the rear on the in-car dial (one click, about half a percent)",
+              ("bias", 1): "move brake bias a little to the front on the in-car dial (one click, about half a percent)",
+              ("tc", 1): "turn traction control up one step on the in-car dial"}
+DIAL_LABEL = {"bias": "Brake bias (in-car dial)", "tc": "Traction control (in-car dial)"}
+BIAS_CAVEAT = ("On most cars the brake bias number is the share of braking on the front wheels, so a lower number is "
+               "more to the rear: check the car's in-car display.")
+DRIVING = {("entry", "push"): "brake a touch earlier and ease off the brake more gradually as you turn in, so the "
+                              "front tyres keep their load and grip",
+           ("entry", "rotate"): "come off the brake a little sooner or more gently as you turn in, so the rear stays "
+                                "settled",
+           ("mid", "push"): "carry a little less speed into the middle and wait for the front to bite before adding "
+                            "throttle",
+           ("mid", "rotate"): "keep the steering and throttle steady through the middle: a small, steady throttle "
+                              "settles the rear",
+           ("exit", "push"): "let the car point at the exit before full throttle, and open the steering as you add it",
+           ("exit", "rotate"): "squeeze the throttle on more gently and straighten the steering before the big push"}
+THEN_DIAL = "Change only this, then drive at least 6 clean laps and look at this map again."
+THEN_DRIVE = "Try it for at least 6 clean laps, then look at this map again."
+
+
+def _strength(cells) -> tuple:
+    """How strong a group of findings is: clear before likely, then more places, then the smaller p."""
+    clear = any(c.get("confidence") == "clear" for c in cells)
+    p = min((c.get("p_family") if isinstance(c.get("p_family"), (int, float)) else 1.0) for c in cells) if cells else 1.0
+    return (clear, len({c.get("corner") for c in cells}), -float(p))
+
+
+def _groups(report: dict) -> list:
+    """The findings grouped as ideas are: (phase, label, and the speed class for the middle of corners)."""
+    out, seen = [], set()
+    for f in (report or {}).get("findings") or []:
+        key = (f["phase"], f["label"], f["class"] if f["phase"] == "mid" else None)
+        if key in seen:
+            continue
+        seen.add(key)
+        same = [c for c in report["findings"] if (c["phase"], c["label"]) == (f["phase"], f["label"])
+                and (f["phase"] != "mid" or c["class"] == f["class"])]
+        verb = ("pushes" if f["label"] == "push" else "rotates") + (" more than usual" if f["phase"] == "entry" else "")
+        out.append({"f": f, "same": same, "where": f"{PHASE_OF[f['phase']]} {_names(same)}", "verb": verb,
+                    "place": f"{_names(same)} ({PHASE_WORDS[f['phase']]})",
+                    "conf": "worth a try" if f["confidence"] == "clear" else "a guess", "strength": _strength(same)})
+    return out
+
+
+def _fixed_ideas(report: dict, setup: dict | None, dials) -> list:
+    """A fixed-setup series: the garage is locked, so each finding gets an in-car dial where the car has one and it
+    is a sound answer, else plain driving advice."""
+    flat = ibt.flatten(setup or {})
+    have = set(dials or ())
+    for target, leaves in (("bias", _BIAS), ("tc", _TC)):
+        if _find_key(flat, leaves)[0] is not None:
+            have.add(target)
+    out = []
+    for g in _groups(report):
+        f = g["f"]
+        dial = FIXED_DIAL.get((f["phase"], f["label"]))
+        text = f"The car {g['verb']} {g['where']}."
+        if dial and dial[0] in have:
+            target, way = dial
+            text += (f" The setup is locked, but this car has a {DIAL_LABEL[target].split(' (')[0].lower()} dial: "
+                     f"{DIAL_WORDS[dial]}. Why: {WHY_WAY[(target, way)]}. "
+                     f"{BIAS_CAVEAT if target == 'bias' else TC_CAVEAT} {THEN_DIAL}")
+            out.append({"finding": f["text"], "corner": _names(g["same"]), "phase": f["phase"], "label": f["label"],
+                        "change": None, "alternative": None, "dial": {"target": target, "way": way,
+                                                                       "label": DIAL_LABEL[target],
+                                                                       "text": DIAL_WORDS[dial]},
+                        "driving": None, "why": WHY_WAY[(target, way)], "confidence": g["conf"], "text": text,
+                        "then": THEN_DIAL, "_s": g["strength"]})
+        else:
+            drive = DRIVING[(f["phase"], f["label"])]
+            text += f" The setup is locked, so adapt the driving: {drive}. {THEN_DRIVE}"
+            out.append({"finding": f["text"], "corner": _names(g["same"]), "phase": f["phase"], "label": f["label"],
+                        "change": None, "alternative": None, "dial": None, "driving": drive, "why": None,
+                        "confidence": g["conf"], "text": text, "then": THEN_DRIVE, "_s": g["strength"]})
+    out.sort(key=lambda i: (i["dial"] is None, i["confidence"] != "worth a try", -i["_s"][1]))
+    for k, i in enumerate(out):
+        i.pop("_s")
+        i["first"] = k == 0
+    return out
+
+
+def _undo_of(o, last) -> dict | None:
+    """The change in `last` (his change into this setup) that option o would put back, else None."""
+    if not o or not last or o.get("to") is None:
+        return None
+    from . import setuplab
+    to = setuplab._num_text(str(o["to"]))
+    for ch in last.get("changes") or []:
+        keys = ch.get("keys") or [ch.get("key")]
+        old = setuplab._num_text(str(ch.get("old"))) if ch.get("old") is not None else None
+        if o["key"] in keys and to is not None and old is not None and float(to) == float(old):
+            return ch
+    return None
+
+
+def setup_ideas(report: dict, setup: dict | None, series_setup=None, last_change: dict | None = None,
+                dials=None) -> list:
     """Conventional, one-change-at-a-time setup ideas for the clearest balance findings. Ideas with a change that
     can actually be made come first, then the most certain, then the most places.
 
     idea: {"finding": cell text, "corner", "phase", "label", "change": {"key","label","from","to","text"} | None,
-           "alternative": same | None, "why", "confidence" ("worth a try" | "a guess"), "text", "then"}
+           "alternative": same | None, "why", "confidence" ("worth a try" | "a guess"), "text", "then",
+           "conflict": {"corner", "change"} | None, "undo": the change of his it would put back | None}
     "Try one change" is only said for a change that can be made on this car; when the usual change can't be (a bar
     already at its lowest, or the setting isn't in this car's setup), the next one on the list is offered and the
-    text says why, or it says plainly that there is nothing to change. A fixed-setup series gives no ideas (a note
-    instead). Never raises."""
+    text says why, or it says plainly that there is nothing to change.
+
+    Two ideas never move the same setting opposite ways: the one with the stronger evidence keeps it (clear before
+    likely, then more corners, then the smaller p); the other takes its next option, or says the two pull against
+    each other. last_change: {"from", "to" (setup labels), "changes": setuplab.diff() items, "slower": bool} - his
+    change into the setup these laps are on; an idea that would simply put it back is left out unless the laps showed
+    that change made the car slower.
+
+    A fixed-setup series gets in-car dial ideas where the car has the dial (dials: "bias" / "tc" / "abs", from the
+    telemetry's dc channels, or the setup's own keys) and it is a sound answer, else driving advice. Never raises."""
     try:
         if str(series_setup or "").lower() == "fixed":
-            return [{"finding": None, "change": None, "alternative": None, "confidence": None,
-                     "text": "This series uses a fixed setup, so the balance can't be changed in the garage: adapt "
-                             "the driving (where you brake and how fast you add throttle) instead."}]
+            return _fixed_ideas(report, setup, dials)
         flat = ibt.flatten(setup or {})
-        out, seen = [], set()
-        for f in (report or {}).get("findings") or []:
+        groups = _groups(report)
+        for g in groups:
+            f = g["f"]
             opts = IDEAS.get((f["phase"], f["label"], f["class"])) or IDEAS.get((f["phase"], f["label"], None)) or []
-            cand = [(t, w, _option(flat, t, w)) for t, w in opts]
-            found = [o for _t, _w, o in cand if o is not None and o["to"] is not None]
-            key = (f["phase"], f["label"], f["class"] if f["phase"] == "mid" else None)
-            if key in seen:
-                continue
-            seen.add(key)
-            same = [c for c in report["findings"] if (c["phase"], c["label"]) == (f["phase"], f["label"])
-                    and (f["phase"] != "mid" or c["class"] == f["class"])]
-            where = f"{PHASE_OF[f['phase']]} {_names(same)}"
-            verb = ("pushes" if f["label"] == "push" else "rotates") + (" more than usual" if f["phase"] == "entry"
-                                                                        else "")
-            conf = "worth a try" if f["confidence"] == "clear" else "a guess"
-            first = found[0] if found else None
-            alt = found[1] if len(found) > 1 else None
-            # the usual change(s) ahead of the one offered, which this car can't make
+            g["opts"] = opts
+            g["cand"] = [(t, w, _option(flat, t, w)) for t, w in opts]
+            found = [o for _t, _w, o in g["cand"] if o is not None and o["to"] is not None]
+            g["undone"] = []
+            if last_change and not last_change.get("slower"):
+                keep = []
+                for o in found:
+                    ch = _undo_of(o, last_change)
+                    (g["undone"].append((o, ch)) if ch else keep.append(o))
+                found = keep
+            g["found"] = found
+        # the stronger evidence picks first; a weaker idea never moves the same setting the other way
+        taken = []                                      # (group, option)
+        for g in sorted(groups, key=lambda g: g["strength"], reverse=True):
+            g["first"], g["clash"], g["clash_with"] = None, None, None
+            for o in g["found"]:
+                hit = next(((og, oo) for og, oo in taken if oo["key"] == o["key"] and oo["way"] != o["way"]), None)
+                if hit is None:
+                    g["first"] = o
+                    break
+                if g["clash"] is None:
+                    g["clash"], g["clash_with"] = o, hit
+            if g["first"] is not None:
+                taken.append((g, g["first"]))
+        out = []
+        for g in groups:
+            f, first = g["f"], g["first"]
+            rest = [o for o in g["found"] if o is not first and (g["clash"] is None or o is not g["clash"])]
+            alt = None
+            for o in rest:
+                if not any(oo["key"] == o["key"] and oo["way"] != o["way"] for og, oo in taken if og is not g):
+                    alt = o
+                    break
             skipped = []
-            for t, w, o in cand:
+            for t, w, o in g["cand"]:
                 if first is not None and o is first:
                     break
                 if o is not None and o["to"] is None:
                     skipped.append(o)
+            undo = next((ch for o, ch in g["undone"]), None)
+            text = f"The car {g['verb']} {g['where']}."
+            if skipped:
+                s0 = skipped[0]
+                text += (f" The usual change, {_lower_first(s0['text'])}, can't be made here ({s0['blocked']})."
+                         if first else
+                         f" The usual change is {_lower_first(s0['text'])}, but {s0['blocked']}.")
+            if g["undone"]:
+                o, ch = g["undone"][0]
+                text += (f" {'The usual change' if not skipped else 'The next one'}, {_lower_first(o['text'])}, would "
+                         f"undo the change you made from {last_change.get('from') or 'the last setup'} to "
+                         f"{last_change.get('to') or 'this one'} ({_lower_first(ch.get('text') or '')}), and the laps "
+                         f"don't show that change made the car slower, so it isn't suggested.")
+            if g["clash"] is not None:
+                og, oo = g["clash_with"]
+                same = og["strength"] == g["strength"]
+                text += (f" {_cap(_lower_first(_short(g['clash'])))} would pull against the idea for {og['place']} "
+                         f"({_lower_first(_short(oo))}), which has "
+                         f"{'evidence about as strong' if same else 'stronger evidence'}: one would undo the other, so "
+                         + ("try that one first and look here again after." if first is None else "try this instead."))
             if first:
-                text = f"The car {verb} {where}."
-                if skipped:
-                    s0 = skipped[0]
-                    text += (f" The usual change, {_lower_first(s0['text'])}, can't be made here "
-                             f"({s0['blocked']}).")
-                text += (f" Try one change: {first['text']}. Why: {WHY_WAY.get((first['target'], first['way']), WHY[first['target']])}.")
+                text += (f" Try one change: {first['text']}. Why: "
+                         f"{WHY_WAY.get((first['target'], first['way']), WHY[first['target']])}.")
                 if alt:
                     text += f" If that doesn't help, put it back and try {_lower_first(alt['text'])}."
+                if last_change and last_change.get("slower") and _undo_of(first, last_change):
+                    text += (f" That goes back on your change from {last_change.get('from')} to "
+                             f"{last_change.get('to')}, and the laps showed {last_change.get('to')} slower, so going "
+                             f"back is reasonable.")
                 if f["phase"] == "entry" and f["label"] == "rotate":
                     text += (" Rotation on the way in also comes from how much brake you carry into the turn: "
                              "if you like how it turns in, leave it.")
                 text += " " + (TC_CAVEAT if first["target"] == "tc" else NUMBER_CAVEAT) + " " + THEN
-            elif skipped:
-                s0 = skipped[0]
-                text = (f"The car {verb} {where}. The usual change is {_lower_first(s0['text'])}, but {s0['blocked']}, "
-                        f"and this car's setup shows nothing else Debrief knows how to change for this.")
-            else:
-                lab = TARGETS[opts[0][0]][2].lower() if opts else "balance"
-                text = (f"The car {verb} {where}. The usual fix is the {lab}, but this car's setup doesn't show one "
-                        f"to change.")
-            out.append({"finding": f["text"], "corner": _names(same), "phase": f["phase"], "label": f["label"],
+            elif skipped and not g["undone"] and g["clash"] is None:
+                text += " This car's setup shows nothing else Debrief knows how to change for this."
+            elif not skipped and not g["undone"] and g["clash"] is None:
+                lab = TARGETS[g["opts"][0][0]][2].lower() if g["opts"] else "balance"
+                text += f" The usual fix is the {lab}, but this car's setup doesn't show one to change."
+            elif g["undone"] and g["clash"] is None:
+                text += " Nothing else Debrief knows how to change for this is left on this car."
+            out.append({"finding": f["text"], "corner": _names(g["same"]), "phase": f["phase"], "label": f["label"],
                         "change": first, "alternative": alt,
                         "why": WHY_WAY.get((first["target"], first["way"])) if first else None,
-                        "confidence": conf, "text": text, "then": THEN, "_n": len(same)})
+                        "confidence": g["conf"], "text": text, "then": THEN, "_n": len(g["same"]),
+                        "conflict": ({"corner": g["clash_with"][0]["place"], "change": g["clash_with"][1]["text"]}
+                                     if g["clash"] is not None else None),
+                        "undo": undo})
         out.sort(key=lambda i: (i["change"] is None, i["confidence"] != "worth a try", -i["_n"]))
         for k, i in enumerate(out):
             i.pop("_n")

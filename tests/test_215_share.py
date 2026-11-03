@@ -64,7 +64,12 @@ check("corner weight" not in t.lower(), "garage results left out")
 pair = rep["compare"]["pairs"][0]
 check("Result:" in t, f"result from Setup Lab's verdict ({pair['verdict']})")
 if pair["verdict"] == "no clear difference" and pair.get("more_laps"):
-    check(f"about {pair['more_laps']} more on each would show a 0.1 s gap" in t, "says how many more laps would tell")
+    check(f"about {pair['more_laps']} more clean lap" in t and "on each would show it" in t, "says how many more laps would tell")
+# 2.18: the same numbers as the page, in the label's order (B first in "Setup B vs A")
+pa, pb = (next(x["pace"] for x in rep["compare"]["setups"] if x["id"] == k) for k in ("A", "B"))
+check(f"{pb['clean_laps']} clean laps on B, {pa['clean_laps']} on A" in t, f"lap counts in the label's order ({t})")
+check(f"typical lap {sl.lap_text(pb['median'])} on B, {sl.lap_text(pa['median'])} on A" in t
+      and sl.lap_text(pb["median"]) in json.dumps(rep["compare"]["verdict"], ensure_ascii=False), "typical laps as the page shows them")
 check(r["chars"] <= 1500 and len(r["markdown"]) <= 1500, f"short enough for Discord ({r['chars']} chars)")
 private_free(t, "text")
 private_free(r["markdown"], "markdown")
@@ -80,15 +85,19 @@ def with_pair(**kw):
     p = {"a": "A", "b": "B", "verdict": "no clear difference", "faster": None, "diff_s": 0.03, "more_laps": 4,
          "caution": None, "confounders": [], "missing": []}
     p.update(kw)
-    rr["compare"] = {"pairs": [p], "setups": [{"id": "A", "pace": {"clean_laps": 6}},
-                                              {"id": "B", "pace": {"clean_laps": 7}}]}
+    rr["compare"] = {"pairs": [p], "setups": [{"id": "A", "pace": {"clean_laps": 6, "median": 60.405}},
+                                              {"id": "B", "pace": {"clean_laps": 7, "median": 60.029}}]}
     return rr
 
 
 t1 = ss.share_text(with_pair())
-check("Result: no clear difference yet (6 and 7 clean laps; about 4 more on each would show a 0.1 s gap)." in t1, t1)
+check("Result: no clear difference yet (typical lap 1:00.029 on B, 1:00.405 on A; 7 clean laps on B, 6 on A). "
+      "If there is a real gap of 0.1 s or more, about 4 more clean laps on each would show it." in t1, t1)
+# the page's gap, never the 0.1 s floor: a 0.38 s gap is called 0.4 s (as "faster by about 0.4 s" would be)
+t1b = ss.share_text(with_pair(diff_s=0.376, more_laps=1))
+check("If the 0.4 s gap is real, about 1 more clean lap on each would show it." in t1b and "0.1 s gap" not in t1b, t1b)
 t2 = ss.share_text(with_pair(verdict="faster", faster="B", diff_s=0.31))
-check("Result: B was faster than A by about 0.3 s a lap (6 and 7 clean laps)." in t2, t2)
+check("Result: B was faster than A by about 0.3 s a lap (typical lap 1:00.029 on B, 1:00.405 on A; 7 clean laps on B, 6 on A)." in t2, t2)
 t3 = ss.share_text(with_pair(verdict="faster", faster="B", diff_s=0.31,
                              caution="Setup B was also driven later, so part of this may be you getting quicker."))
 check("Caution: B was also driven later" in t3 and "going back to A" in t3, "driving-order caution carried over")

@@ -202,7 +202,7 @@ def balance_setups(recs: list) -> list:
             continue
         last = max((r.get("sort") or 0) for r in recs if r["file"] in s["files"])
         out.append({"id": s["id"], "label": s["label"], "files": list(s["files"]), "last": s.get("last") or "",
-                    "_sort": last})
+                    "_sort": last, "_setup": s.get("setup") or {}})
     out.sort(key=lambda s: -s["_sort"])
     return out
 
@@ -219,13 +219,31 @@ def balance_report(paths: list) -> dict:
     return rep
 
 
-def _apply_series(rep: dict, kind) -> dict:
+def _apply_series(rep: dict, kind, setup: dict | None = None, last_change: dict | None = None) -> dict:
+    """The setup ideas for this series and this setup, worked out again on the cached map (cheap): a fixed series
+    gets in-car dials or driving advice; an open one never offers simply undoing his last change unless the laps
+    showed it slower."""
     from .. import balance
     rep = dict(rep)
-    if kind == "fixed" and rep.get("ok"):
-        rep["setup_ideas"] = balance.setup_ideas(rep, None, series_setup="fixed")
+    if rep.get("ok") and (setup is not None or kind == "fixed"):
+        rep["setup_ideas"] = balance.setup_ideas(rep, setup, series_setup=kind, last_change=last_change,
+                                                 dials=(rep.get("info") or {}).get("dials"))
     rep["series_setup"] = kind
     return rep
+
+
+def balance_laps_note(bal_laps, table_laps, label: str, files_used: int, files_all: int) -> str | None:
+    """Why the balance map's lap count isn't the "Which was faster" table's, in plain words (None when they match)."""
+    if bal_laps is None or table_laps is None or bal_laps == table_laps:
+        return None
+    if bal_laps > table_laps:
+        return (f"Which was faster counts {table_laps} of these laps for {label}: it also leaves out warm-up laps, "
+                f"laps alongside another car and laps far off that run's pace, to compare pace fairly. The balance map "
+                f"keeps them, because they still show how the car steers.")
+    why = (f"it reads only the newest {files_used} of {files_all} files" if files_used < files_all else
+           "it leaves out laps where the steering or turning wasn't recorded all the way round, and laps more than "
+           "7% off your typical lap")
+    return f"The balance map uses {bal_laps} of the {table_laps} laps Which was faster counts for {label}: {why}."
 
 
 def get_balance(h, q):
@@ -241,6 +259,7 @@ def get_balance(h, q):
     recs = _records(idx, car, track)
     setups = balance_setups(recs)
     pub = [{k: s[k] for k in ("id", "label", "last")} | {"files": len(s["files"])} for s in setups]
+    from .. import setuplab
     if not setups:
         return h._json({"ok": True, "report": None, "setups": [], "setup": None,
                         "message": "No telemetry with a setup for this car and track yet."})
@@ -261,12 +280,21 @@ def get_balance(h, q):
         raise ValueError("Some telemetry files have gone. Press Read my telemetry again.")
     rep, hit = cached(server, cfg["cache_dir"], key, lambda: balance_report(paths))
     kind = _series_kind(car, track, idx)
-    return h._json({"ok": True, "report": _apply_series(rep, kind), "setups": pub, "setup": chosen,
-                    "cached": hit, "files": len(paths)})
+    newest = max(recs, key=lambda r: r.get("sort") or 0)
+    setup = newest.get("setup") if chosen == "all" else pick["_setup"]
+    last = setuplab.change_into(recs, chosen) if chosen != "all" and kind != "fixed" else None
+    mine = recs if chosen == "all" else [r for r in recs if r["file"] in set(pick["files"])]
+    table, _d = setuplab.pace_laps(mine)
+    note = balance_laps_note(rep.get("laps") if rep.get("ok") else None, len(table),
+                             "all setups" if chosen == "all" else pick["label"], len(paths), len(mine))
+    return h._json({"ok": True, "report": _apply_series(rep, kind, setup or {}, last), "setups": pub,
+                    "setup": chosen, "cached": hit, "files": len(paths), "laps_note": note,
+                    "last_change": ({k: last[k] for k in ("from", "to", "verdict", "slower")} if last else None)})
 
 
 def _series_kind(car, track, idx):
-    """open | fixed | None, as Setup Lab decides it (his own choice first, else the season schedule)."""
+    """open | fixed | None, as Setup Lab decides it (his own choice first, else the season schedule, else the
+    telemetry and the cars known to race fixed setups only)."""
     from .. import setuplab
     from . import server as S
     try:
@@ -276,7 +304,11 @@ def _series_kind(car, track, idx):
             return v
         combo = next((c for c in setuplab.combos(idx) if (c.get("car_path") or "").lower() == car.lower()
                       and (c.get("track_code") or "").lower() == track.lower()), None)
-        return S.schedule_series_setup(combo, None)[0]
+        kind = S.schedule_series_setup(combo, None)[0]
+        if kind in ("open", "fixed"):
+            return kind
+        guess = setuplab.series_setup_guess(_records(idx, car, track), car, (combo or {}).get("car"))[0]
+        return guess if guess in ("open", "fixed") else None
     except Exception:  # noqa: BLE001
         return None
 

@@ -1418,7 +1418,7 @@ async function loadSlReport(){if(!sl.sel)return;const seq=++sl.seq,host=$('slRep
   try{j=await api('setuplab/report?'+q)}catch(e){clearTimeout(slow);connectionLost();return}
   clearTimeout(slow);if(seq!==sl.seq)return;host.classList.remove('busy');
   if(!j.ok){slEmpty('That didn\'t load',j.error||'Try again.');$('slStatus').textContent='The report didn\'t load.';return}
-  renderSlReport(j.report);const R=j.report||{};$('slStatus').textContent='Showing '+(R.track||R.track_code||'')+', '+(R.car||R.car_path||'')+'.'}
+  renderSlReport(j.report);csSetupLab(j.report);const R=j.report||{};$('slStatus').textContent='Showing '+(R.track||R.track_code||'')+', '+(R.car||R.car_path||'')+'.'}
 function slSec(title,id){const d=h('section','panel slsec');if(id)d.id=id;d.append(h('h3',null,title));return d}
 function confBadge(c){const x=SL_CONF[c]||[String(c||''),''];const b=h('span','pill'+(x[1]?' '+x[1]:''),x[0]);b.title='How sure this is';return b}
 function renderSlReport(R){const out=document.createDocumentFragment();
@@ -1558,7 +1558,7 @@ function renderCoach(st){co.st=st;const run=!!st.running,state=CO_STATE[st.state
   coPlanShow(!(run&&W.length));
   renderCoFocus(st);renderWheel(st.wheel);
   if(!co.filled||!co.dirty){fillCoachSettings(st.settings||{});co.filled=true}
-  coTestResult(st.test_voice)}
+  coTestResult(st.test_voice);csCoach(st)}
 function fillCoachSettings(s){$('coInRaces').checked=!!s.in_races;$('coMarkers').checked=s.markers!==false;$('coFeedback').checked=s.feedback!==false;
   $('coLapDelta').checked=s.lap_delta!==false;$('coBeep').checked=!!s.brake_beep;$('coTopN').value=String(Math.max(1,Math.min(3,s.top_n||2)));
   $('coVol').value=String(ok(s.volume)?s.volume:100);$('coRate').value=String(ok(s.rate)?s.rate:0);coRanges()}
@@ -1731,11 +1731,12 @@ function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{}
   // notes
   const notes=(R.notes||[]).filter(x=>typeof x==='string'&&x.trim()),bad=R.bad_files||[];
   if(notes.length||bad.length){const ns=slSec('Notes','prNotes');const ul=h('ul','pvlist');notes.forEach(x=>ul.append(h('li','note',x)));bad.forEach(b=>ul.append(h('li','note',b.file+': '+b.error)));ns.append(ul);out.append(ns)}
-  $('prReport').replaceChildren(out)}
+  $('prReport').replaceChildren(out);csSession(R)}
 /* the Coach page shows the corners the corner coach would have it focus on (from Practice's button, else the newest
    car and track in the telemetry) */
 async function loadCoPlan(plan){if(plan&&plan.car_path)co.plan=plan;let p=co.plan;
   if(!p){try{const j=await api('sessions-ibt');const x=j&&j.ok&&(j.sessions||[])[0];if(x)p={car_path:x.car_path,track_code:x.track_code}}catch(e){}}
+  csCoachCombo(p);
   if(!p){co.planRep=null;co.focusPlan=null;renderCoPlan();renderCoFocus(co.st);return}
   const q=new URLSearchParams({car:p.car_path,track:p.track_code});
   let j;try{j=await api('corner-coach?'+q)}catch(e){return}
@@ -2066,4 +2067,234 @@ $('fUpdate').addEventListener('submit',async e=>{e.preventDefault();setMsg('updM
   coachPoll();                     // once: keeps polling only if the coach is already running
   loadFirstRun();                  // 2.14: the setup checklist on the start page
 })();
+/* ---------- 2.15 Car and setup: how the car handles (balance map and setup ideas), tyre pressures over time,
+   share what changed (copy only, never posted), and a teammate's lap to compare with and coach against. Called
+   from loadSlReport (csSetupLab), renderPrSession (csSession), renderCoach (csCoach) and loadCoPlan (csCoachCombo). */
+let cs={seq:0,balSetup:null,combo:null,coachCombo:null,coachTeam:null,coachSeq:0};
+const BAL_WORD={push:['Pushes','push'],rotate:['Rotates','rot'],neutral:['Neutral','neu'],unclear:['Not clear yet','unc']};
+const BAL_PHASE=[['entry','On the way in'],['mid','In the middle'],['exit','On the way out']];
+const IDEA_CONF={'worth a try':['Worth a try','ok'],'a guess':['A guess','no']};
+const csQ=(car,track,extra)=>new URLSearchParams(Object.assign({car,track},extra||{}));
+const csTurn=t=>turnWords(String(t||''));
+
+/* ---------- Setup Lab: new sections under the report */
+function csSetupLab(R){
+  ['slBalance','slPress'].forEach(id=>{const e=$(id);if(e)e.remove()});
+  if(!R||!R.files||!R.car_path)return;
+  const combo={car:R.car_path,track:R.track_code};
+  if(!cs.combo||cs.combo.car!==combo.car||cs.combo.track!==combo.track)cs.balSetup=null;
+  cs.combo=combo;
+  const host=$('slReport'),before=$('slNotes');
+  const put=el=>{if(before&&before.parentNode===host)host.insertBefore(el,before);else host.append(el)};
+  csShareButton(R);
+  const bal=slSec('How the car handles','slBalance');bal.classList.add('balsec');put(bal);csLoadBalance();
+  if(R.series_setup!=='fixed'){const pr=slSec('Tyre pressures over time','slPress');pr.classList.add('presssec');put(pr);csLoadPressure()}}
+
+async function csLoadBalance(){const sec=$('slBalance'),c=cs.combo;if(!sec||!c)return;const seq=++cs.seq;
+  const body=h('div','balbody');sec.replaceChildren(h('h3',null,'How the car handles'),body);
+  body.append(h('p','note','Working out how the car handles from your laps. This takes a few seconds the first time.'));sec.classList.add('busy');
+  const extra=cs.balSetup?{setup:cs.balSetup}:{};let j;
+  try{j=await api('balance?'+csQ(c.car,c.track,extra))}catch(e){connectionLost();return}
+  if(seq!==cs.seq||!$('slBalance'))return;sec.classList.remove('busy');
+  if(!j.ok){body.replaceChildren(h('p','note warn',j.error||'This didn\'t load.'));return}
+  csRenderBalance(body,j)}
+
+function csRenderBalance(body,j){const R=j.report;body.replaceChildren();
+  const setups=j.setups||[];
+  if(setups.length>1||(setups.length&&!R)){const lab=h('label','field balpick');lab.htmlFor='balSetup';lab.append(h('span',null,'Laps from'));
+    const sel=document.createElement('select');sel.id='balSetup';
+    setups.forEach((s,i)=>{const o=h('option',null,s.label+(i===0?' (newest)':'')+', '+plural(s.files,'file'));o.value=s.id;sel.append(o)});
+    const all=h('option',null,'All setups together');all.value='all';sel.append(all);sel.value=j.setup||(setups[0]&&setups[0].id)||'all';
+    sel.addEventListener('change',()=>{cs.balSetup=sel.value;csLoadBalance()});lab.append(sel);body.append(lab)}
+  if(!R){body.append(h('p','note',j.message||'No telemetry with a setup for this car and track yet.'));return}
+  body.append(h('p','balsum',csTurn(R.summary||R.message)));
+  if(R.ok&&(R.corners||[]).length){body.append(csBalanceGrid(R));body.append(csLegend())}
+  const CS=(R.countersteer&&R.countersteer.by_corner)||{};
+  const cs3=Object.entries(CS).filter(([k])=>k!=='between corners').sort((a,b)=>b[1].events-a[1].events).slice(0,3);
+  if(cs3.length)body.append(h('p','note','Catching the rear (countersteer): '+cs3.map(([k,v])=>csTurn(k)+' '+plural(v.events,'time')+' on '+v.laps+' of '+plural(v.of_laps,'lap')).join('; ')+'. Each one is a moment the rear stepped out and you caught it.'));
+  else if(R.ok)body.append(h('p','note','No countersteer: you never had to catch the rear on these laps.'));
+  (R.notes||[]).forEach(n=>body.append(h('p','note warn',n)));
+  if(R.ok){const X=R.cross_check;const small=h('p','balsmall');
+    small.textContent=(X&&X.of?'Cross-check: worked out again from sideways g instead of how fast the car turns, '+X.agree+' of '+plural(X.of,'clear place')+' read the same. ':'')+
+      'From '+plural(R.laps||0,'clean lap')+' in '+plural(j.files||R.files||0,'file')+'. "Pushes" and "Rotates" are only shown when a fair shuffle test says it isn\'t luck.';
+    body.append(small);
+    if(R.car_fit&&R.car_fit.text){const d=h('details','balhow');d.append(h('summary',null,'How this is measured'));
+      d.append(h('p','note','Debrief learns how much steering this car normally needs in gentle bends, then looks at how much you used near the limit. More than normal: the car pushes (the front slides first). Less: it rotates (the rear slides first). So it is always compared with how this car steers.'));
+      d.append(h('p','note',R.car_fit.text));body.append(d)}}
+  body.append(csIdeas(R))}
+
+function csBalanceGrid(R){const wrap=h('div','tblwrap'),t=h('table','baltbl');t.setAttribute('aria-label','How the car handles in each corner');
+  const thd=h('thead'),hr=h('tr');hr.append(h('th',null,'Corner'));BAL_PHASE.forEach(([,w])=>hr.append(h('th',null,w)));thd.append(hr);
+  const tb=h('tbody'),cells=R.cells||[];
+  (R.corners||[]).forEach(c=>{const tr=h('tr'),th=h('th',null,csTurn(c.name));th.scope='row';
+    const sp=h('small','balcls',c['class']==='slow'?'slow':c['class']==='fast'?'fast':'medium');th.append(' ',sp);tr.append(th);
+    BAL_PHASE.forEach(([ph,w])=>{const x=cells.find(k=>k.corner===c.name&&k.phase===ph),td=h('td');
+      if(!x){const s=h('span','bal none','Not measured');td.append(s);td.title='Too few laps had a reading here';}
+      else{const bw=BAL_WORD[x.label]||[x.label_words||x.label,'unc'],s=h('span','bal '+bw[1],bw[0]);
+        if(x.confidence==='likely')s.append(h('small',null,' likely'));
+        td.append(s);td.title=csTurn(x.text||'')}
+      td.setAttribute('aria-label',csTurn(c.name)+', '+w.toLowerCase()+': '+td.textContent);tr.append(td)});
+    tb.append(tr)});
+  t.append(thd,tb);wrap.append(t);return wrap}
+
+function csLegend(){const p=h('p','ballegend');
+  [['push','Pushes: understeer, the front slides first'],['rotate','Rotates: oversteer, the rear slides first'],['neutral','Neutral: neither'],['unclear','Not clear yet: needs more laps']].forEach(([k,t])=>{
+    const s=h('span','balkey');s.append(h('i','bal '+BAL_WORD[k][1]),document.createTextNode(t));p.append(s)});return p}
+
+function csIdeas(R){const box=h('div','balideas');box.append(h('h4',null,'Setup ideas'));
+  const I=R.setup_ideas||[];
+  if(!I.length){box.append(h('p','note',R.ok&&(R.findings||[]).length?'This car\'s setup has nothing Debrief knows how to change for this.':'No setup idea until the car clearly pushes or rotates somewhere.'));return box}
+  const fixed=I.length===1&&!I[0].finding&&!I[0].change;
+  if(fixed){box.append(h('p','note warn',csTurn(I[0].text)));return box}
+  box.append(h('p','note','One change at a time, so you know what did it.'));
+  const ul=h('ul','pvlist');
+  I.forEach(i=>{const li=h('li','balidea'+(i.first?' first':'')),top=h('div','slidea');
+    const cf=IDEA_CONF[i.confidence]||[i.confidence||'',''];const pill=h('span','pill'+(cf[1]?' '+cf[1]:''),cf[0]);pill.title='How sure this is';
+    top.append(h('b',null,i.change?i.change.label:'Driving'),pill);li.append(top);
+    let t=String(i.text||''),then=String(i.then||''),cav='';
+    if(then&&t.endsWith(then))t=t.slice(0,-then.length).trim();
+    const k=t.indexOf('On most cars in iRacing');if(k>0){cav=t.slice(k);t=t.slice(0,k).trim()}
+    li.append(h('span',null,csTurn(t)));if(cav)li.append(h('span','sub2',cav));if(then)li.append(h('span','sub2 balthen',then));
+    ul.append(li)});
+  box.append(ul);return box}
+
+/* ---------- tyre pressures over time */
+async function csLoadPressure(){const sec=$('slPress'),c=cs.combo;if(!sec||!c)return;
+  const body=h('div','pressbody');sec.replaceChildren(h('h3',null,'Tyre pressures over time'),body);body.append(h('p','note','Reading your runs...'));
+  let j;try{j=await api('pressure?'+csQ(c.car,c.track))}catch(e){connectionLost();return}
+  if(!$('slPress')||cs.combo!==c)return;
+  if(!j.ok){body.replaceChildren(h('p','note warn',j.error||'This didn\'t load.'));return}
+  const R=j.report||{};body.replaceChildren();
+  body.append(h('p','note','Your runs grouped by track temperature (5 °C bands): the cold pressure you set, the hot pressure it came up to, and your typical lap. A run is a stint with at least 3 counted laps.'));
+  const B=R.bands||[];
+  if(B.length){const wrap=h('div','tblwrap'),t=h('table','pacetbl presstbl'),hr=h('tr');['Track','Cold pressure','Runs','Typical lap','Hot (front / rear)'].forEach(x=>hr.append(h('th',null,x)));
+    const thd=h('thead');thd.append(hr);const tb=h('tbody');
+    B.forEach(b=>(b.groups.length?b.groups:[{cold:'not recorded',runs:b.runs.length,median:null,hot:{}}]).forEach((g,i)=>{const tr=h('tr');if(i===0&&tb.children.length)tr.className='newrun';
+      const th=h('th',null,i===0?b.band:'');th.scope='row';const H=g.hot||{};
+      const ax=(a,b2)=>{const v=[H[a],H[b2]].filter(ok);return v.length?Math.round(v.reduce((x,y)=>x+y,0)/v.length):null};
+      const fh=ax('LF','RF'),rh=ax('LR','RR');
+      tr.append(th,h('td',null,g.cold),h('td','num',String(g.runs)),h('td','num',ok(g.median)?fmtT(g.median):'not timed'),h('td','num',fh!==null?fh+' / '+rh+' kPa':'not read'));tb.append(tr)}));
+    t.append(thd,tb);wrap.append(t);body.append(wrap)}
+  (R.text||[]).filter(x=>x&&x!==R.prediction_text).forEach(x=>body.append(h('p',B.some(b=>b.finding&&b.text===x)?'pressfind':null,x)));
+  const pp=h('div','presspred');pp.append(h('h4',null,'Hot pressure from cold'));pp.append(h('p',null,R.prediction_text||''));
+  if(j.can_predict)pp.append(csPredictForm());body.append(pp);
+  if((R.by_car||[]).length>0&&!B.length)body.append(h('p','note','This car at other tracks: '+R.by_car.map(b=>b.band+' ('+plural(b.runs,'run')+')').join(', ')+'.'))}
+
+function csPredictForm(){const f=document.createElement('form');f.className='pressform';f.id='pressForm';f.autocomplete='off';
+  const fld=(id,label,ph)=>{const l=h('label','field');l.htmlFor=id;l.append(h('span',null,label));const i=document.createElement('input');i.id=id;i.type='number';i.step='0.5';i.inputMode='decimal';i.placeholder=ph;l.append(i);return l};
+  const g=h('div','grid3');g.append(fld('prCF','Cold front (kPa)','e.g. 172'),fld('prCR','Cold rear (kPa)','e.g. 168'),fld('prTT','Track temperature (°C)','optional'));
+  const row=h('div','row'),b=h('button','btn','Predict');b.type='submit';const m=h('span','msg');m.id='prPredMsg';m.setAttribute('role','status');row.append(b,m);
+  const out=h('p','pressout');out.id='prPredOut';out.hidden=true;
+  f.append(g,row,out);
+  f.addEventListener('submit',async e=>{e.preventDefault();const c=cs.combo;if(!c)return;setMsg('prPredMsg','Working it out...');out.hidden=true;
+    let r;try{r=await post('pressure/predict',{car:c.car,track:c.track,cold_front:$('prCF').value,cold_rear:$('prCR').value,track_temp:$('prTT').value})}catch(err){connectionLost();return}
+    if(!r.ok){setMsg('prPredMsg',r.error||'That didn\'t work.','bad');return}
+    setMsg('prPredMsg','');out.textContent=r.text;out.hidden=false});
+  return f}
+
+/* ---------- share what changed (copy only) */
+function csShareButton(R){const dc=$('slDiffs');if(!dc||!(R.diffs||[]).length)return;
+  const row=h('div','row'),b=h('button','btn','Share what changed');b.type='button';b.id='slShare';
+  row.append(b,h('span','note','Text to paste in your team\'s Discord. Debrief never posts it for you.'));
+  const out=h('div','shareout');out.id='slShareOut';out.hidden=true;
+  b.addEventListener('click',async()=>{const c=cs.combo;if(!c)return;b.disabled=true;let r;
+    try{r=await api('setuplab/share?'+csQ(c.car,c.track))}catch(e){connectionLost();return}finally{b.disabled=false}
+    out.replaceChildren();out.hidden=false;
+    if(!r.ok){out.append(h('p','note warn',r.error||'That didn\'t work.'));return}
+    out.append(csCopyBox('Plain text',r.text,'shareText'));
+    if(r.ready)out.append(csCopyBox('With bold for Discord',r.markdown,'shareMd'));
+    out.append(h('p','note','No names, no file names: only the car, the track, what you changed and what the laps said.'))});
+  dc.append(row,out)}
+
+function csCopyBox(title,text,id){const box=h('div','copybox'),top=h('div','phead');top.append(h('h4',null,title));
+  const b=h('button','btn','Copy');b.type='button';b.id=id+'Copy';top.append(b);
+  const ta=document.createElement('textarea');ta.id=id;ta.readOnly=true;ta.value=text||'';ta.rows=Math.min(8,Math.max(3,String(text||'').split('\n').length+1));ta.setAttribute('aria-label',title);
+  const m=h('span','msg');m.setAttribute('role','status');
+  b.addEventListener('click',async()=>{let done=false;try{await navigator.clipboard.writeText(ta.value);done=true}catch(e){}
+    if(!done){try{ta.focus();ta.select();done=document.execCommand('copy')}catch(e){}}
+    m.textContent=done?'Copied.':'Select the text and press Ctrl+C.';m.className='msg'+(done?' ok':' bad')});
+  top.append(m);box.append(top,ta);return box}
+
+/* ---------- a teammate's lap: the session page and the Coach page */
+const TEAM_MAX=1536*1024*1024;
+function csTeamPanel(car,track,where,onChange){const sec=where==='coach'?h('div','panel teampanel'):slSec('Compare with a teammate\'s lap','prTeam');
+  if(where==='coach'){sec.id='coTeam';sec.append(h('div','phead teamhead'))}
+  else sec.classList.add('teampanel');
+  const head=where==='coach'?sec.querySelector('.teamhead'):null;if(head)head.append(h('h3',null,'Compare with a teammate\'s lap'));
+  const body=h('div','teambody');sec.append(body);
+  const draw=async()=>{let j;try{j=await api('teamref?'+csQ(car,track))}catch(e){connectionLost();return}
+    if(!j.ok){body.replaceChildren(h('p','note warn',j.error||'This didn\'t load.'));return}
+    csTeamBody(body,j.teammate,car,track,where,draw,onChange);if(onChange)onChange(j.teammate)};
+  body.append(h('p','note','Loading...'));draw();return sec}
+
+function csTeamBody(body,T,car,track,where,redraw,onChange){body.replaceChildren();const id=where==='coach'?'co':'pr';
+  if(T){const p=h('p','teamnow');p.append(document.createTextNode('Using '),h('b',null,T.label),document.createTextNode(T.kept?'. Kept for this car and track.':'. Kept until Debrief closes.'));body.append(p)}
+  else body.append(h('p','note','Got a teammate\'s telemetry file (.ibt) for this car and track? Debrief checks it for anything harmful, takes their best clean lap and compares yours with it. The file itself is read once and never copied.'));
+  const row=h('div','row'),inp=document.createElement('input');inp.type='file';inp.accept='.ibt';inp.hidden=true;inp.id=id+'TeamFile';
+  const b=h('button','btn'+(T?'':' primary'),T?'Pick another file...':'Pick a teammate\'s file...');b.type='button';b.id=id+'TeamPick';
+  const keepL=h('label','check');keepL.htmlFor=id+'TeamKeep';const keep=document.createElement('input');keep.type='checkbox';keep.id=id+'TeamKeep';keep.checked=!!(T&&T.kept);
+  keepL.append(keep,h('span',null,'Keep for this car and track'));
+  const m=h('span','msg');m.id=id+'TeamMsg';m.setAttribute('role','status');
+  row.append(b,inp,keepL);
+  if(T){const f=h('button','btn ghost','Forget it');f.type='button';f.id=id+'TeamForget';
+    f.addEventListener('click',async()=>{let r;try{r=await post('teamref/forget',{car,track})}catch(e){connectionLost();return}if(r.ok)redraw()});row.append(f)}
+  row.append(m);body.append(row);
+  body.append(h('p','balsmall','Keep saves only the lap Debrief worked out (not the file) so it is here next time.'));
+  b.addEventListener('click',()=>inp.click());
+  inp.addEventListener('change',async()=>{const f=inp.files[0];inp.value='';if(!f)return;
+    if(f.size>TEAM_MAX){setMsg(m.id,'That file is far too big to be a telemetry file.','bad');return}
+    setMsg(m.id,'Checking '+f.name+'...');b.disabled=true;let r;
+    try{r=await fetch(BASE+'api/teamref/upload?'+new URLSearchParams({name:f.name,car,track,keep:keep.checked?'1':'0'}),{method:'POST',headers:{'X-Debrief':'1','Content-Type':'application/octet-stream'},body:f}).then(x=>x.json())}
+    catch(e){setMsg(m.id,'Couldn\'t send the file.','bad');b.disabled=false;return}
+    b.disabled=false;
+    if(!r||!r.ok){setMsg(m.id,(r&&r.error)||'Couldn\'t read that file.','bad');return}
+    if(!r.accepted){setMsg(m.id,r.reason||'This file can\'t be used.','bad');return}
+    await redraw();setMsg(m.id,'Loaded '+r.teammate.label+'.','ok')});
+  if(where==='session'&&T)body.append(csTeamCards(car,track,T));
+  if(where==='coach'&&T){const cl=h('label','check');cl.htmlFor='coTeamOn';const cb=document.createElement('input');cb.type='checkbox';cb.id='coTeamOn';cb.checked=!!T.coach_on;
+    cl.append(cb,h('span',null,'Coach against '+T.short));body.append(cl);
+    const n=h('p','note');n.id='coTeamNote';body.append(n);csTeamNote(T.coach_on);
+    cb.addEventListener('change',async()=>{let r;try{r=await post('teamref/coach',{car,track,on:cb.checked})}catch(e){connectionLost();return}
+      if(!r.ok){cb.checked=!cb.checked;setMsg(m.id,r.error||'That didn\'t work.','bad');return}
+      csTeamNote(cb.checked,r.restart);coachPoll()})}}
+
+function csTeamNote(on,restart){const n=$('coTeamNote');if(!n)return;
+  n.textContent=on?(restart?'On. Stop and start the coach to switch to their lap.':'On. The coach measures you against their lap the next time you start it, and your own new bests don\'t replace it.'):'Off: the coach uses your own best lap.'}
+
+function csTeamCards(car,track,T){const box=h('div','teamcards');box.append(h('p','note','Comparing your laps with '+T.short+'...'));
+  (async()=>{let j;try{j=await api('teamref/cards?'+csQ(car,track))}catch(e){connectionLost();return}
+    box.replaceChildren();
+    if(!j.ok){box.append(h('p','note warn',j.error||'This didn\'t load.'));return}
+    box.append(h('p','note',j.message||''));const C=j.cards||[];
+    if(!C.length){box.append(h('p','note','No corner where your typical laps clearly differ from '+T.short+' yet.'));return}
+    const g=h('div','cccards');C.forEach(c=>{const card=ccCard(c);const ey=h('span','eyebrow teamey','Against '+T.short);card.prepend(ey);g.append(card)});box.append(g);
+    box.append(h('p','balsmall','A single lap of theirs: its own lap-to-lap spread can\'t be measured, so these are always "Few laps".'))})();
+  return box}
+
+/* the session page: after the Corner coach */
+function csSession(R){const old=$('prTeam');if(old)old.remove();if(!R||!R.car_path||!R.track_code)return;
+  const sec=csTeamPanel(R.car_path,R.track_code,'session');const after=$('prCorners'),host=$('prReport');
+  if(after&&after.parentNode===host)after.after(sec);else host.append(sec)}
+
+/* the Coach page: under the reference lap, for the car and track the Coach page shows */
+function csCoachCombo(p){cs.coachCombo=p&&p.car_path?{car:p.car_path,track:p.track_code}:null;const old=$('coTeam');if(old)old.remove();
+  if(!cs.coachCombo)return;const c=cs.coachCombo,grid=document.querySelector('#vCoach .cogrid');if(!grid)return;
+  grid.after(csTeamPanel(c.car,c.track,'coach',T=>{cs.coachTeam=T;csCoach(co.st)}))}
+
+function csCoach(st){if(!st||current.view!=='coach')return;const T=st.teammate||{},R=st.reference;
+  if(R&&R.source&&R.source.kind==='teammate'){$('coRef').textContent=(R.source.label?cap(R.source.label):'Teammate\'s best lap')+' ('+(R.lap_text||'')+')';
+    $('coRefNote').textContent='Against '+(T.short||'your teammate\'s lap')+': their best clean lap from their telemetry file. Your own new bests don\'t replace it.'}
+  else if(T.on&&!st.running){$('coRefNote').textContent='Coach against '+(T.short||'your teammate\'s lap')+' is on: it is used when you start the coach in that car at that track.'}}
+
+/* ---------- Help */
+if(typeof HELP==='object'){
+  HELP.tour.push(['How the car handles','Setup Lab shows, corner by corner, where the car pushes (understeer) or rotates (oversteer), with one setup change to try at a time.'],
+    ['Teammate\'s lap','On a Practice session or the Coach page, pick a teammate\'s telemetry file to compare your corners with their best lap, or to be coached against it.']);
+  HELP.words.push(['Pushes, Rotates','Pushes (understeer): you needed more steering than this car normally does, so the front was sliding first. Rotates (oversteer): less steering, so the rear was sliding first. Always compared with how this car steers in gentle bends, learned from your own laps.'],
+    ['Not clear yet','The laps don\'t say for sure either way. Debrief shuffles your laps thousands of times and only says Pushes or Rotates when the real pattern beats nearly all the shuffles and is big enough to feel.'],
+    ['Countersteer','Steering the other way to catch the rear. Each one is a moment of oversteer you had to save.'],
+    ['Worth a try, A guess','How sure a setup idea is. Worth a try comes from a clear finding; A guess from a likely one. Change one thing, drive at least 6 clean laps, then compare again.'],
+    ['Hot pressure','The tyre pressure once the tyres are warm, read from your laps. The prediction says what a cold pressure comes up to at a track temperature, with how far off it typically is.'],
+    ['Share what changed','Setup Lab writes a short text of what you changed and what the laps said, to paste in Discord. Debrief never posts it.'],
+    ['Teammate\'s lap','Their best clean lap from their telemetry file, checked for anything harmful first. The file is read once and never copied; only the worked-out lap is kept if you tick Keep.'])}
 })();

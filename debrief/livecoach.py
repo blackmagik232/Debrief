@@ -442,6 +442,30 @@ class Weak:
     review_id: str | None = None   # what the race review calls it ("C2"), when the weak corner came from one
     phrase: str | None = None   # the corner coach's short advice ("T4: lighter brake"), said after the corner
     source: str | None = None   # "corner coach" when it came from the corner coach (then there's no review_id)
+    rule: str | None = None     # the corner coach's rule behind the phrase ("brake_later" ...), when given
+
+
+POINT_RULES = {"brake later": "brake_later", "brake earlier": "brake_earlier"}
+
+
+def phrase_rule(w: "Weak") -> str | None:
+    """The rule behind a weak corner's phrase: its own rule, else read from the words ("brake later")."""
+    if w.rule:
+        return w.rule
+    low = str(w.phrase or "").lower()
+    return next((r for words, r in POINT_RULES.items() if words in low), None)
+
+
+def phrase_fits(w: "Weak", early_m: float, early_min: float) -> bool:
+    """2.13 review: a brake-point phrase is only said when this lap's error agrees with it. "Brake later" only
+    after braking early by early_min or more on this lap (never after a late-braking overshoot); "brake earlier"
+    only after braking late by that much. Other phrases always fit."""
+    r = phrase_rule(w)
+    if r == "brake_later":
+        return early_m >= early_min
+    if r == "brake_earlier":
+        return early_m <= -early_min
+    return True
 
 
 def _rel_m(pct: float, apex_pct: float, L: float) -> float:
@@ -466,9 +490,10 @@ def match_weak(ref: Reference, weak, top_n: int = 3, prefix: str = "T") -> list:
     tol = max(60.0, 0.02 * L)
     out, used = [], set()
     for order, w in enumerate(weak):
-        c, lost, num, phrase, source = None, None, None, None, None
+        c, lost, num, phrase, source, rule = None, None, None, None, None, None
         if isinstance(w, dict):
             num = _num_of(w.get("id"))
+            rule = w.get("rule") if isinstance(w.get("rule"), str) and len(w["rule"]) <= 30 else None
             source = w.get("source") if w.get("source") == "corner coach" else None
             ph = w.get("phrase")
             if isinstance(ph, str) and ph.strip() and len(ph.strip()) <= MAX_PHRASE:
@@ -499,7 +524,7 @@ def match_weak(ref: Reference, weak, top_n: int = 3, prefix: str = "T") -> list:
         used.add(c.num)
         out.append((order, Weak(corner=c, lost_s=lost, name=f"{prefix}{num if num is not None else c.num}",
                                 review_id=f"C{num}" if num is not None and source is None else None,
-                                phrase=phrase, source=source)))
+                                phrase=phrase, source=source, rule=rule if phrase else None)))
     # biggest time loss first; items without a number keep their given order, after those with one
     out.sort(key=lambda x: (x[1].lost_s is None, -(x[1].lost_s or 0.0), x[0]))
     return [w for _o, w in out][:max(0, top_n)]
@@ -971,6 +996,7 @@ class Coach:
             return                                        # a pass that says nothing about his driving
         down = c.min_kmh - o.min_v * KMH
         early = (c.brake_rel_m - o.brake_rel) if (c.brake_rel_m is not None and o.brake_rel is not None) else 0.0
+        # early > 0: braked before the reference's brake point; < 0: braked later (an overshoot)
         err = down >= st.slower_kmh or early >= st.early_m
         prev = self._corner_err.get(c.num)
         self._corner_err[c.num] = [err, bool(prev and prev[0])]
@@ -980,7 +1006,7 @@ class Coach:
         persists = bool(prev and prev[0])
         if last is not None and lap.num - last[0] < st.repeat_laps and not persists:
             return
-        if w.phrase:                                      # the corner coach's advice for this corner (2.13)
+        if w.phrase and phrase_fits(w, early, st.early_m):   # the corner coach's advice for this corner (2.13)
             text = w.phrase
         else:
             text = speed_text(w.name, int(round(down))) if down >= st.slower_kmh else early_text(w.name)

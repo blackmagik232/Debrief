@@ -1402,7 +1402,7 @@ def weak_from_cards(rep: dict) -> list:
         if not c.get("voice"):
             continue
         out.append({"id": c.get("id"), "apex_m": c.get("apex_m"), "lost_s": c.get("lost_s"), "phrase": c.get("voice"),
-                    "source": "corner coach"})
+                    "rule": c.get("rule"), "source": "corner coach"})
     return out
 
 

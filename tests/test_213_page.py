@@ -153,7 +153,7 @@ def test_corner_paths_rules():
     cards = {"cards": [{"id": "C4", "apex_m": 2050.0, "lost_s": 0.21, "voice": "T4: lighter brake"},
                        {"id": "C2", "apex_m": 980.0, "lost_s": 0.14, "voice": None}]}
     assert S.weak_from_cards(cards) == [{"id": "C4", "apex_m": 2050.0, "lost_s": 0.21, "phrase": "T4: lighter brake",
-                                         "source": "corner coach"}]
+                                         "rule": None, "source": "corner coach"}]
 
 
 def test_livecoach_phrases_and_abs():
@@ -209,6 +209,53 @@ def test_feedback_says_the_phrase():
             said += [c.text for c in coach.feed(s)]
     assert "T4: lighter brake" in said, said
     assert not any("more speed" in x for x in said), said
+
+
+def _drive_brake(coach, ref, c, shift_m, laps=(1, 2, 3)):
+    """Laps at the reference's speed, 14 km/h down through corner c, braking shift_m metres from the reference's brake
+    point (negative: earlier, positive: later, an overshoot). Returns what the coach said."""
+    L = ref.length_m
+    said, t = [], 0.0
+    for lap_n in laps:
+        for i in range(0, 4000, 2):
+            pct = i / 4000.0
+            v = float(np.interp(pct, ref.pct, ref.speed, period=1.0))
+            rel = livecoach._rel_m(pct, c.apex_pct, L)
+            if abs(rel) < 40:
+                v -= 4.0
+            on = c.brake_rel_m + shift_m <= rel <= -20.0
+            t += (L / 4000.0 * 2) / max(v, 5.0)
+            s = {"SessionTime": t, "Lap": lap_n, "LapDistPct": pct, "Speed": v, "Brake": 0.8 if on else 0.0,
+                 "Throttle": 0.0 if on else 1.0, "Gear": 4, "OnPitRoad": False, "PlayerTrackSurface": ibt.ON_TRACK,
+                 "CarLeftRight": 1, "IsOnTrack": True, "PlayerCarMyIncidentCount": 0, "SessionNum": 0,
+                 "SessionType": "Practice", "LapLastLapTime": -1.0}
+            said += [x.text for x in coach.feed(s)]
+    return said
+
+
+def test_brake_later_only_after_braking_early():
+    """2.13 review: "T4: brake later" only when this lap braked early; after a late-braking overshoot the coach says
+    the speed words instead (never "brake later" after braking too late). The rule comes with the phrase, or is
+    read from its words."""
+    files = make_files()
+    ref = livecoach.build_reference(files["new1"])
+    c4 = ref.corner(4)
+    assert c4.brake_rel_m is not None
+    st = livecoach.Settings(top_n=1, markers=False, lap_delta=False, update_reference=False)
+    for weak in ({"id": "C4", "apex_m": c4.apex_m, "lost_s": 0.2, "phrase": "T4: brake later", "rule": "brake_later"},
+                 {"id": "C4", "apex_m": c4.apex_m, "lost_s": 0.2, "phrase": "T4: brake later"}):
+        early = _drive_brake(livecoach.Coach(ref, [weak], st), ref, c4, -30.0)
+        assert "T4: brake later" in early, early
+        late = _drive_brake(livecoach.Coach(ref, [weak], st), ref, c4, +30.0)
+        assert "T4: brake later" not in late and any(x.startswith("T4: more speed") for x in late), late
+    # a non brake-point phrase is said either way
+    w = {"id": "C4", "apex_m": c4.apex_m, "lost_s": 0.2, "phrase": "T4: lighter brake", "rule": "lighter"}
+    assert "T4: lighter brake" in _drive_brake(livecoach.Coach(ref, [w], st), ref, c4, +30.0)
+    # "brake earlier" only after braking late
+    w = {"id": "C4", "apex_m": c4.apex_m, "lost_s": 0.2, "phrase": "T4: brake earlier", "rule": "brake_earlier"}
+    assert "T4: brake earlier" in _drive_brake(livecoach.Coach(ref, [w], st), ref, c4, +30.0)
+    said = _drive_brake(livecoach.Coach(ref, [w], st), ref, c4, -30.0)
+    assert "T4: brake earlier" not in said and said, said
 
 
 # ================================================================ the endpoints

@@ -26,17 +26,22 @@ def show(rep, title):
     print(f"\n=== {title}: {rep['message']}")
     if rep.get("off_pace"):
         print(f"  left out as off-pace: {rep['off_pace']}")
+    for g in rep.get("groups") or []:
+        print(f"  group: {g['label']}: {g['laps']} laps{'' if g['used'] else ' (not enough for a comparison)'}")
+    if rep.get("lap_gap_s") is not None:
+        print(f"  lap gap (median of the rest - median of the fastest third): {rep['lap_gap_s']} s")
     for k in ("corners_from", "abs", "abs_onset_pct", "wheelspin", "lockup"):
         if rep.get("method", {}).get(k) is not None:
             print(f"  {k}: {rep['method'][k]}")
     for c in rep["cards"]:
         print(f"\n  [{c['confidence']}] {c['text']}")
         print(f"    Why: {c['why']}")
-        print(f"    Voice: \"{c['voice']}\"   (rule {c['rule']}" + (f", then {c['secondary']}" if c['secondary'] else "") + ")")
+        print(f"    Voice: \"{c['voice']}\"   (rule {c['rule']}" + (f", then {c['secondary']}" if c['secondary'] else "")
+              + f"; shuffle p {c.get('p_value')}, over every corner {c.get('p_all')})")
     for u in rep["unclear"]:
         print(f"\n  {u['text']}")
     if rep.get("fine"):
-        print("\n  Fine (typical lap within 0.05 s of your best): " + ", ".join(f["corner"] for f in rep["fine"]))
+        print("\n  Close to your best (under 0.05 s): " + ", ".join(f["corner"] for f in rep["fine"]))
     for c in rep.get("reference_cards") or []:
         print(f"\n  [reference, {c['confidence']}] {c['text']}")
     if rep.get("summary"):

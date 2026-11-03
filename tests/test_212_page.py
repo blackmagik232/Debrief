@@ -70,15 +70,20 @@ def make_files():
     pace_a = [99.6, 99.5, 99.7, 99.4, 99.6, 99.5, 99.6]
     pace_b = [99.1, 99.0, 99.2, 98.9, 99.1, 99.0, 99.1]
     out = []
-    for stamp, laps, setup, name in (("2026-11-01 18-00-00", pace_a, None, "baseline.sto"),
-                                     ("2026-11-01 19-00-00", pace_a, None, "baseline.sto"),
-                                     ("2026-11-02 18-00-00", pace_b, setup_b(), "less camber.sto"),
-                                     ("2026-11-02 19-30-00", pace_b, setup_b(), "less camber.sto")):
+    # setup B's left front runs 10 kPa over its partner when hot: a real "Try next" change and the pressure card
+    press_b = {"LF": 196, "RF": 186, "LR": 184, "RR": 185}
+    for stamp, laps, setup, name, press in (("2026-11-01 18-00-00", pace_a, None, "baseline.sto", None),
+                                            ("2026-11-01 19-00-00", pace_a, None, "baseline.sto", None),
+                                            ("2026-11-02 18-00-00", pace_b, setup_b(), "less camber.sto", press_b),
+                                            ("2026-11-02 19-30-00", pace_b, setup_b(), "less camber.sto", press_b)):
         out.append(fi.make(TEL / f"{CAR}_{TRACK} {stamp}.ibt", laps, setup=setup, setup_name=name, car_path=CAR,
-                           track_code=TRACK, car="McLaren 570S GT4", track="Circuit Zolder"))
+                           track_code=TRACK, car="McLaren 570S GT4", track="Circuit Zolder", pressure=press))
     fi.make(TEL / f"mx5 mx52016_lagunaseca 2026-10-20 18-00-00.ibt", [92.0, 91.8, 91.9, 91.7, 91.9], car="Global Mazda MX-5 Cup",
             car_path="mx5 mx52016", track="WeatherTech Raceway Laguna Seca", track_code="lagunaseca")
     (TEL / "broken 2026-10-01 10-00-00.ibt").write_bytes(b"\0" * 400)
+    old = time.time() - 3600              # written an hour ago: the coach skips files iRacing may still be writing
+    for f in TEL.iterdir():
+        os.utime(f, (old, old))
     ENV["files"] = out
     return out
 
@@ -232,6 +237,11 @@ def test_setuplab_report():
     assert R["compare"]["verdict"] and len(R["compare"]["setups"]) == 2
     assert R["series_setup"] == "unknown" and R["series_override"] is None
     assert R["suggestions"]["for_setup"] == "B"
+    nx = R["suggestions"]["next"]
+    assert nx and nx["kind"] == "change" and nx["rule"] == "axle_pressure" and not nx["check"].startswith("Check"), nx
+    hp = [i for i in R["suggestions"]["items"] if i["rule"] == "hot_pressure"]
+    assert len(hp) == 1 and hp[0]["setting"] == "Hot tyre pressures" and hp[0]["lines"][0].startswith("Now: left front 196"), hp
+    assert R["bad_files"] == [], "the broken file isn't this car's: it's counted once, in the telemetry panel"
     json.dumps(R, allow_nan=False)        # plain JSON: no NaN for the window
     # his own choice wins, and is kept per car + track
     code, r = post("api/setuplab/series", {"car": CAR, "track": TRACK, "setup": "fixed"})
@@ -443,12 +453,46 @@ def test_coach_settings_saved_and_applied():
                                              "lap_delta": True}})
 
 
+def wait_test_voice(gen, timeout=10):
+    end = time.time() + timeout
+    while time.time() < end:
+        tv = call("api/coach/status")[1].get("test_voice") or {}
+        if tv.get("id") == gen and tv.get("state") != "starting":
+            return tv
+        time.sleep(0.05)
+    raise AssertionError("the test voice didn't finish")
+
+
 def test_coach_test_voice():
     s = srv()
     voices = use_fakes(s, lambda: Waiting())
     code, r = post("api/coach/test-voice")
-    assert code == 200 and r["ok"] and r["spoken"] is True and r["voice"]["backend"] == "fake", r
+    assert code == 200 and r["ok"] and r["pending"] is True, r
+    tv = wait_test_voice(r["id"])
+    assert tv["state"] == "spoken" and tv["text"] == "Speaking test phrase", tv
     assert voices[-1].texts() == [S.COACH_TEST_TEXT]
+    # a slow voice never holds the request: Windows speech can take seconds to start
+    made = []
+
+    class SlowVoice(vc.FakeVoice):
+        def wait_ready(self, timeout=5.0):
+            time.sleep(1.5)
+            return True
+
+    def slow(settings):
+        v = SlowVoice()
+        made.append(v)
+        return v
+    s.coach_voice_factory = slow
+    t0 = time.time()
+    code, r = post("api/coach/test-voice")
+    assert code == 200 and r["pending"] and time.time() - t0 < 1.0, (r, time.time() - t0)
+    assert call("api/coach/status")[1]["test_voice"]["state"] == "starting"
+    assert wait_test_voice(r["id"])["state"] == "spoken" and made[-1].texts() == [S.COACH_TEST_TEXT]
+    # the voice stays open long enough for slow speech
+    assert S.voice_test_close_s(vc.FakeVoice(), -10) > S.voice_test_close_s(vc.FakeVoice(), 0) >= 4.0
+    assert S.voice_test_close_s(vc.FakeVoice(), -10) >= 1.5 * vc.speak_seconds(S.COACH_TEST_TEXT, -10)
+    voices = use_fakes(s, lambda: Waiting())
     # while coaching, the running voice says it
     assert post("api/coach/start")[1]["ok"]
     try:
@@ -460,8 +504,9 @@ def test_coach_test_voice():
     # off Windows with no stand-in: the quiet voice says why
     s.coach_voice_factory = None
     code, r = post("api/coach/test-voice")
+    tv = wait_test_voice(r["id"])
     if sys.platform != "win32":
-        assert code == 200 and r["spoken"] is False and "Windows" in r["voice"]["reason"], r
+        assert code == 200 and tv["state"] == "silent" and "Windows" in tv["reason"], tv
     assert s.test_voice is not None
     s.stop_coach()
     assert s.test_voice is None
@@ -548,6 +593,73 @@ def test_watchdog_closes_coach_with_the_window():
     t.join(15)
     assert not t.is_alive() and not runner.running() and not coach_threads(), "the window closed: coach stopped"
     s4.server_close()
+
+
+def test_coach_two_starts_make_one_coach():
+    s = srv()
+    gate = threading.Event()
+
+    def slow_source():
+        gate.wait(5)
+        return Waiting()
+    use_fakes(s, slow_source)
+    res = []
+    ts = [threading.Thread(target=lambda: res.append(s.start_coach())) for _ in range(2)]
+    for t in ts:
+        t.start()
+    time.sleep(0.3)
+    gate.set()
+    for t in ts:
+        t.join(10)
+    try:
+        assert all(r["ok"] for r in res) and sum(1 for r in res if r.get("already")) == 1, res
+        time.sleep(0.2)
+        assert len([t for t in threading.enumerate() if t.name == "debrief-livecoach" and t.is_alive()]) == 1
+    finally:
+        s.stop_coach()
+    # Stop pressed while a start is still building its coach: the new coach is stopped at once
+    gate.clear()
+    out = []
+    t = threading.Thread(target=lambda: out.append(s.start_coach()))
+    t.start()
+    time.sleep(0.2)
+    s.stop_coach()
+    gate.set()
+    t.join(10)
+    assert out and out[0]["ok"] is False and "stopped while it was starting" in out[0]["error"], out
+    assert s.coach is None and not coach_threads()
+
+
+def test_check_file_saved_under_a_fixed_name():
+    srv()
+    from debrief import setuplab
+    seen = []
+    real = setuplab.check_setup_file
+
+    def spy(path, name=None):
+        seen.append((Path(path).name, name))
+        return real(path, name=name)
+    setuplab.check_setup_file = spy
+    try:
+        code, r = _check_file("my fast setup.exe.sto", b"\x01\x02" * 300)
+    finally:
+        setuplab.check_setup_file = real
+    assert seen == [("upload.sto", "my fast setup.exe.sto")], seen
+    assert code == 200 and r["check"]["file"] == "my fast setup.exe.sto" and r["check"]["ok"] is False
+    assert any("hides another file type" in p for p in r["check"]["problems"]), r
+
+
+def test_update_stops_reading_telemetry():
+    s5 = S.DebriefServer(heartbeat_timeout=3600)
+    threading.Thread(target=s5.serve_forever, kwargs={"poll_interval": 0.1}, daemon=True).start()
+    s5.exit = lambda code=0: None
+    with s5.jobs.lock:
+        s5.jobs.st = {"state": "running", "kind": "setuplab", "id": 1}
+    s5.jobs.stop_scan.clear()
+    s5._close_for_update()
+    assert s5.jobs.stop_scan.is_set() and s5.jobs.closing, "an update stops a Setup Lab read (it's only a cache)"
+    with s5.jobs.lock:
+        s5.jobs.st = {"state": "idle"}
 
 
 # ================================================================ the window
@@ -643,13 +755,16 @@ def test_pages_in_the_window():
                 pg.wait_for_function("() => document.getElementById('coText').textContent.startsWith('Coaching')", timeout=30000)
                 pg.wait_for_function("() => document.querySelectorAll('#coSpoken li:not(.note)').length > 0", timeout=30000)
                 assert pg.text_content("#coRef") not in ("", "None yet")
-                assert "T2" in pg.text_content("#coWeak")
+                assert "Turn 2 (C2 in your race review)" in pg.text_content("#coWeak"), pg.text_content("#coWeak")
+                assert pg.text_content("#coPill") == "Coaching" and pg.text_content("#vCoach .comain h3") == "Status"
+                assert "Tell me what it said" not in pg.text_content("#vCoach")
                 assert pg.evaluate("() => document.querySelector('.navbtn[data-nav=coach]').classList.contains('live')")
                 pg.click("#coMute")
                 pg.wait_for_function("() => document.getElementById('coMute').getAttribute('aria-pressed') === 'true'")
                 pg.keyboard.press("Control+Shift+M")
                 pg.wait_for_function("() => document.getElementById('coMute').getAttribute('aria-pressed') === 'false'")
                 pg.click("#coSet summary")
+                assert pg.text_content("#coRateV") in ("slower", "normal", "faster")
                 if shots:
                     snap(pg, shots / f"coach-{'dark' if dark else 'light'}.png")
                 pg.click("#coTest")
@@ -657,6 +772,11 @@ def test_pages_in_the_window():
                 pg.click("#coStart")
                 pg.wait_for_function("() => document.getElementById('coText').textContent === 'Coach off'")
                 assert not pg.evaluate("() => document.querySelector('.navbtn[data-nav=coach]').classList.contains('live')")
+                # with the coach off, Test voice answers at once and the result arrives with the status
+                pg.evaluate("() => { document.getElementById('coSetMsg').textContent = '' }")
+                pg.click("#coTest")
+                pg.wait_for_function("() => document.getElementById('coSetMsg').textContent.includes('You should hear')")
+                assert pg.is_enabled("#coTest")
                 # no polling once the page is left and the coach is off
                 seen = []
                 pg.on("request", lambda rq: seen.append(rq.url) if "coach/status" in rq.url else None)

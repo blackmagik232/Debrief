@@ -980,6 +980,21 @@ COACH_FIELDS = {"in_races": bool, "markers": bool, "feedback": bool, "lap_delta"
 COACH_TEST_TEXT = "Debrief coach. Brake marker, T3."
 
 
+def voice_test_close_s(v, rate) -> float:
+    """How long the test voice stays open: the phrase's own length when rendered, else its spoken length at this
+    speed (slow speech takes far longer), with room to spare."""
+    from .. import voice as voice_mod
+    dur = None
+    try:
+        fn = getattr(v, "duration", None)
+        dur = fn(COACH_TEST_TEXT) if fn else None
+    except Exception:  # noqa: BLE001
+        dur = None
+    if not dur:
+        dur = voice_mod.speak_seconds(COACH_TEST_TEXT, rate)
+    return max(4.0, 1.5 * float(dur) + 2.0)
+
+
 def clean_coach_settings(raw) -> dict:
     """The coach settings the window may change. Raises ValueError (plain words)."""
     if not isinstance(raw, dict) or not raw or len(raw) > 20:
@@ -1287,8 +1302,12 @@ class DebriefServer(ThreadingHTTPServer):
         self.coach_voice = None
         self.coach_hotkey = None
         self.coach_last = None        # the last status of a stopped runner (what it said stays on the page)
+        self.coach_starting = False   # a start is under way (building the runner can take a moment)
+        self.coach_gen = 0            # bumped by stop_coach
         self.coach_weak_info = None   # {"races": n} for the car + track iRacing reports
         self.test_voice = None
+        self.test_gen = 0             # one Test voice at a time; a newer one (or Stop) wins
+        self.test_state = None        # how the last Test voice went, for the window
         # tests only: callables that replace live iRacing and the Windows voice (e.g. an .ibt playback and FakeVoice)
         self.coach_source_factory = None   # () -> source
         self.coach_voice_factory = None    # (livecoach.Settings) -> voice
@@ -1310,8 +1329,12 @@ class DebriefServer(ThreadingHTTPServer):
     def _close_for_update(self):
         """The installer is running: stop in a few seconds (after the window has seen the result) so it
         can replace Debrief's files. It waits for Debrief to close, installs and reopens Debrief.
-        No new job starts meanwhile, and anything still writing (a job or the review refresh) finishes first."""
+        No new job starts meanwhile, and anything still writing (a job or the review refresh) finishes first.
+        Reading telemetry for Setup Lab is only a cache, so it is told to stop now (what it has read is kept)."""
         self.jobs.closing = True
+        with self.jobs.lock:
+            if self.jobs.st.get("state") == "running" and self.jobs.st.get("kind") == "setuplab":
+                self.jobs.stop_scan.set()
 
         def stop():
             end = time.monotonic() + 60
@@ -1369,15 +1392,28 @@ class DebriefServer(ThreadingHTTPServer):
         return prep.weak_corners(mine) if mine else []
 
     def start_coach(self) -> dict:
-        """Start listening to iRacing and coaching. Never raises: a problem is a message, and the log has the rest."""
+        """Start listening to iRacing and coaching. Never raises: a problem is a message, and the log has the rest.
+        Two clicks (or two windows) at once start one coach: a start already under way answers "already", and a
+        coach built while Debrief began closing, or after Stop was pressed, is stopped again at once."""
         if self.jobs.closing or self.stopping.is_set():
             return {"ok": False, "error": "Debrief is closing."}
         from .. import livecoach
         with self.coach_lock:
             if self.coach is not None and self.coach.running():
                 return {"ok": True, "already": True}
+            if self.coach_starting:
+                return {"ok": True, "already": True, "starting": True}
+            self.coach_starting = True
+            gen = self.coach_gen
             old = (self.coach, self.coach_hotkey, self.coach_voice)
             self.coach = self.coach_hotkey = self.coach_voice = None
+        try:
+            return self._start_coach(livecoach, old, gen)
+        finally:
+            with self.coach_lock:
+                self.coach_starting = False
+
+    def _start_coach(self, livecoach, old, gen) -> dict:
         self._close_coach_parts(*old)
         settings = self.coach_settings()
         settings.muted = False
@@ -1387,15 +1423,18 @@ class DebriefServer(ThreadingHTTPServer):
             src = self.coach_source_factory() if self.coach_source_factory else livecoach.IrsdkSource(rate_hz=settings.sample_hz)
             vc = self.coach_voice_factory(settings) if self.coach_voice_factory else \
                 voice_mod.make_voice(volume=settings.volume, rate=settings.rate, log=app.say)
-            folder = None
+            folder, index_of = None, None
             try:
-                tf = settings_io.telemetry_folder(app.load_settings())
+                cfg = app.load_settings()
+                tf = settings_io.telemetry_folder(cfg)
                 folder = tf if tf.is_dir() else None
-            except (SystemExit, OSError):
+                cache = setuplab_cache_path(cfg)
+                index_of = lambda: self.setuplab.load(cache)[0]       # noqa: E731  (Setup Lab's saved index)
+            except (SystemExit, OSError, KeyError):
                 pass
             self.coach_weak_info = None
             r = livecoach.LiveRunner(src, vc, settings=settings, telemetry_dir=folder, weak_for=self.coach_weak_for,
-                                     log=app.say)
+                                     log=app.say, reference_index=index_of)
             r.start()
         except Exception:  # noqa: BLE001
             app.say("ERROR starting the coach:\n" + traceback.format_exc())
@@ -1403,7 +1442,14 @@ class DebriefServer(ThreadingHTTPServer):
             return {"ok": False, "error": "The coach couldn't start. Details were saved to debrief.log in "
                                           + app.data_folder_label() + "."}
         with self.coach_lock:
-            self.coach, self.coach_voice = r, vc
+            closing = self.stopping.is_set() or self.jobs.closing
+            clash = closing or gen != self.coach_gen or (self.coach is not None and self.coach is not r)
+            if not clash:
+                self.coach, self.coach_voice = r, vc
+        if clash:
+            self._close_coach_parts(r, None, vc)
+            app.say("Coach not started: " + ("Debrief is closing." if closing else "stopped while it was starting."))
+            return {"ok": False, "error": "Debrief is closing." if closing else "The coach was stopped while it was starting."}
         hk = None
         try:   # Windows only; elsewhere, or if another program has the key, the mute button still works
             hk = livecoach.Hotkey(settings.hotkey, r.toggle, log=app.say)
@@ -1444,6 +1490,10 @@ class DebriefServer(ThreadingHTTPServer):
         with self.coach_lock:
             r, hk, vc = self.coach, self.coach_hotkey, self.coach_voice
             self.coach = self.coach_hotkey = self.coach_voice = None
+            self.coach_gen += 1           # a start still under way stops the coach it builds
+            self.test_gen += 1            # ...and a test voice still starting is closed when it's ready
+            if self.test_state and self.test_state.get("state") == "starting":
+                self.test_state = None
             tv, self.test_voice = self.test_voice, None
         done = self._close_coach_parts(r, hk, None, timeout)
         if r is not None:
@@ -1481,11 +1531,15 @@ class DebriefServer(ThreadingHTTPServer):
             elif wi is not None:
                 note = "Your race reviews here show no corner that keeps costing time, so the cues come from your best lap only."
         st["weak_note"] = note
+        with self.coach_lock:
+            st["test_voice"] = dict(self.test_state) if self.test_state else None
         return _jsonable(st)
 
     def coach_test_voice(self) -> dict:
         """Say one cue now, at the saved volume and speed: through the running coach's voice, or a voice made for
-        this and closed a few seconds later."""
+        this on its own thread (Windows speech can take seconds to start, and a request thread must not wait for it)
+        and closed once the phrase has had time to finish at the saved speed. coach_status()["test_voice"] says how
+        it went: {"state": "starting" | "spoken" | "silent" | "error", "text", "reason"}."""
         with self.coach_lock:
             r, vc = self.coach, self.coach_voice
         if r is not None and r.running() and vc is not None:
@@ -1496,7 +1550,20 @@ class DebriefServer(ThreadingHTTPServer):
                 app.say("ERROR testing the voice:\n" + traceback.format_exc())
                 return {"ok": False, "error": "The voice didn't work. Details were saved to debrief.log."}
         settings = self.coach_settings()
+        with self.coach_lock:
+            self.test_gen += 1
+            gen = self.test_gen
+            self.test_state = {"state": "starting", "text": "Speaking test phrase", "reason": "", "id": gen}
+        threading.Thread(target=self._test_voice_run, args=(settings, gen), daemon=True, name="debrief-voice-test").start()
+        return {"ok": True, "pending": True, "id": gen}
+
+    def _test_voice_run(self, settings, gen):
         v = None
+
+        def done(state, text, reason=""):
+            with self.coach_lock:
+                if self.test_gen == gen:
+                    self.test_state = {"state": state, "text": text, "reason": reason, "id": gen}
         try:
             from .. import voice as voice_mod
             v = self.coach_voice_factory(settings) if self.coach_voice_factory else \
@@ -1504,15 +1571,25 @@ class DebriefServer(ThreadingHTTPServer):
             wait = getattr(v, "wait_ready", None)
             if callable(wait):
                 wait(5.0)
+            with self.coach_lock:
+                mine = self.test_gen == gen and not self.stopping.is_set()
+                if mine:
+                    old, self.test_voice = self.test_voice, v
+            if not mine:                    # stopped, closing, or a newer test took over
+                self._close_coach_parts(None, None, v)
+                return
+            self._close_coach_parts(None, None, old)
             said = bool(v.say(COACH_TEST_TEXT, priority=3))
-            st = v.status()
+            st = v.status() or {}
+            if said:
+                done("spoken", "Speaking test phrase")
+            else:
+                done("silent", "No sound", str(st.get("reason") or "speech isn't available on this computer"))
         except Exception:  # noqa: BLE001
             app.say("ERROR testing the voice:\n" + traceback.format_exc())
+            done("error", "The voice didn't work. Details were saved to debrief.log.")
             self._close_coach_parts(None, None, v)
-            return {"ok": False, "error": "The voice didn't work. Details were saved to debrief.log."}
-        with self.coach_lock:
-            old, self.test_voice = self.test_voice, v
-        self._close_coach_parts(None, None, old)
+            return
 
         def close_later():
             with self.coach_lock:
@@ -1521,10 +1598,9 @@ class DebriefServer(ThreadingHTTPServer):
                     self.test_voice = None
             if mine:
                 self._close_coach_parts(None, None, v)
-        t = threading.Timer(6.0, close_later)
+        t = threading.Timer(voice_test_close_s(v, settings.rate), close_later)
         t.daemon = True
         t.start()
-        return {"ok": True, "spoken": said, "voice": _jsonable(st)}
 
     @property
     def url(self):
@@ -2975,7 +3051,10 @@ class Handler(BaseHTTPRequestHandler):
         import tempfile
         d = Path(tempfile.mkdtemp(prefix="debrief-setupcheck-"))
         try:
-            p = d / name
+            # saved under a fixed name: his file's name is only shown, never used as a path (and the check reads the
+            # name it is given for the hidden-type tricks, e.g. setup.exe.sto)
+            suf = Path(name).suffix.lower()
+            p = d / ("upload" + (suf if re.fullmatch(r"\.[a-z0-9]{1,10}", suf) else ""))
             left = n
             with open(p, "wb") as f:
                 while left:
@@ -2989,7 +3068,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.close_connection = True
                 return self._json({"ok": False, "error": "The file didn't arrive in full. Try again."}, 400)
             try:
-                res = setuplab.check_setup_file(p)
+                res = setuplab.check_setup_file(p, name=name)
             except Exception:  # noqa: BLE001
                 app.say("ERROR checking a setup file:\n" + traceback.format_exc())
                 return self._json({"ok": False, "error": "Debrief couldn't check that file. Don't use it."}, 500)

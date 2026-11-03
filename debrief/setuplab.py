@@ -1542,23 +1542,25 @@ def _bad_path(name: str) -> bool:
             or "\0" in n)
 
 
-def check_setup_file(path) -> dict:
+def check_setup_file(path, name: str | None = None) -> dict:
     """Check a setup file he got from someone else before it goes near iRacing. Reads only; never extracts or runs.
 
     .sto: must not be a program, a zip, an Office file or script text, and must be a sensible size.
     .zip: lists the members (from the zip's table only) and flags any member that is not .sto/.htm/.txt/.json/.ibt,
     any path that would escape the folder, nested zips, encrypted members, oversize contents, and checks the first
     bytes of each listed member the same way as a .sto.
+    name: the file's own name when it was saved under another one (its types are judged from this name).
     Returns {"ok": bool, "problems": [str], "kind": "sto" | "zip" | "other", "size": n, "members": [names]}"""
     p = Path(path)
-    out = {"ok": False, "problems": [], "kind": "other", "size": 0, "members": [], "file": p.name}
+    shown = Path(str(name).replace("\\", "/").rsplit("/", 1)[-1]) if name else p
+    out = {"ok": False, "problems": [], "kind": "other", "size": 0, "members": [], "file": shown.name}
     try:
         st = p.stat()
     except OSError as e:
         out["problems"].append(f"could not read the file ({e.strerror or e})")
         return out
     out["size"] = st.st_size
-    suf = [s.lower() for s in p.suffixes]
+    suf = [s.lower() for s in shown.suffixes]
     ext = suf[-1] if suf else ""
     if any(s in _BAD_EXT for s in suf[:-1]):
         out["problems"].append("the name hides another file type (e.g. setup.exe.sto)")

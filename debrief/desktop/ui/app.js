@@ -1404,8 +1404,8 @@ async function loadSlReport(){if(!sl.sel)return;const seq=++sl.seq,host=$('slRep
   const slow=setTimeout(()=>{if(seq===sl.seq)host.classList.add('busy')},220);let j;
   try{j=await api('setuplab/report?'+q)}catch(e){clearTimeout(slow);connectionLost();return}
   clearTimeout(slow);if(seq!==sl.seq)return;host.classList.remove('busy');
-  if(!j.ok){slEmpty('That didn\'t load',j.error||'Try again.');return}
-  renderSlReport(j.report)}
+  if(!j.ok){slEmpty('That didn\'t load',j.error||'Try again.');$('slStatus').textContent='The report didn\'t load.';return}
+  renderSlReport(j.report);const R=j.report||{};$('slStatus').textContent='Showing '+(R.track||R.track_code||'')+', '+(R.car||R.car_path||'')+'.'}
 function slSec(title,id){const d=h('section','panel slsec');if(id)d.id=id;d.append(h('h3',null,title));return d}
 function confBadge(c){const x=SL_CONF[c]||[String(c||''),''];const b=h('span','pill'+(x[1]?' '+x[1]:''),x[0]);b.title='How sure this is';return b}
 function renderSlReport(R){const out=document.createDocumentFragment();
@@ -1511,7 +1511,7 @@ $('slCheckFile').addEventListener('change',async()=>{const f=$('slCheckFile').fi
 
 /* ---------- Coach (2.12): spoken cues while you drive. One runner on the server; polled once a second, only
    while this page is open or the coach is running */
-let co={st:null,timer:null,seq:0,filled:false,dirty:false};
+let co={st:null,timer:null,seq:0,filled:false,dirty:false,busy:false,testing:null};
 const CO_STATE={coaching:['Coaching','ok'],waiting:['Waiting for iRacing',''],no_reference:['No reference lap yet','no'],starting:['Starting',''],
   finished:['Finished',''],error:['Stopped','no'],stopped:['Off','']};
 const fmtClock=t=>{if(!ok(t))return '';t=Math.max(0,Math.floor(t));const hh=Math.floor(t/3600),m=Math.floor(t%3600/60),s=t%60;return (hh?hh+':'+String(m).padStart(2,'0'):String(m))+':'+String(s).padStart(2,'0')};
@@ -1522,9 +1522,9 @@ async function coachPoll(){const seq=++co.seq;clearTimeout(co.timer);let j;try{j
 function renderCoach(st){co.st=st;const run=!!st.running,state=CO_STATE[st.state]||[st.state||'',''];
   const nb=document.querySelector('.navbtn[data-nav=coach]');if(nb)nb.classList.toggle('live',run);
   if(current.view!=='coach')return;
-  $('coTitle').textContent=run?state[0]:'Coach off';const pill=$('coPill');pill.className='pill'+(state[1]?' '+state[1]:'');pill.textContent=run||st.state==='error'?state[0]:'Off';
+  const pill=$('coPill');pill.className='pill'+(state[1]?' '+state[1]:'');pill.textContent=run||st.state==='error'?state[0]:'Off';
   $('coText').textContent=st.text||'';
-  const b=$('coStart');b.textContent=run?'Stop coaching':'Start coaching';b.classList.toggle('primary',!run);b.disabled=false;
+  const b=$('coStart');b.textContent=run?'Stop coaching':'Start coaching';b.classList.toggle('primary',!run);b.disabled=!!co.busy;
   const m=$('coMute'),hk=st.hotkey||{};m.disabled=!run;m.setAttribute('aria-pressed',String(!!st.muted));
   m.replaceChildren(document.createTextNode(st.muted?'Unmute ':'Mute '),h('kbd',null,hk.key||'Ctrl+Shift+M'));
   m.title=run&&!hk.on?'This key works while the Debrief window is in front.':'Works from the car too, while Debrief is open.';
@@ -1535,16 +1535,20 @@ function renderCoach(st){co.st=st;const run=!!st.running,state=CO_STATE[st.state
     'Debrief uses your best clean lap for the car and track iRacing shows, from your telemetry files. No lap yet? Drive a clean one and it becomes the reference.';
   const L=st.last_lap,ll=$('coLast');ll.hidden=!(L&&ok(L.time));
   if(L&&ok(L.time))ll.textContent='Last lap '+fmtT(L.time)+(ok(L.delta)?', '+Math.abs(L.delta).toFixed(2)+' s '+(L.delta>0?'down on':'up on')+' your reference':'')+(L.clean===false?' (not clean)':'')+'.';
-  const W=st.weak||[],wu=$('coWeak');wu.replaceChildren(...W.map(w=>{const li=h('li');li.append(h('b',null,w.name),h('span','sub2',(ok(w.lost_s)?'about '+w.lost_s.toFixed(2)+' s a lap to find':'a corner that keeps costing you')+(w.id?' (the review calls it '+w.id+')':'')));return li}));
+  const W=st.weak||[],wu=$('coWeak');wu.replaceChildren(...W.map(w=>{const li=h('li');li.append(h('b',null,coCornerLabel(w)),h('span','sub2',ok(w.lost_s)?'about '+w.lost_s.toFixed(2)+' s a lap to find':'a corner that keeps costing you'));return li}));
   $('coWeakNote').textContent=st.weak_note||(W.length?'From your race reviews of this car at this track. One focus at a time.':R?'From your race reviews of this car at this track.':'Shows once the coach knows the car and track.');
   const sp=(st.spoken||[]).slice().reverse(),su=$('coSpoken');
   su.replaceChildren(...(sp.length?sp.map(c=>{const li=h('li');li.append(h('span','num cot',fmtClock(c.t)),h('span',null,c.text));return li}):[h('li','note','Nothing said yet.')]));
   $('coSpokenNote').textContent=sp.length?'Newest first, session time':'';
-  if(!co.filled||!co.dirty){fillCoachSettings(st.settings||{});co.filled=true}}
+  if(!co.filled||!co.dirty){fillCoachSettings(st.settings||{});co.filled=true}
+  coTestResult(st.test_voice)}
 function fillCoachSettings(s){$('coInRaces').checked=!!s.in_races;$('coMarkers').checked=s.markers!==false;$('coFeedback').checked=s.feedback!==false;
   $('coLapDelta').checked=s.lap_delta!==false;$('coBeep').checked=!!s.brake_beep;$('coTopN').value=String(Math.max(1,Math.min(3,s.top_n||2)));
   $('coVol').value=String(ok(s.volume)?s.volume:100);$('coRate').value=String(ok(s.rate)?s.rate:0);coRanges()}
-function coRanges(){$('coVolV').textContent=$('coVol').value+'%';const r=+$('coRate').value;$('coRateV').textContent=r>0?'+'+r:String(r)}
+function coRanges(){$('coVolV').textContent=$('coVol').value+'%';const r=+$('coRate').value;$('coRateV').textContent=r<0?'slower':r>0?'faster':'normal'}
+// "Turn 2 (C2 in your race review)": the spoken name as words, and the race review's own name for the corner
+function coCornerLabel(w){const m=/^[A-Za-z](\d+)$/.exec(String(w.name||''));const n=m?'Turn '+m[1]:String(w.name||'');
+  return w.review_id?n+' ('+w.review_id+' in your race review)':n}
 ['coVol','coRate'].forEach(id=>$(id).addEventListener('input',()=>{coRanges();co.dirty=true}));
 $('fCoach').addEventListener('change',()=>{co.dirty=true});
 $('fCoach').addEventListener('submit',async e=>{e.preventDefault();setMsg('coSetMsg','Saving...');
@@ -1553,12 +1557,21 @@ $('fCoach').addEventListener('submit',async e=>{e.preventDefault();setMsg('coSet
   let r;try{r=await post('coach/settings',{settings})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('coSetMsg',r.error,'bad');return}co.dirty=false;fillCoachSettings(r.settings||settings);
   setMsg('coSetMsg',co.st&&co.st.running?'Saved. The coach uses them now.':'Saved.','ok')});
-$('coTest').addEventListener('click',async()=>{setMsg('coSetMsg','Speaking...');$('coTest').disabled=true;let r;
-  try{r=await post('coach/test-voice')}catch(e){connectionLost();return}finally{$('coTest').disabled=false}
-  if(!r.ok){setMsg('coSetMsg',r.error||'The voice didn\'t work.','bad');return}
-  const v=r.voice||{};setMsg('coSetMsg',r.spoken?'You should hear: "Debrief coach. Brake marker, T3." Save first to test new volume or speed.':'No sound: '+(v.reason||'speech isn\'t available on this computer')+'.',r.spoken?'ok':'bad')});
-$('coStart').addEventListener('click',async()=>{const run=!!(co.st&&co.st.running);setMsg('coMsg',run?'Stopping...':'Starting...');$('coStart').disabled=true;let r;
-  try{r=await post(run?'coach/stop':'coach/start')}catch(e){connectionLost();return}
+const CO_HEAR='You should hear: "Debrief coach. Brake marker, T3." Save first to test new volume or speed.';
+$('coTest').addEventListener('click',async()=>{setMsg('coSetMsg','Speaking test phrase...');$('coTest').disabled=true;let r;
+  try{r=await post('coach/test-voice')}catch(e){$('coTest').disabled=false;connectionLost();return}
+  if(!r.ok){$('coTest').disabled=false;setMsg('coSetMsg',r.error||'The voice didn\'t work.','bad');return}
+  if(r.pending){co.testing=r.id;coachPoll();return}
+  $('coTest').disabled=false;const v=r.voice||{};setMsg('coSetMsg',r.spoken?CO_HEAR:'No sound: '+(v.reason||'speech isn\'t available on this computer')+'.',r.spoken?'ok':'bad')});
+function coTestResult(t){if(co.testing==null)return;if(t&&t.id!==co.testing)return;
+  if(t&&t.state==='starting'){setMsg('coSetMsg','Speaking test phrase...');return}
+  co.testing=null;$('coTest').disabled=false;
+  if(!t){setMsg('coSetMsg','');return}
+  if(t.state==='spoken')setMsg('coSetMsg',CO_HEAR,'ok');
+  else if(t.state==='silent')setMsg('coSetMsg','No sound: '+(t.reason||'speech isn\'t available on this computer')+'.','bad');
+  else setMsg('coSetMsg',t.text||'The voice didn\'t work.','bad')}
+$('coStart').addEventListener('click',async()=>{if(co.busy)return;const run=!!(co.st&&co.st.running);setMsg('coMsg',run?'Stopping...':'Starting...');co.busy=true;$('coStart').disabled=true;let r;
+  try{r=await post(run?'coach/stop':'coach/start')}catch(e){connectionLost();return}finally{co.busy=false}
   $('coStart').disabled=false;if(!r.ok){setMsg('coMsg',r.error||'The coach didn\'t start.','bad');return}
   setMsg('coMsg',run?'Stopped.':'Started. It talks once you are on track with a reference lap.','ok');if(r.status)renderCoach(r.status);coachPoll()});
 async function coachMute(){let r;try{r=await post('coach/mute')}catch(e){connectionLost();return}

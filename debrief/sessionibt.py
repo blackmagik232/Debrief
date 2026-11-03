@@ -35,6 +35,7 @@ GAP_HOURS = 3.0                 # more than this between files starts a new sess
 MIN_LAPS = sl.MIN_LAPS          # 5: laps needed before consistency, segment spread or the best possible lap is given
 NEAR_BEST_S = 0.5               # "laps within half a second of your best"
 SAME_S = 0.05                   # a smaller difference to an earlier session is "about the same"
+HIST_MIN_LAPS = 3               # typical laps are compared with an earlier session only when both have this many clean laps
 FUEL_MARGIN_LAPS = 1            # fuel for the race plus this many laps
 MAX_FUEL_LAP_L = 20.0           # a lap "using" more than this is a refuel or a reset, not consumption
 MIN_COVERAGE = 0.95             # a lap's distance trace must cover this much of the lap for segment times
@@ -42,6 +43,9 @@ GAIN_MIN_S = 0.01               # segment gains below this are not listed
 
 _SUB_RE = re.compile(rb"^\s*SubSessionID:\s*(\d+)", re.M)
 _ids_memo: dict = {}
+IDS_MEMO_MAX = 5000
+
+REASON_SHORT = {"warmup": "warm-up", "traffic": "in traffic", "slow": "slow"}
 
 REASON_WORDS = {
     "untimed": "no lap time (the file starts or ends during this lap)",
@@ -97,6 +101,8 @@ def _subsession(path) -> int | None:
             m = _SUB_RE.search(ib.session_text.encode("latin-1", "replace"))
         val = int(m.group(1)) if m and int(m.group(1)) > 0 else None
         _ids_memo[key] = val
+        while len(_ids_memo) > IDS_MEMO_MAX:                # oldest first: a long-running window stays small
+            _ids_memo.pop(next(iter(_ids_memo)))
         return val
     except Exception:  # noqa: BLE001
         return None
@@ -119,8 +125,9 @@ def group_records(records: list, gap_hours: float = GAP_HOURS, ids: dict | None 
         if cur:
             prev = cur[-1]
             psub = (ids or {}).get(prev.get("file"))
+            # a file without a SubSessionID (offline testing) never joins an official iRacing session (2.13 review)
             same = (_key(prev) == _key(r) and start - cur_end <= gap_hours * 3600
-                    and not (sub and psub and sub != psub))
+                    and not (sub and psub and sub != psub) and bool(sub) == bool(psub))
             if same:
                 cur.append(r)
                 cur_end = max(cur_end, end)
@@ -347,9 +354,20 @@ def _laps_table(files: list) -> tuple[list, dict]:
     return rows, dropped
 
 
-def _consistency(clean: list, best) -> dict:
+def _spread_words(x: float) -> str:
+    """A spread in words: under 0.05 s is "under 0.05 s" (finer than that is timing, not driving)."""
+    return "under 0.05 s" if x < 0.05 else f"{x:.2f} s"
+
+
+def _consistency(clean: list, best, valid: list | None = None, left_out: dict | None = None) -> dict:
+    """Consistency over clean laps, with what was left out to get them (2.13 review: clean laps already have the
+    slow ones taken out, so their spread alone flatters; the spread over every valid lap is given beside it)."""
     n = len(clean)
-    out = {"clean_laps": n, "enough": n >= MIN_LAPS, "median": None, "mad": None, "iqr": None, "std": None,
+    valid = list(valid) if valid is not None else list(clean)
+    left = {k: int(v) for k, v in (left_out or {}).items() if v}
+    n_left = sum(left.values())
+    out = {"clean_laps": n, "valid_laps": len(valid), "enough": n >= MIN_LAPS, "median": None, "mad": None,
+           "iqr": None, "std": None, "valid_iqr": None, "valid_median": None, "left_out": left,
            "near_best": None, "near_best_pct": None, "near_best_s": NEAR_BEST_S, "text": ""}
     if not n:
         out["text"] = "No clean laps, so consistency can't be measured."
@@ -359,16 +377,31 @@ def _consistency(clean: list, best) -> dict:
     out["mad"] = _r(_mad(a))
     out["iqr"] = _r(np.percentile(a, 75) - np.percentile(a, 25)) if n >= 2 else None
     out["std"] = _r(np.std(a, ddof=1)) if n >= 2 else None
+    if len(valid) >= 2:
+        va = np.asarray(valid, float)
+        out["valid_iqr"] = _r(np.percentile(va, 75) - np.percentile(va, 25))
+        out["valid_median"] = _r(np.median(va))
     if best is not None:
         near = int(np.sum(a <= best + NEAR_BEST_S + 1e-9))
         out["near_best"] = near
         out["near_best_pct"] = round(100.0 * near / n)
         out["text"] = f"{near} of {_plural(n, 'clean lap')} within half a second of your best."
+    if n_left:
+        why = ", ".join(f"{v} {REASON_SHORT[k]}" for k, v in left.items() if k in REASON_SHORT)
+        out["text"] += (f" {_plural(n_left, 'more valid lap')} {'was' if n_left == 1 else 'were'} left out of the "
+                        f"clean laps ({why}).")
     if n >= MIN_LAPS:
-        out["text"] += (f" Half your clean laps were within {out['mad']:.2f} s of your median ({_fmt(out['median'])})"
-                        f"; the middle half spread over {out['iqr']:.2f} s.")
+        if n_left and len(valid) >= MIN_LAPS:
+            out["text"] += (f" The middle half of your laps spread over {_spread_words(out['valid_iqr'])} counting "
+                            f"all {len(valid)} valid laps, and {_spread_words(out['iqr'])} counting only the "
+                            f"{n} clean ones.")
+        else:
+            out["text"] += f" The middle half of your {n} clean laps spread over {_spread_words(out['iqr'])}."
     else:
         out["text"] += f" Only {_plural(n, 'clean lap')}: {MIN_LAPS} are needed before calling it consistent or not."
+        if n_left and len(valid) >= MIN_LAPS:
+            out["text"] += (f" Counting all {len(valid)} valid laps, the middle half spread over "
+                            f"{_spread_words(out['valid_iqr'])}.")
     return out.copy()
 
 
@@ -547,8 +580,18 @@ def _fuel(files: list, rows: list, pace_med, race_minutes=None, race_laps=None) 
         text += f" {length} needs about {need:.1f} L with {_plural(FUEL_MARGIN_LAPS, 'lap')} spare."
         if out["tank_l"] and need > out["tank_l"]:
             race["stops_needed"] = int(math.ceil(need / out["tank_l"])) - 1
-            text += f" That is more than the tank holds: plan {_plural(race['stops_needed'], 'stop')}."
-        if carried is not None:
+            start = min(carried, out["tank_l"]) if carried is not None else out["tank_l"]
+            add = need - start
+            race["add_at_stops_l"] = _r(add, 1)
+            text += (f" That is more than the tank holds: {_plural(race['stops_needed'], 'stop')} needed, "
+                     f"about {add:.1f} L {'at the stop' if race['stops_needed'] == 1 else 'over the stops'}")
+            if carried is not None:
+                text += (f" (you {'started with' if csrc.startswith('fuel') else 'set'} {carried:.1f} L, {csrc}"
+                         + (f"; starting with a full tank leaves about {need - out['tank_l']:.1f} L to add"
+                            if carried < out["tank_l"] - 0.5 else "") + ").")
+            else:
+                text += " (starting with a full tank)."
+        elif carried is not None:
             d = carried - need
             if d >= 0:
                 text += (f" You {'started with' if csrc.startswith('fuel') else 'set'} {carried:.1f} L "
@@ -626,17 +669,18 @@ def _norm_history(history, car_path, track_code) -> list:
         if h.get("kind") == "session_review":
             s = h.get("summary") or {}
             out.append({"date": h.get("date"), "sort": h.get("sort") or 0, "best": s.get("best"),
-                        "median": s.get("median"), "files": h.get("files") or [], "car_path": h.get("car_path"),
+                        "median": s.get("median"), "clean_laps": s.get("clean_laps"),
+                        "files": h.get("files") or [], "car_path": h.get("car_path"),
                         "track_code": h.get("track_code"), "session_types": h.get("session_types") or [],
                         "surface_temp": (h.get("conditions") or {}).get("track_temp_start")})
         elif h.get("kind") == "session":
-            out.append({k: h.get(k) for k in ("date", "sort", "best", "median", "files", "car_path", "track_code",
-                                              "session_types", "surface_temp")})
+            out.append({k: h.get(k) for k in ("date", "sort", "best", "median", "clean_laps", "files", "car_path",
+                                              "track_code", "session_types", "surface_temp")})
         elif h.get("file") and h.get("ok", True):
             recs.append(h)
     if recs:
-        out += [{k: s.get(k) for k in ("date", "sort", "best", "median", "files", "car_path", "track_code",
-                                       "session_types", "surface_temp")} for s in sessions(recs)]
+        out += [{k: s.get(k) for k in ("date", "sort", "best", "median", "clean_laps", "files", "car_path",
+                                       "track_code", "session_types", "surface_temp")} for s in sessions(recs)]
     return [h for h in out if str(h.get("car_path") or "").lower() == str(car_path).lower()
             and str(h.get("track_code") or "").lower() == str(track_code).lower()]
 
@@ -657,7 +701,7 @@ def _history(history, me: dict) -> dict | None:
         out["text"] = "The earlier sessions here have no valid laps to compare with."
         return out
     last = timed[-1]                                  # the last session here that has a lap time
-    out["last"] = {k: last.get(k) for k in ("date", "best", "median", "session_types", "surface_temp")}
+    out["last"] = {k: last.get(k) for k in ("date", "best", "median", "clean_laps", "session_types", "surface_temp")}
     bests = [h for h in prev if h.get("best")]
     if bests:
         b = min(bests, key=lambda h: h["best"])
@@ -674,18 +718,26 @@ def _history(history, me: dict) -> dict | None:
         d = s["best"] - last["best"]
         out["vs_last"] = {"best_s": _r(d)}
         parts.append(f"{words(d, 'Best lap')} your last session here ({last.get('date')}, {_fmt(last['best'])})")
-    if s.get("median") is not None and last.get("median"):
+    me_n, last_n = s.get("clean_laps"), last.get("clean_laps")
+    medians_ok = (me_n is None or me_n >= HIST_MIN_LAPS) and (last_n is None or last_n >= HIST_MIN_LAPS)
+    if s.get("median") is not None and last.get("median") and not medians_ok:
+        out["median_skipped"] = {"now": me_n, "then": last_n}
+    if s.get("median") is not None and last.get("median") and medians_ok:
         d = s["median"] - last["median"]
         out["vs_last"] = dict(out["vs_last"] or {}, median_s=_r(d))
         parts.append(f"{words(d, 'median clean lap')} then ({_fmt(last['median'])})")
     if s.get("best") is not None and out["best_before"]:
         d = s["best"] - out["best_before"]["best"]
         out["vs_best_before"] = _r(d)
+        # "new best" only when faster by SAME_S or more, so it never sits beside "about the same" (2.13 review)
         if out["best_before"]["date"] == last.get("date") and last.get("best") == out["best_before"]["best"]:
-            if d < 0:
+            if d <= -SAME_S:
                 parts.append("a new best here")
-        elif d < 0:
+        elif d <= -SAME_S:
             parts.append(f"a new personal best here by {-d:.2f} s")
+        elif d < SAME_S:
+            parts.append(f"about the same as your best here ({_fmt(out['best_before']['best'])}, "
+                         f"{out['best_before']['date']})")
         else:
             parts.append(f"{d:.2f} s off your best here ({_fmt(out['best_before']['best'])}, {out['best_before']['date']})")
     text = "; ".join(parts)
@@ -775,7 +827,8 @@ def review(files, history=None, race_minutes=None, race_laps=None, idx: dict | N
     else:
         s["text"] = f"No valid lap in {_plural(len(rows), 'lap')}."
 
-    out["consistency"] = _consistency([r["time"] for r in clean], s["best"])
+    out["consistency"] = _consistency([r["time"] for r in clean], s["best"], valid=[r["time"] for r in valid],
+                                      left_out=dropped)
     out["theoretical"], out["segment_spread"] = _segments(read, rows, best_row)
     out["fuel"] = _fuel(read, rows, s["median"], race_minutes=race_minutes, race_laps=race_laps)
     out["conditions"] = _conditions(read)

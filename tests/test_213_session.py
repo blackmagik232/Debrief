@@ -211,5 +211,54 @@ check(any("spotter" in n for n in rv["notes"]) is False, "fake files have CarLef
 nr = si.review([mk(folder("wet"), "2026-11-03 20-00-00", [100.0, 99.0], wet=True)])
 check(nr["conditions"]["wet"] and nr["conditions"]["state"] == "wet", "wet session flagged")
 
+
+# ---------------------------------------------------------------- 2.13 review
+# consistency: the laps left out are counted, and the spread over every valid lap is given beside the clean one
+d = folder("cons2")
+p = mk(d, "2026-10-30 22-00-00", [100.0, 99.0, 99.02, 99.04, 99.03, 99.01, 99.02, 102.5, 101.9])
+c = si.review([p])["consistency"]
+check(c["left_out"] == {"warmup": 1, "slow": 2} and "3 more valid laps were left out of the clean laps (1 warm-up, 2 slow)"
+      in c["text"], c["text"])
+check("counting all 9 valid laps" in c["text"] and "counting only the 6 clean ones" in c["text"], c["text"])
+check("under 0.05 s" in c["text"] and "within 0.0" not in c["text"], f"a tiny spread is 'under 0.05 s': {c['text']}")
+check(c["valid_iqr"] > c["iqr"], f"valid spread {c['valid_iqr']} > clean spread {c['iqr']}")
+
+# history: never "about the same" beside "a new best"; medians compared only with enough laps on both sides
+d = folder("hist2")
+mk(d, "2026-10-20 18-00-00", [100.0, 99.5, 99.6, 99.7, 99.6, 99.55])
+new2 = mk(d, "2026-11-02 18-00-00", [100.0, 99.48, 99.6, 99.65, 99.62, 99.6])
+h = si.review([new2], history=si.sessions(d))["history"]
+check("about the same" in h["text"] and "new best" not in h["text"], f"0.02 s quicker: about the same, no new best ({h['text']})")
+d = folder("hist3")
+mk(d, "2026-10-20 18-00-00", [100.0, 99.9])
+new3 = mk(d, "2026-11-02 18-00-00", [100.0, 99.0, 99.2, 99.1, 99.3, 99.2])
+h = si.review([new3], history=si.sessions(d))["history"]
+check("median" not in h["text"] and h.get("median_skipped"), f"1 clean lap then: typical laps not compared ({h['text']})")
+check("faster than your last session here" in h["text"] and "new best" in h["text"], h["text"])
+
+# fuel: a race longer than a tank says the stop and how much to add, not "short; add fuel"
+d = folder("fuel2")
+p = mk(d, "2026-11-01 18-00-00", [100.0] * 6, fuel=(60.0, 2.5), fuel_max=83,
+       session=["Practice", "Lone Qualify", "Race"], session_secs=1800)
+fu = si.review([p], race_minutes=60)["fuel"]
+check("1 stop needed" in fu["text"] and "at the stop" in fu["text"] and "short; add fuel" not in fu["text"]
+      and fu["race"]["add_at_stops_l"] > 0, fu["text"])
+
+# a file without a SubSessionID (offline testing) doesn't join an official session
+d = folder("group2")
+mk(d, "2026-10-29 10-00-00", [99.0], subsession=333)
+mk(d, "2026-10-29 10-10-00", [99.0])
+ss = si.sessions(d)
+check(len(ss) == 2, f"offline file next to an official one: two sessions ({[x['subsession'] for x in ss]})")
+
+# the SubSessionID memo stays small
+for k in range(si.IDS_MEMO_MAX + 50):
+    si._ids_memo[("x", k, 0)] = None
+one = next(d.glob("*.ibt"))
+for key_ in [k_ for k_ in si._ids_memo if k_[0] == str(one)]:
+    del si._ids_memo[key_]
+si._subsession(one)
+check(len(si._ids_memo) <= si.IDS_MEMO_MAX, f"memo capped ({len(si._ids_memo)})")
+
 print("FAILED" if fails else "ALL OK", fails)
 sys.exit(1 if fails else 0)

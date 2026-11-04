@@ -31,7 +31,8 @@ VARY_BAD = 0.15          # s: corner time spread (IQR) that counts as "varies a 
 VARY_GOOD = 0.06         # s: spread that counts as "locked in"
 FADE_BAD = 0.3           # s: clean laps slower by this much from first to last
 COAST_BAD = 0.5          # s/lap: extra coasting on typical laps vs your best lap
-OVERLAP_BAD = 0.3        # s/lap: both pedals at once
+OVERLAP_BAD = 0.3        # s/lap: both pedals at once, more on a typical lap than on your best lap (2.18)
+LAP1_GOOD = 0.05         # s: lap 1 at most this much slower than typical is "strong" (2.18: never praise a slower lap 1)
 LAP1_BAD = 1.0           # s: lap 1 slower than the median
 REF_LAP = 90.0           # the lap time the seconds above are written for
 TECH_KEYS = ("brake_on", "min_mph", "exit_mph", "full_thr", "coast_s", "gear")
@@ -266,6 +267,20 @@ def _verdict_sentence(fix, con, skills) -> str:
     return text + "."
 
 
+def watch_text(it: dict) -> str:
+    """2.18: what to look at next time in a corner where no single measure stands out (never an empty "fix")."""
+    cid = it.get("corner")
+    lap = it.get("best_lap")
+    if it.get("basis") == "ref":
+        return (f"Your brake point, slowest speed, throttle and gear in {cid} don't differ much from the comparison "
+                "lap's, so the time is in something these numbers don't show. Next time watch your line and where you "
+                f"turn in: put the comparison lap beside yours in Compare laps, zoomed in on {cid}.")
+    vs = f"your best lap there (lap {lap})" if lap is not None else "your best lap there"
+    return (f"Your brake point, slowest speed, throttle and gear in {cid} look about the same on quicker and slower "
+            f"laps, so the time is spread thin. Next time watch your line and where you turn in: compare {vs} with "
+            "a typical one in Compare laps, and drive a few laps keeping one turn-in point.")
+
+
 def build(data: dict) -> dict:
     corners = [c for c in data.get("corners") or [] if isinstance(c, dict) and c.get("id")]
     tech = {t["id"]: t for t in data.get("technique") or [] if isinstance(t, dict) and t.get("id")}
@@ -320,7 +335,11 @@ def build(data: dict) -> dict:
         note = tp_notes.get(it["corner"])
         if note and note not in it["tips"]:
             it["tips"] = it["tips"][:MAX_TIPS - 1] + [note]
-    ranked.sort(key=lambda x: -x["gain"])
+    # 2.18: corners with a measured cause (a tip) come first, biggest first; then the rest, each with what to watch
+    ranked.sort(key=lambda x: (not x["tips"], -x["gain"]))
+    for it in ranked:
+        if not it["tips"]:
+            it["watch"] = watch_text(it)
     by_id = {c["id"]: c for c in corners}
     out["tips"] = {cid: corner_tips(_with_quick(t, by_id.get(cid), clean_set), "best")[:3] for cid, t in tech.items()}
     out["fix"] = ranked[:MAX_FIX]
@@ -393,11 +412,10 @@ def build(data: dict) -> dict:
                 look("lap1", "Lap 1", f"Lap 1 was {d:.1f} s slower than your typical lap (that includes the start). "
                      "Debrief doesn't know what kind of start it was, so this isn't counted as a habit.",
                      round(d, 1), detail=l1_detail, laps=[1], corners=l1_corners)
-        elif d <= 0.5 * k and len(laps) >= 5:
-            # 2.18: the words follow the sign (lap 1 quicker than typical was "within 0.0 s")
-            said = (f"Lap 1 was {-d:.1f} s quicker than your typical lap." if d <= -0.05 else
-                    f"Lap 1 was {d:.1f} s slower than your typical lap, close for a lap with a start." if d >= 0.05 else
-                    "Lap 1 was as quick as your typical lap.")
+        elif d <= LAP1_GOOD * k and len(laps) >= 5:
+            # 2.18: praise only a lap 1 that was really as quick as a typical lap or quicker, and say which
+            said = (f"Lap 1 was {-d:.1f} s quicker than your typical lap, start included." if d <= -0.05 else
+                    "Lap 1 was as quick as your typical lap, start included.")
             good("lap1", "Strong first lap", said,
                  detail=f"Lap 1 {fmt_t(lap1['t'])} against a typical {fmt_t(median)}.", laps=[1])
 
@@ -463,13 +481,31 @@ def build(data: dict) -> dict:
             vary.append((b["id"], iqr))
         elif iqr <= VARY_GOOD * k:
             locked.append(b["id"])
+    # 2.3: brake-point repeatability (works on old reviews from corners[].per_lap); read first so the corner-time
+    # habit and the brake-marker habit can say how they differ (2.18: never "differently every lap" beside "same
+    # brake marker every lap" for the same corner without saying why both are true)
+    bs = _brake_spread(data)
+    spread = [c for c in (bs or {}).get("corners") or [] if isinstance(c, dict) and c.get("id")
+              and _f(c.get("iqr_m")) is not None and isinstance(c.get("n"), int)]
+    locked_b = [c["id"] for c in spread if c.get("label") == "locked"]
     if vary:
         vary.sort(key=lambda x: -x[1])
-        bad("vary", "Corners you drive differently every lap",
-            " and ".join(f"{cid} (±{iqr / 2:.2f} s)" for cid, iqr in vary[:3]) +
-            ". Pick one braking marker and one turn-in point there and repeat them.",
-            detail="Middle half of your clean laps through " + ", ".join(f"{cid} spread over {iqr:.2f} s" for cid, iqr in vary[:3]) + ".",
-            corners=[cid for cid, _ in vary[:3]])
+        top = [cid for cid, _ in vary[:3]]
+        same_b = [cid for cid in top if cid in locked_b]
+        txt = " and ".join(f"{cid} (±{iqr / 2:.2f} s)" for cid, iqr in vary[:3]) + "."
+        if same_b and len(same_b) == len(top):
+            txt += (" Your brake marker there is already the same every lap, so the difference comes after it: "
+                    "pick one turn-in point and one place to get back on the throttle, and repeat them.")
+        elif same_b:
+            txt += (f" In {_and(same_b)} your brake marker is already the same every lap, so the difference comes "
+                    "after it (turn-in, line or throttle); elsewhere pick one braking marker and one turn-in point "
+                    "and repeat them.")
+        else:
+            txt += " Pick one braking marker and one turn-in point there and repeat them."
+        bad("vary", "Corners you drive differently every lap", txt,
+            detail="Middle half of your clean laps through " + ", ".join(f"{cid} spread over {iqr:.2f} s" for cid, iqr in vary[:3]) +
+                   ". This is the time through the whole corner, not the brake point.",
+            corners=top)
     off_many = bool(isinstance(con.get("off_pace_n"), int) and isinstance(con.get("n"), int)
                     and con["off_pace_n"] * 5 > con["n"])   # over 20% of laps off-pace: not "repeatable"
     if locked and len(locked) >= max(2, len(corners) // 2) and not off_many:
@@ -477,10 +513,6 @@ def build(data: dict) -> dict:
              (", ".join(locked) if len(locked) < len(corners) else "every corner") + ".",
              detail=f"Middle half of your clean laps within {VARY_GOOD * k:.2f} s in {len(locked)} corner(s).", corners=locked)
 
-    # 2.3: brake-point repeatability (works on old reviews from corners[].per_lap)
-    bs = _brake_spread(data)
-    spread = [c for c in (bs or {}).get("corners") or [] if isinstance(c, dict) and c.get("id")
-              and _f(c.get("iqr_m")) is not None and isinstance(c.get("n"), int)]
     loose = sorted([c for c in spread if c.get("label") in SPREAD_BAD_LABELS and c["n"] >= SPREAD_MIN_N],
                    key=lambda c: -c["iqr_m"])[:3]
     if loose:
@@ -491,10 +523,12 @@ def build(data: dict) -> dict:
             detail="Middle half of your clean laps' brake points spanned " +
                    ", ".join(f"{c['iqr_m']:.0f} m in {c['id']}" for c in loose) + ".",
             corners=[c["id"] for c in loose])
-    locked_b = [c["id"] for c in spread if c.get("label") == "locked"]
     if len(spread) >= 2 and len(locked_b) * 2 >= len(spread):
+        still = [cid for cid, _ in vary[:3] if cid in locked_b]
         good("brake_markers", "Same brake marker every lap",
-             f"You braked at the same marker lap after lap in {_and(locked_b)}.",
+             f"You braked at the same marker lap after lap in {_and(locked_b)}." +
+             (f" Your time through {_and(still)} still varies (see Corners you drive differently every lap): "
+              "that part comes after the brake point." if still else ""),
              detail=f"Middle half of your clean laps' brake points within {5} m in {len(locked_b)} of {len(spread)} braking corners.",
              corners=locked_b)
 
@@ -554,13 +588,18 @@ def build(data: dict) -> dict:
         if mc is not None and bc is not None and mc - bc >= COAST_BAD * k:
             bad("coast", "Coasting", f"On a typical lap you spend {mc - bc:.1f} s more off both pedals than on your best "
                 "lap. On your quicker laps you tended to go from brake to throttle with less of a gap.",
-                round(mc - bc, 1), detail=f"Off both pedals: {mc:.1f} s on a typical clean lap, {bc:.1f} s on lap {bn}.",
+                round(mc - bc, 1), detail=f"Off both pedals (both under 5%, anywhere on the lap, lifts included): {mc:.1f} s "
+                f"on a typical clean lap, {bc:.1f} s on lap {bn}. Trail braking is a different thing: brake still on as "
+                "you turn in. Coasting starts once the brake is fully off.",
                 laps=[bn])
-        mo = med("overlap_s")
-        if mo is not None and mo >= OVERLAP_BAD * k:
-            bad("overlap", "Brake and throttle together", f"About {mo:.1f} s a lap with both pedals pressed. Unless it's "
-                "deliberate (trail-braking with throttle), it's time the car spends slowing and accelerating at once.",
-                detail=f"Both pedals above 10%: {mo:.1f} s on a typical clean lap.")
+        # 2.18: both pedals at once can be deliberate (balancing the car, a left-foot braker's overlap): it is only a
+        # habit when your typical laps do more of it than your best lap, i.e. the laps show it costing time
+        mo, bo = med("overlap_s"), _f(b_st.get("overlap_s"))
+        if mo is not None and bo is not None and mo - bo >= OVERLAP_BAD * k:
+            bad("overlap", "Brake and throttle together", f"On a typical lap you have both pedals pressed for "
+                f"{mo - bo:.1f} s more than on your best lap. Some overlap can be deliberate, but your quicker lap "
+                "did less of it.", round(mo - bo, 1),
+                detail=f"Both pedals above 10%: {mo:.1f} s on a typical clean lap, {bo:.1f} s on lap {bn}.", laps=[bn])
 
     # ---------- verdict: one sentence in words (the numbers are on the tiles right above it)
     out["verdict"].append(_verdict_sentence(out["fix"], con, data.get("skills")))

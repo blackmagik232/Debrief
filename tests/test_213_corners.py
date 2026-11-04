@@ -239,11 +239,12 @@ s = rep["summary"]
 check(s and s["abs_share"] is not None and any("ABS" in x for x in s["lines"]), "summary talks about ABS")
 check(s["full_share"] > 0.3, f"full-pedal share {s['full_share']}")
 
-# same laps without an ABS channel: still lighter, no ABS words
+# same laps without an ABS channel and no lock-ups (2.18): no "press less hard" advice, no ABS words
 rep = run("lighter_noabs", laps_with({"peak": 0.80, "vmin": 26.0}, typ_change={"peak": 1.0, "rs": 90.0}), abs_ch=False)
 c = card(rep)
-check(c is not None and c["rule"] == "lighter" and "ABS" not in c["how"] and "ABS" not in c["different"],
-      "no ABS channel: lighter rule without ABS words")
+check(not any(x["rule"] == "lighter" or "% instead of" in x["different"] for x in rep["cards"]),
+      f"no ABS, no lock-ups: no brake-pressure advice ({[(x['rule'], x['different']) for x in rep['cards']]})")
+check(not any("ABS" in (x["how"] + x["different"]) for x in rep["cards"]), "no ABS channel: no ABS words in the cards")
 check(any("no ABS channel" in x for x in rep["summary"]["lines"]), "summary says ABS can't be measured")
 
 # ---------------------------------------------------------------- 3. trail braking instead of coasting
@@ -515,6 +516,31 @@ bad.write_bytes(b"\0" * 300)
 rep = cc.analyze_files([pr, bad])
 why = " ".join(x["why"] for x in rep["info"]["skipped"])
 check(rep["info"]["skipped"] and str(bad.parent) not in why, f"skip reason without the folder: {why}")
+
+# (i) 2.18: without ABS, "press less hard" only when the typical laps lock a front wheel (the rules on their own)
+def _d(best, typ, z=9.0):
+    return {"best": best, "typical": typ, "diff": best - typ, "z": z, "se": 0.1, "n_best": 4, "n_typical": 8}
+
+
+D_pk = {"peak_pct": _d(80.0, 100.0)}
+check(("lighter", "peak_pct") in cc._rules(D_pk, {"abs": True}), "ABS car: 80% vs 100% is a lighter-brake rule")
+check(("lighter", "peak_pct") in cc._rules(D_pk, {}), "older callers without the ABS flag keep the rule")
+check(not any(r == "lighter" for r, _ in cc._rules(D_pk, {"abs": False})), "no ABS, no lock-ups: no lighter-brake rule")
+D_lk = dict(D_pk, lock_share=_d(0.0, 0.12, z=1.0))
+check(("lighter", "peak_pct") in cc._rules(D_lk, {"abs": False}), "no ABS but typical laps lock a front: lighter rule")
+D_lk2 = dict(D_pk, lock_share=_d(0.01, 0.02, z=1.0))
+check(not any(r == "lighter" for r, _ in cc._rules(D_lk2, {"abs": False})), "a front locking 2% of the stop is not evidence")
+_dd, _how, _why = cc._phrase("lighter", D_lk, {"abs": False})
+check("locks for about 12%" in _why and "ABS" not in _why + _how + _dd, f"no-ABS lighter gives the lock-up as why: {_why}")
+D_carry = {"min_kmh": _d(100.0, 95.0), "entry_kmh": _d(200.0, 200.0), "peak_pct": _d(80.0, 100.0)}
+_dd, _how, _ = cc._phrase("carry", D_carry, {"abs": False})
+check("% instead of" not in _dd and "press less hard" not in _how, f"carry without ABS or lock-ups: no pedal %: {_how}")
+_dd, _how, _ = cc._phrase("carry", D_carry, {"abs": True})
+check("press less hard" in _how, f"carry with ABS keeps the pedal %: {_how}")
+# coasting is defined once and said so it can't read as the opposite of trail braking
+_line = cc.coast_line({"coast_s_per_lap": 4.8, "coast_after_brake_s": 1.9, "coast_lift_s": 2.9})
+check("4.8 s per lap" in _line and "1.9 s between letting go of the brake" in _line and "2.9 s in corners you take with a lift" in _line
+      and "trail braking" in _line, f"coasting line: {_line}")
 
 
 # 2.13 review: card text is joined with a colon or a full stop, never " - " (and no long dashes)

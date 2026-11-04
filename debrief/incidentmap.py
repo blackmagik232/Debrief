@@ -74,6 +74,8 @@ PERM_N = 2000               # shuffles when there are too many races to try ever
 PERM_SEED = 216
 EXACT_MAX = 12              # up to this many races every sign flip is tried (2^12 = 4096)
 TREND_MIN = 5               # a trend over time needs at least this many races
+EARLY_MIN_EVENTS = 3        # 2.18: "early sign" advice needs at least this many of your race incidents in one place ...
+EARLY_MIN_RACES = 2         # ... across at least this many races (generic racecraft, never a pattern claim)
 MAX_FILE_BYTES = 2 * 1024 ** 3
 LAP_MATCH_S = 5.0           # a review's lap starts this close to your telemetry's lap 1 line crossing: the same race
 REVIEW_WINDOW_S = 1800      # older reviews without lap times: started this close to the telemetry file
@@ -1094,6 +1096,7 @@ def track_map(track, outs) -> dict:
            "field_cars": len(field_units(outs, zs)), "scanned_races": sum(1 for o in races if (o.get("scan") or {}).get("scan"))}
     out["patterns"] = patterns(outs, zs, rows)
     out["sentences"] = sentences(out)
+    out["early_signs"] = early_signs(out)
     return out
 
 
@@ -1214,6 +1217,77 @@ def patterns(outs, zs, rows, field=None) -> list:
                                   f"lap 1, and {t['mine']:.0%} of your incidents in them came on lap 1 against {t['field']:.0%} for the "
                                   f"rest of the field. Chance doesn't explain a gap that big."})
     return found
+
+
+EARLY_LABEL = "Early sign, not proven yet"
+EARLY_TRIES = {
+    "lap1": ["brake a little earlier there on lap 1 than you would on a later lap",
+             "leave a car's width to the car beside you",
+             "pick the inside or the outside line before the braking zone, not in it"],
+    "contact": ["brake a little earlier when a car is alongside or right behind you",
+                "leave a car's width to the car beside you",
+                "decide before the braking zone whether you're going for a gap, and don't turn in on a car that's there"],
+    "own": ["brake a little earlier there and build back up over a few laps",
+            "be gentle with the throttle on the exit until the car is straight",
+            "watch it in your laps there in Compare laps or the replay"],
+    "caught_up": ["leave more of a gap to the car ahead there, so you have room if it goes wrong",
+                  "look further ahead, past the car in front, as you arrive",
+                  "pick the side away from trouble before the braking zone"],
+    "unknown": ["brake a little earlier there for a few laps",
+                "leave a car's width to the cars around you",
+                "watch the replay of those moments to see what happened"],
+}
+
+
+def early_signs(m) -> list:
+    """2.18: plain, clearly labelled advice when your own race incidents bunch up in one place, before there's enough to
+    call it a pattern: at least EARLY_MIN_EVENTS incidents across EARLY_MIN_RACES races in one corner (or quarter).
+    It never claims a statistical pattern (patterns() alone does that, and a place that is already a pattern gets no
+    early sign) and the tips are generic, safe racecraft. [{"zone", "label", "lap1", "kind", "events", "races",
+    "points", "of_points", "label_text", "text", "tries"}]"""
+    rows = [r for r in m.get("list") or [] if r.get("kind_of_session") == "race" and not r.get("before_green")
+            and r.get("zone")]
+    if not rows:
+        return []
+    done = {p.get("zone") for p in m.get("patterns") or [] if p.get("kind") == "corner"}
+    lap1_done = any(p.get("kind") == "lap1" for p in m.get("patterns") or [])
+    by = {}
+    for r in rows:
+        by.setdefault(r["zone"], []).append(r)
+    known = all(r.get("points") is not None for r in rows)
+    tot_pts = sum(r.get("points") or 0 for r in rows)
+
+    def weight(evs):
+        return (sum(e.get("points") or 0 for e in evs) if known else len(evs), len(evs))
+    labels = {z["key"]: z["label"] for z in m.get("zones") or []}
+    out = []
+    for z, evs in sorted(by.items(), key=lambda kv: tuple(-x for x in weight(kv[1]))):
+        races = len({e["session"] for e in evs})
+        if z in done or len(evs) < EARLY_MIN_EVENTS or races < EARLY_MIN_RACES:
+            continue
+        label = labels.get(z) or corner_label(z)
+        n1 = sum(1 for e in evs if e.get("lap1"))
+        lap1 = n1 * 2 > len(evs) and not lap1_done
+        kinds = sorted(((sum(1 for e in evs if e.get("type") == k), k) for k in ("contact", "own", "caught_up")), reverse=True)
+        kind = kinds[0][1] if kinds[0][0] * 2 > len(evs) else "unknown"
+        pts = sum(e.get("points") or 0 for e in evs)
+        where = ("Lap 1, " if lap1 else "") + label
+        if known and tot_pts:
+            most = pts * 2 > tot_pts
+            said = (f"{where} is where {'most' if most else 'a lot'} of your race incident points came from "
+                    f"({pts} of {tot_pts}, {len(evs)} incidents in {races} races)")
+        else:
+            said = f"{where} is where {len(evs)} of your {len(rows)} race incidents happened, in {races} races"
+        if kind != "unknown":
+            said += f", mostly {TYPE_WORDS[kind]}"
+        tries = EARLY_TRIES["lap1" if lap1 else kind]
+        text = (f"{EARLY_LABEL}: {said}. That isn't enough to call it a pattern, but these are safe things to try: "
+                + "; ".join(tries) + ".")
+        out.append({"zone": z, "label": label, "lap1": lap1, "kind": kind, "events": len(evs), "races": races,
+                    "points": pts if known else None, "of_points": tot_pts if known else None,
+                    "label_text": EARLY_LABEL, "said": said, "text": text, "tries": list(tries)})
+        break      # one early sign at a time: the place that cost the most
+    return out
 
 
 def sentences(m) -> list:

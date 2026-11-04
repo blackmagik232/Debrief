@@ -1420,8 +1420,12 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
   ['Getting set up','The setup checklist on the start page shows what is done and the next step. Hide it when you like; Help > Setup checklist brings it back.']],
  words:[['Clean lap','A full lap Garage 61 didn\'t flag: no incident and not a pit lap.'],['Typical lap','The middle of your clean laps. Half were quicker, half slower.'],
   ['Comparison lap','A lap by a teammate, a followed driver or a rival, that yours are measured against.'],['Best sectors added up','Your best time through each part of the track, added together. A guide, not a lap you must be able to drive.'],
-  ['Brake point','Where on the track you first brake.'],['Apex','The slowest point of a corner, near the inside.'],['Coasting','Time with neither pedal pressed.'],['Stint','A run of laps between pit stops.'],
-  ['Possibly traffic','A lap lost time in one short stretch your other laps didn\'t. It could be another car or a mistake.'],['Race log','Passes, fights, incidents and pit stops from a replay scan. Open one of your race reviews and press Scan this race.'],
+  ['Brake point','Where on the track you first brake.'],['Apex','The slowest point of a corner, near the inside.'],['Coasting','Time with both pedals under 5%: after the brake is fully off and before you pick up the throttle, or a lift with no brake. It can sit beside trail braking, which happens earlier, while you turn in.'],
+  ['Trail braking','Keeping a little brake on as you turn in, then easing off towards the apex. It keeps weight on the front tyres so the car turns.'],
+  ['Median','The middle value: half your laps were quicker, half slower. Debrief calls the median lap your typical lap.'],
+  ['Pace drift','How much your clean laps slowed (+) or sped up (\u2212) from the start of the race to the end, from a line drawn through them.'],
+  ['Consistency score','Out of 100: how close together your clean lap times were. 100 means every lap the same; under 45 means they were spread out. 60% comes from the spread, 40% from how many laps were close to your best.'],['Stint','A run of laps between pit stops.'],
+  ['Possibly traffic','A lap lost time in one short stretch your other laps didn\'t. It could be another car or a mistake.'],['Race log','Passes, fights, incidents and pit stops from a replay scan. Press Scan this race on a review, or link a scan from RaceCap.'],
   ['On the road','The order the cars crossed the line in the replay. The iRacing results are the official order.'],['Rolling or standing start','Whether the field was moving at the green flag.'],
   ['Resolve markers','For making a video of your race: a file the DaVinci Resolve video editor imports to mark the race\'s moments on its timeline.'],
   ['Setup','The car settings you drive with (pressures, camber, springs, wing...). Setup Lab reads them from your telemetry files, because iRacing\'s .sto setup files are locked.'],
@@ -1968,7 +1972,7 @@ function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{}
   out.append(bp);
   // 3. corner coach
   const cc=slSec('Corner coach','prCorners'),cards=C.cards||[];
-  const grp=(C.groups||[]).filter(g=>g.used).map(g=>g.label).join('; ');
+  const gu=(C.groups||[]).filter(g=>g.used).map(g=>String(g.label||'').replace(/ only$/,''));const grp=gu.length>1?gu.slice(0,-1).join(', ')+' and '+gu[gu.length-1]+', each compared only with its own kind':gu.join('');
   cc.append(h('p','note',C.ok?'From your last '+plural(C.laps||0,'clean lap')+' here ('+(grp?grp+', ':'')+plural(C.files||0,'telemetry file')+' of this car at this track). Your best laps through each corner against your typical ones; a tip only when it passes the shuffle test (Help explains).':(C.message||'Not enough clean laps here yet.')));
   if(cards.length){const box=h('div','cccards');cards.forEach(c=>box.append(ccCard(c)));cc.append(box);cc.append(h('p','note',TURN_NOTE))}
   else if(C.ok)cc.append(h('p',null,C.message||'No corner shows a clear pattern yet.'));
@@ -2725,7 +2729,7 @@ function rcRaceTable(rows,withTrack){const wrap=h('div','tblwrap'),t=h('table','
   ['Date'].concat(withTrack?['Track']:[]).concat(['Start \u2192 after lap 1','Change','Where places changed','Lap 1 incidents','Contact']).forEach(x=>hr.append(h('th',null,x)));
   const hd=h('thead');hd.append(hr);t.append(hd);const tb=h('tbody');const cols=withTrack?7:6;
   rows.slice().reverse().forEach(r=>{const tr=h('tr');tr.append(rcWhenCell(r));if(withTrack)tr.append(h('td',null,r.track||''));
-    const pos=h('td','num');pos.textContent=r.start||r.lap1_pos?(r.start?'P'+r.start:'Not known')+' → '+(r.lap1_pos?'P'+r.lap1_pos:'not known'):'Not known';if(r.in_class&&(r.start||r.lap1_pos))pos.append(h('small','note',' in class'));tr.append(pos);
+    const pos=h('td','num');if(!r.start&&!r.lap1_pos){pos.className='note';pos.textContent='Not known'}else{pos.textContent=(r.start?'P'+r.start:'Not known')+' → '+(r.lap1_pos?'P'+r.lap1_pos:'not known');if(r.in_class)pos.append(h('small','note',' in class'))}tr.append(pos);
     tr.append(h('td','num '+(r.change>0?'gain':r.change<0?'lose':''),r.change!=null?rcSigned(r.change):'Not known'));
     const w=h('td');w.append(rcWhere(r));tr.append(w);
     const inc=r.incidents||[];tr.append(h('td','num',inc.length?String(inc.length)+(ok(r.incident_points)?' ('+rcPts(r.incident_points)+')':''):'None'));
@@ -2750,6 +2754,8 @@ function rcIncTrack(t){const box=h('div','rctrackbox'),top=h('div','phead');top.
   const L=t.lap1||{},B=t.by_session||{};
   box.append(prFacts([['Lap 1',String(L.events||0)],['Later in races',String(L.later||0)],['Race',String(B.race||0)],['Qualifying',String(B.qualifying||0)],['Practice',String(B.practice||0)]]));
   rcSentences(box,t.sentences,(t.patterns||[]).map(p=>p.text));
+  (t.early_signs||[]).forEach(e=>{const d=h('div','rcearly');const p=h('p','rcsay');p.append(h('b',null,(e.label_text||'Early sign, not proven yet')+': '),String(e.said||'')+'. That isn\u2019t enough to call it a pattern, but these are safe things to try:');d.append(p);
+    const ul=h('ul','pvlist');(e.tries||[]).forEach(x=>ul.append(h('li',null,cap(String(x))+'.')));d.append(ul);box.append(d)});
   if(t.corner_names==='quarters')box.append(h('p','note','This track\'s corners aren\'t known yet (no saved review or clean lap there), so the lap is cut into quarters.'));
   if(!t.points_known)box.append(h('p','note','Incidents seen only in a replay scan have no points: iRacing\'s count comes from telemetry.'));
   if(t.not_recorded)box.append(h('p','note',plural(t.not_recorded,'point')+' not placed: added while no telemetry was recording.'));

@@ -488,12 +488,83 @@ def _combo_notes_failed(c, e) -> str:
             "Try Refresh again later. The other tracks are fine.")
 
 
-def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) -> dict:
-    max_combos = max(1, min(MAX_COMBOS, int(max_combos)))
-    start_req = api.requests_made
-    notes = []
+COVERAGE_NOTE = ("Garage 61's lap search needs a track, so this list is built from your races, the series boards and "
+                 "the tracks loaded before. A track nobody here has touched yet can't be listed.")
+
+
+def _ckey(track, car) -> tuple:
+    return (norm_name(track), norm_name(car))
+
+
+def stored_combos(folder, cars=None) -> list[dict]:
+    """Track and car combos the team has laps at that are already on this PC: the last Team page (every combo it
+    listed, loaded or not) and the saved weekly boards (any driver other than you). No requests."""
+    out = []
+    try:
+        prev = json.loads((Path(folder) / "team" / "team.json").read_text(encoding="utf-8"))
+        for c in (prev.get("combos") if isinstance(prev, dict) else None) or []:
+            if isinstance(c, dict) and c.get("track") and c.get("car"):
+                who = [r.get("name") for r in (c.get("board") or []) + (c.get("academy") or [])
+                       if isinstance(r, dict) and r.get("key") != "me" and r.get("name")] or list(c.get("who") or [])
+                out.append({"track": c["track"], "car": c["car"], "track_id": c.get("track_id"), "car_id": c.get("car_id"),
+                            "races": c.get("races") or 0, "best": None, "best_date": None,
+                            "last": str(c.get("last_date") or ""), "who": who, "source": "the last Team page"})
+    except (OSError, ValueError):
+        pass
+    try:
+        from . import leaderboards
+        for sd in leaderboards._seasons(Path(folder)):
+            for f in sorted(sd.glob("*/w*.json")):
+                d = leaderboards._read(f)
+                if not isinstance(d, dict) or not d.get("track"):
+                    continue
+                for car in sorted({str(r.get("car")) for r in d.get("board") or [] if isinstance(r, dict) and r.get("car")}):
+                    who = [r.get("name") for r in d["board"] if isinstance(r, dict) and r.get("car") == car
+                           and r.get("key") != "me" and r.get("name")]
+                    if who:
+                        out.append({"track": d["track"], "car": car, "track_id": d.get("track_id"), "car_id": None,
+                                    "races": 0, "best": None, "best_date": None,
+                                    "last": str(d.get("fetched_at") or "")[:10], "who": who, "source": "the series boards"})
+    except Exception:  # noqa: BLE001  (no weekly boards: nothing to add)
+        pass
+    return out
+
+
+def merge_combos(*lists) -> list[dict]:
+    """One row per track and car. Your own combos come first in each list's order; the rest follow, newest first.
+    A row keeps every source's driver names ("who")."""
+    seen, out = {}, []
+    for lst in lists:
+        for c in lst:
+            k = _ckey(c["track"], c["car"])
+            if k in seen:
+                t = seen[k]
+                t["who"] = sorted(set(t.get("who") or []) | set(c.get("who") or []))
+                t["track_id"] = t.get("track_id") or c.get("track_id")
+                t["car_id"] = t.get("car_id") or c.get("car_id")
+                t["last"] = max(str(t.get("last") or ""), str(c.get("last") or ""))
+                continue
+            c = dict(c)
+            c["who"] = sorted(set(c.get("who") or []))
+            seen[k] = c
+            out.append(c)
+    return sorted(out, key=lambda c: str(c.get("last") or ""), reverse=True)
+
+
+def who_note(entry, members, my_name="") -> str:
+    """"Josh, Kenta · you haven't driven this": which team members have a lap here."""
+    names = [r.get("name") for r in (entry.get("board") or []) if isinstance(r, dict) and r.get("key") != "me"]
+    if not entry.get("loaded", True):
+        names = [n for n in (entry.get("who") or []) if any(norm_name(n) == norm_name(m) for m in members)] \
+            if members else list(entry.get("who") or [])
+    first = [str(n).split()[0] for n in names if n]
+    mine = bool(entry.get("races")) or any(r.get("key") == "me" for r in (entry.get("board") or []) if isinstance(r, dict))
+    bits = ", ".join(first) if first else "no teammate laps found yet"
+    return bits + ("" if mine else " \u00b7 you haven't driven this")
+
+
+def _ctx(api, team_slug, cfg, log):
     st = settings_of(cfg)
-    members = st["members"]
     me = api.me() or {}
     my_slug = g(me, "slug", default="") or ""
     my_name = " ".join(filter(None, [g(me, "firstName", "firstname"), g(me, "lastName", "lastname")])) or my_slug or "You"
@@ -504,25 +575,10 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
     if teams_list is not None:
         mem = brand.membership(teams_list, team_slug) if grp["ok"] else brand.NOT_MEMBER
     group_name = brand.team_name_for(teams_list, team_slug) if grp["ok"] else grp["name"]
-    if not grp["ok"]:
-        notes.append(no_group_note(grp))
+    notes = [] if grp["ok"] else [no_group_note(grp)]
     not_member = mem == brand.NOT_MEMBER
     if not_member:
         log(f"You're not in the {group_name} group on Garage 61, so no team laps were loaded.")
-    roster_g61 = team_roster(teams_list, team_slug)
-
-    combos_lib = library_combos(folder)
-    if not combos_lib:
-        combos_lib = prepare_combos(folder)
-        if combos_lib:
-            notes.append("No race reviews yet, so this page uses the track and car picked on Prepare. Review a race "
-                         "and it will use your own tracks and cars.")
-        else:
-            log("No reviews in your library yet, so there are no tracks to compare.")
-    picked = combos_lib[:max_combos]
-    if len(combos_lib) > max_combos:
-        notes.append(f"Showing your {max_combos} most recent track and car combinations "
-                     f"({len(combos_lib) - max_combos} older ones left out to keep Garage 61 traffic light).")
     lists = {}
 
     def ids_for(c):
@@ -534,52 +590,76 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
             lists.setdefault("cars", api.cars())
             cid = app.id_for_name(lists["cars"], c["car"])
         return tid, cid
+    return {"st": st, "members": st["members"], "my_slug": my_slug, "my_name": my_name, "team_slug": team_slug,
+            "mem": mem, "teams": teams_list, "grp": grp, "group_name": group_name, "not_member": not_member,
+            "roster": team_roster(teams_list, team_slug), "notes": notes, "ids_for": ids_for,
+            "track_items": api.cached_items("tracks") or []}
 
-    track_items = api.cached_items("tracks") or []
-    out_combos = []
-    seen_drivers = {}          # every Garage 61 driver any combo returned: slug -> name
-    group_rows = 0
-    for i, c in enumerate(picked):
-        short = library.short_track_name(c["track"])
-        log(f"{short} · {c['car']}: loading teammates' best laps ({i + 1} of {len(picked)})...")
-        entry = {"track": c["track"], "track_short": short, "car": c["car"], "track_id": c["track_id"],
-                 "car_id": c["car_id"], "races": c["races"], "last_date": library.local_day(c["last"]) or None,
-                 "board": [], "academy": [], "kings": None, "note": None, "mate_notes": []}
-        out_combos.append(entry)
-        try:   # 2.21: one combination failing never costs the others
-            _build_combo(api, entry, c, ids_for, track_items, team_slug, not_member, my_slug, my_name, members,
-                         group_name, roster_g61, seen_drivers, log)
-            group_rows += len(entry["board"]) + len(entry["academy"])
-        except Exception as e:  # noqa: BLE001
-            import traceback
-            log(f"  {short} · {c['car']} failed ({type(e).__name__}: {e}):\n" + traceback.format_exc())
-            entry["note"] = _combo_notes_failed(c, e)
-            entry["failed"] = True
-    names_all = {**roster_g61, **seen_drivers}
-    matched, unmatched = match_members(members, names_all, my_slug, my_name)
+
+def _load_entry(api, ctx, c, seen, log, label="") -> dict:
+    short = library.short_track_name(c["track"])
+    log(f"{short} \u00b7 {c['car']}: loading teammates' best laps{label}...")
+    entry = {"track": c["track"], "track_short": short, "car": c["car"], "track_id": c["track_id"],
+             "car_id": c["car_id"], "races": c["races"], "last_date": library.local_day(c["last"]) or None,
+             "board": [], "academy": [], "kings": None, "note": None, "mate_notes": [], "loaded": True}
+    try:   # 2.21: one combination failing never costs the others
+        _build_combo(api, entry, c, ctx["ids_for"], ctx["track_items"], ctx["team_slug"], ctx["not_member"],
+                     ctx["my_slug"], ctx["my_name"], ctx["members"], ctx["group_name"], ctx["roster"], seen, log)
+    except Exception as e:  # noqa: BLE001
+        import traceback
+        log(f"  {short} \u00b7 {c['car']} failed ({type(e).__name__}: {e}):\n" + traceback.format_exc())
+        entry["note"] = _combo_notes_failed(c, e)
+        entry["failed"] = True
+    entry["who"] = [r["name"] for r in entry["board"] + entry["academy"] if r.get("key") != "me"]
+    entry["who_note"] = who_note(entry, ctx["members"])
+    return entry
+
+
+def _unloaded_entry(c, members) -> dict:
+    e = {"track": c["track"], "track_short": library.short_track_name(c["track"]), "car": c["car"],
+         "track_id": c.get("track_id"), "car_id": c.get("car_id"), "races": c.get("races") or 0,
+         "last_date": library.local_day(c.get("last")) or (str(c.get("last") or "") or None),
+         "board": [], "academy": [], "kings": None, "mate_notes": [], "loaded": False, "who": list(c.get("who") or []),
+         "note": "Not loaded yet. In the Team view of the window, pick this track and press Load this track."}
+    e["who_note"] = who_note(e, members)
+    return e
+
+
+def _assemble(ctx, out_combos, api, start_req, folder, notes, cfg, log) -> dict:
+    seen = {}
+    for c in out_combos:
+        for r in (c.get("board") or []) + (c.get("academy") or []):
+            if isinstance(r, dict) and r.get("key") not in (None, "me"):
+                seen[r["key"]] = r.get("name") or r["key"]
+    members, grp, group_name = ctx["members"], ctx["grp"], ctx["group_name"]
+    matched, unmatched = match_members(members, {**ctx["roster"], **seen}, ctx["my_slug"], ctx["my_name"])
     member_rows = []
     for m in members:
         row = {"name": m, "key": matched.get(m), "is_me": matched.get(m) == "me", "matched": m in matched}
         if m not in matched:
             row["problem"] = (f"No driver in {group_name} on Garage 61 matched the name \u201c{m}\u201d (checked their name "
                               "and short name). If Garage 61 shows them under another name, change it in Settings > Team."
-                              if (seen_drivers or roster_g61) and not not_member else
+                              if (seen or ctx["roster"]) and not ctx["not_member"] else
                               f"Not seen yet: no {group_name} laps have been loaded, so this name couldn't be matched.")
         member_rows.append(row)
-    if unmatched and not not_member and (seen_drivers or roster_g61):
+    if unmatched and not ctx["not_member"] and (seen or ctx["roster"]):
         log("  Team members with no matching Garage 61 driver: " + ", ".join(unmatched))
+    total, loaded = len(out_combos), sum(1 for c in out_combos if c.get("loaded", True))
+    cov = (f"{total} tracks \u00b7 {loaded} loaded \u00b7 open a track to load it" if loaded < total
+           else f"{total} track{'s' if total != 1 else ''} \u00b7 all loaded")
     data = {
         "version": 2,
-        "team": {"slug": team_slug, "name": group_name},          # the Garage 61 group (kept for older readers)
-        "group": {"slug": team_slug, "name": group_name, "why": grp["why"], "ok": grp["ok"]},
+        "team": {"slug": ctx["team_slug"], "name": group_name},          # the Garage 61 group (kept for older readers)
+        "group": {"slug": ctx["team_slug"], "name": group_name, "why": grp["why"], "ok": grp["ok"]},
         "laps_from": f"Laps come from {group_name} on Garage 61." if grp["ok"] else no_group_note(grp),
-        "team_name": st["name"],
+        "team_name": ctx["st"]["name"],
         "members": member_rows,
-        "membership": mem,
-        "me": {"name": my_name, "key": "me"},
+        "membership": ctx["mem"],
+        "me": {"name": ctx["my_name"], "key": "me"},
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "combos": out_combos,
-        "h2h": head_to_heads(out_combos),
+        "coverage": {"total": total, "loaded": loaded, "note": cov},
+        "h2h": head_to_heads([c for c in out_combos if c.get("loaded", True)]),
         "requests": api.requests_made - start_req,
         "notes": notes,
         "settings_stamp": settings_stamp(cfg),
@@ -593,8 +673,74 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
         log("  Couldn't load this week's leaderboards:\n" + traceback.format_exc())
         data["section_notes"].append(f"Couldn't load this week's leaderboards: {type(e).__name__}. "
                                      "Press Refresh this week to try again.")
+    return data
+
+
+def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) -> dict:
+    """List every track and car the team is known to have laps at (2.21), load the full detail of the newest
+    max_combos, and leave the rest to load on demand (load_combo). Nothing is dropped without being counted."""
+    max_combos = max(1, min(MAX_COMBOS, int(max_combos)))
+    start_req = api.requests_made
+    ctx = _ctx(api, team_slug, cfg, log)
+    notes = list(ctx["notes"])
+    mine = library_combos(folder)
+    if not mine:
+        mine = prepare_combos(folder)
+        if mine:
+            notes.append("No race reviews yet, so this page uses the track and car picked on Prepare. Review a race "
+                         "and it will use your own tracks and cars.")
+        else:
+            log("No reviews in your library yet.")
+    allc = merge_combos(mine, stored_combos(folder))
+    notes.append(COVERAGE_NOTE)
+    prev = {}
+    try:
+        for c in (json.loads((Path(folder) / "team" / "team.json").read_text(encoding="utf-8")).get("combos") or []):
+            if isinstance(c, dict) and c.get("loaded", True) and c.get("track"):
+                prev[_ckey(c["track"], c["car"])] = c
+    except (OSError, ValueError, AttributeError):
+        pass
+    out_combos, seen = [], {}
+    for i, c in enumerate(allc):
+        if i < max_combos:
+            out_combos.append(_load_entry(api, ctx, c, seen, log, f" ({i + 1} of {min(max_combos, len(allc))})"))
+        elif _ckey(c["track"], c["car"]) in prev:       # loaded on demand earlier: kept, said so
+            e = dict(prev[_ckey(c["track"], c["car"])])
+            e["note"] = (e.get("note") or "") + " Loaded earlier; press Load this track to update it."
+            e["loaded"] = True
+            out_combos.append(e)
+        else:
+            out_combos.append(_unloaded_entry(c, ctx["members"]))
+    data = _assemble(ctx, out_combos, api, start_req, folder, notes, cfg, log)
     log(f"Team hub ready. Garage 61 requests used: {data['requests']}.")
     return data
+
+
+def load_combo(api, folder, track, car, team_slug=None, log=print, cfg=None) -> dict:
+    """Load one track and car in full ("Load this track") and put it into the saved team page. Same cost as one
+    combination in a refresh (cached laps cost nothing). Returns the new team data (not yet written)."""
+    start_req = api.requests_made
+    p = Path(folder) / "team" / "team.json"
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError("Refresh team data once first, then load a track.")
+    combos = [c for c in data.get("combos") or [] if isinstance(c, dict)]
+    k = _ckey(track, car)
+    idx = next((i for i, c in enumerate(combos) if _ckey(c.get("track"), c.get("car")) == k), None)
+    if idx is None:
+        raise ValueError("That track and car isn't on the Team page. Refresh team data first.")
+    ctx = _ctx(api, team_slug, cfg, log)
+    old = combos[idx]
+    c = {"track": old["track"], "car": old["car"], "track_id": old.get("track_id"), "car_id": old.get("car_id"),
+         "races": old.get("races") or 0, "best": None, "best_date": None, "last": str(old.get("last_date") or "")}
+    mine = next((m for m in library_combos(folder) if _ckey(m["track"], m["car"]) == k), None)
+    if mine:
+        c = mine
+    combos[idx] = _load_entry(api, ctx, c, {}, log)
+    out = _assemble(ctx, combos, api, start_req, folder, [n for n in data.get("notes") or [] if isinstance(n, str)], cfg, log)
+    out["checked_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return out
 
 
 def settings_stamp(cfg) -> str:

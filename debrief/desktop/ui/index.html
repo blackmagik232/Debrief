@@ -716,6 +716,11 @@
         <p class="note">Looks at your six most recent tracks and cars. Refreshing again within ten minutes just reuses what Debrief already has.</p>
         <div class="row"><button type="button" class="btn primary" data-act="team">Refresh team data</button><span class="msg" id="teamMsg" role="status"></span></div>
       </div>
+      <div class="panel" id="loadPanel" hidden>
+        <div class="phead"><h3>Tracks on this page</h3></div>
+        <p class="note" id="loadNote"></p>
+        <div class="row"><select id="loadSel" aria-label="Track to load"></select><button type="button" class="btn" id="btnLoadTrack">Load this track</button><span class="msg" id="loadMsg" role="status"></span></div>
+      </div>
       <div class="panel" id="weeklyPanel">
         <div class="phead"><h3>This week's leaderboards</h3><span class="pill" id="weeklyPill" hidden></span></div>
         <p class="note" id="weeklyNote">Checking...</p>

@@ -1177,6 +1177,25 @@ def cmd_team(cfg, progress=None, open_after=False) -> Path:
     return Path(page)
 
 
+def cmd_team_load(cfg, track, car, progress=None) -> Path:
+    """2.21: load one track and car on the Team page ("Load this track"); the saved page is updated."""
+    from . import team
+    step, log = _job_logger(progress)
+    step("Connecting to Garage 61...", 0.03)
+    api = make_api(cfg)
+    data = team.load_combo(api, cfg["library_folder"], track, car, cfg.get("team_slug") or DEFAULT_TEAM, log=log, cfg=cfg)
+    step("Saving the team hub...", 0.96)
+    data["cache_reused"] = (data.get("requests") or 0) == 0
+    page = team.write(cfg["library_folder"], data)
+    step(f"Done. Loaded {library_short(track)}. Garage 61 requests: {api.requests_made}", 1.0)
+    return Path(page)
+
+
+def library_short(track) -> str:
+    from . import library
+    return library.short_track_name(track)
+
+
 def cmd_weekly(cfg, progress=None, series_ids=None, force_old=False, open_after=False) -> dict:
     """This week's team leaderboards for your series (2.5), then the team page rebuilt from team.json and the
     weekly snapshots. Requests (leaderboards.py): 1 per series, 2 if a "best" lap needs a second look, at

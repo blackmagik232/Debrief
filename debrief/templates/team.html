@@ -400,7 +400,7 @@ if(!D||!Array.isArray(D.combos)){
 (function freshness(){
   const when=v=>{const d=new Date(v);return isFinite(d)?MON[d.getMonth()]+' '+d.getDate()+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):null};
   const g=when(D.generated_at),c=when(D.checked_at);
-  $('refreshed').textContent=(typeof D.laps_from==='string'?D.laps_from+' ':'')+(g?'Last refreshed '+g+'.':'Not refreshed yet.')+(D.cache_reused&&c?' Up to date, checked '+c+': Garage 61 had nothing newer.':'');
+  $('refreshed').textContent=(typeof D.laps_from==='string'?D.laps_from+' ':'')+(D.coverage&&D.coverage.note?D.coverage.note+'. ':'')+(g?'Last refreshed '+g+'.':'Not refreshed yet.')+(D.cache_reused&&c?' Up to date, checked '+c+': Garage 61 had nothing newer.':'');
   if(typeof D.stale==='string'&&D.stale){$('stale').hidden=false;$('stale').textContent=D.stale}
   const sn=Array.isArray(D.section_notes)?D.section_notes.filter(x=>typeof x==='string'):[];
   if(sn.length){$('secNotes').hidden=false;sn.forEach(x=>$('secNotes').append(h('li',null,x)))}})();
@@ -442,6 +442,7 @@ let p1s=0;combos.forEach(c=>{if(c.board[0]&&c.board[0].key===meKey&&c.board.leng
   if(!combos.length){const e=h('div','empty');e.append(h('b',null,'No races in your library yet.'),h('span',null,'Review a race, or pick a track and car on Prepare, then press Refresh team data. The team hub compares the tracks and cars you have raced.'));host.append(e);return}
   combos.forEach(c=>{const p=h('div','panel');const hd=h('div','phead');const t=h('h3',null,c.track_short||c.track);t.title=c.track;t.append(h('span','u',c.car));hd.append(t);
     hd.append(h('p','note',(c.races?plural(c.races,'reviewed race'):'')+(c.last_date?' · last '+fmtDate(c.last_date):'')));p.append(hd);
+    if(c.who_note)p.append(h('p','note',c.who_note));
     if(c.note)p.append(h('p','note',c.note));
     if(Array.isArray(c.mate_notes)&&c.mate_notes.length){const ul=h('ul','note');c.mate_notes.forEach(n=>{if(typeof n==='string')ul.append(h('li',null,n))});p.append(ul)}
     if(c.board.length){const maxGap=Math.max(0.5,...c.board.map(r=>r.gap||0));

@@ -303,6 +303,54 @@ def test_group_self_corrects():
     assert m == brand.MEMBER and t["slug"] == "midfield-menace"
 
 
+def _laps_for(n_tracks):
+    rows = {}
+    for i in range(1, n_tracks + 1):
+        rows[i] = [lap("swazi", "Swazi Williams", 140.0), lap("josh", "Josh Spence", 141.0 + i, ir=3000),
+                   lap("kenta", "Kenta Young", 142.0 + i, ir=3100)]
+    return rows
+
+
+def test_every_combo_listed_lazy_load_and_no_silent_cap():
+    folder = Path(tempfile.mkdtemp())
+    names = [(f"Track {i}", i) for i in range(1, 10)]
+    # his 2 races + 7 more known only from a previous Team page and weekly boards (nothing he has driven)
+    team.library_combos = lambda f: combos(*names[:2])
+    (folder / "team").mkdir()
+    (folder / "team" / "team.json").write_text(json.dumps({"combos": [
+        {"track": n, "car": CAR, "track_id": i, "car_id": 2, "last_date": "2026-10-0%d" % (i % 9 + 1), "loaded": False,
+         "who": ["Josh Spence", "Kenta Young"], "board": []} for n, i in names[2:6]]}), encoding="utf-8")
+    snap = folder / "team" / "weekly" / "s1" / "ser"
+    snap.mkdir(parents=True)
+    for n, i in names[6:]:
+        (snap / f"w{i}.json").write_text(json.dumps({"schema": 1, "track": n, "track_id": i, "fetched_at": "2026-09-01T00:00:00Z",
+            "board": [{"key": "josh", "name": "Josh Spence", "car": CAR, "t": 141.0}, {"key": "me", "name": "Swazi Williams", "car": CAR, "t": 140.0}]}), encoding="utf-8")
+    api = Api(_laps_for(9))
+    cfg = {"team_name": "Midfield Menace", "team_slug": "overdriver-academy", "team_members": list(brand.MEMBERS)}
+    d = team.build(api, folder, "overdriver-academy", log=lambda m: None, cfg=cfg, max_combos=6)
+    cs = d["combos"]
+    assert len(cs) == 9, [c["track"] for c in cs]                       # nothing dropped
+    assert sum(c["loaded"] for c in cs) == 6 and d["coverage"]["note"] == "9 tracks \u00b7 6 loaded \u00b7 open a track to load it", d["coverage"]
+    un = [c for c in cs if not c["loaded"]]
+    assert len(un) == 3 and all(not c["board"] and "Load this track" in c["note"] for c in un)
+    assert all("you haven't driven this" in c["who_note"] for c in cs if not c["loaded"])
+    assert any(c["who_note"].startswith("Josh, Kenta") for c in cs), [c["who_note"] for c in cs]
+    team.write(folder, d)
+    n_before = api.requests_made
+    pick = un[0]
+    d2 = team.load_combo(api, folder, pick["track"], pick["car"], "overdriver-academy", log=lambda m: None, cfg=cfg)
+    c2 = next(c for c in d2["combos"] if c["track"] == pick["track"])
+    assert c2["loaded"] and c2["board"] and d2["coverage"]["loaded"] == 7, d2["coverage"]
+    assert len(d2["combos"]) == 9
+    try:
+        team.load_combo(api, folder, "Nowhere", CAR, "overdriver-academy", cfg=cfg)
+        raise AssertionError("should refuse an unknown track")
+    except ValueError:
+        pass
+    html = team.write(folder, d2).read_text(encoding="utf-8")
+    assert "coverage" in html and "who_note" in html
+
+
 def test_settings_names():
     from debrief.desktop import settings_io
     assert "team_name" in settings_io.public_view() and settings_io.public_view()["team_members"] == list(brand.MEMBERS)

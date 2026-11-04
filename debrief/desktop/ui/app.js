@@ -419,7 +419,7 @@ async function startJob(kind,body){
     if(lastJob.kind===kind&&kind!=='check')openJob();
     else banner('Debrief is busy: '+(lastJob.title||TITLES[lastJob.kind]||'a job').toLowerCase()+'. Wait for it to finish.',true);
     return false}
-  let r;try{r=await post(kind==='scan'?'replay-scan':kind==='rival'?'rival-read':kind,body)}catch(e){connectionLost();return false}
+  let r;try{r=await post(kind==='scan'?'replay-scan':kind==='rival'?'rival-read':kind==='teamload'?'team-load':kind,body)}catch(e){connectionLost();return false}
   if(!r.ok){banner(r.error||'Could not start.',true);return false}
   if(lastJob&&lastJob.kind==='sync'&&lastJob.state==='running')banner('History sync paused for this. It carries on next time.');
   lastStart={kind,body};lastJob={state:'running',kind,id:r.id};
@@ -476,7 +476,7 @@ function render(s){
   if(s.kind==='update'&&s.state==='done'&&!handled.has(s.id)){handled.add(s.id);
     setBar(1);$('jobEyebrow').textContent='Installing';$('jobNow').textContent='Debrief is closing to install the update. It reopens on its own in about a minute; you can close this window.';
     lost=true;return}
-  if(s.kind==='review'||s.kind==='scan'||s.kind==='rival'||s.kind==='prep'||s.kind==='team'||s.kind==='weekly'||s.kind==='update'){
+  if(s.kind==='review'||s.kind==='scan'||s.kind==='rival'||s.kind==='prep'||s.kind==='team'||s.kind==='teamload'||s.kind==='weekly'||s.kind==='update'){
     if(s.kind==='review'&&s.state==='running')TITLES.review=s.title||TITLES0.review;
     setBar(s.frac||0);$('jobNow').textContent=s.state==='error'?'Stopped.':plainText(noCounts(s.message))||'Working...';
     if($('jobTitle').textContent!==TITLES[s.kind]&&s.state==='running')resetJobView(s.kind);
@@ -498,10 +498,10 @@ function render(s){
         if(R.saved){openReview(R.review);bannerAction('You\'ve already reviewed this race, so here is the saved review. Nothing was downloaded.','Rebuild',()=>rebuildReview(R.review))}
         else if(Array.isArray(R.changes)){if(stay||current.dir===R.review)openReview(R.review);if(current.dir===R.review)reloadFrame();banner('Review rebuilt. '+R.changes.filter(x=>typeof x==='string').join(' '),false,12000)}
         else{if(stay)openReview(R.review);banner('Review ready.')}});
-      else loadPages().then(()=>{const team=s.kind==='team'||s.kind==='weekly';
+      else loadPages().then(()=>{const team=s.kind==='team'||s.kind==='teamload'||s.kind==='weekly';
         if(s.result&&s.result.page){if(stay)openPage(s.result.page,team?'teamPage':'prepPage');
         banner(s.kind==='weekly'?'This week\'s leaderboards updated.':
-          s.kind==='team'?'Team hub updated.':'Prep page ready.')}if(current.view==='prep')renderPrepPages();if(s.kind==='weekly')loadWeekly()});
+          (s.kind==='team'||s.kind==='teamload')?'Team hub updated.':'Prep page ready.')}if(current.view==='prep')renderPrepPages();if(s.kind==='weekly')loadWeekly();if(s.kind==='teamload'||s.kind==='team')loadTeamCombos()});
     }
   }
   if(s.kind==='setuplab'){renderSlJob(s);prJob(s)}
@@ -1260,13 +1260,22 @@ $('fGoal').addEventListener('submit',async e=>{e.preventDefault();
   const was=!!editing;resetGoalForm();fillGoalCombos();setMsg('goalMsg',was?'Goal updated.':'Goal added.','ok');loadGoals()});
 
 /* ---------- Team */
-async function openTeam(){current={view:'team',dir:null};markNav();
+async function openTeam(){current={view:'team',dir:null};markNav();loadTeamCombos();
   if(lastJob&&lastJob.state==='running'&&(lastJob.kind==='team'||lastJob.kind==='weekly')){openJob();return}
   loadWeekly();
   await loadPages();
   if(current.view!=='team')return;  // the person moved on while we looked
   if(pages.team)openPage(pages.team,'teamPage');else{show('vTeam');markNav()}}
 $('fbTeam').addEventListener('click',()=>startJob('team'));
+// 2.21: every track the team has laps at is listed; the newest few load on Refresh, the rest when you ask
+let teamCombos=[];
+async function loadTeamCombos(){let j;try{j=await api('team-combos')}catch(e){return}
+  if(!j||!j.ok)return;teamCombos=j.combos||[];const un=teamCombos.filter(c=>!c.loaded);
+  $('loadPanel').hidden=!teamCombos.length;
+  $('loadNote').textContent=j.total+' tracks \u00b7 '+j.loaded+' loaded'+(un.length?' \u00b7 pick a track below to load it.':' \u00b7 all loaded.');
+  const sel=$('loadSel');sel.replaceChildren(...un.map((c,i)=>{const o=h('option',null,c.short+' \u00b7 '+c.car+(c.who?' ('+c.who+')':''));o.value=String(teamCombos.indexOf(c));return o}));
+  $('btnLoadTrack').disabled=!un.length;sel.disabled=!un.length}
+$('btnLoadTrack').addEventListener('click',()=>{const c=teamCombos[+$('loadSel').value];if(!c)return;setMsg('loadMsg','');startJob('teamload',{track:c.track,car:c.car})});
 
 /* ---------- this week's team leaderboards (2.5): the estimate is worked out without any request */
 let weeklyInfo=null;

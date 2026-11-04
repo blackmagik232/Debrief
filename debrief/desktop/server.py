@@ -548,7 +548,7 @@ def sample_page() -> bytes:
 
 # ---------------------------------------------------------------- background jobs
 JOB_TITLES = {"review": "Reviewing your last race", "check": "Checking the connection",
-              "prep": "Building your track prep page", "team": "Updating the team hub",
+              "prep": "Building your track prep page", "team": "Updating the team hub", "teamload": "Loading a track for the team hub",
               "sync": "Syncing your Garage 61 history", "schedule": "Loading the iRacing season schedule",
               "scan": "Scanning the replay", "rival": "Reading a rival's lap", "update": "Updating Debrief", "weekly": "Updating this week's team leaderboards",
               "setuplab": "Reading your telemetry files"}
@@ -745,6 +745,9 @@ class Jobs:
                 result = {"schedule": _run_schedule(params, cb)}
             elif kind == "team":
                 page = app.cmd_team(cfg, progress=cb)
+                result = {"page": _lib_rel(cfg, page)}
+            elif kind == "teamload":
+                page = app.cmd_team_load(cfg, params.get("track"), params.get("car"), progress=cb)
                 result = {"page": _lib_rel(cfg, page)}
             elif kind == "weekly":
                 res = app.cmd_weekly(cfg, progress=cb, series_ids=params.get("series_ids"),
@@ -2509,7 +2512,7 @@ class Handler(BaseHTTPRequestHandler):
         if r == "sample/index.html":
             return self._sample()
         if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/markers", "api/pages", "api/sessions", "api/prepare", "api/prepfocus",
-                 "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand",
+                 "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand", "api/team-combos",
                  "api/diagnostics", "api/setuplab/combos", "api/setuplab/report", "api/coach/status",
                  "api/sessions-ibt", "api/session-review", "api/corner-coach", "api/plan", "api/plan/history",
                  "api/firstrun"):
@@ -3215,7 +3218,7 @@ class Handler(BaseHTTPRequestHandler):
         if r == "api/update":
             return self._json(self.server.jobs.start("update"))
         if r in ("api/prep", "api/team", "api/goals", "api/result", "api/series", "api/prepare-choice", "api/notes", "api/schedule",
-                 "api/strategy", "api/racecap-link", "api/intel-preview", "api/intel-import", "api/weekly", "api/discord-post",
+                 "api/strategy", "api/racecap-link", "api/intel-preview", "api/intel-import", "api/weekly", "api/discord-post", "api/team-load",
                  "api/discord-check", "api/setuplab/read", "api/setuplab/stop", "api/setuplab/series", "api/coach/start",
                  "api/coach/stop", "api/coach/mute", "api/coach/settings", "api/coach/test-voice", "api/plan/new",
                  "api/plan/score", "api/coach/wheel-learn", "api/coach/wheel-clear", "api/firstrun/dismiss", "api/firstrun/skip"):
@@ -3670,6 +3673,25 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("Weekly leaderboards aren't available right now. Details were saved to debrief.log in "
                              + app.data_folder_label() + ".")
         return self._json(self.server.jobs.start("weekly", {"series_ids": ids, "force_old": fo}))
+
+    def _get_team_combos(self, q):
+        """Every track and car on the saved Team page and whether it is loaded (no requests)."""
+        cfg = self._cfg()
+        try:
+            d = json.loads((Path(cfg["library_folder"]) / "team" / "team.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return self._json({"ok": True, "combos": [], "total": 0, "loaded": 0})
+        cs = [c for c in (d.get("combos") or []) if isinstance(c, dict) and c.get("track")]
+        return self._json({"ok": True, "total": len(cs), "loaded": sum(1 for c in cs if c.get("loaded", True)),
+                           "combos": [{"track": c["track"], "car": c.get("car"), "short": c.get("track_short") or c["track"],
+                                       "loaded": c.get("loaded", True), "who": c.get("who_note") or ""} for c in cs]})
+
+    def _post_team_load(self, body):
+        self._cfg()
+        t, c = body.get("track"), body.get("car")
+        if not isinstance(t, str) or not isinstance(c, str) or not t or not c or len(t) > 200 or len(c) > 200:
+            raise ValueError("Pick a track from the list.")
+        return self._json(self.server.jobs.start("teamload", {"track": t, "car": c}))
 
     def _post_team(self, body):
         self._cfg()

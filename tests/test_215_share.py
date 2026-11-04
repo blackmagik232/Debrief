@@ -63,8 +63,8 @@ check("front camber -4.0 → -3.6 deg (both sides)" in t, "camber both sides as 
 check("corner weight" not in t.lower(), "garage results left out")
 pair = rep["compare"]["pairs"][0]
 check("Result:" in t, f"result from Setup Lab's verdict ({pair['verdict']})")
-if pair["verdict"] == "no clear difference" and pair.get("more_laps"):
-    check(f"about {pair['more_laps']} more clean lap" in t and "on each would show it" in t, "says how many more laps would tell")
+check(pair["verdict"] == "not enough to tell" and "not enough stints to tell yet" in t and "1 separate stint" in t,
+      f"one run each: says it needs more stints ({t[-200:]})")           # 2.19
 # 2.18: the same numbers as the page, in the label's order (B first in "Setup B vs A")
 pa, pb = (next(x["pace"] for x in rep["compare"]["setups"] if x["id"] == k) for k in ("A", "B"))
 check(f"{pb['clean_laps']} clean laps on B, {pa['clean_laps']} on A" in t, f"lap counts in the label's order ({t})")
@@ -82,7 +82,7 @@ base = copy.deepcopy(rep)
 
 def with_pair(**kw):
     rr = copy.deepcopy(base)
-    p = {"a": "A", "b": "B", "verdict": "no clear difference", "faster": None, "diff_s": 0.03, "more_laps": 4,
+    p = {"a": "A", "b": "B", "verdict": "no clear difference", "faster": None, "diff_s": 0.03, "more_stints": 4,
          "caution": None, "confounders": [], "missing": []}
     p.update(kw)
     rr["compare"] = {"pairs": [p], "setups": [{"id": "A", "pace": {"clean_laps": 6, "median": 60.405}},
@@ -92,10 +92,10 @@ def with_pair(**kw):
 
 t1 = ss.share_text(with_pair())
 check("Result: no clear difference yet (typical lap 1:00.029 on B, 1:00.405 on A; 7 clean laps on B, 6 on A). "
-      "If there is a real gap of 0.1 s or more, about 4 more clean laps on each would show it." in t1, t1)
+      "If there is a real gap of 0.1 s or more, about 4 more stints on each setup would show it." in t1, t1)
 # the page's gap, never the 0.1 s floor: a 0.38 s gap is called 0.4 s (as "faster by about 0.4 s" would be)
-t1b = ss.share_text(with_pair(diff_s=0.376, more_laps=1))
-check("If the 0.4 s gap is real, about 1 more clean lap on each would show it." in t1b and "0.1 s gap" not in t1b, t1b)
+t1b = ss.share_text(with_pair(diff_s=0.376, more_stints=1))
+check("If the 0.4 s gap is real, about 1 more stint on each setup would show it." in t1b and "0.1 s gap" not in t1b, t1b)
 t2 = ss.share_text(with_pair(verdict="faster", faster="B", diff_s=0.31))
 check("Result: B was faster than A by about 0.3 s a lap (typical lap 1:00.029 on B, 1:00.405 on A; 7 clean laps on B, 6 on A)." in t2, t2)
 t3 = ss.share_text(with_pair(verdict="faster", faster="B", diff_s=0.31,
@@ -105,9 +105,13 @@ t4 = ss.share_text(with_pair(verdict="confounded", confounders=["the track was 9
 check("can't be compared fairly yet" in t4 and "9 °C warmer" in t4, t4)
 t5 = ss.share_text(with_pair(verdict="not enough to tell",
                              missing=["Setup B (swazi_zolder_v2.sto) needs 2 more clean laps (has 3; 5 is the minimum)"]))
-check("not enough laps to tell yet" in t5 and "swazi" not in t5.lower(), f"missing laps, file name removed: {t5}")
-t6 = ss.share_text(with_pair(more_laps=None, diff_s=0.04))
+check("not enough laps or stints to tell yet" in t5 and "swazi" not in t5.lower(), f"missing laps, file name removed: {t5}")
+t6 = ss.share_text(with_pair(more_stints=None, diff_s=0.04))
 check("smaller than 0.1 s" in t6, t6)
+t7 = ss.share_text(with_pair(verdict="not enough to tell", stints=[1, 4],
+                             missing=["Setup A (swazi.sto) has been driven in 1 separate stint (3 are needed on each setup)"]))
+check("not enough stints to tell yet (typical lap 1:00.029 on B" in t7 and "1 separate stint" in t7 and "swazi" not in t7.lower(),
+      f"too few stints: said, with the typical laps and no file name: {t7}")
 # a setup named with brackets of its own: nothing of the name may leak (2.15 review)
 for nm in ("Swazi Williams (v2) quali", "Overdriver's, changed", "a (b (c)) d"):
     rp = with_pair(verdict="confounded",
@@ -126,7 +130,7 @@ rp = with_pair(verdict="confounded", confounders=["Swazi Williams (v2) quali was
 rp["setups"] = [{"id": "B", "label": "Setup B (Swazi Williams (v2) quali)", "name": "Swazi Williams (v2) quali"}]
 tt = ss.share_text(rp)
 check("Swazi" not in tt and "quali" not in tt, f"a bare known name is removed: {tt}")
-for x in (t1, t2, t3, t4, t5, t6):
+for x in (t1, t2, t3, t4, t5, t6, t7):
     private_free(x, "verdict text")
 
 # chosen pair the other way round

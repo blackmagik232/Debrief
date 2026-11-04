@@ -56,10 +56,12 @@ check(sl.lap_text(60.029) == "1:00.029" and sl.lap_text(59.748) == "0:59.748" an
 check(sl.lap_text(None) == "-" and sl.day_text("2026-10-20 18:00") == "Oct 20", "lap and day helpers")
 
 d = folder("three")
-mk(d, "2026-10-20 18-00-00", SLOW, setup=with_arb(3), setup_name="lime.sto")
-mk(d, "2026-10-24 18-00-00", SLOW, setup=with_arb(4), setup_name="lime.sto")
-mk(d, "2026-11-01 18-00-00", FAST, setup=with_arb(2), setup_name="lime.sto")
-mk(d, "2026-11-01 20-00-00", FAST, setup=with_arb(2), setup_name="lime.sto")
+for _h in (18, 19, 20):                       # 2.19: a claim needs 3 separate stints on each setup
+    mk(d, f"2026-10-20 {_h}-00-00", [x + 0.01 * _h for x in SLOW], setup=with_arb(3), setup_name="lime.sto")
+for _h in (18, 19, 20):
+    mk(d, f"2026-10-24 {_h}-00-00", [x + 0.01 * _h for x in SLOW], setup=with_arb(4), setup_name="lime.sto")
+for _h in (18, 20, 21):
+    mk(d, f"2026-11-01 {_h}-00-00", [x + 0.01 * _h for x in FAST], setup=with_arb(2), setup_name="lime.sto")
 rep = sl.report(d, "mclaren570sgt4", "zolder gp")
 labels = [s["label"] for s in rep["setups"]]
 check(labels == ["Setup A (lime.sto, first driven Oct 20)", "Setup B (lime.sto, first driven Oct 24)",
@@ -88,8 +90,14 @@ C3 = sl.compare(sl.index(d3)["files"])
 check([(p["a"], p["b"]) for p in C3["pairs"]] == [("A", "B"), ("B", "C"), ("A", "C")] and C3["not_compared"]
       and C3["not_compared"][0].startswith("Setup B") and "isn't compared with the other setups yet" in C3["not_compared"][0],
       f"a setup without enough laps: says why it isn't compared with the rest ({C3['not_compared']})")
-two = sl.compare(sl.index(d2)["files"])
-check(two["headline"] == two["pairs"][0]["text"] and two["not_compared"] == [], "one pair: its own text is the headline")
+d2b = folder("sameday3")
+for _h in (14, 15, 16):
+    mk(d2b, f"2026-10-20 {_h}-00-00", [x + 0.01 * _h for x in SLOW], setup=with_arb(3))
+for _h in (17, 18, 19):
+    mk(d2b, f"2026-10-20 {_h}-00-00", [x + 0.01 * _h for x in FAST], setup=with_arb(2))
+two = sl.compare(sl.index(d2b)["files"])
+check(two["pairs"][0]["verdict"] == "faster" and two["headline"] == two["pairs"][0]["text"] and two["not_compared"] == [],
+      "one pair: its own text is the headline")
 
 # ---------------------------------------------------------------- his change into a setup
 ch = sl.change_into(sl.index(d)["files"], "C")
@@ -229,34 +237,54 @@ n3 = cs.balance_laps_note(15, 17, "Setup C", 2, 2)
 check("7% off your typical lap" in n3, n3)
 
 # ---------------------------------------------------------------- many setups: no more false "faster" than with two
+# 2.19: with realistic per-stint offsets (each run has its own day-to-day swing). 2.18 alone claimed falsely in about
+# 20% of 2-setup runs with 3 stints a setup; the stint-level t-interval keeps every case below 8%.
 import numpy as _np  # noqa: E402
 
 
-def _sim_row(i, rng, shift):
-    t = [float(x) for x in 90 + shift + rng.normal(0, .3, 12)]
+def _sim_row(i, rng, shift, stints, stint_sd=0.15, lap_sd=0.3, laps=8):
+    st = []
+    for _ in range(stints):
+        off = float(rng.normal(0, stint_sd))                 # this run's own day-to-day swing, shared by its laps
+        st.append([90 + shift + off + float(x) for x in rng.normal(0, lap_sd, laps)])
+    t = [x for s_ in st for x in s_]
     p = {"median": float(_np.median(t)), "times": t, "surface_temp": 30, "fuel": 20, "track_state": "dry",
          "clean_laps": len(t)}
-    return {"id": str(i), "label": "S%d" % i, "pace": p, "missing": [], "_stints": None}
+    return {"id": str(i), "label": "S%d" % i, "pace": p, "missing": [], "_stints": st}
 
 
-def _sim_any(k, runs, shifts=None, corrected=True, seed=7):
+def _sim_any(k, runs, stints=3, shifts=None, seed=7, naive=False):
+    """Share of runs in which any pair of k setups is called 'faster'. naive: laps as independent (the old way)."""
     rng = _np.random.default_rng(seed)
     hits = 0
     for _ in range(runs):
-        rows = [_sim_row(i, rng, (shifts or [0] * k)[i]) for i in range(k)]
-        m = k * (k - 1) // 2 if corrected else 1
-        hits += any(sl._pair(rows[i], rows[j], {"interleaved": True, "m": m})["verdict"] == "faster"
-                    for i in range(k) for j in range(i + 1, k))
+        rows = [_sim_row(i, rng, (shifts or [0] * k)[i], stints) for i in range(k)]
+        m = k * (k - 1) // 2
+        if naive:
+            def lap_claim(a, b):
+                x, y = _np.array(a["pace"]["times"]), _np.array(b["pace"]["times"])
+                se = (x.var(ddof=1) / len(x) + y.var(ddof=1) / len(y)) ** 0.5
+                return abs(x.mean() - y.mean()) > 1.96 * se and abs(a["pace"]["median"] - b["pace"]["median"]) >= 0.1
+            hits += any(lap_claim(rows[i], rows[j]) for i in range(k) for j in range(i + 1, k))
+        else:
+            hits += any(sl._pair(rows[i], rows[j], {"interleaved": True, "m": m})["verdict"] == "faster"
+                        for i in range(k) for j in range(i + 1, k))
     return hits / runs
 
 
 for _k in (2, 3, 4):
-    _r = _sim_any(_k, 300)
-    check(_r <= 0.10, f"{_k} setups, no real difference: a false 'faster' in {_r:.0%} of 300 runs (<= 10%)")
-_before = _sim_any(4, 300, corrected=False)
-check(_before > 0.15, f"without the correction 4 setups would claim falsely in {_before:.0%} (the bug)")
-_real = _sim_any(2, 200, shifts=[0, -0.4])
-check(_real >= 0.7, f"a real 0.4 s difference is still found in {_real:.0%} of runs")
+    for _n in (3, 5):
+        _r = _sim_any(_k, 400, stints=_n)
+        check(_r <= 0.08, f"{_k} setups, {_n} stints each, per-stint offsets, no real difference: false 'faster' in {_r:.1%} of 400 runs (<= 8%)")
+_naive = _sim_any(2, 300, naive=True)
+check(_naive > 0.15, f"laps counted as independent would claim falsely in {_naive:.0%} with 3 stints (the bug)")
+_p3 = _sim_any(2, 300, stints=3, shifts=[0, -0.4])
+_p6 = _sim_any(2, 300, stints=6, shifts=[0, -0.4])
+check(_p3 >= 0.3 and _p6 >= 0.8, f"a real 0.4 s difference is found in {_p3:.0%} of runs with 3 stints, {_p6:.0%} with 6")
+_r = _sim_row(0, _np.random.default_rng(1), 0, 2), _sim_row(1, _np.random.default_rng(2), -2.0, 2)
+_pp = sl._pair(_r[0], _r[1], {"interleaved": True, "m": 1})
+check(_pp["verdict"] == "not enough to tell" and _pp["faster"] is None and "2 separate stints" in _pp["text"]
+      and "3 are needed on each setup" in _pp["text"], f"2 stints a setup: no claim, even for a 2 s gap, and it says why ({_pp['text'][:160]})")
 
 print("FAILED" if fails else "ALL OK", fails)
 sys.exit(1 if fails else 0)

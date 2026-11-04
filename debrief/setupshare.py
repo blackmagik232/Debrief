@@ -6,7 +6,7 @@
 Example:
     McLaren 570S GT4 at Zolder Circuit. Setup B vs A: rear wing 2.5 → 3.5 deg, front camber -4.0 → -3.6 deg
     (both sides). Result: no clear difference yet (typical lap 1:39.155 on B, 1:39.175 on A; 9 clean laps on B, 8 on
-    A). If there is a real gap of 0.1 s or more, about 4 more clean laps on each would show it.
+    A). If there is a real gap of 0.1 s or more, about 4 more stints on each setup would show it.
 
 What it never contains: setup file names (they often carry a name), driver names, file names, folders, or any
 setup file contents beyond the changed settings. Garage results (corner weights, ride heights) and pit readings
@@ -119,13 +119,13 @@ def _result(rep: dict, a: str, b: str) -> str:
             s += f" Caution: {fast} was also driven later, so part of it may be getting quicker; worth going back to {slow} for a few laps."
         return s
     if v == "no clear difference":
-        more = p.get("more_laps")
-        if more and more <= setuplab.MAX_MORE_LAPS:
-            # the laps still needed are for the gap seen, or for the 0.1 s floor when the gap seen is smaller
+        more = p.get("more_stints")
+        if more and more <= setuplab.MAX_MORE_STINTS:
+            # the stints still needed are for the gap seen, or for the 0.1 s floor when the gap seen is smaller
             g = (f"the {setuplab._fmt_s(gap)} s gap is real" if gap is not None and gap >= setuplab.MIN_DIFF else
                  f"there is a real gap of {setuplab.MIN_DIFF:.1f} s or more")
-            return (f"Result: no clear difference yet ({both}). If {g}, about {more} more clean "
-                    f"lap{'s' if more != 1 else ''} on each would show it.")
+            return (f"Result: no clear difference yet ({both}). If {g}, about {more} more "
+                    f"stint{'s' if more != 1 else ''} on each setup would show it.")
         if p.get("diff_s") is not None and more is None:
             return (f"Result: a gap smaller than {setuplab.MIN_DIFF:.1f} s a lap, which counts as no real difference "
                     f"({both}).")
@@ -133,8 +133,11 @@ def _result(rep: dict, a: str, b: str) -> str:
     if v == "confounded":
         why = "; ".join(_clean(_strip_names(x, rep)) for x in (p.get("confounders") or [])[:2])
         return f"Result: can't be compared fairly yet ({why})." if why else "Result: can't be compared fairly yet."
+    if p.get("stints") is not None and p.get("missing"):
+        miss = [_clean(re.sub(r"\s*\(([^()]*)\)", r", \1", _strip_names(x, rep))) for x in p["missing"]]
+        return f"Result: not enough stints to tell yet ({both}); " + "; ".join(miss) + "."
     miss = [_clean(re.sub(r"\s*\(([^()]*)\)", r", \1", _strip_names(x, rep))) for x in (p.get("missing") or [])]
-    return "Result: not enough laps to tell yet" + (f" ({'; '.join(miss)})." if miss else ".")
+    return "Result: not enough laps or stints to tell yet" + (f" ({'; '.join(miss)})." if miss else ".")
 
 
 def _known_names(rep: dict) -> list:

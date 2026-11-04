@@ -60,11 +60,9 @@ TRAFFIC_SIDE = 0.10            # a lap with a car alongside (CarLeftRight not cl
 MAX_TEMP_GAP = 6.0             # deg C of track surface temperature: more and the comparison is confounded
 MAX_FUEL_GAP = 15.0            # litres of average fuel load: more and the comparison is confounded
 MIN_DIFF = 0.10                # s a lap: a smaller gap is never called a difference
-BOOT_N = 2000                  # bootstrap resamples for the interval of the median difference
-BOOT_SEED = 212
-BLOCK_STINTS = 3               # with this many stints on each setup, whole stints are resampled (block bootstrap)
-SMALL_N = 10                   # fewer counted laps than this on a setup: a 95% interval instead of 90%
-MAX_MORE_LAPS = 60             # beyond this "more laps would tell" is not a useful answer
+MIN_STINTS = 3                 # separate stints a setup needs before "which is faster" is claimed (2.19): laps in one
+                               # stint share the day, so a run or two cannot show a setup's own pace
+MAX_MORE_STINTS = 12           # beyond this "more stints would tell" is not a useful answer
 
 # Tyre temperature targets for GT cars (carcass temps at a pit stop, stint of >= 5 laps): the inner edge hotter than
 # the outer by 6-10 deg C at the front and a little less at the rear. Low-medium confidence: lap time beats them.
@@ -771,43 +769,98 @@ def _fmt_s(x: float) -> str:
     return f"{x:.1f}" if x >= 0.095 else f"{x:.2f}"
 
 
-def _boot_ci(ta: list, tb: list, sa: list | None = None, sb: list | None = None, m: int = 1) -> tuple[float, float, float, str]:
-    """Bootstrap interval of median(a) - median(b) (fixed seed, so the same laps always give the same answer).
+def _betacf(a: float, b: float, x: float) -> float:
+    tiny = 1e-300
+    qab, qap, qam = a + b, a + 1.0, a - 1.0
+    c, d = 1.0, 1.0 - qab * x / qap
+    d = 1.0 / (d if abs(d) > tiny else tiny)
+    h = d
+    for m in range(1, 300):
+        m2 = 2 * m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        d = 1.0 / (d if abs(d) > tiny else tiny)
+        c = 1.0 + aa / c
+        c = c if abs(c) > tiny else tiny
+        h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        d = 1.0 / (d if abs(d) > tiny else tiny)
+        c = 1.0 + aa / c
+        c = c if abs(c) > tiny else tiny
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < 1e-12:
+            break
+    return h
 
-    sa / sb: the same laps grouped by stint. When each setup has at least BLOCK_STINTS stints, whole stints are
-    resampled (a block bootstrap: laps in one stint share its fuel, tyres and rubber, so they are not independent)
-    and the interval is 90%. Otherwise laps are resampled, and with fewer than SMALL_N laps on either setup the
-    interval is widened to 95%. With m > 1 pairs compared for the same car and track the miss chance is split
-    across them (Bonferroni: 10% / m, or 5% / m), so the chance of any false "faster" stays near the 2-setup level.
-    Returns (lo, hi, level %, "stints" | "laps")."""
-    rng = np.random.default_rng(BOOT_SEED)
-    if sa and sb and len(sa) >= BLOCK_STINTS and len(sb) >= BLOCK_STINTS:
-        def meds(stints):
-            arrs = [np.asarray(x, float) for x in stints]
-            pick = rng.integers(0, len(arrs), (BOOT_N, len(arrs)))
-            return np.array([np.median(np.concatenate([arrs[j] for j in row])) for row in pick])
-        ma, mb, level, how = meds(sa), meds(sb), 90, "stints"
+
+def _t_cdf(t: float, df: float) -> float:
+    """Student t cumulative probability (regularized incomplete beta; numpy-only, no scipy)."""
+    import math
+    x = df / (df + t * t)
+    lbeta = math.lgamma(df / 2) + math.lgamma(0.5) - math.lgamma(df / 2 + 0.5)
+    front = math.exp(df / 2 * math.log(x) + 0.5 * math.log(1 - x) - lbeta)
+    if x < (df / 2 + 1) / (df / 2 + 1.5 + 1):
+        tail = front * _betacf(df / 2, 0.5, x) / (df / 2)
     else:
-        a, b = np.asarray(ta, float), np.asarray(tb, float)
-        ma = np.median(a[rng.integers(0, len(a), (BOOT_N, len(a)))], axis=1)
-        mb = np.median(b[rng.integers(0, len(b), (BOOT_N, len(b)))], axis=1)
-        level, how = (95 if min(len(a), len(b)) < SMALL_N else 90), "laps"
-    if m > 1:
-        level = round(100 - (100 - level) / m, 2)
-    tail = (100 - level) / 2
-    lo, hi = np.percentile(ma - mb, [tail, 100 - tail])
-    return float(lo), float(hi), level, how
+        tail = 1.0 - front * _betacf(0.5, df / 2, 1 - x) / 0.5
+    return 1.0 - tail / 2 if t > 0 else tail / 2
 
 
-def _more_laps(ta: list, tb: list, d: float) -> int:
-    """Rough clean laps still needed on each setup for a 90% interval to clear a gap of max(|d|, 0.1 s)."""
-    resid = [t - float(np.median(ta)) for t in ta] + [t - float(np.median(tb)) for t in tb]
-    sigma = 1.4826 * float(np.median(np.abs(resid))) if resid else 0.0
+def t_quantile(p: float, df: float) -> float:
+    """The t value with cumulative probability p (0.5 < p < 1) at df degrees of freedom, by bisection."""
+    lo, hi = 0.0, 1.0
+    while _t_cdf(hi, df) < p and hi < 1e6:
+        hi *= 2
+    for _ in range(80):
+        mid = (lo + hi) / 2
+        if _t_cdf(mid, df) < p:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
+def _stint_medians(stints) -> list:
+    return [float(np.median(x)) for x in (stints or []) if len(x)]
+
+
+def _stint_ci(sa, sb, m: int = 1) -> tuple[float, float, float, float, float]:
+    """Interval of (setup A pace - setup B pace) from the stints, not the laps. Laps in one stint share their
+    fuel, tyres, rubber and the driver's day, so they are not independent evidence; each stint is ONE reading
+    (its median lap), and the readings of the two setups are compared with a Welch t-interval at 95% (the
+    miss chance 5% is split over m pairs compared on the same laps, Bonferroni). With only 3 stints on a setup
+    the interval is wide on purpose: it carries the day-to-day swing the stints show.
+    Returns (lo, hi, level %, difference of stint means, degrees of freedom)."""
+    xa, xb = np.asarray(_stint_medians(sa)), np.asarray(_stint_medians(sb))
+    na, nb = len(xa), len(xb)
+    va, vb = float(np.var(xa, ddof=1)) / na, float(np.var(xb, ddof=1)) / nb
+    se = (va + vb) ** 0.5
+    diff = float(xa.mean() - xb.mean())
+    if se <= 0:
+        return diff, diff, 95, diff, float(na + nb - 2)
+    df = (va + vb) ** 2 / (va ** 2 / (na - 1) + vb ** 2 / (nb - 1))
+    miss = 0.05 / max(1, m)
+    level = round(100 - miss * 100, 2)
+    half = t_quantile(1 - miss / 2, df) * se
+    return diff - half, diff + half, level, diff, df
+
+
+def _more_stints(sa, sb, d: float) -> int:
+    """Rough stints still needed on each setup for the interval to clear a gap of max(|d|, 0.1 s) (SE ~ s sqrt(2/n))."""
+    xs = [_stint_medians(sa), _stint_medians(sb)]
+    sd = float(np.mean([np.std(x, ddof=1) for x in xs]))
     effect = max(abs(d), MIN_DIFF)
-    if sigma <= 0:
+    if sd <= 0:
         return 1
-    need = 2 * (1.645 * 1.2533 * sigma / effect) ** 2          # SE of a median ~ 1.2533 sigma / sqrt(n)
-    return max(1, int(np.ceil(need - min(len(ta), len(tb)))))
+    have = min(len(xs[0]), len(xs[1]))
+    n = have
+    while n < have + 200:
+        n += 1
+        if t_quantile(0.95, 2 * n - 2) * sd * (2 / n) ** 0.5 < effect:
+            break
+    return max(1, n - have)
 
 
 def lap_trend(stints: list) -> dict | None:
@@ -862,7 +915,7 @@ def _pair(a: dict, b: dict, ctx: dict | None = None) -> dict:
     pa, pb = a["pace"], b["pace"]
     ctx = ctx or {}
     out = {"a": a["id"], "b": b["id"], "verdict": "not enough to tell", "faster": None, "diff_s": None,
-           "ci90": None, "ci": None, "ci_level": None, "more_laps": None, "comparable": True, "confounders": [],
+           "ci90": None, "ci": None, "ci_level": None, "more_laps": None, "more_stints": None, "comparable": True, "confounders": [],
            "missing": [], "interleaved": None, "trend": None, "drift_s": None, "caution": None, "text": ""}
     out["missing"] = a["missing"] + b["missing"]
     if pa["median"] is not None and pb["median"] is not None:
@@ -891,7 +944,19 @@ def _pair(a: dict, b: dict, ctx: dict | None = None) -> dict:
                        + ". The lap times are shown but not adjusted. Drive both in similar conditions.")
         return out
     d = out["diff_s"]
-    lo, hi, level, how = _boot_ci(pa["times"], pb["times"], a.get("_stints"), b.get("_stints"), int(ctx.get("m") or 1))
+    sa_, sb_ = a.get("_stints") or [], b.get("_stints") or []
+    out["stints"] = [len(sa_), len(sb_)]
+    short = [(s_["label"], len(st)) for s_, st in ((a, sa_), (b, sb_)) if len(st) < MIN_STINTS]
+    if short:
+        out["missing"] = [f"{lab} has been driven in {n} separate stint{'s' if n != 1 else ''} "
+                          f"({MIN_STINTS} are needed on each setup)" for lab, n in short]
+        out["text"] = (f"{a['label']} vs {b['label']}: not enough to tell yet. "
+                       + _cap("; ".join(out["missing"])) + ". Laps in one stint share the same fuel, tyres and day, "
+                       "so a run or two cannot show whether the setup itself was faster. "
+                       f"Typical laps so far: {lap_text(pa['median'])} vs {lap_text(pb['median'])}.")
+        return out
+    lo, hi, level, dm, _df = _stint_ci(sa_, sb_, int(ctx.get("m") or 1))
+    how = "stints"
     out["ci"], out["ci_level"], out["ci_method"] = [round(lo, 3), round(hi, 3)], level, how
     out["ci90"] = out["ci"]                    # kept for older readers: the interval used, at ci_level %
     # driving order: was one setup simply driven later, while he was getting quicker?
@@ -902,7 +967,7 @@ def _pair(a: dict, b: dict, ctx: dict | None = None) -> dict:
     out["interleaved"] = bool(ctx.get("interleaved"))
     trend = lap_trend((a.get("_trend") or []) + (b.get("_trend") or []))
     out["trend"] = trend
-    real = lo > 0 or hi < 0
+    real = (lo > 0 or hi < 0) and (d is None or d == 0 or (d > 0) == (dm > 0))
     fast, slow = ((b, a) if d > 0 else (a, b)) if d else (None, None)
     if real and fast is not None and later is fast and not out["interleaved"]:
         gap_laps = abs(float(np.median(xb)) - float(np.median(xa)))
@@ -936,14 +1001,14 @@ def _pair(a: dict, b: dict, ctx: dict | None = None) -> dict:
         out["text"] = (f"{fast['label']} was about {_fmt_s(abs(d))} s a lap quicker than {slow['label']}: smaller than "
                        f"the {MIN_DIFF:.1f} s Debrief counts as a real difference.")
         return out
-    n = _more_laps(pa["times"], pb["times"], d)
-    out["more_laps"] = n
-    if n > MAX_MORE_LAPS:
+    n = _more_stints(sa_, sb_, d)
+    out["more_stints"] = n
+    if n > MAX_MORE_STINTS:
         out["text"] = (f"No clear difference between {a['label']} and {b['label']} ({gap}): they are so close it would "
-                       f"take more than {MAX_MORE_LAPS} more clean laps on each to tell them apart.")
+                       f"take more than {MAX_MORE_STINTS} more stints on each to tell them apart.")
     else:
         out["text"] = (f"No clear difference yet between {a['label']} and {b['label']} ({gap}): if the gap is real, "
-                       f"about {n} more clean lap{'s' if n != 1 else ''} on each would show it.")
+                       f"about {n} more stint{'s' if n != 1 else ''} on each setup would show it.")
     return out
 
 
@@ -951,9 +1016,9 @@ def compare(runs, setups: list | None = None) -> dict:
     """Pace per setup for one car + track, with the evidence gate.
 
     runs: the index records for one car + track (group() is run on them unless `setups` from group() is given).
-    A setup needs 5 counted laps (pace_laps()). A winner is named only when the bootstrap interval of the
-    difference of medians excludes zero (whole stints resampled when each setup has 3+ stints; 95% instead of 90%
-    with under 10 laps) and the gap is at least 0.1 s. Very different track temperature or fuel, or a damp/wet
+    A setup needs 5 counted laps (pace_laps()). A winner is named only when the setup has been driven in at least
+    MIN_STINTS (3) separate stints and a Welch t-interval of the difference of the stints' median laps (each stint
+    one reading, 95%, split over the pairs judged) excludes zero and the gap is at least 0.1 s. Very different track temperature or fuel, or a damp/wet
     track, makes the pair "confounded" (said, never adjusted). So does driving order: when the quicker setup was
     simply driven later (not A, B, A) and his own within-run improvement (lap_trend) over the laps between them
     could explain at least half the gap; a smaller drift still adds a caution to a "faster" verdict.

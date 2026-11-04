@@ -186,41 +186,47 @@ check(cmp_["setups"][0]["pace"]["left_out"]["warmup"] == 1, "first flying lap of
 d = folder("gate_ok")
 mk(d, "2026-11-01 18-00-00", PACE_A)
 mk(d, "2026-11-01 19-00-00", PACE_A + [120.0])          # a slow lap (traffic or a mistake)
+mk(d, "2026-11-01 20-00-00", PACE_A)
 mk(d, "2026-11-02 18-00-00", PACE_B, setup=setup_b())
 mk(d, "2026-11-02 19-00-00", PACE_B, setup=setup_b())
+mk(d, "2026-11-02 20-00-00", PACE_B, setup=setup_b())
 cmp_ = sl.compare(recs_of(d))
 p = cmp_["pairs"][0]
 check(p["verdict"] == "faster" and p["faster"] == "B", f"enough laps + clear gap -> verdict ({p['text']})")
 check("faster than Setup A (baseline.sto, first driven Nov 1) by about 0.5 s a lap" in p["text"], "plain wording (2.18: setups sharing a file name carry the day)")
-check(p["ci90"] and p["ci90"][0] > 0, f"90% bootstrap interval excludes zero {p['ci90']}")
+check(p["ci90"] and p["ci90"][0] > 0, f"the stint interval excludes zero {p['ci90']}")
 check(sl.compare(recs_of(d))["pairs"][0]["ci90"] == p["ci90"], "fixed seed: same laps, same interval")
 sa = cmp_["setups"][0]["pace"]
-check(sa["left_out"]["slow"] == 1 and sa["clean_laps"] == 6 and abs(sa["median"] - 99.5) < 0.01,
+check(sa["left_out"]["slow"] == 1 and sa["clean_laps"] == 9 and abs(sa["median"] - 99.5) < 0.01,
       f"lap > 3 x MAD slower than its stint left out {sa['left_out']}")
 check(cmp_["setups"][0]["enough"] and cmp_["setups"][1]["enough"], "both setups pass the gate")
 
 d = folder("gate_same")
 mk(d, "2026-11-01 18-00-00", PACE_A)
 mk(d, "2026-11-01 19-00-00", PACE_A)
-mk(d, "2026-11-02 18-00-00", [x - 0.05 for x in PACE_A], setup=setup_b())
+mk(d, "2026-11-01 20-00-00", PACE_A)
+mk(d, "2026-11-02 18-00-00", [x - 0.00 for x in PACE_A], setup=setup_b())
 mk(d, "2026-11-02 19-00-00", [x - 0.05 for x in PACE_A], setup=setup_b())
+mk(d, "2026-11-02 20-00-00", [x - 0.10 for x in PACE_A], setup=setup_b())
 p = sl.compare(recs_of(d))["pairs"][0]
 check(p["verdict"] == "no clear difference" and "No clear difference yet" in p["text"]
-      and isinstance(p["more_laps"], int) and f"about {p['more_laps']} more clean lap" in p["text"],
-      f"0.05 s gap -> no clear difference, with laps still needed ({p['text']})")
+      and p["more_stints"] is not None and f"about {p['more_stints']} more stint" in p["text"],
+      f"0.05 s gap -> no clear difference, with stints still needed ({p['text']})")
 
 p = sl.compare(recs_of(folder("gate_ok")))["pairs"][0]
 check(p["interleaved"] is False and p["caution"] and "also driven later" in p["text"]
       and "Go back to Setup A (baseline.sto, first driven Nov 1) for a few laps to be sure." in p["text"],
       "B driven after A: a 'faster' verdict says part of it may be him getting quicker")
-check(p["ci_level"] == 95 and p["ci_method"] == "laps" and p["ci90"] == p["ci"], "under 10 laps a setup: a 95% interval")
+check(p["ci_level"] == 95 and p["ci_method"] == "stints" and p["ci90"] == p["ci"], "the stint interval is a 95% one")
 
 # finding 3: an interval clear of zero but a gap under 0.1 s is not a difference, and needs no more laps
 d = folder("gate_tiny")
 mk(d, "2026-11-01 18-00-00", [99.50, 99.50, 99.51, 99.49, 99.50, 99.50, 99.51])
 mk(d, "2026-11-01 19-00-00", [99.50, 99.50, 99.51, 99.49, 99.50, 99.50, 99.51])
+mk(d, "2026-11-01 20-00-00", [99.50, 99.50, 99.51, 99.49, 99.50, 99.50, 99.51])
 mk(d, "2026-11-02 18-00-00", [99.45, 99.45, 99.46, 99.44, 99.45, 99.45, 99.46], setup=setup_b())
 mk(d, "2026-11-02 19-00-00", [99.45, 99.45, 99.46, 99.44, 99.45, 99.45, 99.46], setup=setup_b())
+mk(d, "2026-11-02 20-00-00", [99.45, 99.45, 99.46, 99.44, 99.45, 99.45, 99.46], setup=setup_b())
 p = sl.compare(recs_of(d))["pairs"][0]
 check(p["verdict"] == "no clear difference" and p["more_laps"] is None and p["ci"][0] > 0
       and "about 0.05 s a lap quicker than Setup A" in p["text"]
@@ -242,7 +248,7 @@ def drifting(name, order, per_lap=0.03, laps=8, noise=0.03, seed=1):
 
 
 for seed in (1, 2, 3):
-    p = sl.compare(recs_of(drifting(f"drift{seed}", "AABB", seed=seed)))["pairs"][0]
+    p = sl.compare(recs_of(drifting(f"drift{seed}", "AAABBB", seed=seed)))["pairs"][0]
     check(p["verdict"] != "faster" and p["faster"] is None, f"0.03 s/lap improvement, same setup: no 'faster' ({p['verdict']})")
 check(p["verdict"] == "confounded" and not p["comparable"] and p["interleaved"] is False
       and p["trend"]["hi"] < 0 and p["drift_s"] >= 0.5 * abs(p["diff_s"])
@@ -251,25 +257,28 @@ check(p["verdict"] == "confounded" and not p["comparable"] and p["interleaved"] 
 lt = sl.lap_trend([([0, 1, 2, 3, 4], [100.0, 99.97, 99.94, 99.91, 99.88]), ([10, 11, 12], [99.7, 99.67, 99.64])])
 check(lt and abs(lt["slope"] + 0.03) < 1e-6 and lt["stints"] == 2, f"Theil-Sen slope within stints ({lt})")
 check(sl.lap_trend([([0, 1], [1.0, 2.0])]) is None, "stints under 3 laps give no trend")
-p = sl.compare(recs_of(drifting("drift_aba", "ABBA")))["pairs"][0]
+p = sl.compare(recs_of(drifting("drift_aba", "ABBBAAA")))["pairs"][0]
 check(p["interleaved"] is True and p["verdict"] != "faster" and not p["caution"]
       and not any("getting quicker" in c for c in p["confounders"]), f"A, B, A: interleaved, so no drift caution ({p['verdict']})")
 # a real 0.5 s gain, driven A, B, A: named faster with no caution
 d = folder("aba_real")
 mk(d, "2026-11-01 18-00-00", PACE_A + [99.5, 99.6])
 mk(d, "2026-11-01 19-00-00", PACE_B + [99.0, 99.1], setup=setup_b())
+mk(d, "2026-11-01 20-00-00", PACE_B + [99.0, 99.0], setup=setup_b())
+mk(d, "2026-11-01 21-00-00", PACE_B + [99.1, 99.1], setup=setup_b())
 mk(d, "2026-11-02 18-00-00", PACE_A + [99.5, 99.4])
+mk(d, "2026-11-02 19-00-00", PACE_A + [99.6, 99.4])
 p = sl.compare(recs_of(d))["pairs"][0]
 check(p["verdict"] == "faster" and p["faster"] == "B" and p["interleaved"] and not p["caution"]
       and "driven later" not in p["text"], f"interleaved real gain: faster, no caution ({p['text']})")
-# block bootstrap: 3+ stints on each setup resample whole stints
+# 3+ stints on each setup: the stint interval
 d = folder("blocks")
 for k in range(3):
     mk(d, f"2026-11-01 1{k}-00-00", PACE_A + [99.5, 99.6])
 for k in range(3):
     mk(d, f"2026-11-02 1{k}-00-00", PACE_B + [99.0, 99.1], setup=setup_b())
 p = sl.compare(recs_of(d))["pairs"][0]
-check(p["ci_method"] == "stints" and p["ci_level"] == 90 and p["verdict"] == "faster", f"3 stints each: block bootstrap ({p['ci_method']})")
+check(p["ci_method"] == "stints" and p["ci_level"] == 95 and p["verdict"] == "faster", f"3 stints each: stint interval ({p['ci_method']})")
 
 d = folder("gate_temp")
 mk(d, "2026-11-01 18-00-00", PACE_A, surface_temp=22.0)
@@ -562,6 +571,8 @@ mk(d, "2026-11-01 18-00-00", PACE_A, pit_temps=[(-1, hot_in)])
 mk(d, "2026-11-01 19-00-00", PACE_A, pit_temps=[(-1, hot_in2)])
 mk(d, "2026-11-02 18-00-00", PACE_B, setup=setup_b(), pit_temps=[(-1, hot_in)], fuel=(58.0, 2.9))
 mk(d, "2026-11-02 19-00-00", PACE_B, setup=setup_b(), pit_temps=[(-1, hot_in2)], fuel=(58.0, 2.9))
+mk(d, "2026-11-01 20-00-00", PACE_A, pit_temps=[(-1, hot_in)])
+mk(d, "2026-11-02 19-30-00", PACE_B, setup=setup_b(), pit_temps=[(-1, hot_in)], fuel=(58.0, 2.9))
 mk(d, "2026-11-02 20-00-00", [80.0] * 3, car="mx5 mx52016", track="oulton fosters")
 (d / "broken 2026-11-03 10-00-00.ibt").write_bytes(b"\0" * 50)
 (d / "mclaren570sgt4_zolder gp 2026-11-03 11-00-00.ibt").write_bytes(b"\0" * 50)
@@ -575,7 +586,7 @@ unk = [i for i in rep["suggestions"]["items"] if i["rule"] == "unknown_series"]
 check(unk and unk[0]["text"].endswith("Set it above, under This series is."), "says where to set the series")
 blob = json.dumps(rep, ensure_ascii=False)
 check("\u2013" not in blob and "\u2014" not in blob, "no long dashes in anything Setup Lab shows")
-check(rep["files"] == 4 and [s["id"] for s in rep["setups"]] == ["A", "B"], "report: this car + track only, two setups")
+check(rep["files"] == 6 and [s["id"] for s in rep["setups"]] == ["A", "B"], "report: this car + track only, two setups")
 check(rep["diffs"] and rep["diffs"][0]["from"] == "A" and rep["diffs"][0]["to"] == "B"
       and any(c["label"] == "Front camber" for c in rep["diffs"][0]["changes"]), "report: diff between consecutive setups")
 check(rep["compare"]["pairs"][0]["faster"] == "B", "report: compare verdict")

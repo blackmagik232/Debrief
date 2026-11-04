@@ -2664,6 +2664,7 @@ class Handler(BaseHTTPRequestHandler):
             out["n_races"] = prof.get("n_races") or 0
             out["n_rows"] = prof.get("n_rows") or 0     # 2.18: race reviews with lap times (scored or not)
             out["why"] = prof.get("why") if isinstance(prof.get("why"), dict) else {}
+            out["why_line"] = profile.why_line(out["why"], out["n_rows"]) if not out["n_races"] else ""
             w = prof.get("weakest")
             out["weakest"] = w if isinstance(w, dict) else None
         return self._json(out)
@@ -3212,7 +3213,7 @@ class Handler(BaseHTTPRequestHandler):
                  "api/strategy", "api/racecap-link", "api/intel-preview", "api/intel-import", "api/weekly", "api/discord-post",
                  "api/discord-check", "api/setuplab/read", "api/setuplab/stop", "api/setuplab/series", "api/coach/start",
                  "api/coach/stop", "api/coach/mute", "api/coach/settings", "api/coach/test-voice", "api/plan/new",
-                 "api/plan/score", "api/coach/wheel-learn", "api/coach/wheel-clear", "api/firstrun/dismiss"):
+                 "api/plan/score", "api/coach/wheel-learn", "api/coach/wheel-clear", "api/firstrun/dismiss", "api/firstrun/skip"):
             try:
                 return getattr(self, "_post_" + r[4:].replace("-", "_").replace("/", "_"))(body)
             except ValueError as e:
@@ -3809,9 +3810,11 @@ class Handler(BaseHTTPRequestHandler):
         combo = next((c for c in setuplab.combos(idx) if (c.get("car_path") or "").lower() == car.lower()
                       and (c.get("track_code") or "").lower() == track.lower()), None)
         saved = settings_io.load_extra("setuplab").get("series") or {}
-        override = saved.get(series_key(car, track)) if isinstance(saved, dict) else None
-        override = override if override in ("open", "fixed") else None
+        override = setuplab.saved_choice(saved, car, track, sid)
         kind, source = (override, "you set this") if override else schedule_series_setup(combo, sid)
+        if not kind:      # 2.19.2: nothing else knows: what he said for this car at another track
+            kind = setuplab.remembered_for_car(saved, car)
+            source = "you set this for this car at another track" if kind else source
         rep = setuplab.report(folder, car, track, series_setup=kind, idx=dict(idx, missing_folder=not folder.is_dir()))
         if kind:
             rep["series_setup_source"] = source
@@ -3838,14 +3841,13 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("Pick a car and track.")
         if v not in ("open", "fixed", "", None):
             raise ValueError("Pick open, fixed or not sure.")
+        sid = body.get("series") or None
+        if sid is not None and not (isinstance(sid, str) and self.SERIES_ID_OK.match(sid)):
+            raise ValueError("Pick a series from the list.")
+        setuplab = self._module("setuplab")
         data = settings_io.load_extra("setuplab")
         series = data.get("series") if isinstance(data.get("series"), dict) else {}
-        k = series_key(car, track)
-        series.pop(k, None)
-        if v:
-            if len(series) >= MAX_SERIES_CHOICES:
-                raise ValueError("Too many saved choices.")
-            series[k] = v
+        series = setuplab.store_choice(series, car, track, v, sid, MAX_SERIES_CHOICES)
         data["series"] = series
         try:
             settings_io.save_extra("setuplab", data)
@@ -4110,6 +4112,18 @@ class Handler(BaseHTTPRequestHandler):
         fr = self._module("firstrun")
         want = not (isinstance(body, dict) and body.get("dismissed") is False)
         if not (fr.dismiss() if want else fr.undismiss()):
+            raise ValueError(SETTINGS_WRITE_ERROR)
+        cfg = self._cfg()
+        return self._json(_jsonable({"ok": True, **fr.walkthrough(cache_file=setuplab_cache_path(cfg))}))
+
+    def _post_firstrun_skip(self, body):
+        """Skip one setup step ({"step": id}; {"skip": false} takes it back)."""
+        fr = self._module("firstrun")
+        b = body if isinstance(body, dict) else {}
+        sid = str(b.get("step") or "")
+        if sid not in fr.STEP_IDS:
+            raise ValueError("That setup step isn't one Debrief knows.")
+        if not fr.skip_step(sid, skip=b.get("skip") is not False):
             raise ValueError(SETTINGS_WRITE_ERROR)
         cfg = self._cfg()
         return self._json(_jsonable({"ok": True, **fr.walkthrough(cache_file=setuplab_cache_path(cfg))}))

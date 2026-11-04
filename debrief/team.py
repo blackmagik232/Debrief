@@ -430,6 +430,55 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
     return data
 
 
+NO_SHARED = "no shared track yet"
+PICK_SERIES = "pick a series on Prepare"
+NO_TELEMETRY = "no telemetry to compare corners yet"
+
+
+def roster(data) -> list:
+    """2.19.2: every teammate the saved team data names, with what is missing for each, so the Team page can list
+    them by name even when no series is picked. [{"key", "name", "shared", "missing": [str]}], by name. Words only: no
+    statistic is changed. 'shared' = tracks and cars where both of you have a best lap."""
+    if not isinstance(data, dict):
+        return []
+    me = (data.get("me") or {}).get("key") or "me"
+    people = {}
+    for c in data.get("combos") or []:
+        board = [r for r in (c.get("board") or []) if isinstance(r, dict) and r.get("key") is not None]
+        have_me = any(r["key"] == me for r in board)
+        kings = c.get("kings") if isinstance(c.get("kings"), dict) else {}
+        kdrivers = kings.get("drivers") or []
+        for r in board:
+            if r["key"] == me:
+                continue
+            p = people.setdefault(r["key"], {"key": r["key"], "name": str(r.get("name") or r["key"]), "shared": 0,
+                                             "corners": False})
+            if have_me:
+                p["shared"] += 1
+                if me in kdrivers and r["key"] in kdrivers:
+                    p["corners"] = True
+    wk = data.get("weekly") if isinstance(data.get("weekly"), dict) else {}
+    for sr in wk.get("series") or []:
+        for w in (sr.get("weeks") or []) if isinstance(sr, dict) else []:
+            for r in (w.get("board") or []) if isinstance(w, dict) else []:
+                if isinstance(r, dict) and r.get("key") not in (None, me) and r["key"] not in people:
+                    people[r["key"]] = {"key": r["key"], "name": str(r.get("name") or r["key"]), "shared": 0,
+                                        "corners": False}
+    series_picked = bool([x for x in (wk.get("series") or []) if isinstance(x, dict)])
+    out = []
+    for p in people.values():
+        missing = []
+        if not p["shared"]:
+            missing.append(NO_SHARED)
+        elif not p["corners"]:
+            missing.append(NO_TELEMETRY)
+        if not series_picked:
+            missing.append(PICK_SERIES)
+        out.append({"key": p["key"], "name": p["name"], "shared": p["shared"], "missing": missing})
+    out.sort(key=lambda p: (p["name"].lower(), str(p["key"])))
+    return out
+
+
 def _embed(obj) -> str:
     from . import report
     return report._embed(obj)  # escapes <, > and & so names can't break the script element
@@ -441,6 +490,10 @@ def write(folder, data) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     tj = out / "team.json"
     tmpj = tj.with_name("team.json.tmp")
+    try:
+        data["roster"] = roster(data)       # 2.19.2: teammates by name, with what's missing, even with no series
+    except Exception:  # noqa: BLE001  (a list of names is never worth breaking the hub)
+        data["roster"] = []
     tmpj.write_text(json.dumps(data), encoding="utf-8")
     fsutil.replace(tmpj, tj)
     html = report.fill(TPL.read_text(encoding="utf-8"), {"/*TEAM*/null": _embed(data)})

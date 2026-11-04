@@ -110,7 +110,7 @@
         <p class="note ptwhere" id="tdWhere"></p>
         <p class="ptmain" id="tdTitle">Loading...</p>
         <div id="tdLines"></div>
-        <p class="note" id="tdWhy"></p>
+        <details class="tdwhy" id="tdWhyBox" hidden><summary class="linkbtn">Why?</summary><p class="note" id="tdWhy"></p></details>
         <div class="row" id="tdActs"></div>
       </div>
       <div class="tdgrid">
@@ -416,6 +416,7 @@
         <div class="panel" id="rcFound">
           <div class="phead"><h3>What Debrief found</h3><span class="pill" id="rcPill"></span></div>
           <p class="note" id="rcFoundNote"></p>
+          <details class="rcfiles"><summary>Details: the files Debrief read</summary><p class="note" id="rcFilesNote"></p></details>
           <div class="row"><button type="button" class="btn" id="rcAgain">Look again</button><label class="field rctrack" for="rcTrack" id="rcTrackWrap" hidden><span>Track</span><select id="rcTrack"></select></label><span class="msg" id="rcMsg" role="status"></span></div>
         </div>
         <div id="rcStarts" class="slreport" aria-live="polite"></div>

@@ -166,6 +166,15 @@ def for_combo(folder, track, car, track_id=None, car_id=None) -> dict | None:
     return hits[-1] if hits else None
 
 
+def basis(races: int, has_note: bool = False) -> str:
+    """2.19.2: what a goal's numbers are based on, in plain words. A target is the time you typed in (Debrief never
+    works one out for you); 'your best' is the quickest clean lap from your reviewed races here."""
+    if races <= 0:
+        return "The target is the time you set. Your best appears once you have a reviewed race here."
+    return (f"The target is the time you set. Your best is the quickest clean lap from your {races} reviewed "
+            f"race{'s' if races != 1 else ''} here (races only, not practice); to go is your best minus the target.")
+
+
 def progress(folder, rows: list | None = None) -> list:
     """[{goal, best, gap, history: [{date, best}], achieved, races, best_date, best_path, first_best, pct}]
 
@@ -195,5 +204,5 @@ def progress(folder, rows: list | None = None) -> list:
         out.append({"goal": gl, "best": best, "gap": gap, "history": hist,
                     "achieved": best is not None and best <= gl["target_s"], "races": len(mine),
                     "best_date": best_r["date"] if best_r else None, "best_path": best_r["path"] if best_r else None,
-                    "first_best": first, "pct": pct})
+                    "first_best": first, "pct": pct, "basis": basis(len(mine))})
     return out

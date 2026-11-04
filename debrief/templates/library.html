@@ -393,7 +393,7 @@ a{color:inherit!important;text-decoration:none!important}
   <section>
     <div class="progctl">
       <div class="sechead"><span class="eyebrow">Season</span><h2 id="seasontitle">Your season</h2><p class="lede" id="seasonlede"></p></div>
-      <div class="controls"><label for="seasonpick">Season<select id="seasonpick"></select></label></div>
+      <div class="controls"><label for="seasonpick">Season<select id="seasonpick"></select></label><label for="seasontrack">Track<select id="seasontrack"></select></label></div>
     </div>
     <div class="stats season-stats" id="seasonstats"></div>
   </section>
@@ -724,8 +724,19 @@ const sgn=(v,d=0)=>ok(v)?(v>0?'+':v<0?'−':'±')+Math.abs(v).toFixed(d):'–';
 function seasonPicker(){const sel=$('seasonpick');const keep=sel.value;sel.replaceChildren();const o=h('option',null,'All seasons');o.value='';sel.append(o);
   const names=SEAS.length?SEAS.map(x=>x.name):[...new Set(R.map(seasonOf))];
   names.forEach(n=>{const e=SEAS.find(x=>x.name===n);const op=h('option',null,n+(e&&e.estimated?' (by date)':'')+' ('+(e?e.races:R.filter(r=>seasonOf(r)===n).length)+')');op.value=n;sel.append(op)});
-  sel.value=names.includes(keep)?keep:''}
-seasonPicker();$('seasonpick').addEventListener('change',renderSeason);
+  sel.value=names.includes(keep)?keep:'';
+  // 2.19.2: pick a track to see its pace month by month
+  const ts=$('seasontrack'),kt=ts.value;ts.replaceChildren();const o2=h('option',null,'All tracks');o2.value='';ts.append(o2);
+  const tn=new Map();R.forEach(r=>{if(r.track&&!tn.has(r.track))tn.set(r.track,r.track_short||r.track)});
+  [...tn.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]))).forEach(([k,v])=>{const op=h('option',null,v);op.value=k;ts.append(op)});
+  ts.value=tn.has(kt)?kt:''}
+seasonPicker();$('seasonpick').addEventListener('change',renderSeason);$('seasontrack').addEventListener('change',renderSeason);
+// 2.19.2: best lap and median lap per calendar month, from the race rows already on the page (no new numbers: the
+// best of the month's best laps, and the median of the month's median laps)
+function monthlyPace(rows){const by=new Map();
+  rows.forEach(r=>{const m=/^(\d{4}-\d{2})/.exec(String(r.date||''));if(!m||!ok(r.best))return;if(!by.has(m[1]))by.set(m[1],[]);by.get(m[1]).push(r)});
+  const med=a=>{const v=a.filter(ok).sort((x,y)=>x-y);return v.length?(v.length%2?v[(v.length-1)/2]:(v[v.length/2-1]+v[v.length/2])/2):null};
+  return [...by.keys()].sort().map(k=>{const a=by.get(k);return {month:k,races:a.length,best:Math.min(...a.map(r=>r.best)),median:med(a.map(r=>r.median))}})}
 let seasonRedraw=null;
 function barChart(items,o){ // items: [{label,value,sub}]
   const W=Math.max(300,Math.round(o.width||520)),H=200,ml=36,mr=12,mt=18,mb=40;
@@ -746,7 +757,7 @@ function barChart(items,o){ // items: [{label,value,sub}]
 }
 function statStrip(host,items){host.replaceChildren();items.forEach(([l,v,c,cls])=>{const k=h('div','stat');const vv=h('span','v'+(cls?' '+cls:''),v);k.append(h('span','lab',l),vv,h('span','ctx',c));k.lastChild.title=c;host.append(k)})}
 function renderSeason(){
-  const pick=$('seasonpick').value;const rows=R.filter(r=>!pick||seasonOf(r)===pick).slice().sort((a,b)=>tOf(a)-tOf(b));
+  const pick=$('seasonpick').value,trk=$('seasontrack').value;const rows=R.filter(r=>(!pick||seasonOf(r)===pick)&&(!trk||r.track===trk)).slice().sort((a,b)=>tOf(a)-tOf(b));
   const se=SEAS.find(x=>x.name===pick);
   $('seasontitle').textContent=pick||'All seasons';
   $('seasonlede').textContent=!R.length?'No reviews yet. Your season fills in as you review races.':
@@ -787,7 +798,12 @@ function renderSeason(){
     const lg=h('div','legend');lg.innerHTML='<span><i class="k me"></i>Best lap</span><span><i class="k" style="border-color:var(--muted)"></i>Median lap</span>';p.head.append(lg);
     const c=h('div','chart');p.append(c);pg.append(p);
     draws.push(()=>c.replaceChildren(lineChart(a,[{key:'best',name:'Best',color:'var(--a)',fmt:fmt,endLabel:fmt},{key:'median',name:'Median',color:'var(--muted)',fmt:fmt}],
-      {label:'Best and median lap per race at '+comboName(last),minSpan:1,tick:fmtTick,width:c.clientWidth})))});
+      {label:'Best and median lap per race at '+comboName(last),minSpan:1,tick:fmtTick,width:c.clientWidth})));
+    // 2.19.2: with a track picked, the same laps month by month (nothing is added when there are no dated laps)
+    const mp=trk?monthlyPace(a):[];
+    if(mp.length>1){const tw=h('div','tablewrap'),tb=h('table');tb.innerHTML='<thead><tr><th>Month</th><th class="n">Races</th><th class="n">Best lap</th><th class="n">Median lap</th></tr></thead>';
+      const bd=h('tbody');mp.forEach(m=>{const tr=h('tr');tr.append(h('td','mono nw',m.month),h('td','n',String(m.races)),h('td','n',fmt(m.best)),h('td','n',fmt(m.median)));bd.append(tr)});
+      tb.append(bd);tw.append(tb);p.append(h('p','note','Month by month: the best of each month\u2019s best laps and the median of its median laps.'),tw)}});
   // results
   const rb=$('resultsbox');rb.replaceChildren();
   if(!res.length){const e=h('div','empty');e.style.gridColumn='1 / -1';e.append(h('b',null,'No race results yet'),h('span',null,'Open a review in the Debrief app and choose "Add race result" to record your finish, incidents and iRating/SR change. They show up here.'));rb.append(e)}
@@ -842,6 +858,7 @@ function renderGoals(){const host=$('goals');host.replaceChildren();
       (ok(gp.pct)&&gp.races>1?pc+'% of the way from your first reviewed best ('+fmt(gp.first_best)+') to the target.':'Progress shows once you have a second race here.')+' '+plural(gp.races,'race')+' reviewed.'));
     if((gp.history||[]).length){const sp=h('div','spark');sp.append(goalSpark(gp));p.append(sp);
       const lg=h('div','legend');lg.innerHTML='<span><i class="k me"></i>Best so far</span><span><i class="k" style="border-color:var(--muted);border-top-style:dotted"></i>Each race</span><span><i class="k" style="border-color:var(--good);border-top-style:dashed"></i>Target</span>';p.append(lg)}
+    if(gp.basis)p.append(h('p','note',gp.basis));
     if(g.note)p.append(h('p','gnote',g.note));
     if(gp.best_path){const a=h('a',null,'Open the race with your best lap');a.href=gp.best_path;a.style.fontSize='13px';p.append(a)}
     host.append(p)})}

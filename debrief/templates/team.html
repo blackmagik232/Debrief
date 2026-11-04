@@ -288,6 +288,12 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
   <div class="empty joinpanel"><b id="joinTitle">Join Midfield Menace on Garage 61</b><span id="joinText"></span><a id="joinLink" target="_blank" rel="noreferrer" href="https://garage61.net">Open Garage 61</a></div>
 </section>
 
+<section id="roster" hidden>
+  <div class="sechead"><span class="eyebrow">Teammates</span><h2>Who is on your team</h2>
+    <p class="lede">Everyone Garage 61 showed for your team, and what is still missing to compare with them.</p></div>
+  <div class="panel"><ul id="rosterList"></ul></div>
+</section>
+
 <section id="weekly" hidden>
   <div class="sechead"><span class="eyebrow" id="wkSeason">This week</span><h2>This week's team leaderboards</h2>
     <p class="lede">Each driver's best clean lap in your series this week, from Garage 61. A week shows as final two days after it ends (uploads can be late).</p></div>
@@ -385,6 +391,12 @@ if(!D||!Array.isArray(D.combos)){
   const wk=!!(D&&D.weekly&&typeof D.weekly==='object'&&!Array.isArray(D.weekly));if(!wk)$('jump').hidden=true;
   $('lede').textContent=wk?'This week\'s team leaderboards for your series.':'No team data yet. In Debrief, open Team and click Refresh.';return}
 
+// 2.19.2: with no series picked there are no weekly boards, so the teammates are listed by name with what is missing
+(function roster(){const R=Array.isArray(D.roster)?D.roster.filter(x=>x&&typeof x==='object'&&x.name):[];
+  const noSeries=!(D.weekly&&Array.isArray(D.weekly.series)&&D.weekly.series.length);
+  if(!R.length||!noSeries)return;$('roster').hidden=false;const ul=$('rosterList');
+  R.forEach(t=>{const li=h('li');li.append(h('b',null,String(t.name)));const m=Array.isArray(t.missing)?t.missing.filter(x=>typeof x==='string'):[];
+    li.append(document.createTextNode(m.length?': '+m.join('; ')+'.':': nothing missing.'));ul.append(li)})})();
 const combos=D.combos.filter(c=>c&&Array.isArray(c.board));
 const meKey=(D.me&&D.me.key)||'me';
 // colours: you are always blue; teammates get orange, purple, then greys, in order of who appears first

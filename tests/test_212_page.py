@@ -249,7 +249,7 @@ def test_setuplab_report():
     R = call("api/setuplab/report?" + q)[1]["report"]
     assert R["series_setup"] == "fixed" and R["series_setup_source"] == "you set this" and R["series_override"] == "fixed"
     assert any(i["rule"] == "fixed_series" for i in R["suggestions"]["items"]) and R["suggestions"]["next"] is None
-    assert settings_io.load_extra("setuplab")["series"] == {f"{CAR}|{TRACK}": "fixed"}
+    assert settings_io.load_extra("setuplab")["series"] == {f"{CAR}|{TRACK}": "fixed", f"car:{CAR}": "fixed"}   # 2.19.2: the car too
     assert [c["series_override"] for c in call("api/setuplab/combos")[1]["combos"]] == ["fixed", None]
     code, r = post("api/setuplab/series", {"car": CAR, "track": TRACK, "setup": ""})
     assert code == 200 and settings_io.load_extra("setuplab")["series"] == {}

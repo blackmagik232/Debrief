@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.19.2
+
+Quick fixes from four testers. No statistic changed; these are words, layout and what Debrief remembers.
+
+- **Today:** the setup banner is now a small "Setup: 1 step left" badge. Every setup step has a Skip, and the voice test says what it does (the coach says one short line out loud). The explanation under your #1 thing sits behind a small "Why?".
+- **Practice:** the one-thing tip comes first, then your newest 3 sessions with "Show all".
+- **Overlay:** when it can't open it says what to do. Off Windows: "The overlay works on Windows only; the coach still speaks." On Windows it says what to check, and the controls are hidden until the overlay can run.
+- **Progress:** Season has a Track picker and, for the track you pick, best and median lap month by month. Skills says in one line why scores are missing. Goals says what a target and "your best" are based on.
+- **A review that can't be built** says which laps had no telemetry or couldn't be read, how to make sure iRacing saves telemetry (Alt+L in the car), and that Try again re-runs the whole review (it can't retry just that step).
+- **Racing** leads with "6 races to look at"; the file counts are under Details.
+- **Setup Lab** remembers your open / fixed answer for the series (when one is picked) and for the car at other tracks, so it isn't asked again for each car.
+- **Team:** with no series picked, your teammates are still listed by name, each with what is missing.
+
 ## 2.19.1
 
 - **The coach overlay can no longer get in the coach's way.** Everything the Coach page asks of it (show, hide, Edit position, size, opacity, place) now goes to the overlay window in a queue, so Windows' "main thread is not in main loop" errors and hangs should be gone. If the overlay can't open, the Coach page says so in one line ("The overlay couldn't open: ... The coach carries on.") and the full details go to debrief.log. Starting or stopping the coach, or Debrief itself, never waits on it, and it can be turned off and on again as often as you like.

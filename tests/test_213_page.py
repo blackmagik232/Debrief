@@ -523,7 +523,11 @@ def test_practice_in_the_window():
             pg.wait_for_selector("#vPractice", state="visible")
             pg.wait_for_selector("#prSessions .prrow")
             rows = pg.evaluate("() => [...document.querySelectorAll('#prSessions .prrow')].map(b => b.textContent)")
-            assert len(rows) == 4 and "Practice, Lone Qualify" in rows[0] and "Zolder" in rows[0], rows
+            assert len(rows) == 3 and "Practice, Lone Qualify" in rows[0] and "Zolder" in rows[0], rows   # 2.19.2: newest 3
+            assert pg.text_content("#prSessions .btn") == "Show all 4"
+            assert pg.evaluate("() => document.querySelector('#vPractice').innerHTML.indexOf('id=\"prPlan\"') < document.querySelector('#vPractice').innerHTML.indexOf('id=\"prSessions\"')")
+            pg.click("#prSessions .btn")
+            assert pg.evaluate("() => document.querySelectorAll('#prSessions .prrow').length") == 4
             assert pg.text_content("#prPill") == "4 sessions"
             assert pg.evaluate("() => document.querySelector('.navbtn[data-nav=practice]').getAttribute('aria-current')") == "page"
             if shots and not dark:

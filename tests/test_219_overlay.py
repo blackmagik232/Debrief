@@ -631,7 +631,8 @@ cc = ov.Overlay(ov.Store(Mem().load, Mem().save), lambda: None, lambda: "mph", l
 s_ = cc.start()
 wait_for(lambda: not overlay_threads())
 s_ = cc.status()
-check(s_["state"] == "failed" and not s_["running"] and s_["problem"] == "The overlay couldn't open: RuntimeError: tcl exploded. The coach carries on.",
+check(s_["state"] == "failed" and not s_["running"] and s_["problem"].startswith("The overlay couldn't open: RuntimeError: tcl exploded. ")
+      and "borderless windowed" in s_["problem"] and s_["problem"].endswith("The coach carries on."),
       f"a crash in the overlay's thread: {s_['problem']}")
 check(lg2 and "Traceback" in lg2[0] and "tcl exploded" in lg2[0], "its traceback is in the log")
 check(s_["line"].startswith("Couldn't start: RuntimeError"), f"status line: {s_['line']}")
@@ -818,8 +819,12 @@ check(si["state"] == "running" and si["hwnd"] == 4242 and si["line"] == "Running
 cI.stop()
 cN = ov.Overlay(ov.Store(Mem().load, Mem().save), lambda: None, lambda: "mph", platform="linux", tk_factory=lambda: FTk)
 si = cN.start()
-check(si["state"] == "failed" and si["line"] == "Couldn't start: The overlay needs Windows." and si["problem"].endswith("The coach carries on."),
+check(si["state"] == "failed" and si["line"] == "Couldn't start: The overlay needs Windows." and si["problem"] == "The overlay works on Windows only; the coach still speaks."
+      and si["next_step"] == si["problem"] and si["usable"] is False,
       f"couldn't start: {si['line']}")
+check(ov.next_step("win32", "") == "" and "Tk" in ov.next_step("win32", "no Tk window library")
+      and "Install Debrief again" in ov.next_step("win32", "This PC's Debrief has no Tk window library"),
+      "2.19.2: next_step: nothing wrong -> blank; Tk missing -> reinstall; else borderless")
 
 # -- the 15 second test
 mT = Mem()
@@ -868,7 +873,7 @@ r = route(cB2, {"test": True})
 check(r["ok"] and r["overlay"]["running"] and cB2.store.enabled() is False, "Test works with the overlay off, and does not turn it on")
 cB2.stop()
 r = route(cN, {"test": True})
-check(r["ok"] is False and "couldn't open" in r["error"], f"Test on a PC that can't: the reason, not a crash: {r['error'][:70]}")
+check(r["ok"] is False and ("couldn't open" in r["error"] or "Windows only" in r["error"]), f"Test on a PC that can't: the reason, not a crash: {r['error'][:70]}")
 
 # ---------------------------------------------------------------- (g) the build and the page
 spec = (ROOT / "packaging" / "debrief.spec").read_text(encoding="utf-8")

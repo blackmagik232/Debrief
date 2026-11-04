@@ -745,3 +745,7 @@ body.codriving #vCoach.pad{padding:18px clamp(14px,2.5vw,32px) 24px}
 .ovgrid .btn{padding:6px 0;min-width:0;text-align:center}
 .ovnudge .note{margin:0;font-size:10px;line-height:1.2;text-align:center;align-self:center}
 .ovbtns{display:flex;flex-direction:column;gap:6px}
+.frline.quiet{border:0;padding:0;font-size:12.5px;gap:4px 12px}
+.frline.quiet .pill{font-size:12px}
+.tdwhy summary{cursor:pointer;font-size:13px;color:var(--fg2);width:max-content}
+.ovunavail .row,.ovunavail #ovStatus{display:none}

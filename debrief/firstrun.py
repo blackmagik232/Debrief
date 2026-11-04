@@ -39,6 +39,7 @@ MAX_COUNT = 100000                         # .ibt files counted in the folder at
 FLAGS = ("voice_tested", "dismissed", "token_rejected")
 
 STEP_IDS = ("folder", "record", "telemetry", "session", "voice", "token")
+SKIPPED_KEY = "skipped"                    # 2.19.2: firstrun.json "skipped": [step ids he chose to skip]
 TELEMETRY_HOW = ("iRacing doesn't save telemetry until you turn it on: in the car, press Alt+L (or turn on telemetry "
                  "recording in iRacing's settings), then drive a few laps.")
 
@@ -52,10 +53,11 @@ def steps(facts: dict) -> list:
     best = int(f.get("best_clean") or 0)
     folder = str(f.get("folder_path") or "")
     out = []
+    skipped = {x for x in (f.get("skipped") or []) if isinstance(x, str)}
 
     def add(sid, done, title, todo, ok, action):
         out.append({"id": sid, "done": bool(done), "title": title, "text": ok if done else todo,
-                    "action": None if done else action})
+                    "action": None if done else action, "skipped": bool(not done and sid in skipped)})
 
     ibt = int(f.get("ibt_files") or 0)
     add("folder", f.get("folder"), "Find your iRacing telemetry",
@@ -79,7 +81,7 @@ def steps(facts: dict) -> list:
          f"you to work on."),
         f"You have a session with {best} clean laps. Open it on the Practice page.", "practice")
     add("voice", f.get("voice_tested"), "Test the coach's voice",
-        "Click Test voice to check you can hear the coach over the game.",
+        "Click Test voice: the coach says one short line out loud, so you can check you hear it over the game.",
         "The coach's voice has been tested.", "test_voice")
     rejected = bool(f.get("token")) and bool(f.get("token_rejected"))
     add("token", f.get("token") and not rejected, "Connect Garage 61 for race reviews",
@@ -97,11 +99,14 @@ def walkthrough(facts: dict | None = None, state: dict | None = None, **gather_k
         facts = gather(**gather_kw)
     if state is None:
         state = load_state(gather_kw.get("state_path"))
+    facts = {**facts, "skipped": (state or {}).get(SKIPPED_KEY) or facts.get("skipped") or []}
     st = steps(facts)
     done = sum(1 for s in st if s["done"])
-    nxt = next((s for s in st if not s["done"]), None)
+    nskip = sum(1 for s in st if s["skipped"])
+    nxt = next((s for s in st if not s["done"] and not s["skipped"]), None)
     dismissed = bool((state or {}).get("dismissed"))
-    return {"steps": st, "done": done, "total": len(st), "next": nxt["id"] if nxt else None,
+    return {"steps": st, "done": done, "total": len(st), "skipped": nskip, "left": len(st) - done - nskip,
+            "next": nxt["id"] if nxt else None,
             "all_done": nxt is None, "dismissed": dismissed, "show": not dismissed and nxt is not None,
             "text": ("You're all set." if nxt is None else f"{done} of {len(st)} done. Next: {nxt['title']}.")}
 
@@ -139,6 +144,17 @@ def mark(name: str, path=None, value: bool = True) -> bool:
     with _LOCK:                            # two flags set at once (Test voice and Hide) both stay set
         d = load_state(path)
         d[name] = bool(value)
+        return _save_state(d, path)
+
+
+def skip_step(step_id: str, path=None, skip: bool = True) -> bool:
+    """Skip a setup step (2.19.2), or take the skip back (skip=False). False for an unknown step or no save."""
+    if step_id not in STEP_IDS:
+        return False
+    with _LOCK:
+        d = load_state(path)
+        cur = [x for x in (d.get(SKIPPED_KEY) or []) if x in STEP_IDS and x != step_id]
+        d[SKIPPED_KEY] = cur + [step_id] if skip else cur
         return _save_state(d, path)
 
 

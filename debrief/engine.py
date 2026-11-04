@@ -660,6 +660,39 @@ def _lap_numbers(my_laps):
     return {g(rows[i], "id"): k + 1 for k, i in enumerate(order)}
 
 
+def _lap_list(nums, limit=8) -> str:
+    """'3, 4 and 7' / '1, 2, 3, 4, 5, 6, 7, 8 and 5 more' for lap numbers (2.19.2)."""
+    nums = sorted({int(n) for n in nums if isinstance(n, int) and not isinstance(n, bool)})
+    if not nums:
+        return ""
+    shown = [str(n) for n in nums[:limit]]
+    more = len(nums) - len(shown)
+    if more > 0:
+        return ", ".join(shown) + f" and {more} more"
+    return shown[0] if len(shown) == 1 else ", ".join(shown[:-1]) + " and " + shown[-1]
+
+
+def few_laps_message(missing, unreadable, readable: int) -> str:
+    """2.19.2: why a review can't be built for lack of laps: which laps had no telemetry (missing) or couldn't be
+    read (unreadable), how to make sure iRacing saves telemetry, and what Try again does. missing / unreadable are
+    lap numbers (None for a lap without a number); readable is how many laps could be used."""
+    parts = ["not enough laps with readable telemetry in this race."]
+    got = f"Only {readable} lap{'s' if readable != 1 else ''} had readable telemetry (a review needs at least 2)."
+    parts.append(got)
+    mi = _lap_list(missing)
+    if mi or missing:
+        n = len(missing)
+        parts.append(f"No telemetry came back from Garage 61 for {'lap ' + mi if mi and n == 1 else 'laps ' + mi if mi else str(n) + ' laps'}.")
+    un = _lap_list(unreadable)
+    if un or unreadable:
+        n = len(unreadable)
+        parts.append(f"The telemetry for {'lap ' + un if un and n == 1 else 'laps ' + un if un else str(n) + ' laps'} couldn't be read.")
+    parts.append("iRacing only saves telemetry when it is turned on: in the car, press Alt+L before the next race "
+                 "(or turn on telemetry recording in iRacing's settings), and let Garage 61 finish uploading before you review.")
+    parts.append("Try again re-runs the whole review (it can't retry just this step); press it once the laps have uploaded.")
+    return " ".join(parts)
+
+
 def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, track_length: float | None = None, log=None) -> dict:
     """
     meta: {driver, car, track, event_name, started_at, ...}
@@ -675,14 +708,19 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
     warned = False
     numbers = _lap_numbers(my_laps or [])
     laps = []
+    no_tel, bad_tel = [], []     # 2.19.2: lap numbers with no telemetry / telemetry that couldn't be read
     for l in my_laps or []:
         lt = _safe_float(g(l, "lap_time", "lapTime"))
         lid = g(l, "id")
-        if not lt or lid not in my_tel:
+        if not lt:
+            continue
+        if lid not in my_tel:
+            no_tel.append(numbers.get(lid))
             continue
         try:
             raw = parse_csv(my_tel[lid])
         except (ValueError, IndexError) as e:
+            bad_tel.append(numbers.get(lid))
             if log and not warned:
                 log(f"  Skipping a lap whose telemetry couldn't be read: {e}")
                 warned = True
@@ -690,7 +728,7 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
         laps.append({"lap": l, "id": lid, "n": numbers.get(lid), "start": l.get("_start"), "t": float(lt),
                      "clean": bool(g(l, "clean", default=True)), "raw": raw})
     if len(laps) < 2:
-        raise ValueError("not enough laps with readable telemetry in this race.")
+        raise ValueError(few_laps_message(no_tel, bad_tel, len(laps)))
     laps.sort(key=lambda x: x["n"])
     # partial laps (e.g. the 7 s "lap" at the finish line): Garage 61 marks them incomplete or missing;
     # anything under 75% of the median lap time, or telemetry covering only part of the lap, can't be a full lap

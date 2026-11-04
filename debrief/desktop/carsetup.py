@@ -311,7 +311,7 @@ def _series_kind(car, track, idx):
         if kind in ("open", "fixed"):
             return kind
         guess = setuplab.series_setup_guess(_records(idx, car, track), car, (combo or {}).get("car"))[0]
-        return guess if guess in ("open", "fixed") else None
+        return guess if guess in ("open", "fixed") else setuplab.remembered_for_car(saved, car)
     except Exception:  # noqa: BLE001
         return None
 

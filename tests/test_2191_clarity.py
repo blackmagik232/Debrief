@@ -179,7 +179,7 @@ def test_other_lap_numbers_in_the_window_are_guarded():
 # ---------------------------------------------------------------- 6. counts say what they count
 def test_counts_are_labelled():
     assert "' of your '+plural(p.n_rows,'race review')" in JS
-    assert "plural(races,'race')+' with starts, '+plural(sess,'session')+' with incidents'" in JS
+    assert "plural(races,'race')+' to look at'" in JS and "rcFilesNote" in JS
     assert "Practice counts every telemetry session" in JS
 
 

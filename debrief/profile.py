@@ -449,6 +449,26 @@ def over_time(rows: list) -> list:
 EXIT_NOTE = "Exit speeds from reviews before 2.7.0 were measured 150 m after the apex."
 
 
+WHY_SHORT = {"no_traces": "they were saved without lap traces (open one and press Rebuild)",
+             "not_enough_clean_laps": "they had fewer than 6 clean laps with telemetry",
+             "few_clean": "they had fewer than 6 clean laps with telemetry",
+             "not_enough_better_laps": "they had too few quick laps to compare your typical laps with",
+             "no_corners": "Debrief found no corners in them", "bad_data": "they couldn't be read",
+             "no_block": "they couldn't be scored"}
+
+
+def why_line(why, n_rows) -> str:
+    """2.19.2: one line saying why the race reviews have no skill scores (the commonest reason), "" when there is
+    nothing to explain. Words only: no statistic changes."""
+    n = int(n_rows or 0)
+    w = why if isinstance(why, dict) else {}
+    if n <= 0:
+        return ""
+    top = max((k for k in w if isinstance(w[k], (int, float)) and w[k] > 0), key=lambda k: w[k], default=None)
+    reason = WHY_SHORT.get(top, WHY_SHORT["no_block"]) if top else WHY_SHORT["no_block"]
+    return f"None of your {n} race review{'s' if n != 1 else ''} has skill scores yet: {reason}."
+
+
 def build(rows: list, include_practice: bool = False) -> dict:
     """Profile for the library Skills tab (see spec 1.3). Never raises on odd rows; empty input gives
     {"groups": [], "weakest": None, "n_races": 0}.

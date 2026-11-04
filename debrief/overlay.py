@@ -350,6 +350,23 @@ def check_available(platform: str | None = None, import_tk=None) -> tuple[bool, 
     return True, ""
 
 
+OFF_WINDOWS = "The overlay works on Windows only; the coach still speaks."
+
+
+def next_step(platform: str | None, reason: str) -> str:
+    """2.19.2: what to do when the overlay can't open, in plain words ("" when nothing is wrong)."""
+    if not reason:
+        return ""
+    if (platform or sys.platform) != "win32":
+        return OFF_WINDOWS
+    if "Tk" in reason:
+        return ("Debrief's Tk window library is missing on this PC, so the overlay can't be drawn. Install Debrief "
+                "again with its installer (it brings Tk with it). The coach carries on.")
+    return ("Check that iRacing runs in borderless windowed mode (exclusive fullscreen hides every overlay), then turn "
+            "Show overlay on again. If it still won't open, close and reopen Debrief; debrief.log has the details. "
+            "The coach carries on.")
+
+
 # ---------------------------------------------------------------- the window
 FAST_S, IDLE_S = 0.25, 1.0       # while the coach runs (4 times a second); while it is off (nothing is redrawn)
 PUMP_MS = 80                     # how often the Tk thread looks for orders from the page (well under a quarter second)
@@ -806,9 +823,13 @@ class Overlay:
             line = f"Couldn't start: {reason}"
         else:
             line = "Off."
-        return {"enabled": self.store.enabled(), "running": running, "edit": bool(running and self.edit),
+        plat = getattr(self, "_platform", None)
+        step = next_step(plat, reason) if not running else ""
+        problem = (OFF_WINDOWS if step == OFF_WINDOWS else f"The overlay couldn't open: {reason}. {step}") if step else ""
+        return {"enabled": self.store.enabled(), "running": running, "usable": bool(ok or running), "next_step": step,
+                 "edit": bool(running and self.edit),
                 "available": ok, "why": self.error or why, "state": state, "hwnd": hwnd, "line": line,
-                "problem": (f"The overlay couldn't open: {reason}. The coach carries on." if reason and not running else ""),
+                "problem": problem,
                 "opacity": (g or {}).get("opacity", DEFAULT_OPACITY),
                 "size": next((n for n, wh in SIZES.items() if g and (g["w"], g["h"]) == wh), "custom" if g else DEFAULT_SIZE)}
 

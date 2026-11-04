@@ -1173,6 +1173,50 @@ def series_setup_kind(value, override=None) -> str:
     return "unknown"
 
 
+# 2.19.2: his open / fixed answer is remembered so Debrief doesn't ask again for each car: for the car + track he
+# answered, for the series when one is picked on Prepare ("series:<id>"), and for the car at any other track
+# ("car:<path>"), which is used only when the schedule, the telemetry and the known-cars list can't tell.
+def choice_key(car, track) -> str:
+    return f"{str(car).lower()}|{str(track).lower()}"
+
+
+def series_choice_key(series_id) -> str:
+    return f"series:{str(series_id).lower()}"
+
+
+def car_choice_key(car) -> str:
+    return f"car:{str(car).lower()}"
+
+
+def _kind_of(saved, key):
+    v = saved.get(key) if isinstance(saved, dict) else None
+    return v if v in ("open", "fixed") else None
+
+
+def saved_choice(saved, car, track, series_id=None):
+    """His own answer for this car + track, else for the picked series: 'open' | 'fixed' | None."""
+    return _kind_of(saved, choice_key(car, track)) or (_kind_of(saved, series_choice_key(series_id)) if series_id else None)
+
+
+def remembered_for_car(saved, car):
+    """His answer for this car at another track ('open' | 'fixed' | None): the last resort when nothing else knows."""
+    return _kind_of(saved, car_choice_key(car))
+
+
+def store_choice(saved: dict, car, track, value, series_id=None, limit: int = 500) -> dict:
+    """The saved answers with this one set ('open' | 'fixed') or cleared ('' / None). Raises ValueError past `limit`."""
+    out = dict(saved) if isinstance(saved, dict) else {}
+    keys = [choice_key(car, track), car_choice_key(car)] + ([series_choice_key(series_id)] if series_id else [])
+    for k in keys:
+        out.pop(k, None)
+    if value in ("open", "fixed"):
+        if len(out) + len(keys) > limit:
+            raise ValueError("Too many saved choices.")
+        for k in keys:
+            out[k] = value
+    return out
+
+
 def series_setup_from_files(recs: list) -> tuple[str, str]:
     """What the telemetry itself says (WeekendOptions.IsFixedSetup), from official sessions only (newest first): an
     offline test session says "fixed" whatever the series is (real Mustang file, Nov 2026), so it never decides.

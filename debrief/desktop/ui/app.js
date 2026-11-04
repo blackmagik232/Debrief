@@ -243,7 +243,7 @@ function renderToday(){const j=td.j;if(!j)return;
   $('tdWhere').textContent=O.where||'';$('tdWhere').hidden=!O.where;
   $('tdTitle').textContent=O.title||'';
   $('tdLines').replaceChildren(...(O.lines||[]).map(([k,v])=>{const q=h('p');if(k)q.append(h('b',null,k+': '));q.append(document.createTextNode(v||''));return q}));
-  $('tdWhy').textContent=O.why||'';$('tdWhy').hidden=!O.why;
+  $('tdWhy').textContent=O.why||'';$('tdWhyBox').hidden=!O.why;if($('tdWhyBox').dataset.w!==(O.why||'')){$('tdWhyBox').dataset.w=O.why||'';$('tdWhyBox').open=false}
   const pill=$('tdSure'),x=SURE[O.sureness];pill.hidden=!x;if(x){pill.className='pill sure'+(x[1]?' '+x[1]:'');pill.textContent=x[0];pill.title='How sure this is: '+x[0]}
   $('tdLegend').hidden=!x;
   const acts=[];if(O.action)acts.push(tdBtn(O.action,true));if(O.more)acts.push(tdBtn(O.more,false));$('tdActs').replaceChildren(...acts);
@@ -310,7 +310,7 @@ function frameBar(){
   if(v==='skills'){const p=profileInfo,rf=p&&p.refreshing;
     $('fbText').textContent=!p?'Driver profile':
       (p.n_races?'Driver profile · '+(ok(p.n_rows)&&p.n_rows>p.n_races?p.n_races+' of your '+plural(p.n_rows,'race review')+' have':plural(p.n_races,'race')+' with')+' skill scores'+(p.weakest&&PHASE[p.weakest.phase]?' · most time to find lately: '+PHASE[p.weakest.phase]:''):
-       p.n_rows?'Driver profile · none of your '+p.n_rows+' race review'+(p.n_rows===1?'':'s')+' has skill scores yet; the page below says why':'Driver profile · skill scores appear after a race with at least 6 clean laps with telemetry');
+       p.n_rows?'Driver profile · '+(p.why_line||('none of your '+plural(p.n_rows,'race review')+' has skill scores yet')):'Driver profile · skill scores appear after a race with at least 6 clean laps with telemetry');
     if(rf&&rf.total){pill.hidden=false;pill.className='pill';pill.textContent='Adding scores to older reviews: '+rf.done+' of '+rf.total;
       $('fbBar').hidden=false;$('fbBar').firstElementChild.style.width=Math.round(100*rf.done/rf.total)+'%'}
     return}
@@ -1228,7 +1228,7 @@ async function loadGoals(){let j;try{j=await api('goals')}catch(e){connectionLos
     tx.append(h('b',null,comboLabel(g)));
     const line=h('span','sub2');line.append(document.createTextNode('Target '),h('b','num',fmtT(g.target_s)),document.createTextNode(' · your best '),h('b','num',fmtT(p.best)));
     if(ok(p.gap))line.append(document.createTextNode(' · '),h('b','num '+(p.gap<=0?'okc':'badc'),p.gap<=0?'beaten by '+Math.abs(p.gap).toFixed(3)+' s':fmtD(p.gap)+' to go'));
-    tx.append(line);if(g.note)tx.append(h('span','sub2',g.note));
+    tx.append(line);if(p.basis)tx.append(h('span','sub2 note',p.basis));if(g.note)tx.append(h('span','sub2',g.note));
     const acts=h('span','row');if(p.achieved)acts.append(h('span','pill ok','Achieved'));
     const eb=h('button','btn','Edit');eb.type='button';eb.addEventListener('click',()=>editGoal(g));
     const db=h('button','btn','Delete');db.type='button';db.addEventListener('click',()=>deleteGoal(g,db));acts.append(eb,db);
@@ -1686,7 +1686,7 @@ function slOneSetupNext(items){const first=(items||[]).find(i=>i&&i.kind==='chan
 function slIdeaLi(i){const li=h('li'),top=h('div','slidea');top.append(h('b',null,i.setting||'Note'),confBadge(i.confidence));li.append(top);
   const lines=Array.isArray(i.lines)&&i.lines.length?i.lines:[(i.kind==='change'&&i.action?i.action+' ':'')+(i.why||i.text||'')];
   lines.forEach(x=>li.append(h('span','sub2',x)));if(i.check)li.append(h('span','sub2','Check: '+i.check));return li}
-async function slSaveSeries(v){if(!sl.sel)return;let r;try{r=await post('setuplab/series',{car:sl.sel.car,track:sl.sel.track,setup:v})}catch(e){connectionLost();return}
+async function slSaveSeries(v){if(!sl.sel)return;let r;try{r=await post('setuplab/series',{car:sl.sel.car,track:sl.sel.track,setup:v,series:sl.series||undefined})}catch(e){connectionLost();return}
   if(!r.ok){banner(r.error||'That wasn\'t saved.',true);return}loadSlReport()}
 $('slRead').addEventListener('click',async()=>{
   if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){banner('Debrief is busy: '+(lastJob.title||TITLES[lastJob.kind]||'a job').toLowerCase()+'. Wait for it to finish.',true);return}
@@ -1871,7 +1871,9 @@ function ovRender(o){if(current.view!=='coach'||!o||ov.busy)return;const on=!!o.
   const w=$('ovWhy');w.hidden=!o.problem;w.textContent=o.problem||'';
   $('ovStatus').textContent='Overlay status: '+(o.line||(on?'Running.':'Off.'));
   document.querySelectorAll('#ovPlace [data-ovp],#ovPlace [data-ovn]').forEach(b=>{b.disabled=!on});$('ovReset').disabled=!on;
-  $('ovTest').disabled=!o.available&&!on}
+  $('ovTest').disabled=!o.available&&!on;
+  // 2.19.2: when the overlay can't run here, the controls are hidden (not shown as usable) and the note says what to do
+  $('ovPanel').classList.toggle('ovunavail',o.usable===false);if(o.usable===false){p.className='pill no';p.textContent='Not available'}}
 async function ovSet(body){ov.busy=true;const r=await co2Post('overlay/set',body,'ovMsg');ov.busy=false;
   if(r&&r.ok){setMsg('ovMsg','');if(r.overlay){ovRender(r.overlay);if(body.enabled&&!r.overlay.running&&r.overlay.why)setMsg('ovMsg','Not shown.','bad')}}
   else if(co.st)ovRender(co.st.overlay)}
@@ -2051,6 +2053,7 @@ function renderPrTel(){const j=pr.data;if(!j)return;const run=!!j.running||(last
     plural(n,'session')+' from your telemetry files.'+(ok(j.unread)&&j.unread>0?' '+plural(j.unread,'new file')+' since the last read: press Read my telemetry to add them.':'');
   $('prNow').hidden=!run}
 function prEmpty(host,title,text){const e=h('div','panel pvnone');e.append(h('h2','pvtrack',title),h('p','lede',text));host.replaceChildren(e)}
+const PR_NEWEST=3; // 2.19.2: the list shows the newest few sessions; Show all has the rest
 function renderPrList(){const j=pr.data,host=$('prSessions'),ss=(j&&j.sessions)||[];if(!j)return;
   if(!j.folder_ok){prEmpty(host,'Debrief can\'t find your telemetry folder','iRacing saves telemetry in Documents\\iRacing\\telemetry. If yours is somewhere else, set the folder in Settings > Setup Lab and Coach. '+TEL_HOW);return}
   if(!j.indexed&&j.unread===0&&!j.running){prEmpty(host,'No telemetry files yet',TEL_HOW+' Then press Read my telemetry.');return}
@@ -2058,7 +2061,7 @@ function renderPrList(){const j=pr.data,host=$('prSessions'),ss=(j&&j.sessions)|
   if(!ss.length){prEmpty(host,'No telemetry files yet',TEL_HOW+' Then press Read my telemetry.');return}
   const box=h('div','panel'),top=h('div','phead');top.append(h('h3',null,'Your sessions'),h('span','note','Newest first'));box.append(top);
   const ul=h('ul','prlist');ul.setAttribute('aria-label','Your sessions, newest first');
-  (pr.more?ss:ss.slice(0,40)).forEach(x=>{const li=h('li'),b=h('button','prrow');b.type='button';b.dataset.id=x.id;
+  (pr.more?ss:ss.slice(0,PR_NEWEST)).forEach(x=>{const li=h('li'),b=h('button','prrow');b.type='button';b.dataset.id=x.id;
     const what=h('span','prwhat');what.append(h('b',null,x.track||x.track_code),h('span','sub2',x.car||x.car_path));
     const types=(x.session_types||[]).map(sessWord).join(', ')||'Session';
     b.append(h('span','prwhen num',slWhen(x.date)),what,h('span','prtypes',types),h('span','prlaps num',(x.clean_laps||0)+' clean of '+plural(x.laps||0,'lap')),
@@ -2066,8 +2069,10 @@ function renderPrList(){const j=pr.data,host=$('prSessions'),ss=(j&&j.sessions)|
     b.setAttribute('aria-label',types+' at '+(x.track||'')+' in the '+(x.car||'')+', '+slWhen(x.date)+', best '+(ok(x.best)?fmtT(x.best):'none'));
     b.addEventListener('click',()=>openPrSession(x.id));li.append(b);ul.append(li)});
   box.append(ul);
-  if(ss.length>40&&!pr.more){const m=h('button','btn','Show all '+ss.length);m.type='button';m.addEventListener('click',()=>{pr.more=true;renderPrList()});box.append(m)}
-  host.replaceChildren(box)}
+  if(ss.length>PR_NEWEST&&!pr.more){const m=h('button','btn','Show all '+ss.length);m.type='button';m.addEventListener('click',()=>{pr.more=true;renderPrList()});box.append(m)}
+  host.replaceChildren(box);
+  // 2.19.2: the one-thing tip first, then the sessions; the telemetry panel (Read my telemetry) moves below them
+  const tel=$('prTel');if(tel&&host.parentNode&&tel.nextSibling!==host.nextSibling)host.parentNode.insertBefore(tel,host.nextSibling)}
 $('prRead').addEventListener('click',async()=>{
   if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){banner('Debrief is busy: '+(lastJob.title||TITLES[lastJob.kind]||'a job').toLowerCase()+'. Wait for it to finish.',true);return}
   setMsg('prMsg','');$('prRead').disabled=true;let r;try{r=await post('setuplab/read')}catch(e){connectionLost();return}
@@ -2302,6 +2307,10 @@ async function loadFirstRun(){fr.at=Date.now();let j;try{j=await api('firstrun')
 // 2.18: setup counts as done once there is something of yours to show (a Garage 61 token, or a session with 5 clean
 // laps): today.setup_done. After that the box is gone and any step left is one quiet line on Today.
 const setupDone=j=>!!(td.j&&td.j.setup?td.j.setup_done:j&&(j.all_done||(j.steps||[]).some(x=>x.done&&(x.id==='token'||x.id==='session'))));
+// 2.19.2: every setup step can be skipped; the server remembers it (firstrun.json) and the step stops being "next"
+function skipBtn(id){const b=h('button','linkbtn','Skip');b.type='button';b.title='Skip this step. Help > Setup checklist shows the list again.';
+  b.addEventListener('click',async()=>{let r;try{r=await post('firstrun/skip',{step:id})}catch(e){connectionLost();return}
+    if(r&&r.ok){fr.data=r;fr.at=Date.now();renderFirstRun()}else banner((r&&r.error)||'Couldn\'t skip that step.')});return b}
 function renderFirstRun(){const box=$('firstRun'),j=fr.data;if(!box)return;
   // 2.18: Today shows the steps (before any data they are the page); Welcome shows them too while Garage 61 is being
   // set up, so the telemetry steps show from the first minute
@@ -2313,8 +2322,10 @@ function renderFirstRun(){const box=$('firstRun'),j=fr.data;if(!box)return;
   const want=!!(j&&where&&(fr.force||(j.show&&!done)));box.hidden=!want;
   const line=$('tdSetupLine');
   if(line){const nx=j&&(j.steps||[]).find(x=>x.id===j.next);const quiet=!!(j&&where==='today'&&!want&&j.show&&done&&nx);line.hidden=!quiet;
-    if(quiet){const left=(j.total||0)-(j.done||0);const a=FR_ACT[nx.action];line.replaceChildren(h('span',null,'Setup: '+plural(left,'step')+' left. Next: '+nx.title+'.'));
+    if(quiet){const left=ok(j.left)?j.left:(j.total||0)-(j.done||0);const a=FR_ACT[nx.action];line.className='frline quiet';
+      line.replaceChildren(h('span','pill','Setup: '+plural(left,'step')+' left'),h('span',null,'Next: '+nx.title+'.'));line.title=nx.text||'';
       if(a){const b=h('button','linkbtn',a[0]);b.type='button';b.addEventListener('click',a[1]);line.append(b)}
+      line.append(skipBtn(nx.id));
       const x=h('button','linkbtn','Hide');x.type='button';x.addEventListener('click',()=>$('frHide').click());line.append(x)}}
   // before any data Today is the setup steps: the #1 card and the last race and practice wait for something to show
   const noData=where==='today'&&td.j&&td.j.ok&&!td.j.has_data;$('tdOne').hidden=!!noData;document.querySelector('#vToday .tdgrid').hidden=!!noData;
@@ -2328,11 +2339,13 @@ function renderFirstRun(){const box=$('firstRun'),j=fr.data;if(!box)return;
   const nDone=steps.filter(st=>st.done).length;
   $('frTitle').textContent=where==='wel'&&guideOn?'Start with your telemetry':'Getting set up';
   $('frPill').textContent=nDone+' of '+steps.length+' done';$('frPill').className='pill'+(nDone===steps.length?' ok':'');
-  $('frList').replaceChildren(...steps.map(st=>{const li=h('li','frstep'+(st.done?' done':'')+(st.id===j.next?' now':''));
+  $('frList').replaceChildren(...steps.map(st=>{const li=h('li','frstep'+(st.done||st.skipped?' done':'')+(st.id===j.next?' now':''));
     const mk=h('span','frtick',st.done?'\u2713':'');mk.setAttribute('aria-hidden','true');
     const tx=h('div','frtx');tx.append(h('b',null,st.title),h('span','note',st.text));li.append(mk,tx);
     li.setAttribute('aria-label',(st.done?'Done: ':'To do: ')+st.title);
-    const a=FR_ACT[st.action];if(!st.done&&a){const b=h('button','btn'+(st.id===j.next?' primary':''),a[0]);b.type='button';b.dataset.fr=st.action;b.addEventListener('click',a[1]);li.append(b)}
+    const a=FR_ACT[st.action];if(!st.done&&!st.skipped&&a){const b=h('button','btn'+(st.id===j.next?' primary':''),a[0]);b.type='button';b.dataset.fr=st.action;b.addEventListener('click',a[1]);li.append(b)}
+    if(!st.done&&!st.skipped)li.append(skipBtn(st.id));
+    else if(st.skipped)li.append(h('span','note','Skipped'));
     return li}))}
 $('frHide').addEventListener('click',async()=>{let r;try{r=await post('firstrun/dismiss')}catch(e){connectionLost();return}
   if(r&&r.ok){fr.data=r;fr.force=false;renderFirstRun();banner('Hidden. Help > Setup checklist shows it again.')}});
@@ -2864,19 +2877,22 @@ $('rcAgain').addEventListener('click',()=>loadRacing());
 $('rcTrack').addEventListener('change',()=>{rc.track=$('rcTrack').value;renderRacing()});
 function rcTracks(j){const out=[];const add=t=>{if(t&&!out.includes(t))out.push(t)};
   ((j.starts||{}).tracks||[]).forEach(g=>add(g.track));((j.incidents||{}).tracks||[]).forEach(t=>add(t.track));return out}
+function rcLead(races,sess){return plural(races,'race')+' to look at'+(sess?', '+plural(sess,'session')+' with incident data':'')}
 function renderRacing(){const j=rc.data;if(!j)return;const W=j.where||{},C=j.counts||{},F=j.found||{};
   const tracks=rcTracks(j);if(rc.track&&!tracks.includes(rc.track))rc.track='';
   const sel=$('rcTrack');sel.replaceChildren(new Option('All tracks',''),...tracks.map(t=>new Option(t,t)));sel.value=rc.track;$('rcTrackWrap').hidden=tracks.length<2;
   const races=((j.starts||{}).races)||0,sess=((j.incidents||{}).sessions)||0;
-  const pill=$('rcPill');pill.className='pill'+(races||sess?' ok':' no');pill.textContent=races||sess?plural(races,'race')+' with starts, '+plural(sess,'session')+' with incidents':'Nothing yet';
-  const bits=[plural(F.reviews||0,'saved review'),plural(F.scans||0,'replay scan'),plural(F.telemetry||0,'telemetry file')];
-  let note='Found '+bits.join(', ')+'.';
-  if(races||sess)note+=' Of these: '+plural(races,'race')+' with a start to look at and '+plural(sess,'session')+' with incident data. Practice counts every telemetry session, so its number can be bigger.';   // 2.19.1
+  const pill=$('rcPill');pill.className='pill'+(races||sess?' ok':' no');pill.textContent=races||sess?plural(races,'race')+' to look at':'Nothing yet';
+  // 2.19.2: lead with what there is to look at; the file counts and folders sit behind a details fold
+  let note=races||sess?rcLead(races,sess)+'.':'Nothing to look at yet.';
+  if(races||sess)note+=' Practice counts every telemetry session, so its number can be bigger.';   // 2.19.1
   if(!W.library)note+=' Your library folder wasn\'t found, so saved reviews and replay scans can\'t be read.';
   if(!W.telemetry)note+=' Your telemetry folder wasn\'t found. If iRacing saves telemetry somewhere else, set the folder in Settings.';
-  else note+=' Telemetry comes from the folder "'+(W.telemetry_name||'telemetry')+'".';
-  if(W.racecap)note+=' RaceCap\'s replay scans are read too.';else if(W.racecap_set)note+=' RaceCap\'s folder wasn\'t found, so its scans are left out.';
   $('rcFoundNote').textContent=note;
+  let det='Found '+[plural(F.reviews||0,'saved review'),plural(F.scans||0,'replay scan'),plural(F.telemetry||0,'telemetry file')].join(', ')+'.';
+  if(W.telemetry)det+=' Telemetry comes from the folder "'+(W.telemetry_name||'telemetry')+'".';
+  if(W.racecap)det+=' RaceCap\'s replay scans are read too.';else if(W.racecap_set)det+=' RaceCap\'s folder wasn\'t found, so its scans are left out.';
+  $('rcFilesNote').textContent=det;
   rcStarts(j);rcIncidents(j)}
 function rcEmpty(host,title,lines,settings){const e=h('div','panel pvnone');e.append(h('h2','pvtrack',title));lines.forEach(t=>e.append(h('p','lede',t)));
   if(settings){const b=h('button','btn','Set the folder in Settings');b.type='button';b.dataset.nav='settings';const r=h('div','row');r.append(b);e.append(r)}

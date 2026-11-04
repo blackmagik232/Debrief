@@ -122,7 +122,7 @@ new MutationObserver(()=>$('btnMenu').setAttribute('aria-expanded',String(docume
    either, since a reload drops the window's place and can close Debrief, so it says where Review last race went. */
 const PAGE_KEYS=[...document.querySelectorAll('.nav .navbtn[data-nav]:not(.sub)')].map(b=>b.dataset.nav).slice(0,10);
 const keyOfPage=n=>{const i=PAGE_KEYS.indexOf(n);return i<0?null:'Ctrl+'+(i===9?0:i+1)};
-const KEY_MSG=/^(review|reviewgo|rebuild|settings|help|prev|next|page[0-9])$/;
+const KEY_MSG=/^(review|reviewgo|settings|help|prev|next|rebuild|page[0-9])$/;
 let oldKeyShown=false;
 function shortcut(k){if(k==='reviewgo'){startReview();return true}if(k==='rebuild'){if(current.view==='review'&&current.dir)rebuildReview(current.dir);return true}if(k==='settings'){openSettings();return true}
   if(k==='review'){if(!oldKeyShown){oldKeyShown=true;banner('Review last race is Ctrl+Enter now (or the button at the top of the sidebar). Ctrl+R does nothing in Debrief.',false,9000)}return true}

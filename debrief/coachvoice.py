@@ -280,6 +280,46 @@ class PackVoice:
         if self.player is not None:
             self._play("(beep)", tone(self.sr), "beep", 8, True, kind="beep")
 
+    def play_tone(self, name: str) -> bool:
+        """2.20 corner notes: "start" (rising), "saved" (falling) or "discard" (low), generated here, played at once."""
+        if self.player is None or self._closed:
+            return False
+        from . import cornernotes
+        x = cornernotes.tones(self.sr).get(name)
+        if x is None:
+            return False
+        return self._play(f"(tone {name})", x, "tone", 9, True, kind="tone")
+
+    def play_clip(self, text: str, pcm: bytes, rate: int, priority: int = 2, check=None, on_start=None) -> bool:
+        """2.20: play a recording (one of his corner notes, the mic test) through the same player and device as the
+        cues, at its own sample rate. check: asked right before it starts, like a cue's (a reason back drops it)."""
+        if self.player is None or self._closed or not pcm:
+            return False
+        v = self.volume / 100.0
+        x = np.frombuffer(bytes(pcm)[:len(pcm) - len(pcm) % 2], "<i2").astype(np.float64) / 32768.0 * v
+        rec = {"text": text, "source": "note", "kind": "note", "t_asked": self._clock(), "t_start": None,
+               "t_end": None, "ok": None}
+
+        def started(_it):
+            rec["t_start"] = self._clock()
+            self.playing += 1
+            if on_start is not None:
+                try:
+                    on_start()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        def ended(_it, ok):
+            rec["t_end"], rec["ok"] = self._clock(), bool(ok)
+            if rec["t_start"] is not None:
+                self.playing = max(0, self.playing - 1)
+        with self._lock:
+            self.history.append(rec)
+            del self.history[:-50]
+        kw = {"check": check} if check is not None else {}
+        return self.player.play(voicepack.to_pcm16(x), int(rate), priority=priority, interrupt=False, on_start=started,
+                                on_end=ended, tag=text, **kw)
+
     def set(self, volume=None, rate=None):
         if volume is not None:
             try:

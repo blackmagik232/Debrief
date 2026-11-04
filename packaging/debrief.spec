@@ -83,6 +83,7 @@ for _must in ("debrief.prep", "debrief.goals", "debrief.results", "debrief.team"
               "debrief.balance", "debrief.pressurelearn", "debrief.setupshare", "debrief.teamref",
               "debrief.startreport", "debrief.incidentmap",
               "debrief.voicepack", "debrief.audioout", "debrief.coachvoice", "debrief.cuelog",
+              "debrief.audioin", "debrief.cornernotes", "debrief.noterec",
               "debrief.desktop.coach2", "debrief.overlay", "debrief.carcompare", "debrief.desktop.carcompare"):
     if _must not in hiddenimports:
         raise SystemExit(f"Build stopped: {_must} would be left out of Debrief.exe")

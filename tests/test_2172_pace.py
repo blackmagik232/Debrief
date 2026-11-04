@@ -344,7 +344,7 @@ hk = coach2.hotkeys(types.SimpleNamespace(), lc.Settings(), types.SimpleNamespac
 check(hk.keys["pace"].text == "ctrl+shift+p" and hk.keys["pace"].callback == "ASK", "the pace key asks the runner")
 check(S.clean_coach_settings({"level": "ask", "lap_times": "full"}) == {"level": "ask", "lap_times": "full"},
       "the window may pick Only when I ask and the lap time reading")
-for k, bad, msg in (("level", "loud", "Pick Quiet, Normal, Busy or Only when I ask."), ("lap_times", "long", "Pick Full or Short.")):
+for k, bad, msg in (("level", "loud", "Pick Quiet, Normal, Busy, Notes only or Only when I ask."), ("lap_times", "long", "Pick Full or Short.")):
     try:
         S.clean_coach_settings({k: bad})
         check(False, f"{k} {bad!r} refused")
@@ -430,7 +430,7 @@ check("api/coach/pace" in coach2.POST_ROUTES and "api/coach/wheel-pace-learn" in
 html = (ROOT / "debrief" / "desktop" / "ui" / "index.html").read_text(encoding="utf-8")
 js = (ROOT / "debrief" / "desktop" / "ui" / "app.js").read_text(encoding="utf-8")
 m = re.search(r'<fieldset class="radios colevel" id="coLevel">(.*?)</fieldset>', html, re.S)
-check(m and re.findall(r'value="(\w+)"', m.group(1)) == ["quiet", "normal", "busy", "ask"]
+check(m and re.findall(r'value="(\w+)"', m.group(1)) == ["quiet", "normal", "busy", "notes", "ask"]
       and "<b>Only when I ask</b>" in m.group(1), "the level picker has Only when I ask")
 check('id="coPace"' in html and "Ctrl+Shift+P" in html and 'id="coWheelPLearn"' in html and 'id="coLapTimes"' in html,
       "the page: How's my pace? button, its wheel button and Say lap times")

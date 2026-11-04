@@ -749,3 +749,23 @@ body.codriving #vCoach.pad{padding:18px clamp(14px,2.5vw,32px) 24px}
 .frline.quiet .pill{font-size:12px}
 .tdwhy summary{cursor:pointer;font-size:13px;color:var(--fg2);width:max-content}
 .ovunavail .row,.ovunavail #ovStatus{display:none}
+
+/* 2.20 corner notes, the Recording light, the Mic test meter */
+.reclight{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--on-a);background:var(--bad);border-radius:999px;padding:3px 12px 3px 9px;font-size:13px;letter-spacing:.02em}
+.reclight[hidden]{display:none}
+.reclight i{width:10px;height:10px;border-radius:50%;background:currentColor;animation:recpulse 1s ease-in-out infinite}
+@keyframes recpulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.reclight i{animation:none}}
+.meter{flex:1 1 140px;min-width:120px;max-width:320px;height:14px;border:1px solid var(--axis);border-radius:7px;background:var(--band);overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:var(--good);transition:width .12s linear}
+.colearn{font-weight:500}
+.cngroup{display:grid;gap:8px;margin:12px 0}
+.cngroup h4{margin:0;font-size:15px}
+.cnturn{display:grid;gap:6px;border-top:1px solid var(--grid);padding-top:8px}
+.cnturn h5{margin:0;font-size:14px}
+.cnnote{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.cnnote .cnwhen{flex:1 1 240px;display:grid;gap:1px}
+.cnnote.off .cnwhen{opacity:.6}
+.cnnote select{width:auto}
+.cnnote .check{margin:0}
+.cnrec{color:var(--bad);font-weight:700}

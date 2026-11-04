@@ -1054,6 +1054,7 @@ def _jsonable(o):
 
 
 COACH_FIELDS = {"in_races": bool, "markers": bool, "feedback": bool, "lap_delta": bool, "brake_beep": bool,
+                "notes": bool, "learn_cues": bool,
                 "top_n": (1, 3, "Focus corners must be 1, 2 or 3."), "volume": (0, 100, "Volume must be 0 to 100."),
                 "rate": (-10, 10, "Speaking speed must be -10 to 10."), "level": lambda v: clean_level(v),
                 "lap_times": lambda v: clean_lap_times(v),
@@ -1061,10 +1062,10 @@ COACH_FIELDS = {"in_races": bool, "markers": bool, "feedback": bool, "lap_delta"
 
 
 def clean_level(v) -> str:
-    """2.17.2 Coaching level: quiet, normal, busy or ask (Only when I ask)."""
+    """2.17.2 Coaching level: quiet, normal, busy or ask (Only when I ask); 2.20: notes (Notes only)."""
     from .. import livecoach
     if not isinstance(v, str) or v.strip().lower() not in livecoach.LEVELS:
-        raise ValueError("Pick Quiet, Normal, Busy or Only when I ask.")
+        raise ValueError("Pick Quiet, Normal, Busy, Notes only or Only when I ask.")
     return v.strip().lower()
 
 
@@ -1684,6 +1685,7 @@ class DebriefServer(ThreadingHTTPServer):
         self.wheel = None                  # wheelmute.WheelMute
         self.wheel_note = ""               # how the last Learn went, in plain words
         self.wheel_backend_factory = None  # tests only: () -> a stand-in joystick backend
+        self.mic_backend_factory = None    # tests only (2.20): () -> a stand-in microphone (audioin.FakeInput)
 
     # errors a request thread didn't catch itself (a crash inside do_GET/do_POST before any reply). The
     # library's default prints them to stderr, which is /dev/null under pythonw: they vanished (2.7.0 M6).
@@ -2092,7 +2094,8 @@ class DebriefServer(ThreadingHTTPServer):
             r = livecoach.LiveRunner(src, vc, settings=settings, telemetry_dir=folder, weak_for=self.coach_weak_for,
                                      log=app.say, reference_index=index_of, focus_for=self.coach_focus_for,
                                      reference=given, keep_given=given is not None, log_dir=coach2.logs_dir(),
-                                     mode=mode, log_header=log_header)
+                                     mode=mode, log_header=log_header, notes=coach2.notes_store(self),
+                                     mic=coach2.mic_backend_fn(self))
             r.start()
         except Exception:  # noqa: BLE001
             app.say("ERROR starting the coach:\n" + traceback.format_exc())

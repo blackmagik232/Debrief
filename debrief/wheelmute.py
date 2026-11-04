@@ -183,8 +183,9 @@ class WheelMute:
     """Polls one wheel button and calls on_press() on each press (the moment it goes down). See the module text."""
 
     def __init__(self, on_press=None, binding=None, backend=None, hz: float = POLL_HZ, log=None,
-                 clock=time.monotonic):
+                 clock=time.monotonic, on_release=None):
         self.on_press = on_press
+        self.on_release = on_release    # 2.20 push-to-talk: called when the button goes up (or the wheel goes away)
         self.binding = clean_binding(binding)
         self._backend = backend
         self._backend_tried = backend is not None
@@ -198,6 +199,7 @@ class WheelMute:
         self._learn_result = None       # "learned" | "timeout" | "cancelled"
         self._dev = None                # the device number the binding is on now
         self._prev = False
+        self._held = False              # on_press was called and on_release hasn't been yet
         self._last_press = -1e9
         self._last_scan = -1e9
         self._next_scan = -1e9          # the chosen device is missing: look again at this time
@@ -237,7 +239,9 @@ class WheelMute:
             self._learn = None
         if t is not None and t is not threading.current_thread():
             t.join(timeout)
+            self._release()
             return not t.is_alive()
+        self._release()
         return True
 
     def running(self) -> bool:
@@ -249,6 +253,7 @@ class WheelMute:
             self.binding = clean_binding(binding)
             self._gen += 1
             self._dev = None
+            self._release()
             self._prev = True               # a button already held when it is set doesn't count as a press
             self._next_scan = -1e9
             self._backoff = 0.0
@@ -332,6 +337,7 @@ class WheelMute:
         """The chosen device isn't there: look again after RESCAN_MIN_S, doubling up to RESCAN_MAX_S."""
         self._dev = None
         self._prev = False
+        self._release()
         self._backoff = min(RESCAN_MAX_S, self._backoff * 2.0) if self._backoff else RESCAN_MIN_S
         self._next_scan = now + self._backoff
 
@@ -382,6 +388,7 @@ class WheelMute:
         if mask is None:                                 # unplugged: look for it again (now, then backing off)
             self._dev = None
             self._prev = False
+            self._release()                              # (a button held when the wheel went away is let go)
             self._next_scan = now
             return
         with self._lock:
@@ -391,12 +398,26 @@ class WheelMute:
         if down and not self._prev and now - self._last_press >= DEBOUNCE_S:
             self._last_press = now
             self.presses += 1
+            self._held = True
             if self.on_press is not None:
                 try:
                     self.on_press()
                 except Exception as e:  # noqa: BLE001
                     self._note(("cb", e.__class__.__name__), f"wheelmute: mute toggle failed ({e})")
+        elif not down and self._held:
+            self._release()
         self._prev = down
+
+    def _release(self):
+        """The button went up (or can't be read any more): 2.20 push-to-talk ends. Never raises."""
+        if not self._held:
+            return
+        self._held = False
+        if self.on_release is not None:
+            try:
+                self.on_release()
+            except Exception as e:  # noqa: BLE001
+                self._note(("rel", e.__class__.__name__), f"wheelmute: release failed ({e})")
 
     def _poll_learn(self, lr, now):
         be = self._backend

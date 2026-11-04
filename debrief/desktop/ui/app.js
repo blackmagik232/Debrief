@@ -1773,7 +1773,7 @@ document.querySelectorAll('input[name=coLevel]').forEach(r=>r.addEventListener('
   co.levelBusy=false;if(!j.ok){setMsg('coLevelMsg',j.error,'bad');return}
   setMsg('coLevelMsg',co.st&&co.st.running?'Saved. The coach uses it now.':'Saved.','ok');coachPoll()}));
 function fillCoachSettings(s){$('coLapTimes').value=s.lap_times==='full'?'full':'short';$('coInRaces').checked=!!s.in_races;$('coMarkers').checked=s.markers!==false;$('coFeedback').checked=s.feedback!==false;
-  $('coLapDelta').checked=s.lap_delta!==false;$('coBeep').checked=!!s.brake_beep;$('coTopN').value=String(Math.max(1,Math.min(3,s.top_n||2)));
+  $('coLapDelta').checked=s.lap_delta!==false;$('coBeep').checked=!!s.brake_beep;$('coNotes').checked=s.notes!==false;$('coLearn').checked=s.learn_cues!==false;$('coTopN').value=String(Math.max(1,Math.min(3,s.top_n||2)));
   $('coVol').value=String(ok(s.volume)?s.volume:100);$('coRate').value=String(ok(s.rate)?s.rate:0);coRanges()}
 function coRanges(){$('coVolV').textContent=$('coVol').value+'%';const r=+$('coRate').value;$('coRateV').textContent=r<0?'slower':r>0?'faster':'normal'}
 // "Turn 2 (C2 in your race review)": the spoken name as words, and the race review's own name for the corner
@@ -1783,7 +1783,7 @@ function coCornerLabel(w){const m=/^[A-Za-z](\d+)$/.exec(String(w.name||''));con
 $('fCoach').addEventListener('change',()=>{co.dirty=true});
 $('fCoach').addEventListener('submit',async e=>{e.preventDefault();setMsg('coSetMsg','Saving...');
   const settings={in_races:$('coInRaces').checked,markers:$('coMarkers').checked,feedback:$('coFeedback').checked,lap_delta:$('coLapDelta').checked,
-    brake_beep:$('coBeep').checked,top_n:+$('coTopN').value,volume:+$('coVol').value,rate:+$('coRate').value,lap_times:$('coLapTimes').value};
+    brake_beep:$('coBeep').checked,notes:$('coNotes').checked,learn_cues:$('coLearn').checked,top_n:+$('coTopN').value,volume:+$('coVol').value,rate:+$('coRate').value,lap_times:$('coLapTimes').value};
   let r;try{r=await post('coach/settings',{settings})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('coSetMsg',r.error,'bad');return}co.dirty=false;fillCoachSettings(r.settings||settings);
   setMsg('coSetMsg',co.st&&co.st.running?'Saved. The coach uses them now.':'Saved.','ok')});
@@ -1916,17 +1916,17 @@ function co2Render(st){if(current.view!=='coach')return;const run=!!st.running,K
     setMsg('coMeasureMsg',M.state==='measuring'?'Measuring...':M.text||'',M.state==='done'?'ok':M.state==='error'?'bad':'')}
   const PV=st.preview;if(PV&&co2.previewing){if(PV.state!=='starting'&&PV.state!=='playing'){co2.previewing=false;$('coPreview').disabled=false}
     setMsg('coVoiceMsg',PV.state==='starting'?'Getting the voice ready...':PV.text||'',PV.state==='error'?'bad':'ok');if(PV.state==='done')setMsg('coVoiceMsg','')}
-  co2Wheel(st.wheel_repeat);co2Wheel(st.wheel_pace,'P')}
+  co2Wheel(st.wheel_repeat);co2Wheel(st.wheel_pace,'P');co2Wheel(st.wheel_note,'N');co2Wheel(st.wheel_uselap,'U');cnCoachRender(st)}
 async function co2Post(p,body,msgId){let r;try{r=await post(p,body)}catch(e){connectionLost();return null}
   if(!r.ok&&msgId)setMsg(msgId,r.error||'That didn\'t work.','bad');return r}
 $('coRepeat').addEventListener('click',async()=>{const r=await co2Post('coach/repeat',{},'coMsg');if(r&&r.ok){if(r.muted)co2.repeatWall=null;
   setMsg('coMsg',r.said?'Said again: "'+r.text+'"':r.muted?r.note:'Nothing said yet to repeat.',r.said?'ok':r.muted?'bad':'')}});
 $('coPace').addEventListener('click',async()=>{const r=await co2Post('coach/pace',{},'coMsg');if(r&&r.ok)setMsg('coMsg','Asked. The coach answers as soon as it is safe to talk.','ok')});
 $('coQuiet1').addEventListener('click',async()=>{const r=await co2Post('coach/quiet',{},'coMsg');if(r&&r.ok){setMsg('coMsg','Quiet for 1 minute. Unmute ends it early.','ok');coachPoll()}});
-document.addEventListener('keydown',e=>{if(!(e.ctrlKey||e.metaKey)||!e.shiftKey||e.altKey)return;const k=e.key.toLowerCase();if(k!=='r'&&k!=='n'&&k!=='p')return;
-  if(!(co.st&&co.st.running))return;e.preventDefault();const K=co.st.keys||{},role=k==='r'?'repeat':k==='p'?'pace':'quiet';
+document.addEventListener('keydown',e=>{if(!(e.ctrlKey||e.metaKey)||!e.shiftKey||e.altKey)return;const k=e.key.toLowerCase();if(k!=='r'&&k!=='n'&&k!=='p'&&k!=='l')return;
+  if(!(co.st&&co.st.running))return;e.preventDefault();const K=co.st.keys||{},role=k==='r'?'repeat':k==='p'?'pace':k==='l'?'uselap':'quiet';
   if(K[role]&&K[role].on)return;        // 2.18: Windows' own key already did it; a second press would double it
-  $(k==='r'?'coRepeat':k==='p'?'coPace':'coQuiet1').click()});
+  $(k==='r'?'coRepeat':k==='p'?'coPace':k==='l'?'coUseLap':'coQuiet1').click()});
 // rehearsal: one of his Practice sessions, played through the coach at real speed
 async function co2LoadSessions(){const sel=$('coRhPick');let j;try{j=await api('sessions-ibt')}catch(e){return}
   const S=(j&&j.ok&&j.sessions)||[];co2.sessions=S;const keep=sel.value;
@@ -1982,7 +1982,7 @@ $('coPackDirBtn').addEventListener('click',async()=>{const v=$('coPackDir').valu
 // wheel buttons: R repeats the last cue, P asks for the pace (2.17.2)
 function co2Wheel(w,x){if(!w)return;x=x||'R';const learning=w.state==='learning';$('coWheel'+x+'Text').textContent=w.text||'';
   $('coWheel'+x+'Learn').disabled=learning;$('coWheel'+x+'Clear').disabled=learning||!w.label;if(w.note)setMsg('coWheel'+x+'Msg',w.note,/^Saved|cleared/.test(w.note)?'ok':'bad')}
-[['R','repeat'],['P','pace']].forEach(([x,role])=>{
+[['R','repeat'],['P','pace'],['N','note'],['U','uselap']].forEach(([x,role])=>{
   $('coWheel'+x+'Learn').addEventListener('click',async()=>{setMsg('coWheel'+x+'Msg','Press the button on your wheel now...');const r=await co2Post('coach/wheel-'+role+'-learn',{},'coWheel'+x+'Msg');if(r&&r.wheel)co2Wheel(r.wheel,x);coachPoll()});
   $('coWheel'+x+'Clear').addEventListener('click',async()=>{const r=await co2Post('coach/wheel-'+role+'-clear',{},'coWheel'+x+'Msg');if(r&&r.wheel)co2Wheel(r.wheel,x)})});
 // the coach log
@@ -2013,7 +2013,8 @@ HELP.words.push(['Voice pack','The recorded phrases the coach says. Six come wit
   ['Fixed corner','A focus corner where you made a mistake and then drove it well twice in a row. The coach stops talking about it until it slips twice in three laps.'],
   ['Driving view','Coach page > Driving view: a big view to glance at from the car. COACHING, MUTED, REHEARSING or OFF in large type, your one thing and its count (finished laps only), the last 3 cues, this lap against your reference and where the reference lap is from. The sidebar folds away; Debrief remembers it on this PC.'],
   ['Mute','Mute stays on until you unmute or stop the coach; every start begins unmuted. While muted nothing is said, Repeat that included, except the answer when you ask for your pace.']);
-HELP.keys.push(['Ctrl+Shift+R','Say the coach\'s last cue again'],['Ctrl+Shift+N','Mute the coach for 1 minute'],['Ctrl+Shift+P','Ask the coach how your pace is']);
+HELP.keys.push(['Ctrl+Shift+R','Say the coach\'s last cue again'],['Ctrl+Shift+N','Mute the coach for 1 minute'],['Ctrl+Shift+P','Ask the coach how your pace is'],
+  ['Hold Ctrl+Shift+V','Record a corner note while you drive: say it, then let go'],['Ctrl+Shift+L','Use the lap you just finished as the reference lap']);
 // 2.18: Help > Credits is the list in debrief/credits.py (sent with /api/brand), the same as CREDITS.md. This short
 // version shows only if that didn't load.
 HELP.credits=[['Debrief','Made by Black Magik Studios. \u00a9 2026 Black Magik Studios.'],
@@ -2037,7 +2038,7 @@ const cap=t=>{t=String(t||'');return t.charAt(0).toUpperCase()+t.slice(1)};
 const setupLetter=t=>{const m=/^Setup (\S+)/.exec(String(t||''));return m?m[1]:(t||'–')};
 async function openPractice(id){current={view:'practice',dir:null};show('vPractice');markNav();pr.sel=id||null;showPrList(!pr.sel);await loadPractice()}
 function showPrList(on){$('prList').hidden=!on;$('prOne').hidden=on}
-async function loadPractice(){let j;try{j=await api('sessions-ibt')}catch(e){connectionLost();return}
+async function loadPractice(){cnLoad();let j;try{j=await api('sessions-ibt')}catch(e){connectionLost();return}
   if(!j.ok){setMsg('prMsg',j.error||'Practice didn\'t load.','bad');return}
   pr.data=j;renderPrTel();if(j.running&&!polling)poll();
   if(pr.sel){openPrSession(pr.sel);return}
@@ -3093,4 +3094,72 @@ function ccWhere(j){const host=$('ccWhere'),W=j.where,cars=j.tel_cars||[];
   const ul=h('ul','ccwlist');(W.rows||[]).forEach(r=>ul.append(h('li','rcsay',mphText(r.text))));   // 2.18: mph
   if((W.rows||[]).length)sec.append(ul);else sec.append(h('p','rcsay',mphText(W.note||'No clear difference.')));
   host.replaceChildren(sec)}
+
+
+/* ---------- 2.20 corner notes (Practice page) and the Coach page's microphone panel ---------- */
+if(typeof HELP==='object'){
+  HELP.tour.push(['Corner notes','While you drive, hold Ctrl+Shift+V (or a wheel button you teach it on the Coach page) and say a short note, like "brake later here". Let go and it is saved for that corner. The coach plays it before that corner on your next laps, then less often, then only when the corner lost time. Practice > Corner notes lists them: play, re-record, move to another turn, switch off or delete.'],
+    ['Learning the track','With no reference lap yet, your first clean lap becomes the reference and every quicker clean lap replaces it. The coach then says how a corner compares with your best so far ("T5, 3 down on your best", "T3, braked 15 metres later", "T4, off track"). An off-track or incident lap is never the reference. Ctrl+Shift+L uses the lap you just finished.']);
+  HELP.words.push(['Corner note','Your own short spoken note about one corner, recorded with a held key while driving and played by the coach before that corner.'],
+    ['Notes only','A Coaching level where the coach says nothing but your own corner notes (and your pace when you ask).'],
+    ['Reference lap','The lap the coach compares you with. While you are learning a track it is your best clean lap of the session.'])}
+const cn={data:null,busy:false,poll:null,micPoll:null};
+function cnCoachRender(st){const M=st.mic||{},run=!!st.running;
+  $('coRec').hidden=!M.recording;
+  const L=st.learning;const ll=$('coLearning');ll.hidden=!(L&&L.active&&run);ll.textContent=L&&L.text?L.text:'';
+  const nh=st.notes_here,N=st.note||null;
+  $('cnPill').className='pill'+(run&&(st.settings||{}).notes!==false&&(st.settings||{}).level!=='ask'?' ok':'');$('cnPill').textContent=!run?'Coach off':(st.settings||{}).level==='ask'?'Not played':((st.settings||{}).notes===false?'Off':'On');
+  $('cnHere').textContent=nh?(nh.count?('Your corner notes for this track: '+nh.count+(nh.on<nh.count?' ('+nh.on+' switched on)':'')+'.'):'You have no corner notes for this track yet.'):(run?'':'Start the coach to record or hear corner notes.');
+  if(N&&N.last&&N.last.wall!==cn.lastWall){cn.lastWall=N.last.wall;setMsg('cnLast',N.last.text,N.last.ok?'ok':'bad')}
+  const U=st.use_lap_note;if(U&&U.wall!==cn.useWall){cn.useWall=U.wall;setMsg('coUseLapMsg',U.text,U.ok?'ok':'bad')}
+  $('coUseLap').disabled=!run||st.mode==='rehearsal';
+  if(M.available===false){$('coMicTest').disabled=true;$('coMicNote').textContent='The microphone can only be used on Windows.'}}
+$('coUseLap').addEventListener('click',async()=>{const r=await co2Post('coach/uselap',{},'coUseLapMsg');if(r&&r.ok){setMsg('coUseLapMsg','Asked. The coach uses your last lap if it was clean.','ok');coachPoll()}});
+function cnMeter(l){const v=Math.round(100*Math.max(0,Math.min(1,l||0)));$('coMeterBar').style.width=v+'%';$('coMeter').setAttribute('aria-valuenow',String(v))}
+async function cnMicLoop(){clearTimeout(cn.micPoll);let j;try{j=await api('coach/mic')}catch(e){return}if(!j||!j.ok)return;const M=j.mic||{},T=M.test||{};
+  cnMeter(M.level);$('coRec').hidden=!M.recording;
+  if(T.state==='recording'||T.state==='playing'){setMsg('coMicMsg',T.text||'');cn.micPoll=setTimeout(cnMicLoop,200);return}
+  cn.micBusy=false;$('coMicTest').disabled=false;cnMeter(0);setMsg('coMicMsg',T.text||'',T.state==='error'?'bad':T.heard?'ok':'')}
+$('coMicTest').addEventListener('click',async()=>{cn.micBusy=true;$('coMicTest').disabled=true;setMsg('coMicMsg','Starting the microphone...');
+  const r=await co2Post('coach/mic-test',{},'coMicMsg');if(!r||!r.ok){cn.micBusy=false;$('coMicTest').disabled=false;return}cnMicLoop()});
+
+// Practice > Corner notes
+async function cnLoad(){let j;try{j=await api('cornernotes')}catch(e){return}if(!j||!j.ok)return;cn.data=j;cnRender(j);
+  if(j.mic&&j.mic.rerecording)cnWatch()}
+function cnWhen(s){return s?String(s).slice(0,16).replace('T',' '):''}
+function cnTurnName(t){return t==null?'No turn yet':'Turn '+t}
+async function cnPost(p,body){let r;try{r=await post(p,body)}catch(e){connectionLost();return null}
+  if(!r.ok)setMsg('cnMsg',r.error||'That didn\'t work.','bad');return r}
+function cnRender(j){const host=$('cnList'),T=j.tracks||[],n=T.reduce((a,t)=>a+t.turns.reduce((b,u)=>b+u.notes.length,0),0);
+  $('cnCount').textContent=n?plural(n,'note'):'None yet';$('cnCount').className='pill'+(n?' ok':'');
+  const rr=j.mic&&j.mic.rerecording;
+  if(!n){host.replaceChildren(h('p','note','No corner notes yet. Start the coach, drive, and hold Ctrl+Shift+V (or your wheel button) while you say a note.'))}
+  else host.replaceChildren(...T.map(t=>{const g=h('div','cngroup');g.append(h('h4',null,t.short||t.track));
+    t.turns.forEach(u=>{const d=h('div','cnturn');d.append(h('h5',null,cnTurnName(u.turn)));
+      u.notes.forEach(x=>d.append(cnRow(x,rr)));g.append(d)});return g}));
+  const tr=j.trash||[];$('cnTrash').hidden=!tr.length;$('cnTrashN').textContent=String(tr.length);
+  $('cnTrashList').replaceChildren(...tr.map(x=>{const li=h('li');const b=h('button','btn chipbtn','Restore');b.type='button';
+    b.addEventListener('click',async()=>{const r=await cnPost('cornernotes/restore',{id:x.id});if(r&&r.ok){setMsg('cnMsg','Restored.','ok');cnLoad()}});
+    li.append(h('span',null,(x.track||'')+', '+cnTurnName(x.turn)+(ok(x.lap)?', lap '+x.lap:'')+': note '+(x.seconds||0).toFixed(1)+' s, deleted '+cnWhen(x.deleted)+' '),b);return li}));
+  $('cnCopy').disabled=!n}
+function cnRow(x,rr){const row=h('div','cnnote'+(x.enabled?'':' off'));
+  const when=h('div','cnwhen');when.append(h('span',null,'Recorded '+cnWhen(x.created)+(ok(x.lap)?', lap '+x.lap:'')+', '+(x.seconds||0).toFixed(1)+' s'),
+    h('span','note','Played '+(x.played===1?'1 time':x.played+' times')+'. '+(x.enabled?cap(x.plan)+'.':'Switched off.')));
+  const play=h('button','btn chipbtn','Play');play.type='button';play.addEventListener('click',async()=>{setMsg('cnMsg','Playing...');const r=await cnPost('cornernotes/play',{id:x.id});if(r&&r.ok)setMsg('cnMsg','')});
+  const rec=h('button','btn chipbtn',rr===x.id?'Stop':'Re-record');rec.type='button';rec.disabled=!!rr&&rr!==x.id;
+  rec.addEventListener('click',async()=>{if(rr===x.id){const r=await cnPost('cornernotes/rerecord-stop',{});if(r&&r.ok){setMsg('cnMsg',(r.result&&r.result.text)||'',r.result&&r.result.ok?'ok':'bad');cnLoad()}return}
+    setMsg('cnMsg','Opening the microphone...');const r=await cnPost('cornernotes/rerecord',{id:x.id});if(r&&r.ok){setMsg('cnMsg','Recording. Say your note, then press Stop.','ok');cnLoad()}});
+  const sel=h('select');for(let i=1;i<=40;i++){const o=h('option',null,'Turn '+i);o.value=String(i);sel.append(o)}
+  sel.value=x.turn==null?'':String(x.turn);if(x.turn==null){const o=h('option',null,'Move to turn...');o.value='';sel.prepend(o);sel.value=''}
+  sel.setAttribute('aria-label','Move to another turn');
+  sel.addEventListener('change',async()=>{if(!sel.value)return;const r=await cnPost('cornernotes/move',{id:x.id,turn:+sel.value});if(r&&r.ok){setMsg('cnMsg','Moved to turn '+sel.value+'.','ok');cnLoad()}});
+  const lab=h('label','check');const cb=h('input');cb.type='checkbox';cb.checked=x.enabled;lab.append(cb,h('span',null,'On'));
+  cb.addEventListener('change',async()=>{const r=await cnPost('cornernotes/enable',{id:x.id,on:cb.checked});if(r&&r.ok)cnLoad();else cb.checked=!cb.checked});
+  const del=h('button','btn chipbtn','Delete');del.type='button';del.addEventListener('click',async()=>{const r=await cnPost('cornernotes/delete',{id:x.id});if(r&&r.ok){setMsg('cnMsg','Moved to the trash for 30 days.','ok');cnLoad()}});
+  row.append(when,play,rec,sel,lab,del);if(rr===x.id){const m=h('span','cnrec','Recording...');row.append(m)}return row}
+async function cnWatch(){clearTimeout(cn.poll);let j;try{j=await api('coach/mic')}catch(e){return}if(!j||!j.ok)return;const M=j.mic||{};
+  if(M.rerecording){cn.poll=setTimeout(cnWatch,400);return}
+  if(M.rerecord_note)setMsg('cnMsg',M.rerecord_note,/Re-recorded/.test(M.rerecord_note)?'ok':'bad');cnLoad()}
+$('cnCopy').addEventListener('click',async()=>{let j;try{j=await api('cornernotes')}catch(e){connectionLost();return}if(!j||!j.ok)return;
+  try{await navigator.clipboard.writeText(j.summary||'');setMsg('cnMsg','Copied: one line per note.','ok')}catch(e){setMsg('cnMsg','Couldn\'t copy. Select the text yourself: '+(j.summary||'').split('\n')[0],'bad')}});
 })();

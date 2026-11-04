@@ -162,6 +162,9 @@ class FakeVoice:
         self.cancels: list = []
         self.beeps: list = []
         self.prepared: list = []
+        self.clips: list = []              # 2.20 notes played
+        self.dropped_clips: list = []
+        self.tones: list = []              # 2.20 tones played
         self.durations = dict(durations or {})
         self.closed = False
         self._busy_until = -1e9
@@ -190,6 +193,26 @@ class FakeVoice:
 
     def beep(self):
         self.beeps.append(self.clock())
+
+    def play_clip(self, text: str, pcm: bytes, rate: int, priority: int = 0, check=None, on_start=None,
+                  t: float | None = None) -> bool:
+        """2.20: one of his own corner notes (or the mic test's recording). Recorded like a cue, with its sound."""
+        now = self.clock() if t is None else float(t)
+        why = check() if check is not None else None
+        if why:
+            self.dropped_clips.append((text, why))
+            return False
+        self.clips.append({"t": now, "text": text, "priority": priority, "bytes": len(pcm), "rate": rate})
+        self.said.append({"t": now, "text": text, "priority": priority, "purge": False, "clip": True})
+        self._busy_until = now + len(pcm) / 2.0 / max(1, rate)
+        if on_start is not None:
+            on_start()
+        return True
+
+    def play_tone(self, name: str) -> bool:
+        """2.20: the note recorder's start / saved / discard tones."""
+        self.tones.append(name)
+        return True
 
     def set(self, volume=None, rate=None):
         if volume is not None:

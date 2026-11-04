@@ -35,7 +35,7 @@ KEYS = ("ev", "t", "lap", "dist_m", "kmh", "kind", "text", "corner", "why", "dro
         "ref_text", "ref_why")
 MEASURED_KEYS = ("min_kmh", "ref_min_kmh", "down_kmh", "brake_point_m", "ref_brake_point_m", "early_m", "to_brake_m",
                  "lost_s", "value", "hit", "near", "lap", "lap_time", "ref_time", "delta_s", "timed_by", "sector",
-                 "down_mph")
+                 "down_mph", "entry_diff_kmh", "brake_diff_m", "note_id", "seconds", "passes", "plan")
 FOCUS_KEYS = ("name", "id", "lost_s", "phrase", "brake_m")
 SETTINGS_KEYS = ("markers", "feedback", "lap_delta", "top_n", "max_per_lap", "repeat_laps", "gap_s", "in_races",
                  "audio_latency_s", "end_before_brake_s", "voice_pack", "fixed_laps", "volume", "level", "lap_times")

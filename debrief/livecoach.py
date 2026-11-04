@@ -63,7 +63,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import engine, ibt, voicepack
+from . import cornernotes, engine, ibt, voicepack
 
 GRID = 1000                 # reference points around the lap
 KMH = 3.6
@@ -77,11 +77,12 @@ MAX_PHRASE = 60             # characters: a corner-coach phrase longer than this
 KIND_MARKER, KIND_FEEDBACK, KIND_LAP, KIND_BEEP = "marker", "feedback", "lap", "beep"
 KIND_CORNER, KIND_SECTOR, KIND_INFO = "corner", "sector", "info"     # 2.17.2
 KIND_ASK = "ask"            # 2.17.2: the answer to "How's my pace?"
+KIND_NOTE = "note"          # 2.20: one of his own recorded corner notes, played before its corner
 FOCUS_MIN_HZ = 15.0         # 2.14 review: live reads at least this often while a practice focus is watched
 PRIORITY = {KIND_MARKER: 3, KIND_FEEDBACK: 2, KIND_CORNER: 2, KIND_LAP: 1, KIND_SECTOR: 1, KIND_INFO: 1,
-            KIND_ASK: 2}
+            KIND_ASK: 2, KIND_NOTE: 2}
 QUEUE_DEPTH = {KIND_MARKER: 2, KIND_FEEDBACK: 2, KIND_CORNER: 2, KIND_SECTOR: 1, KIND_LAP: 1, KIND_INFO: 1,
-               KIND_ASK: 1}  # 2.17.2: at most this many cues of one kind wait (the oldest goes)
+               KIND_ASK: 1, KIND_NOTE: 1}  # 2.17.2: at most this many cues of one kind wait (the oldest goes)
 HARD_BRAKE = 0.5            # 2.17.2 hard zone: from the reference's brake above this ...
 HARD_THROTTLE = 0.9         # ... until its throttle is above this again
 HARD_GATING = True          # (off only to measure what the hard zones cost)
@@ -110,11 +111,19 @@ LEVELS = {
     # 2.17.2 "Only when I ask": nothing but the answer to "How's my pace?"
     "ask": {"per_lap": 0, "gap_s": 3.0, "live_top": 0, "corner_min_s": None, "positives": 0,
             "sectors": False, "first_laps": False},
+    # 2.20 "Notes only": nothing but his own corner notes (and the answer to "How's my pace?" when he asks)
+    "notes": {"per_lap": 0, "gap_s": 3.0, "live_top": 0, "corner_min_s": None, "positives": 0,
+              "sectors": False, "first_laps": False},
 }
 DEFAULT_LEVEL = "normal"
 LIVE_MIN_LOSS_S = 0.05      # a corner is a session focus corner only when it costs at least this on average
 CORNER_MAX_S = 1.0          # a corner this far off the reference was a moment (traffic, a slide): no word about it
 LEARN_LAPS = 3              # session focus corners come from the last this many clean laps
+# 2.20 Learning the track: a corner is compared with his own best so far in this session (the live reference)
+LEARN_BRAKE_M = 10.0        # braked this much later or earlier than his best: a word about it (said to the nearest 5 m)
+LEARN_BIG = 2.0             # an error this many times the threshold is said again even a lap after the last word
+NOTE_TEXT = "Your note, {}"
+NOTE_WINDOW_S = 0.4         # a note is made within this much time of its latest start: it ends 1 to 1.4 s before the brake point
 
 
 # ---------------------------------------------------------------- settings
@@ -164,6 +173,11 @@ class Settings:
     pace_hotkey: str = "ctrl+shift+p"   # 2.17.2 "How's my pace?"
     lap_times: str = "short"            # 2.17.2 how a lap time is read: "full" or "short" (no minute)
     units: str = "mph"                  # 2.18: spoken speeds in "mph" or "kmh" (the window passes Settings > Units)
+    # 2.20
+    notes: bool = True                  # play his own recorded corner notes before their corners
+    learn_cues: bool = True             # Learning the track: words against his own best so far in this session
+    note_hotkey: str = "ctrl+shift+v"   # hold to record a corner note
+    use_lap_hotkey: str = "ctrl+shift+l"  # "use this lap" as the reference
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -223,6 +237,11 @@ class Settings:
     def ask_only(self) -> bool:
         """2.17.2 "Only when I ask": nothing is said but the answer to "How's my pace?"."""
         return self.level == "ask"
+
+    @property
+    def notes_only(self) -> bool:
+        """2.20 "Notes only": nothing is said but his own corner notes (and the answer to "How's my pace?")."""
+        return self.level == "notes"
 
     def per_lap(self) -> int:
         return self.max_per_lap if self.quiet else int(self.lv("per_lap"))
@@ -862,14 +881,37 @@ class Coach:
         self._last_along_t = -1e9
         self._last_off_t = -1e9
         self._last_inc_t = -1e9
+        # 2.20 corner notes and learning the track
+        self.notes = None                # cornernotes.NoteStore (the runner sets it), optional
+        self.track_key = ""              # names.track_key of the track he is on (notes are filed by it)
+        self.run_id = ""                 # this run of the coach: a note recorded on lap 4 of it first plays on lap 5
+        self.recording = False           # he is recording a note: no cue starts
+        self.count_notes = True          # live: passes and plays are counted in the store (a rehearsal counts its own)
+        self._pass_local: dict = {}      # ... note id -> passes counted in this rehearsal only
+        self._note_map: dict = {}        # corner num -> the note to play there (newest enabled one)
+        self._note_key = None            # ... what the map was made from (store version, reference)
+        self._note_done: set = set()     # ... corners whose note was decided this lap
+        self._note_planned: set = set()  # ... corners whose note is coming this lap (no brake marker there)
+        self._note_dur: dict = {}        # ... cue text -> seconds of the note it plays
+        self._closs_last: dict = {}      # corner num -> seconds lost on its last clean pass (learning plan)
+        self._learn_last: dict = {}      # corner num -> lap of the last learning word about it
+        self._clean_laps = 0             # clean laps seen since the car and track were set (Learning the track)
+        self._use_lap = False            # "use this lap" asked, answered on the next sample
+        self._last_clean = None          # (lap, time) of the last clean lap with a time
+        self.use_lap_note = None         # {"ok", "text", "wall"}: what "use this lap" did, for the window
+        self._learn_session = True       # no reference when the car and track were set: Learning the track
         self._reset_all()
         if reference is not None:
             self.set_reference(reference)
 
     # ---- public ----
-    def set_reference(self, ref: Reference | None, weak_corners=None):
+    def set_reference(self, ref: Reference | None, weak_corners=None, adopted: bool = False):
+        """adopted: a lap he drove now became the reference (_adopt). Anything else is a reference found or chosen
+        before driving, or none at all: with none, this session is Learning the track (learning_mode)."""
         if weak_corners is not None:
             self.weak_input = list(weak_corners)
+        if not adopted:
+            self._learn_session = ref is None
         same = ref is not None and ref is self.reference
         self.reference = ref
         self.proven = match_weak(ref, self.weak_input, self.settings.top_n, self.settings.corner_prefix) if ref else []
@@ -878,6 +920,8 @@ class Coach:
             self.learned = []
         self._timing(ref)
         self._learn(emit=False)
+        self._note_key = None            # 2.20: the corner map changed: his notes are matched to it again
+        self._closs_last = {} if not same else self._closs_last
         self.weak = self.proven or self.learned
         self._obs = {}
         self._marker_done = set()
@@ -948,6 +992,10 @@ class Coach:
             return {"source": None, "names": [], "level": st.level,
                     "text": "Only when you ask: the coach stays quiet until you ask for your pace (Ctrl+Shift+P or "
                             "your wheel button)."}
+        if st.notes_only:
+            return {"source": None, "names": [], "level": st.level,
+                    "text": "Notes only: the coach says nothing but your own corner notes before their corners "
+                            "(and your pace when you ask)."}
         if self.proven:
             src = "corner coach" if any(w.source == "corner coach" for w in self.proven) else "reviews"
             text = (f"Focus: {listed}, from the Corner coach." if src == "corner coach"
@@ -1023,6 +1071,79 @@ class Coach:
     def take_cancel(self) -> bool:
         c, self._cancel = self._cancel, False
         return c
+
+    # ---- 2.20: recording a corner note, "use this lap", Learning the track ----
+    def set_recording(self, on: bool):
+        """He is holding the note button: no cue starts, what is waiting is forgotten and what is being said stops
+        (the microphone must not hear it). Any thread."""
+        self.recording = bool(on)
+        if on:
+            self.queue.clear("recording a note")
+            self._cancel = True
+
+    def use_last_lap(self) -> bool:
+        """"Use this lap" (Ctrl+Shift+L or a wheel button): the lap he just finished becomes the reference, when it
+        was a clean one. Answered on the next sample (use_lap_note says what happened). Any thread."""
+        self._use_lap = True
+        return True
+
+    def learning_info(self) -> dict:
+        """What Learning the track looks like in the window: {"active", "clean_laps", "has_reference", "text"}. Active
+        until a lap from his telemetry files is the reference: first with no reference ("N clean laps yet"), then
+        while the reference is his own best of this session."""
+        ref = self.reference
+        n = self._clean_laps
+        plural = "s" if n != 1 else ""
+        if ref is None:
+            return {"active": True, "clean_laps": n, "has_reference": False,
+                    "text": f"Learning the track: {n} clean lap{plural} yet. Your first clean lap becomes the reference."}
+        if self._learn_session and (ref.source or {}).get("kind") == "live":
+            return {"active": True, "clean_laps": n, "has_reference": True,
+                    "text": f"Learning the track: your best so far is {fmt_lap(ref.lap_time)} "
+                            f"({n} clean lap{plural}). A quicker clean lap replaces it."}
+        return {"active": False, "clean_laps": n, "has_reference": True, "text": ""}
+
+    def learning_mode(self) -> bool:
+        """Corners are compared with his own best of this session: there was no reference when the car and track were
+        set, and the reference is now a lap he drove in this run."""
+        ref = self.reference
+        return bool(ref is not None and self._learn_session and (ref.source or {}).get("kind") == "live"
+                    and self.settings.learn_cues)
+
+    def _do_use_lap(self, t: float):
+        ll = self.last_lap
+        cand = None
+        if self._pending is not None:
+            cand = (self._pending.lap, self._pending.measured)
+        elif self._last_clean is not None and ll and ll.get("clean") and self._last_clean[0].num == ll.get("lap"):
+            cand = self._last_clean
+        if cand is None:
+            why = ("No lap is finished yet, so there is no lap to use." if not ll else
+                   "Your last lap was not a clean lap (off track, an incident or the pits), so it can't be the "
+                   "reference.")
+            self.use_lap_note = {"ok": False, "text": why, "wall": round(time.time(), 1)}
+            self._emit("asked", why="use this lap: " + why)
+            return
+        lap, lt = cand
+        old = self.reference
+        if old is not None and (old.source or {}).get("lap") == lap.num and abs(old.lap_time - lt) < 0.01:
+            self.use_lap_note = {"ok": True, "text": f"Lap {lap.num} ({fmt_lap(lt)}) is already the reference.",
+                                 "wall": round(time.time(), 1)}
+            return
+        self.keep_reference = None
+        self._adopt(lap, lt)
+        if self.reference is not old:
+            self.use_lap_note = {"ok": True, "text": f"Lap {lap.num} ({fmt_lap(lt)}) is the reference now.",
+                                 "wall": round(time.time(), 1)}
+            self._emit("asked", why=f"use this lap: lap {lap.num} is the reference")
+            if self.settings.lv("first_laps"):
+                self._push(Cue(text=reference_set_text(lt, short=self.settings.lap_times == "short"),
+                               priority=PRIORITY[KIND_INFO], key="info:refset", t=t, kind=KIND_INFO, expires=t + 45.0,
+                               why="you chose this lap as the reference", measured={"lap": lap.num,
+                                                                                 "lap_time": round(lt, 3)}))
+        else:
+            why = (self.events[-1]["text"] if self.events else "its corners did not match the old reference")
+            self.use_lap_note = {"ok": False, "text": f"That lap couldn't be used: {why}.", "wall": round(time.time(), 1)}
 
     # ---- 2.17.2: "How's my pace?" and cues checked again just before they play ----
     def ask(self):
@@ -1112,6 +1233,16 @@ class Coach:
 
         def own(state):
             pct = float(state.get("LapDistPct") or 0.0)
+            if kind == KIND_NOTE and num is not None and ref is not None:     # 2.20: ends 1 s before the corner's braking
+                c = ref.corner(num)
+                if c is None:
+                    return None
+                d = ((self._anchor_pct(c) - pct) % 1.0) * ref.length_m
+                if d >= ref.length_m / 2:
+                    return "passed its brake point"
+                if d / max(float(state.get("Speed") or 0.0), 5.0) < self._need_s(cue.text):
+                    return "would not end 1 s before its brake point"
+                return None
             if kind == KIND_MARKER and num is not None and ref is not None:
                 c = ref.corner(num)
                 if c is None or c.brake_pct is None:
@@ -1145,6 +1276,8 @@ class Coach:
     def _start_invalid(self, cue: Cue, state) -> str | None:
         """Can this cue start now, at this sample? The same rules a cue is held back by (see feed), as reasons."""
         st, ref = self.settings, self.reference
+        if self.recording:
+            return "recording a note"
         if float(state.get("Brake") or 0.0) > st.braking_pedal:
             return "braking"
         clr = state.get("CarLeftRight")
@@ -1194,6 +1327,9 @@ class Coach:
         if self.settings.ask_only and cue.kind != KIND_ASK:
             self._emit("not_made", cue, why="Only when I ask")   # 2.17.2: nothing but the answer he asks for
             return
+        if self.settings.notes_only and cue.kind not in (KIND_ASK, KIND_NOTE):
+            self._emit("not_made", cue, why="Notes only")        # 2.20: nothing but his own notes
+            return
         try:   # 2.18: every speed it says in the one unit from Settings > Units
             from . import units
             cue.text = units.convert_text(cue.text, self.settings.units)
@@ -1214,6 +1350,9 @@ class Coach:
         return self._real_duration(text) * max(1.0, float(self.time_scale or 1.0))
 
     def _real_duration(self, text: str) -> float:
+        nd = self._note_dur.get(text)
+        if nd:                                   # 2.20: one of his own notes: its recorded length
+            return float(nd)
         if self.duration_fn is not None:
             try:
                 d = self.duration_fn(text)
@@ -1257,6 +1396,12 @@ class Coach:
             lo = int(math.ceil(st.slower_kmh)) if st.units == "kmh" else int(st.slower_mph())
             for c in self.reference.corners:
                 out += [speed_text(f"{pre}{c.num}", n) for n in range(max(1, lo), 21 if st.units == "kmh" else 9)]
+        if self.reference is not None and st.learn_cues and not st.quiet:     # 2.20 Learning the track
+            for c in self.reference.corners:
+                name = f"{st.corner_prefix}{c.num}"
+                out += [learn_off_text(name), learn_on_text(name)]
+                out += [learn_speed_text(name, k) for k in range(3, 9)]
+                out += [learn_brake_text(name, m, way) for m in (10, 15, 20, 25, 30) for way in (True, False)]
         if self.focus is not None:                       # 2.14 practice focus cues
             try:
                 out += list(self.focus.vocabulary())
@@ -1275,7 +1420,8 @@ class Coach:
                 "muted": self.settings.muted, "quiet_reason": self.quiet_reason,
                 "last_lap": self.last_lap, "spoken": [c.to_dict() for c in self.spoken[-10:]],
                 "events": self.events[-10:],
-                "focus": self._focus_status(), "level": self.settings.level, "focus_info": self.focus_info()}
+                "focus": self._focus_status(), "level": self.settings.level, "focus_info": self.focus_info(),
+                "learning": self.learning_info(), "use_lap_note": self.use_lap_note, "recording": self.recording}
 
     def _focus_status(self):
         try:
@@ -1311,6 +1457,8 @@ class Coach:
         self._pending: _Pending | None = None
         self._full_since = None
         self._inc_seen = None
+        self._note_done = set()
+        self._note_planned = set()
         self.queue.clear("session reset")
 
     def _need_s(self, text: str) -> float:
@@ -1397,6 +1545,9 @@ class Coach:
             lap.trace.append((t, pct, v, brk, float(s.get("Throttle") or 0.0), float(s.get("Gear") or 0.0)))
         if self._pending is not None:
             self._lap_result(t, last_lap_time)
+        if self._use_lap:                                 # 2.20 "use this lap"
+            self._use_lap = False
+            self._do_use_lap(t)
         start_lap = is_race(stype) and lapn <= 1
         coachable = lap.valid and not lap.pit and not start_lap
 
@@ -1425,6 +1576,7 @@ class Coach:
                 self._marker(w, dists, v, t, coachable, lap)
                 b = self._beep(w, dists, v, coachable)
                 beep = beep or b
+            self._notes_step(pct, v, t, coachable, lap, stype)
             if self._prev_pct is not None and lap.valid and not lap.pit and lap.t0 is not None:
                 self._timed(self._prev_pct, pct, t, lap, coachable)     # 2.17.2 corner times and sectors
         elif (st.lv("first_laps") and self._building is None and not st.muted and on and not alongside
@@ -1478,6 +1630,8 @@ class Coach:
 
         def blocked(c: Cue) -> str | None:
             """The rule that keeps this cue back now, in a few words (the cue log says it when a cue is dropped)."""
+            if self.recording:                            # 2.20: nothing starts while he records a note
+                return "recording a note"
             if c.kind == KIND_ASK:                        # 2.17.2: he asked; only the safety rules hold it back
                 if alongside or t < self._traffic_until:
                     return "car alongside"
@@ -1523,7 +1677,7 @@ class Coach:
                     if num in lap.corners:
                         return "corner limit"
             else:
-                if c.kind != KIND_INFO and lap.said >= st.per_lap():
+                if c.kind not in (KIND_INFO, KIND_NOTE) and lap.said >= st.per_lap():     # his own notes: no limit
                     return "lap limit"
                 if c.kind in (KIND_MARKER, KIND_FEEDBACK, KIND_CORNER) and c.corner \
                         and int(c.corner[1:]) in lap.corners:
@@ -1533,8 +1687,9 @@ class Coach:
             if c.kind != KIND_MARKER and st.markers and coachable:   # keep room for a weak corner's focus cue
                 for w in self.weak:
                     d = dists.get(w.corner.num)
-                    if d is None or w.corner.num in self._marker_done or not self._marker_wanted(w, lap):
-                        continue
+                    if d is None or w.corner.num in self._marker_done or w.corner.num in self._note_planned \
+                            or not self._marker_wanted(w, lap):
+                        continue                          # (2.20: a corner with its note coming gets no marker)
                     trig, _late = self._marker_span(w, vv)
                     if d - trig < vv * (st.gap_s + need):
                         return "room kept for a brake marker"
@@ -1576,7 +1731,7 @@ class Coach:
         if cue.kind == KIND_INFO:
             if cue.key == "info:building":
                 self._building = "said"
-        elif cue.kind != KIND_ASK:                        # the answer he asked for isn't one of the lap's cues
+        elif cue.kind not in (KIND_ASK, KIND_NOTE):       # the answer he asked for, his own note: not the lap's cues
             lap.said += 1
         self.spoken.append(cue)
         del self.spoken[:-50]
@@ -1603,6 +1758,8 @@ class Coach:
         return None
 
     def _quiet(self, st, stype, on_track, alongside, t, coachable, start_lap, lap) -> str | None:
+        if self.recording:
+            return "Recording a note"
         if st.muted:
             return "Muted"
         if is_race(stype) and not st.in_races:
@@ -1620,6 +1777,92 @@ class Coach:
         if not coachable:
             return "Out lap or in lap"
         return None
+
+    # -- 2.20 his own corner notes --
+    def _anchor_pct(self, c: Corner) -> float:
+        """Where a note must have ended 1 s before: the corner's brake point, or where its zone begins when it has none."""
+        if c.brake_pct is not None:
+            return c.brake_pct
+        L = self.reference.length_m
+        return (c.apex_pct + min(-60.0, 0.5 * c.start_rel_m) / L) % 1.0
+
+    def _notes_refresh(self):
+        """His notes for this track matched to the reference's corners (one note a corner, the newest on one), again
+        whenever a note changes or the reference does."""
+        store, ref = self.notes, self.reference
+        if store is None or ref is None or not self.track_key:
+            self._note_map, self._note_key = {}, None
+            return
+        key = (getattr(store, "version", 0), id(ref))
+        if key == self._note_key:
+            return
+        try:
+            if store.tag_untagged(self.track_key, ref.corners, ref.length_m):
+                key = (getattr(store, "version", 0), id(ref))
+            self._note_map = store.by_corner(self.track_key, ref.corners, ref.length_m)
+        except Exception as e:  # noqa: BLE001
+            self._note_map = {}
+            self._log(f"livecoach: corner notes skipped ({e.__class__.__name__})")
+        self._note_key = key
+
+    def _notes_step(self, pct: float, v: float, t: float, coachable: bool, lap: _Lap, stype: str):
+        """Before each corner that has a note: at the moment the note would just end 1 s before the braking point,
+        decide whether it is played this lap (the learning plan), and make its cue. Said the way a brake marker is: it
+        waits for a free spot, is checked again just before it starts, and is dropped when it can't finish in time."""
+        st, ref = self.settings, self.reference
+        self._notes_refresh()
+        if not self._note_map or ref is None or not st.notes or st.ask_only:
+            return
+        if is_race(stype) and not st.in_races:           # races are for racing: the note neither plays nor counts
+            return
+        L = ref.length_m
+        vv = max(v, 5.0)
+        for num, note in list(self._note_map.items()):
+            c = ref.corner(num)
+            if c is None:
+                continue
+            anchor = self._anchor_pct(c)
+            d = ((anchor - pct) % 1.0) * L
+            if d >= L / 2:                               # behind us: ready for next lap
+                self._note_done.discard(num)
+                self._note_planned.discard(num)
+                continue
+            if num in self._note_done:
+                continue
+            name = f"{st.corner_prefix}{num}"
+            text = NOTE_TEXT.format(name)
+            self._note_dur[text] = float(note.get("seconds") or 0.0)
+            vref = max(vv, float(np.interp(anchor, ref.pct, ref.speed, period=1.0)))
+            late = vref * self._need_s(text)
+            trig = late + vref * NOTE_WINDOW_S
+            if not late <= d <= trig:
+                continue
+            self._note_done.add(num)
+            if not coachable:
+                continue
+            if note.get("run") == self.run_id and note.get("lap") is not None and lap.num <= int(note["lap"]):
+                continue                                 # recorded on this lap (or later): it plays from the next lap
+            fresh = self.notes.get(note["id"]) or note
+            passes = int(fresh.get("passes") or 0) + self._pass_local.get(note["id"], 0)
+            lost = self._closs_last.get(num)
+            play, phase = cornernotes.plan_says(passes, None if lost is None else lost >= cornernotes.PLAN_LOSS_MIN_S)
+            if self.count_notes:
+                try:
+                    self.notes.mark_pass(note["id"])
+                except Exception as e:  # noqa: BLE001
+                    self._log(f"livecoach: corner note count skipped ({e.__class__.__name__})")
+            else:                                        # a rehearsal: hear the plan move on without touching the counts
+                self._pass_local[note["id"]] = self._pass_local.get(note["id"], 0) + 1
+            if not play:
+                self._emit("not_made", kind=KIND_NOTE, text=text, corner=c.id, why=f"note plan: not this lap ({phase})",
+                           measured={"note_id": note["id"], "passes": passes})
+                continue
+            self._note_planned.add(num)
+            self._push(Cue(text=text, priority=PRIORITY[KIND_NOTE], key=f"note:{c.id}", t=t, kind=KIND_NOTE,
+                           corner=c.id, expires=t + max(0.3, (d - late) / vv),
+                           why=f"your note for {name}, lap {passes + 1} since you recorded it ({phase})",
+                           measured={"note_id": note["id"], "seconds": float(note.get("seconds") or 0.0),
+                                     "passes": passes, "plan": phase, "to_brake_m": round(d)}))
 
     # -- the focus cue (a) --
     def _marker_span(self, w: Weak, v: float):
@@ -1659,6 +1902,8 @@ class Coach:
             self._marker_done.discard(c.num)
             return
         if not st.markers or not coachable or c.num in self._marker_done or self._focus_owns(c.num):
+            return
+        if c.num in self._note_planned:                  # 2.20: his own note for this corner is coming: no marker too
             return
         vv = max(v, 5.0)
         trig, late = self._marker_span(w, vv)
@@ -1791,11 +2036,21 @@ class Coach:
         tin, tout = np.interp([a, b], pp, tr[:, 0])
         rin, rout = np.interp([a, b], ref.pct, ref.time)
         lost = float((tout - tin) - (rout - rin))
+        learn = self.learning_mode()
+        if learn and self._last_off_t >= tin and math.isfinite(lost):      # 2.20: he went off track in this corner
+            if self._learn_gate(num, coachable):
+                self._learn_pass(num, c, tr, pp, a, b, t, lap, off=True)
+            return
         if not self._clean_since(tin, lap) or not math.isfinite(lost):
             return
         lap.closs[num] = lost
+        self._closs_last[num] = lost
         cmin = st.lv("corner_min_s")
         if st.quiet or cmin is None or not st.feedback or not coachable or self._focus_owns(num):
+            return
+        if learn:                                         # 2.20 Learning the track: against his best so far
+            if self._learn_gate(num, coachable) and self._fb_made.get(num) != t:     # (not twice about one corner)
+                self._learn_pass(num, c, tr, pp, a, b, t, lap, off=False)
             return
         if self._fb_made.get(num) == t:
             return                                        # its focus-corner word was just made
@@ -1832,6 +2087,82 @@ class Coach:
             self._push(Cue(text=good_text(name, -lost), priority=PRIORITY[KIND_SECTOR], key=f"good:{c.id}", t=t,
                            kind=KIND_CORNER, corner=c.id, expires=t + st.stale_s + 1.0,
                            why=f"gained {-lost:.2f} s here against the reference", measured=measured))
+
+    def _learn_gate(self, num, coachable: bool) -> bool:
+        st = self.settings
+        return not (st.quiet or st.lv("corner_min_s") is None or not st.feedback or not coachable
+                    or self._focus_owns(num))
+
+    def _learn_pass(self, num, c: Corner, tr, pp, a: float, b: float, t: float, lap: _Lap, off: bool):
+        """2.20 Learning the track: one pass through a corner against his own best so far in this session (the live
+        reference). One word at most: off track (and how much faster he went in than on his best), else braked later or
+        earlier than his best (10 m or more, to the nearest 5 m), else the minimum speed (3 mph or more) down on his best.
+        A corner he cleaned up since the last word gets "on your best". Never about a corner just spoken about (a lap or
+        two apart, unless it is twice as bad)."""
+        st, ref = self.settings, self.reference
+        L = ref.length_m
+        name = f"{st.corner_prefix}{num}"
+        m = (pp >= a) & (pp <= b)
+        seg = tr[m]
+        kmh_unit = st.units == "kmh"
+
+        def said(kmh: float) -> int:                     # a speed difference in km/h as a whole number in his unit
+            return max(1, int(round(kmh))) if kmh_unit else mph_down(kmh)
+        # speed going in: half way from the brake point (or where the corner starts) to the apex, against his best
+        # there (on the straight before the brakes every lap is at the same top speed, so that says nothing)
+        pe = c.apex_pct + 0.5 * (c.brake_rel_m if c.brake_rel_m is not None else c.start_rel_m) / L
+        d_in = None
+        if 0.0 <= pe < 1.0 and pp[0] <= pe < pp[-1]:
+            d_in = (float(np.interp(pe, pp, tr[:, 2])) - float(np.interp(pe, ref.pct, ref.speed))) * KMH
+        down = c.min_kmh - float(seg[:, 2].min()) * KMH if len(seg) else 0.0
+        later = None                                      # metres later than his best (negative: earlier)
+        if c.brake_rel_m is not None and len(seg) > 1:
+            on = np.nonzero((seg[1:, 3] > BRAKE_ON) & (seg[:-1, 3] <= BRAKE_ON))[0]
+            if len(on):
+                rel = _rel_m(float(pp[m][on[0] + 1]), c.apex_pct, L)
+                if rel <= 40.0:
+                    later = rel - c.brake_rel_m
+        measured = {"min_kmh": round(float(seg[:, 2].min()) * KMH, 1) if len(seg) else None,
+                    "ref_min_kmh": round(c.min_kmh, 1), "down_kmh": round(down, 1),
+                    "entry_diff_kmh": round(d_in, 1) if d_in is not None else None,
+                    "brake_diff_m": round(later, 1) if later is not None else None}
+        thr_kmh = st.slower_mph() * KMH_PER_MPH
+        big, text, why = 0.0, None, ""
+        if off:
+            n = said(d_in) if d_in is not None and d_in >= thr_kmh - 1e-9 else None
+            ok_n = n is not None and voicepack.LEARN_SPEEDS[0] <= n <= voicepack.LEARN_SPEEDS[1]
+            text = learn_off_text(name, n if ok_n else None)
+            why = "off track here" + (f", {n} {'km/h' if kmh_unit else 'mph'} faster in than your best there" if ok_n else "")
+            big = 2.0                                     # off track is always worth a word
+        else:
+            cands = []
+            if later is not None and abs(later) >= LEARN_BRAKE_M:
+                m5 = int(5 * round(abs(later) / 5.0))
+                if m5 in voicepack.LEARN_METRES:
+                    cands.append((abs(later) / LEARN_BRAKE_M, learn_brake_text(name, m5, later > 0),
+                                  f"braked {m5} m {'later' if later > 0 else 'earlier'} than your best"))
+            n = said(down)
+            if down >= thr_kmh - 1e-9 and voicepack.LEARN_SPEEDS[0] <= n <= voicepack.LEARN_SPEEDS[1]:
+                cands.append((down / thr_kmh, learn_speed_text(name, n),
+                              f"minimum speed {mph_down(down)} mph under your best"))
+            if cands:
+                big, text, why = max(cands, key=lambda x: x[0])
+        if text is None:
+            prev = self._learn_last.get(num)
+            fine = (down < thr_kmh * 0.34 and (later is None or abs(later) < LEARN_BRAKE_M * 0.5)) and not off
+            if prev is not None and fine and int(st.lv("positives")) > lap.positives:
+                self._learn_last.pop(num, None)           # he put it right: one word, once
+                self._push(Cue(text=learn_on_text(name), priority=PRIORITY[KIND_SECTOR], key=f"good:{c.id}", t=t,
+                               kind=KIND_CORNER, corner=c.id, expires=t + st.stale_s + 1.0,
+                               why="back on your best here after a word about it", measured=measured))
+            return
+        last = self._learn_last.get(num)
+        if last is not None and lap.num - last < st.repeat_laps and big < LEARN_BIG:
+            self._emit("not_made", kind=KIND_CORNER, text=text, corner=c.id, why="cued recently", measured=measured)
+            return
+        self._learn_last[num] = lap.num
+        self._push(Cue(text=text, priority=PRIORITY[KIND_CORNER], key=f"corner:{c.id}", t=t, kind=KIND_CORNER,
+                       corner=c.id, expires=t + st.stale_s + 1.0, why=why, measured=measured))
 
     def _sector_pass(self, k, b, tr, pp, t, lap: _Lap, coachable: bool):
         st, ref = self.settings, self.reference
@@ -1887,6 +2218,8 @@ class Coach:
     def _end_lap(self, lap: _Lap, tc: float, stype: str, last_lap_time):
         start_lap = is_race(stype) and lap.num <= 1
         clean = lap.valid and not (lap.pit or lap.off or lap.incident or start_lap)
+        if clean:
+            self._clean_laps += 1                          # 2.20: Learning the track counts them
         lt = (tc - lap.t0) if lap.t0 is not None else None
         most = max(lap.closs.items(), key=lambda kv: (kv[1], -kv[0]), default=None) if clean else None
         self.last_lap = {"lap": lap.num, "time": round(lt, 3) if lt else None, "clean": clean, "delta": None,
@@ -1916,6 +2249,7 @@ class Coach:
         lt = official if official is not None else p.measured
         self.last_lap["time"] = round(lt, 3)
         self.last_lap["timed_by"] = "iracing" if official is not None else "samples"
+        self._last_clean = (p.lap, lt)                    # 2.20: a clean lap with its time ("use this lap")
         st = self.settings
         ref = self.reference
         if ref is not None and abs(lt - ref.lap_time) > max(5.0, 0.15 * ref.lap_time):
@@ -1969,7 +2303,7 @@ class Coach:
             self.events.append({"t": lap.t0, "text": "new best lap not used as reference (corners did not match)"})
             return
         hist, base = list(self._loss_hist), dict(lap.closs)
-        self.set_reference(new)
+        self.set_reference(new, adopted=True)
         self.events.append({"t": lap.t0, "text": f"reference updated to {fmt_lap(lt)} (lap {lap.num})"})
         if ref is not None and hist and base:
             # 2.17.2: what he learned about his corners carries over to the new reference: each lap's loss against
@@ -1991,6 +2325,14 @@ class Coach:
     def hint(self, length_m=None, car=None, track=None):
         """Track length / car / track for a reference made from a live lap when there was none before."""
         self._length_hint, self._car_hint, self._track_hint = length_m, car, track
+        self._clean_laps, self._last_clean, self._closs_last, self._learn_last = 0, None, {}, {}
+        try:      # 2.20: his notes are filed by this
+            from . import names
+            tr = track or {}
+            self.track_key = names.track_key(tr.get("name") or tr.get("code"), tr.get("config")) if tr else ""
+        except Exception:  # noqa: BLE001
+            self.track_key = ""
+        self._note_key = None
 
 
 DONE_OF = 10                # 2.18: "done when you hit it on 7 of 10 laps" (practiceplan.KEEP_BELOW, 70%)
@@ -2064,6 +2406,25 @@ def sector_text(k: int, d: float) -> str:
     """k 0..2, d = this sector's time minus the reference's: 'Sector one, up two tenths' / 'Sector two, a tenth down'."""
     head = f"Sector {SECTOR_WORDS[k]}, "
     return head + (f"up {delta_words(d)}" if d < 0 else f"{delta_words(d)} down")
+
+
+def learn_speed_text(name: str, n: int) -> str:
+    """2.20 'T5, 3 down on your best' (the number is mph, or km/h with Settings > Units)."""
+    return f"{name}, {n} down on your best"
+
+
+def learn_off_text(name: str, n: int | None = None) -> str:
+    """2.20 'T5, off track' / 'T5, off track and 6 faster in'."""
+    return f"{name}, off track" + (f" and {n} faster in" if n else "")
+
+
+def learn_brake_text(name: str, metres: int, later: bool) -> str:
+    """2.20 'T3, braked 15 metres later' (distances are always in metres)."""
+    return f"{name}, braked {metres} metres {'later' if later else 'earlier'}"
+
+
+def learn_on_text(name: str) -> str:
+    return f"{name}, on your best"
 
 
 BUILDING_TEXT = "Building your reference"
@@ -2363,7 +2724,7 @@ class LiveRunner:
     def __init__(self, source, voice, settings: Settings | None = None, reference: Reference | None = None,
                  weak_corners=None, telemetry_dir=None, weak_for=None, log=None, clock=time.monotonic,
                  reference_index=None, focus_for=None, keep_given=False, log_dir=None, mode: str = "live",
-                 log_header: dict | None = None):
+                 log_header: dict | None = None, notes=None, mic=None):
         self.source = source
         self.mode = mode                # Coach 2.0: "live" (iRacing) or "rehearsal" (one of his files played back)
         self._log_dir = log_dir         # Coach 2.0 cue log folder (None: no log)
@@ -2376,6 +2737,15 @@ class LiveRunner:
         self.settings = settings or Settings()
         self.coach = Coach(None, weak_corners, self.settings, log=log, duration=self._voice_duration)
         self.coach.keep_reference = reference if keep_given else None
+        # 2.20 corner notes: his notes (cornernotes.NoteStore) and a microphone (audioin backend, or a function giving one)
+        self.notes = notes
+        self.run_id = f"{int(time.time() * 1000)}-{id(self) % 10000}"
+        self.coach.notes, self.coach.run_id, self.coach.count_notes = notes, self.run_id, mode == "live"
+        self.noterec = None
+        if notes is not None and mode == "live":
+            from . import noterec
+            self.noterec = noterec.NoteRecorder(notes, (mic if callable(mic) else (lambda: mic)), self.note_context,
+                                                lambda: self.voice, self.coach.set_recording, log=log or _LOG.warning)
         self._given = reference
         self._telemetry_dir = telemetry_dir
         self._reference_index = reference_index
@@ -2424,6 +2794,11 @@ class LiveRunner:
 
     def stop(self, timeout: float = 3.0) -> bool:
         """Stops the loop and waits for it. True when the thread has ended."""
+        if self.noterec is not None:               # the microphone never stays open after the coach stops
+            try:
+                self.noterec.cancel()
+            except Exception:  # noqa: BLE001
+                pass
         self._stop.set()
         t = self._thread
         if t and t.is_alive() and threading.current_thread() is not t:
@@ -2586,9 +2961,73 @@ class LiveRunner:
         self._event({"ev": "asked", "why": "How's my pace?"})
         return True
 
+    # ---- 2.20 corner notes and "use this lap" ----
+    def note_context(self) -> dict | None:
+        """Where the car is, for tagging a note: None unless live coaching has a telemetry sample and a named track."""
+        s, info = self._latest, self._info
+        if self.mode != "live" or not self.running() or not s or not info:
+            return None
+        pct = s.get("LapDistPct")
+        if pct is None or not 0.0 <= float(pct) <= 1.0001:
+            return None
+        from . import names
+        tr, car = info.get("track") or {}, info.get("car") or {}
+        key = names.track_key(tr.get("name") or tr.get("code"), tr.get("config"))
+        if not key:
+            return None
+        ref = self.coach.reference
+        L = ref.length_m if ref is not None else info.get("length_m")
+        return {"track_key": key, "track": names.track(tr.get("name") or tr.get("code"), tr.get("config")),
+                "car": names.car(car.get("name") or car.get("path") or ""), "session": str(s.get("SessionType") or ""),
+                "lap": s.get("Lap"), "pct": float(pct), "dist_m": float(pct) * float(L) if L else None,
+                "kmh": float(s.get("Speed") or 0.0) * KMH, "time": s.get("SessionTime"), "run": self.run_id,
+                "corners": list(ref.corners) if ref is not None else [], "length_m": L}
+
+    def note_press(self) -> bool:
+        """The record-a-note button or Ctrl+Shift+V went down (any thread)."""
+        nr = self.noterec
+        if nr is None:
+            return False
+        ok = nr.press()
+        self._event({"ev": "asked", "why": "corner note: recording" if ok else "corner note: not started"})
+        return ok
+
+    def note_release(self):
+        """... and went up: the note is saved (or thrown away) and the coach may talk again."""
+        nr = self.noterec
+        if nr is None:
+            return None
+        r = nr.release()
+        if r:
+            self._event({"ev": "asked", "why": "corner note: " + ("saved" if r.get("ok") else "not kept")})
+        return r
+
+    def use_last_lap(self) -> bool:
+        """"Use this lap" (Ctrl+Shift+L or a wheel button): the lap just finished becomes the reference if it was clean."""
+        if not self.running():
+            return False
+        self.coach.use_last_lap()
+        self._event({"ev": "asked", "why": "use this lap"})
+        return True
+
+    def _say_note(self, cue: Cue):
+        nid = (cue.measured or {}).get("note_id")
+        got = self.notes.pcm(nid) if (self.notes is not None and nid) else None
+        fn = getattr(self.voice, "play_clip", None)
+        if got is None or fn is None:
+            self.coach.note_invalid(cue, "the note's sound could not be played")
+            return
+        pcm, rate = got
+        live = self.mode == "live"
+        fn(cue.text, pcm, rate, priority=cue.priority, check=lambda c=cue: self._play_check(c),
+           on_start=(lambda: self.notes.mark_played(nid)) if live else None)
+
     def _say(self, cue: Cue):
         """Hand a cue to the voice with its check: right before the sound starts the voice asks whether the cue is
         still valid against the newest telemetry (2.17.2); a cue that isn't is dropped and logged, not played."""
+        if cue.kind == KIND_NOTE:
+            self._say_note(cue)
+            return
         if self._takes_check is None:
             self._takes_check = _accepts(getattr(self.voice, "say", None), "check")
         if self._takes_check:
@@ -2646,7 +3085,7 @@ class LiveRunner:
         except Exception:  # noqa: BLE001
             pass
         if self.coach.reference is not None:
-            self.coach.set_reference(self.coach.reference)    # top_n / prefix may have changed
+            self.coach.set_reference(self.coach.reference, adopted=True)    # top_n / prefix may have changed (same lap)
 
     def _quicker_known(self, ref):
         """quicker_known() for the lap in use, asked of Setup Lab's index once per lap and car + track (never raises)."""
@@ -2738,10 +3177,25 @@ class LiveRunner:
                 "focus": cs.get("focus"), "level": cs.get("level"), "focus_info": cs.get("focus_info"),
                 "asks": self.coach.asks, "invalid_drops": self.coach.invalid_drops,
                 "reference_why": self._why_with_quicker(),
+                "learning": cs.get("learning"), "use_lap_note": cs.get("use_lap_note"),
+                "recording": bool(self.noterec is not None and self.noterec.recording),
+                "note": self.noterec.status() if self.noterec is not None else None,
+                "notes_here": self._notes_here(),
                 # 2.18 the driving view
                 "show": show_state(st, self.running(), self.mode, cs["muted"]), "mute": self.mute_state(),
                 "repeat_note": self.repeat_note, "live_delta": self.coach.live_delta, "speed": self.speed,
                 "skipping": (self._skip or {}).get("what"), "skip_note": self.skip_note, "skipped": self.skipped}
+
+    def _notes_here(self):
+        """How many of his notes are for the track he is on (the Coach page says so), or None without a store."""
+        try:
+            key = self.coach.track_key
+            if self.notes is None or not key:
+                return None
+            ns = self.notes.active(key)
+            return {"count": len(ns), "on": sum(1 for n in ns if n.get("enabled", True))}
+        except Exception:  # noqa: BLE001
+            return None
 
     def _fixed_names(self) -> list:
         ref = self.coach.reference
@@ -3040,9 +3494,13 @@ class Hotkey:
     this key (e.g. in the wheel's software) to mute from the car."""
     WM_HOTKEY, WM_QUIT, MOD_NOREPEAT = 0x0312, 0x0012, 0x4000
 
-    def __init__(self, text: str, callback, log=None):
+    HOLD_MAX_S = 12.0           # a held key that never reads as released ends the recording after this
+
+    def __init__(self, text: str, callback, log=None, on_release=None):
         self.text = text
         self.callback = callback
+        self.on_release = on_release     # 2.20 push-to-talk: called when the key is let go again
+        self._quit = False
         self._log = log or _LOG.warning
         self._thread = None
         self._tid = None
@@ -3080,6 +3538,8 @@ class Hotkey:
                             self.callback()
                         except Exception as e:  # noqa: BLE001
                             self._log(f"livecoach: mute key action failed ({e.__class__.__name__})")
+                        if self.on_release is not None:          # 2.20: held until the main key comes up
+                            self.wait_release(lambda vk=vk: bool(user32.GetAsyncKeyState(vk) & 0x8000))
             finally:
                 user32.UnregisterHotKey(None, 1)
         except Exception as e:  # noqa: BLE001
@@ -3088,7 +3548,21 @@ class Hotkey:
             self.registered = False
             self._done.set()
 
+    def wait_release(self, is_down, sleep=time.sleep, clock=time.monotonic):
+        """Push-to-talk: wait until is_down() says the key is up (checked every 20 ms; at most HOLD_MAX_S, and not
+        after stop()), then call on_release(). RegisterHotKey only reports the press, so the key is polled."""
+        t0 = clock()
+        try:
+            while not self._quit and clock() - t0 < self.HOLD_MAX_S and is_down():
+                sleep(0.02)
+        finally:
+            try:
+                self.on_release()
+            except Exception as e:  # noqa: BLE001
+                self._log(f"livecoach: key release action failed ({e.__class__.__name__})")
+
     def stop(self, timeout: float = 2.0):
+        self._quit = True
         if self._thread is None or not self._thread.is_alive() or self._tid is None:
             return
         try:

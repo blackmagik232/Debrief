@@ -70,6 +70,8 @@ MIN_KMH = 4                # "more speed, 7 down": 4..20 (lines B; 2.17.2: the n
 MAX_KMH = 20
 MIN_MPH = 3                # 2.17.2: "more speed, 3 down" (3 mph is the coach's trigger), line K
 MAX_TENTHS = 20            # lap deltas: a tenth .. 2.0 seconds
+LEARN_SPEEDS = (3, 20)     # 2.20 "Turn five, three down on your best": the number is mph (or km/h), 3..20
+LEARN_METRES = tuple(range(10, 65, 5))   # 2.20 "braked fifteen metres later": 10 .. 60 m in steps of 5
 LAP_TENTHS = (400, 1800)   # 2.17.2 "Reference set, one thirty-eight nine": lap times 0:40.0 .. 3:00.9 (in tenths)
 
 
@@ -174,6 +176,7 @@ SECTIONS = {
     "I": "Your pace, when you ask for it. Matter-of-fact, a short natural pause at the comma.",
     "J": "Short lap times, without the minute. Like reading a stopwatch: a short pause at the comma.",
     "K": "One more corner tip. Say the turn, a short natural pause at the comma, then the tip.",
+    "L": "Learning the track, against your best so far. Say the turn, a short natural pause at the comma, then the rest.",
 }
 PACE_WHOLES = ["No clean lap yet", "Down more than two seconds"]      # 2.17.2 answers to "How's my pace?"
 
@@ -232,6 +235,20 @@ def lines() -> list:
             [(f"sec_{sec}", "lead")])
     for k in range(MIN_MPH, MIN_KMH):          # 2.17.2 mph: the smallest "more speed" number
         add("K", f"Turn {number_words(k + 5)}, more speed, {number_words(k)} down.", [(f"more_speed_{k}_down", "tail")])
+    # 2.20 "Learning the track" (added after everything above, so earlier line numbers never change). The turn word
+    # is a lead clip every pack already has; each line gives the tail clip(s) after it.
+    for k in range(LEARN_SPEEDS[0], LEARN_SPEEDS[1] + 1):
+        add("L", f"Turn {number_words(k % MAX_TURN + 1)}, {number_words(k)} down on your best.",
+            [(f"best_down_{k}", "tail")])
+    add("L", "Turn three, off track.", [("off_track", "tail")])
+    for k in range(LEARN_SPEEDS[0], LEARN_SPEEDS[1] + 1):
+        add("L", f"Turn {number_words(k % MAX_TURN + 1)}, off track and {number_words(k)} faster in.",
+            [(f"off_track_fast_{k}", "tail")])
+    for way in ("later", "earlier"):
+        for i, m in enumerate(LEARN_METRES):
+            add("L", f"Turn {number_words(i % MAX_TURN + 1)}, braked {number_words(m)} metres {way}.",
+                [(f"braked_{way}_{m}", "tail")])
+    add("L", "Turn five, on your best.", [("on_your_best", "tail")])
     return out
 
 
@@ -273,6 +290,20 @@ def _tail(text: str):
     m = re.fullmatch(r"more speed,\s*(\d{1,3}) down", t)
     if m and MIN_MPH <= int(m.group(1)) <= MAX_KMH:
         return f"more_speed_{int(m.group(1))}_down"
+    # 2.20 learning the track
+    m = re.fullmatch(r"(\d{1,3}) down on your best", t)
+    if m and LEARN_SPEEDS[0] <= int(m.group(1)) <= LEARN_SPEEDS[1]:
+        return f"best_down_{int(m.group(1))}"
+    if t == "off track":
+        return "off_track"
+    m = re.fullmatch(r"off track and (\d{1,3}) faster in", t)
+    if m and LEARN_SPEEDS[0] <= int(m.group(1)) <= LEARN_SPEEDS[1]:
+        return f"off_track_fast_{int(m.group(1))}"
+    m = re.fullmatch(r"braked (\d{1,3}) metres (later|earlier)", t)
+    if m and int(m.group(1)) in LEARN_METRES:
+        return f"braked_{m.group(2)}_{int(m.group(1))}"
+    if t == "on your best":
+        return "on_your_best"
     return None
 
 

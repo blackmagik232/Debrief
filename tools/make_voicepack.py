@@ -349,6 +349,13 @@ def coach_vocabulary() -> list:
     out += ["Good, on pace", livecoach.NO_CLEAN_TEXT, livecoach.FAR_DOWN_TEXT]     # 2.17.2 "How's my pace?"
     for n in range(1, vp.MAX_TURN + 1):
         out += [f"Down {livecoach.delta_words(k / 10)}, most in T{n}" for k in range(1, vp.MAX_TENTHS + 1)]
+    for n in range(1, vp.MAX_TURN + 1):         # 2.20 learning the track: against the best lap so far
+        name = f"T{n}"
+        out += [livecoach.learn_speed_text(name, k) for k in range(vp.LEARN_SPEEDS[0], vp.LEARN_SPEEDS[1] + 1)]
+        out += [livecoach.learn_off_text(name)] + [livecoach.learn_off_text(name, k)
+                                                    for k in range(vp.LEARN_SPEEDS[0], vp.LEARN_SPEEDS[1] + 1)]
+        out += [livecoach.learn_brake_text(name, m, way) for m in vp.LEARN_METRES for way in (True, False)]
+        out += [livecoach.learn_on_text(name)]
     for m in ("peak_brake", "brake_point", "trail", "coast", "throttle_point", "min_speed", "corner_time"):
         out += practiceplan.cue_vocabulary({"metric": m})
     return list(dict.fromkeys(out))

@@ -115,7 +115,7 @@ for bad in ("loud", 2, None, ""):
         S.clean_coach_settings({"level": bad})
         check(False, f"level {bad!r} refused")
     except ValueError as e:
-        check(str(e) == "Pick Quiet, Normal, Busy or Only when I ask.", f"level {bad!r} refused in plain words")
+        check(str(e) == "Pick Quiet, Normal, Busy, Notes only or Only when I ask.", f"level {bad!r} refused in plain words")
 
 # ---------------------------------------------------------------- words and voice
 print("-- words and George")
@@ -137,7 +137,7 @@ for t in ("T3, ten tenths down", "Sector four, up a tenth", "Sector one, good, u
           "Reference set, sixty nine"):
     check(vp.compose(t) is None, f"compose({t!r}) is None (Windows speech says it)")
 old_lines = [ln for ln in vp.lines() if ln["section"] in "ABCDEF"]
-check(old_lines[-1]["text"] == "Building your reference." and all(ln["section"] in "GHIJK" for ln in vp.lines()[len(old_lines):]),
+check(old_lines[-1]["text"] == "Building your reference." and all(ln["section"] in "GHIJKL" for ln in vp.lines()[len(old_lines):]),
       "new lines come after the old ones (earlier line numbers never change)")
 check(PACK is not None and not (set(vp.all_keys()) - set(PACK.clips)), "George has every clip, new ones too")
 rates = [vp.loudness_db(PACK.clips[k], PACK.rate) for k in ("lost_0_2", "sector_1", "reference_set", "lap_98",
@@ -262,8 +262,8 @@ print("-- the page")
 html = (ROOT / "debrief" / "desktop" / "ui" / "index.html").read_text(encoding="utf-8")
 js = (ROOT / "debrief" / "desktop" / "ui" / "app.js").read_text(encoding="utf-8")
 m = re.search(r'<fieldset class="radios colevel" id="coLevel">(.*?)</fieldset>', html, re.S)
-check(m and [v for v in re.findall(r'value="(\w+)"', m.group(1))] == ["quiet", "normal", "busy", "ask"],
-      "the Coach page has the level picker: Quiet, Normal, Busy, Only when I ask")
+check(m and [v for v in re.findall(r'value="(\w+)"', m.group(1))] == ["quiet", "normal", "busy", "notes", "ask"],
+      "the Coach page has the level picker: Quiet, Normal, Busy, Notes only (2.20), Only when I ask")
 check(m and all(w in m.group(1) for w in ("<b>Quiet</b>", "<b>Normal</b>", "<b>Busy</b>")) and "—" not in m.group(1)
       and "–" not in m.group(1), "each level with a one-line explanation, no long dashes")
 check("coLevelShow" in js and "coach/settings',{settings:{level:" in js and "focus_learned:'Focus learned'" in js,

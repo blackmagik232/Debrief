@@ -398,6 +398,13 @@
           <p class="now" id="prNow" hidden></p>
           <div class="row"><button type="button" class="btn primary" id="prRead">Read my telemetry</button><button type="button" class="btn ghost" id="prFolderSet" data-nav="settings" hidden>Set the folder in Settings</button><span class="msg" id="prMsg" role="status"></span></div>
         </div>
+        <div class="panel" id="cnPanel">
+          <div class="phead"><h3>Corner notes</h3><span class="pill" id="cnCount"></span></div>
+          <p class="note">The short spoken notes you recorded while driving (hold Ctrl+Shift+V on the Coach page's keys), by track and turn. Each plays before its corner on your next laps: every lap for 5 laps, then every third lap, then only when that corner lost time. Nothing here changes iRacing.</p>
+          <div id="cnList" aria-live="polite"></div>
+          <details class="cntrash" id="cnTrash" hidden><summary>Trash (<span id="cnTrashN">0</span>): notes are kept here for 30 days, then removed for good</summary><ul class="pvlist" id="cnTrashList"></ul></details>
+          <div class="row"><button type="button" class="btn" id="cnCopy">Copy summary</button><span class="msg" id="cnMsg" role="status"></span></div>
+        </div>
         <div id="prSessions" aria-live="polite"></div>
       </div>
       <div id="prOne" class="prwrap" hidden>
@@ -469,7 +476,7 @@
       <h1>Coach</h1>
       <p class="lede">Short spoken cues while you drive: a word after corners where you lost or gained time, sector times, your lap against your best, and a brake marker before the corners that cost you most. Only from your own laps.</p>
       <div class="panel comain">
-        <div class="phead"><h3>Status</h3><span class="pill" id="coPill">Off</span><button type="button" class="btn codrivebtn" id="coDriveBtn" title="A big view to glance at from the car, on a second monitor">Driving view</button></div>
+        <div class="phead"><h3>Status</h3><span class="pill" id="coPill">Off</span><span class="reclight" id="coRec" role="status" hidden><i></i>Recording</span><button type="button" class="btn codrivebtn" id="coDriveBtn" title="A big view to glance at from the car, on a second monitor">Driving view</button></div>
         <p class="comuted" id="coMuted" hidden></p>
         <p class="costatus" id="coText" role="status">Coach off</p>
         <div class="row">
@@ -485,14 +492,34 @@
           <label class="check" for="coLvQuiet"><input id="coLvQuiet" type="radio" name="coLevel" value="quiet"><span><b>Quiet</b> Your focus corners and your lap time only. At most 2 tips a lap.</span></label>
           <label class="check" for="coLvNormal"><input id="coLvNormal" type="radio" name="coLevel" value="normal"><span><b>Normal</b> Up to 4 cues a lap: a word after any corner where you lost or gained time, sector times, and focus corners learned from this session.</span></label>
           <label class="check" for="coLvBusy"><input id="coLvBusy" type="radio" name="coLevel" value="busy"><span><b>Busy</b> Up to 6 cues a lap, closer together, with 3 focus corners.</span></label>
+          <label class="check" for="coLvNotes"><input id="coLvNotes" type="radio" name="coLevel" value="notes"><span><b>Notes only</b> Nothing but your own corner notes, played before their corners (and your pace when you ask).</span></label>
           <label class="check" for="coLvAsk"><input id="coLvAsk" type="radio" name="coLevel" value="ask"><span><b>Only when I ask</b> Nothing until you ask for your pace (Ctrl+Shift+P or your wheel button): your last lap against your reference and the corner that cost the most.</span></label>
           <span class="msg" id="coLevelMsg" role="status"></span>
         </fieldset>
         <p class="note" id="coFocusWhy" hidden></p>
+        <p class="note colearn" id="coLearning" hidden></p>
         <div class="progress small" id="coRhProg" hidden><div class="bar" id="coRhBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Rehearsal"><i></i></div><span class="pct num" id="coRhPct"></span></div>
         <p class="note" id="coQuiet" hidden></p>
         <p class="note" id="coVoiceLine"></p>
         <p class="note warn">Keep Debrief open while you drive.</p>
+      </div>
+      <div class="panel" id="cnCoach">
+        <div class="phead"><h3>Corner notes and microphone</h3><span class="pill" id="cnPill">Off</span></div>
+        <p class="note">While you drive, <b>hold Ctrl+Shift+V</b> (or a wheel button you teach it under Settings) and say a short note, for example "brake later here". Let go to save it. A rising tone says it is listening, a falling tone says it is saved, and one low tone says it was thrown away (under 0.4 seconds, or no speech). The coach says nothing while you record. Your note is played before that corner on your next laps, ending about a second before the braking point: on each of the next 5 laps, then every third lap, then only on laps where that corner lost time. Notes are kept on this PC, in the notes folder next to your settings.</p>
+        <p class="costatus" id="cnHere" role="status"></p>
+        <p class="msg" id="cnLast" role="status"></p>
+        <div class="row">
+          <button type="button" class="btn" id="coMicTest">Mic test <kbd>3 s</kbd></button>
+          <div class="meter" id="coMeter" role="meter" aria-label="Microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="coMeterBar"></i></div>
+          <span class="msg" id="coMicMsg" role="status"></span>
+        </div>
+        <p class="note" id="coMicNote">The test records 3 seconds from the default Windows microphone, then plays it back so you can hear what the notes will sound like.</p>
+        <div class="row">
+          <button type="button" class="btn" id="coUseLap" disabled>Use my last lap <kbd>Ctrl+Shift+L</kbd></button>
+          <button type="button" class="btn ghost" id="cnOpen" data-nav="practice">Your corner notes</button>
+          <span class="msg" id="coUseLapMsg" role="status"></span>
+        </div>
+        <p class="note">Use my last lap makes the lap you just finished the reference to compare with, if it was a clean lap (never an off-track or incident lap). Before it, your first clean lap becomes the reference by itself and every quicker clean lap replaces it.</p>
       </div>
       <div class="panel" id="ovPanel">
         <div class="phead"><h3>Overlay</h3><span class="pill" id="ovPill">Off</span></div>
@@ -606,6 +633,8 @@
           <label class="check" for="coFeedback"><input id="coFeedback" type="checkbox"><span>A word after a focus corner</span></label>
           <label class="check" for="coLapDelta"><input id="coLapDelta" type="checkbox"><span>Your lap against your best</span></label>
           <label class="check" for="coBeep"><input id="coBeep" type="checkbox"><span>A short beep at a focus corner's brake point</span></label>
+          <label class="check" for="coNotes"><input id="coNotes" type="checkbox"><span>Play my corner notes before their corners</span></label>
+          <label class="check" for="coLearn"><input id="coLearn" type="checkbox"><span>Learning the track: say how a corner compares with my best so far in this session ("T5, 3 down on your best", "T3, braked 15 metres later", "T4, off track")</span></label>
           <label class="field" for="coLapTimes"><span>Say lap times</span><select id="coLapTimes"><option value="short">Short: "thirty-eight nine"</option><option value="full">Full: "one thirty-eight nine"</option></select></label>
           <div class="grid3">
             <label class="field" for="coTopN"><span>Focus corners</span><select id="coTopN"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
@@ -632,6 +661,18 @@
           <p class="note">Pick a button that asks the coach for your pace: your last lap against your reference and the corner that cost the most. It answers as soon as it is safe to talk. Press Learn, then press the button within 15 seconds.</p>
           <p id="coWheelPText" role="status">No wheel button chosen yet.</p>
           <div class="row"><button type="button" class="btn" id="coWheelPLearn">Learn</button><button type="button" class="btn" id="coWheelPClear">Clear</button><span class="msg" id="coWheelPMsg" role="status"></span></div>
+        </div>
+        <div class="cowheel" id="coWheelN">
+          <h4>Hold to record a corner note, from a wheel button</h4>
+          <p class="note">Pick a button you hold while you say your note (Ctrl+Shift+V does the same on the keyboard). Press Learn, then press the button within 15 seconds.</p>
+          <p id="coWheelNText" role="status">No wheel button chosen yet.</p>
+          <div class="row"><button type="button" class="btn" id="coWheelNLearn">Learn</button><button type="button" class="btn" id="coWheelNClear">Clear</button><span class="msg" id="coWheelNMsg" role="status"></span></div>
+        </div>
+        <div class="cowheel" id="coWheelU">
+          <h4>"Use my last lap" from a wheel button</h4>
+          <p class="note">Pick a button that makes the lap you just finished your reference lap, if it was clean (Ctrl+Shift+L does the same). Press Learn, then press the button within 15 seconds.</p>
+          <p id="coWheelUText" role="status">No wheel button chosen yet.</p>
+          <div class="row"><button type="button" class="btn" id="coWheelULearn">Learn</button><button type="button" class="btn" id="coWheelUClear">Clear</button><span class="msg" id="coWheelUMsg" role="status"></span></div>
         </div>
       </details>
     </div>

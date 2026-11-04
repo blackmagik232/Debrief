@@ -515,3 +515,68 @@ Short lap times, without the minute. Like reading a stopwatch: a short pause at 
 One more corner tip. Say the turn, a short natural pause at the comma, then the tip.
 
 444. Turn eight, more speed, three down.
+
+## Section L (from line 445)
+
+Learning the track, against your best so far. Say the turn, a short natural pause at the comma, then the rest.
+
+445. Turn four, three down on your best.
+446. Turn five, four down on your best.
+447. Turn six, five down on your best.
+448. Turn seven, six down on your best.
+449. Turn eight, seven down on your best.
+450. Turn nine, eight down on your best.
+451. Turn ten, nine down on your best.
+452. Turn eleven, ten down on your best.
+453. Turn twelve, eleven down on your best.
+454. Turn thirteen, twelve down on your best.
+455. Turn fourteen, thirteen down on your best.
+456. Turn fifteen, fourteen down on your best.
+457. Turn sixteen, fifteen down on your best.
+458. Turn seventeen, sixteen down on your best.
+459. Turn eighteen, seventeen down on your best.
+460. Turn nineteen, eighteen down on your best.
+461. Turn twenty, nineteen down on your best.
+462. Turn twenty-one, twenty down on your best.
+463. Turn three, off track.
+464. Turn four, off track and three faster in.
+465. Turn five, off track and four faster in.
+466. Turn six, off track and five faster in.
+467. Turn seven, off track and six faster in.
+468. Turn eight, off track and seven faster in.
+469. Turn nine, off track and eight faster in.
+470. Turn ten, off track and nine faster in.
+471. Turn eleven, off track and ten faster in.
+472. Turn twelve, off track and eleven faster in.
+473. Turn thirteen, off track and twelve faster in.
+474. Turn fourteen, off track and thirteen faster in.
+475. Turn fifteen, off track and fourteen faster in.
+476. Turn sixteen, off track and fifteen faster in.
+477. Turn seventeen, off track and sixteen faster in.
+478. Turn eighteen, off track and seventeen faster in.
+479. Turn nineteen, off track and eighteen faster in.
+480. Turn twenty, off track and nineteen faster in.
+481. Turn twenty-one, off track and twenty faster in.
+482. Turn one, braked ten metres later.
+483. Turn two, braked fifteen metres later.
+484. Turn three, braked twenty metres later.
+485. Turn four, braked twenty-five metres later.
+486. Turn five, braked thirty metres later.
+487. Turn six, braked thirty-five metres later.
+488. Turn seven, braked forty metres later.
+489. Turn eight, braked forty-five metres later.
+490. Turn nine, braked fifty metres later.
+491. Turn ten, braked fifty-five metres later.
+492. Turn eleven, braked sixty metres later.
+493. Turn one, braked ten metres earlier.
+494. Turn two, braked fifteen metres earlier.
+495. Turn three, braked twenty metres earlier.
+496. Turn four, braked twenty-five metres earlier.
+497. Turn five, braked thirty metres earlier.
+498. Turn six, braked thirty-five metres earlier.
+499. Turn seven, braked forty metres earlier.
+500. Turn eight, braked forty-five metres earlier.
+501. Turn nine, braked fifty metres earlier.
+502. Turn ten, braked fifty-five metres earlier.
+503. Turn eleven, braked sixty metres earlier.
+504. Turn five, on your best.

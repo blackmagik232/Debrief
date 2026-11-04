@@ -20,6 +20,13 @@ extra() for coach/status, and get()/post()/upload() for the routes below).
     POST api/coach/pace                       2.17.2 "How's my pace?": the coach answers when it is safe to talk
     POST api/coach/wheel-pace-learn / wheel-pace-clear       a wheel button for "How's my pace?"
     POST api/coach/mute-set {muted}            2.18: mute or unmute outright (the window's Mute button)
+    GET  api/cornernotes                          2.20 corner notes by track and turn (+ trash, Copy summary text)
+    GET  api/coach/mic                         2.20 the Mic test's state and live level
+    POST api/coach/mic-test                    2.20 record 3 s and play it back
+    POST api/coach/uselap                      2.20 "use this lap": the lap just finished becomes the reference
+    POST api/coach/wheel-note-learn / -clear   a wheel button held to record a corner note
+    POST api/coach/wheel-uselap-learn / -clear a wheel button for "use this lap"
+    POST api/cornernotes/play|enable|move|delete|restore|rerecord|rerecord-stop   one note
     POST api/coach/rehearse-speed {speed}      2.18: a rehearsal at 1x, 2x or 4x
     POST api/coach/rehearse-skip {what}        2.18: a rehearsal skips to the next "lap" or "cue"
     GET  api/coach/result?car=&track=[&plan=]  2.18: for Practice: the coach's reference lap there, and what the
@@ -29,6 +36,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import sys
 import tempfile
 import threading
 import time
@@ -39,22 +47,30 @@ from urllib.parse import parse_qs, urlsplit
 from .. import app
 from . import settings_io
 
-GET_ROUTES = ("api/coach/voices", "api/coach/logs", "api/coach/log", "api/coach/result")
+GET_ROUTES = ("api/coach/voices", "api/coach/logs", "api/coach/log", "api/coach/result", "api/cornernotes", "api/coach/mic")
 POST_ROUTES = ("api/coach/voice-settings", "api/coach/preview", "api/coach/measure", "api/coach/import-pack",
                "api/coach/repeat", "api/coach/quiet", "api/coach/rehearse", "api/coach/wheel-repeat-learn",
                "api/coach/wheel-repeat-clear", "api/coach/pace", "api/coach/wheel-pace-learn",
                "api/coach/wheel-pace-clear", "api/coach/mute-set", "api/coach/rehearse-speed",
-               "api/coach/rehearse-skip", "api/overlay/set")
+               "api/coach/rehearse-skip", "api/overlay/set", "api/coach/mic-test", "api/coach/uselap",
+               "api/coach/wheel-note-learn", "api/coach/wheel-note-clear", "api/coach/wheel-uselap-learn",
+               "api/coach/wheel-uselap-clear", "api/cornernotes/play", "api/cornernotes/enable", "api/cornernotes/move",
+               "api/cornernotes/delete", "api/cornernotes/restore", "api/cornernotes/rerecord", "api/cornernotes/rerecord-stop")
 UPLOAD_ROUTE = "api/coach/import-pack-zip"
 QUIET_S = 60.0
 REPEAT_NOTE_S = 12.0             # 2.18: "Repeat that: not said, the coach is muted" stays on the page this long
 SIDE_IDLE_S = 30.0               # a voice made for Preview / Measure (coach off) is closed after this long unused
 PACK_ID_OK = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,39}$")
 ZIP_NAME_OK = re.compile(r"^[^\x00-\x1f/\\<>:\"|?*]{1,160}\.zip$", re.I)
-HOTKEY_LABELS = {"repeat": "Ctrl+Shift+R", "quiet": "Ctrl+Shift+N", "pace": "Ctrl+Shift+P"}
+HOTKEY_LABELS = {"repeat": "Ctrl+Shift+R", "quiet": "Ctrl+Shift+N", "pace": "Ctrl+Shift+P", "note": "Ctrl+Shift+V",
+                 "uselap": "Ctrl+Shift+L"}
 # wheel buttons (role -> saved key in coach.json, what the button does in plain words, what it calls on the runner)
 WHEEL_ROLES = {"repeat": ("wheel_repeat", "It says the last cue again.", "repeat"),
-               "pace": ("wheel_pace", "It asks the coach for your pace.", "ask_pace")}
+               "pace": ("wheel_pace", "It asks the coach for your pace.", "ask_pace"),
+               "note": ("wheel_note", "Hold it to record a corner note; let go to save it.", "note_press"),
+               "uselap": ("wheel_uselap", "It makes the lap you just drove your reference lap, if it was clean.",
+                          "use_last_lap")}
+HOLD_ROLES = {"note": "note_release"}      # 2.20 push-to-talk: the runner call for the button going up
 
 
 # ---------------------------------------------------------------- where things live
@@ -109,6 +125,9 @@ class State:
         self.speed = 1.0              # 2.18: the rehearsal speed picked (1x, 2x or 4x)
         self.wheels = {}              # role -> wheelmute.WheelMute ("repeat": Repeat that, "pace": How's my pace?)
         self.wheel_notes = {}         # role -> a note for the window ("Saved: ...")
+        self.mictest = None           # 2.20 noterec.MicTest (made on the first Mic test)
+        self.rerec = None             # 2.20 {"id", "rec", "wall"} while a note is being re-recorded
+        self.rerec_note = ""
 
 
 _STATE_LOCK = threading.Lock()
@@ -176,7 +195,11 @@ def hotkeys(server, settings, runner):
                         "repeat": livecoach.Hotkey(settings.repeat_hotkey, runner.repeat, log=app.say),
                         "quiet": livecoach.Hotkey(settings.quiet_hotkey, lambda: runner.mute_for(QUIET_S),
                                                   log=app.say),
-                        "pace": livecoach.Hotkey(settings.pace_hotkey, runner.ask_pace, log=app.say)})
+                        "pace": livecoach.Hotkey(settings.pace_hotkey, runner.ask_pace, log=app.say),
+                        "note": livecoach.Hotkey(settings.note_hotkey, lambda: runner.note_press(), log=app.say,
+                                                 on_release=lambda: runner.note_release()),
+                        "uselap": livecoach.Hotkey(settings.use_lap_hotkey, lambda: runner.use_last_lap(),
+                                                   log=app.say)})
 
 
 def runner_of(server):
@@ -197,15 +220,26 @@ def _wheel_press(server, role="repeat"):
         getattr(r, WHEEL_ROLES[role][2])()
 
 
+def _wheel_release(server, role="note"):
+    """2.20: the held button went up (or the wheel was unplugged): the note is saved. Works while the runner is
+    stopping too, so the microphone is never left open."""
+    with server.coach_lock:
+        r = server.coach
+    fn = getattr(r, HOLD_ROLES[role], None) if r is not None else None
+    if fn is not None:
+        fn()
+
+
 def _wheel(server, role="repeat"):
     from .. import wheelmute
     st = state(server)
     with st.lock:
         if st.wheels.get(role) is None:
             f = getattr(server, "wheel_backend_factory", None)
+            rel = (lambda: _wheel_release(server, role)) if role in HOLD_ROLES else None
             st.wheels[role] = wheelmute.WheelMute(on_press=lambda: _wheel_press(server, role),
                                                   binding=_wheel_saved(role), backend=f() if f else None,
-                                                  log=app.say)
+                                                  log=app.say, on_release=rel)
         return st.wheels[role]
 
 
@@ -344,8 +378,26 @@ def on_coach_stop(server):
     stop_wheel(server)
 
 
+def close_mic(server):
+    """Debrief closing or the coach stopping: nothing keeps the microphone open."""
+    st = state(server)
+    with st.lock:
+        mt, rr, st.rerec = st.mictest, st.rerec, None
+    if mt is not None:
+        try:
+            mt.cancel()
+        except Exception:  # noqa: BLE001
+            pass
+    if rr is not None:
+        try:
+            rr["rec"].cancel()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def on_shutdown(server):
     stop_wheel(server)
+    close_mic(server)
     ov = getattr(server, "_overlay", None)
     if ov is not None:
         try:
@@ -362,7 +414,8 @@ def extra(server, st: dict):
         hk = server.coach_hotkey
     keys = hk.status() if isinstance(hk, HotkeyGroup) else {}
     st["keys"] = {name: {"key": HOTKEY_LABELS.get(name, "Ctrl+Shift+M"), "on": bool(keys.get(name))}
-                  for name in ("repeat", "quiet", "pace")}
+                  for name in ("repeat", "quiet", "pace", "note", "uselap")}
+    st["mic"] = mic_status(server, st)
     with s2.lock:
         st["measure"] = dict(s2.measure) if s2.measure else None
         pv = dict(s2.preview) if s2.preview else None
@@ -392,6 +445,246 @@ def extra(server, st: dict):
     rn = st.get("repeat_note")
     if isinstance(rn, dict) and time.time() - float(rn.get("wall") or 0) > REPEAT_NOTE_S:
         st["repeat_note"] = None            # shown for a few seconds after the press, then gone
+
+
+# ---------------------------------------------------------------- 2.20 corner notes: store, microphone, Mic test
+_NOTES_LOCK = threading.Lock()
+
+
+def notes_store(server):
+    """The one notes folder (<data folder>/notes). Made on first use; never touches iRacing's folders."""
+    from .. import cornernotes
+    with _NOTES_LOCK:
+        ns = getattr(server, "_notes_store", None)
+        if ns is None:
+            ns = cornernotes.NoteStore(settings_dir() / cornernotes.FOLDER, log=app.say)
+            server._notes_store = ns
+        return ns
+
+
+def mic_backend(server):
+    """The microphone: the test stand-in when set (tests), else Windows' waveIn (None elsewhere)."""
+    f = getattr(server, "mic_backend_factory", None)
+    if f:
+        return f()
+    from .. import audioin
+    return audioin.default_backend()
+
+
+def mic_backend_fn(server):
+    return lambda: mic_backend(server)
+
+
+def mic_test(server):
+    from .. import noterec
+    st = state(server)
+    with st.lock:
+        if st.mictest is None:
+            st.mictest = noterec.MicTest(lambda: mic_backend(server), lambda: _side_voice(server), log=app.say)
+        return st.mictest
+
+
+def mic_status(server, coach_st: dict | None = None) -> dict:
+    """The Recording light and the meter: the microphone is in use for a held note, the Mic test or a re-record."""
+    st = state(server)
+    with st.lock:
+        mt, rr = st.mictest, st.rerec
+        rr_note = st.rerec_note
+    t = mt.status() if mt is not None else {"state": "idle", "text": "", "level": 0.0, "recording": False}
+    note = (coach_st or {}).get("note") or None
+    held = bool(note and note.get("recording"))
+    rec_on = bool(held or t.get("recording") or rr is not None)
+    level = max(float(t.get("level") or 0.0), float((note or {}).get("level") or 0.0),
+                float(rr["rec"].level) if rr is not None else 0.0)
+    return {"recording": rec_on, "level": round(level, 3), "test": t, "note": (note or {}).get("last"),
+            "rerecording": rr["id"] if rr is not None else None, "rerecord_note": rr_note,
+            "available": getattr(server, "mic_backend_factory", None) is not None or sys.platform == "win32"}
+
+
+def _note_view(n: dict) -> dict:
+    from .. import cornernotes
+    return {"id": n["id"], "turn": n.get("turn"), "lap": n.get("lap"), "created": n.get("created"),
+            "seconds": n.get("seconds"), "played": int(n.get("played") or 0), "passes": int(n.get("passes") or 0),
+            "enabled": bool(n.get("enabled", True)), "where": n.get("where") or "", "car": n.get("car") or "",
+            "session": n.get("session") or "", "deleted": n.get("deleted"),
+            "plan": cornernotes.plan_text(int(n.get("passes") or 0)), "line": cornernotes.summary_line(n)}
+
+
+def get_notes(h, q):
+    """Corner notes by track, then turn; the trash (30 days); the Copy summary text."""
+    from .. import cornernotes
+    store = notes_store(h.server)
+    store.purge()
+    tracks = [{"track_key": g["track_key"], "track": g["track"], "short": cornernotes.short_track(g["track"]),
+               "turns": [{"turn": t["turn"], "notes": [_note_view(n) for n in t["notes"]]} for t in g["turns"]]}
+              for g in store.grouped()]
+    trash = [dict(_note_view(n), track=cornernotes.short_track(n.get("track"))) for n in store.trash()]
+    return h._json({"ok": True, "tracks": tracks, "trash": trash, "summary": cornernotes.summary(store.all()),
+                    "trash_days": cornernotes.TRASH_DAYS, "folder": str(store.root),
+                    "mic": mic_status(h.server, _runner_status(h.server))})
+
+
+def _runner_status(server):
+    r = runner_of(server)
+    try:
+        return r.status() if r is not None else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def get_mic(h, q):
+    return h._json({"ok": True, "mic": mic_status(h.server, _runner_status(h.server))})
+
+
+def _mic_free(server) -> str | None:
+    """Why the microphone can't be used now (one use at a time), or None."""
+    r = runner_of(server)
+    nr = getattr(r, "noterec", None) if r is not None else None
+    if nr is not None and nr.recording:
+        return "A corner note is being recorded."
+    st = state(server)
+    with st.lock:
+        if st.rerec is not None:
+            return "A note is being re-recorded. Stop that first."
+        mt = st.mictest
+    if mt is not None and mt.recording:
+        return "The Mic test is recording."
+    return None
+
+
+def post_mic_test(h, body):
+    why = _mic_free(h.server)
+    if why:
+        raise ValueError(why)
+    if mic_backend(h.server) is None:
+        raise ValueError("The microphone can only be used on Windows.")
+    mt = mic_test(h.server)
+    if not mt.start():
+        raise ValueError(mt.status().get("text") or "The Mic test couldn't start.")
+    return h._json({"ok": True, "mic": mic_status(h.server, _runner_status(h.server))})
+
+
+def post_uselap(h, body):
+    r = runner_of(h.server)
+    if r is None:
+        raise ValueError("Start the coach first.")
+    return h._json({"ok": True, "asked": bool(r.use_last_lap())})
+
+
+def _note_id(body) -> str:
+    nid = body.get("id")
+    if not isinstance(nid, str) or not 1 <= len(nid) <= 80:
+        raise ValueError("Pick a note.")
+    return nid
+
+
+def _note_call(fn, *a):
+    try:
+        return fn(*a)
+    except KeyError as e:
+        raise ValueError(str(e.args[0]) if e.args else "That note wasn't found.")
+
+
+def post_note_play(h, body):
+    nid = _note_id(body)
+    store = notes_store(h.server)
+    got = store.pcm(nid)
+    if got is None:
+        raise ValueError("That note's sound couldn't be read.")
+    v = _side_voice(h.server)
+    fn = getattr(v, "play_clip", None)
+    if fn is None or not fn("(note)", got[0], got[1], priority=9):
+        raise ValueError("The note couldn't be played through the voice's sound device.")
+    return h._json({"ok": True})
+
+
+def post_note_enable(h, body):
+    on = body.get("on")
+    if not isinstance(on, bool):
+        raise ValueError("Bad request.")
+    n = _note_call(notes_store(h.server).set_enabled, _note_id(body), on)
+    return h._json({"ok": True, "note": _note_view(n)})
+
+
+def post_note_move(h, body):
+    t = body.get("turn")
+    if isinstance(t, bool) or not isinstance(t, int):
+        raise ValueError("Pick a turn number.")
+    n = _note_call(notes_store(h.server).move, _note_id(body), t)
+    return h._json({"ok": True, "note": _note_view(n)})
+
+
+def post_note_delete(h, body):
+    n = _note_call(notes_store(h.server).delete, _note_id(body))
+    return h._json({"ok": True, "note": _note_view(n)})
+
+
+def post_note_restore(h, body):
+    n = _note_call(notes_store(h.server).restore, _note_id(body))
+    return h._json({"ok": True, "note": _note_view(n)})
+
+
+def post_note_rerecord(h, body):
+    """Re-record: the microphone opens now (a rising tone) and records until Stop (or 8 s); the note keeps its turn."""
+    from .. import audioin, cornernotes
+    nid = _note_id(body)
+    if notes_store(h.server).get(nid) is None:
+        raise ValueError("That note wasn't found.")
+    why = _mic_free(h.server)
+    if why:
+        raise ValueError(why)
+    be = mic_backend(h.server)
+    if be is None:
+        raise ValueError("The microphone can only be used on Windows.")
+    st = state(h.server)
+    rec = audioin.Recorder(be, skip_s=cornernotes.TONE_S, on_limit=lambda: _rerecord_finish(h.server), log=app.say)
+    if not rec.start():
+        raise ValueError(rec.error or "The microphone could not be opened.")
+    with st.lock:
+        st.rerec = {"id": nid, "rec": rec, "wall": time.time()}
+        st.rerec_note = "Recording. Say your note, then press Stop."
+    try:
+        v = _side_voice(h.server)
+        if hasattr(v, "play_tone"):
+            v.play_tone("start")
+    except Exception:  # noqa: BLE001
+        pass
+    return h._json({"ok": True, "mic": mic_status(h.server, _runner_status(h.server))})
+
+
+def _rerecord_finish(server) -> dict:
+    from .. import cornernotes
+    st = state(server)
+    with st.lock:
+        rr, st.rerec = st.rerec, None
+    if rr is None:
+        return {"ok": False, "text": "Nothing was being recorded."}
+    take = rr["rec"].stop()
+    tone, ok, text = "discard", False, "Note not kept: nothing was recorded."
+    if take is not None:
+        c = cornernotes.clean(take.pcm, take.rate)
+        if c.ok:
+            try:
+                notes_store(server).replace_audio(rr["id"], c.pcm, c.rate)
+                tone, ok, text = "saved", True, "Re-recorded. It starts its learning plan again."
+            except (KeyError, ValueError, OSError):
+                text = "The note couldn't be saved. Details were saved to debrief.log."
+        else:
+            text = "Note not kept: " + ("it was under 0.4 seconds." if c.why == "too short" else "no speech was heard.")
+    with st.lock:
+        st.rerec_note = text
+    try:
+        v = _side_voice(server)
+        if hasattr(v, "play_tone"):
+            v.play_tone(tone)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": ok, "text": text}
+
+
+def post_note_rerecord_stop(h, body):
+    r = _rerecord_finish(h.server)
+    return h._json({"ok": True, "result": r, "mic": mic_status(h.server, _runner_status(h.server))})
 
 
 # ---------------------------------------------------------------- 2.19 the coach overlay
@@ -517,7 +810,7 @@ def voice_note_for(server, voice_status=None) -> dict:
 # ---------------------------------------------------------------- GET
 def get(h, r, q):
     return {"api/coach/voices": get_voices, "api/coach/logs": get_logs, "api/coach/log": get_log,
-            "api/coach/result": get_result}[r](h, q)
+            "api/coach/result": get_result, "api/cornernotes": get_notes, "api/coach/mic": get_mic}[r](h, q)
 
 
 def get_result(h, q):
@@ -596,7 +889,15 @@ def post(h, r, body):
           "api/coach/pace": post_pace, "api/coach/wheel-pace-learn": lambda h, b: post_wheel_learn(h, b, "pace"),
           "api/coach/wheel-pace-clear": lambda h, b: post_wheel_clear(h, b, "pace"),
           "api/coach/mute-set": post_mute_set, "api/coach/rehearse-speed": post_rehearse_speed,
-          "api/coach/rehearse-skip": post_rehearse_skip, "api/overlay/set": post_overlay}[r]
+          "api/coach/rehearse-skip": post_rehearse_skip, "api/overlay/set": post_overlay,
+          "api/coach/mic-test": post_mic_test, "api/coach/uselap": post_uselap,
+          "api/coach/wheel-note-learn": lambda h, b: post_wheel_learn(h, b, "note"),
+          "api/coach/wheel-note-clear": lambda h, b: post_wheel_clear(h, b, "note"),
+          "api/coach/wheel-uselap-learn": lambda h, b: post_wheel_learn(h, b, "uselap"),
+          "api/coach/wheel-uselap-clear": lambda h, b: post_wheel_clear(h, b, "uselap"),
+          "api/cornernotes/play": post_note_play, "api/cornernotes/enable": post_note_enable, "api/cornernotes/move": post_note_move,
+          "api/cornernotes/delete": post_note_delete, "api/cornernotes/restore": post_note_restore,
+          "api/cornernotes/rerecord": post_note_rerecord, "api/cornernotes/rerecord-stop": post_note_rerecord_stop}[r]
     return fn(h, body if isinstance(body, dict) else {})
 
 

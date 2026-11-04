@@ -20,7 +20,7 @@ from pathlib import Path
 from .. import app
 from . import carsetup, racing
 
-VERSION = 2
+VERSION = 3                       # 2.18: options carry their label and comparable
 CACHE = "carcompare"
 GET_ROUTES = ("api/carcompare",)
 MAX_FILES_PER_CAR = 8          # newest telemetry files per car read for laps
@@ -137,6 +137,9 @@ def work_out(cfg, inp, q, team=None) -> dict:
         if not any(cc._same_car(c, t["car"]) for c in o["cars"]):
             o["cars"] = sorted(o["cars"] + [t["car"]])
     opts.sort(key=lambda o: (-(len(o["cars"]) > 1), -o["drivers"], o["track"], o["class"]))
+    for o in opts:                                   # 2.18: one car at that track: nothing to compare
+        o["comparable"] = len(o["cars"]) > 1
+        o["label"] = cc.option_label(o)
     track, cls = q.get("track") or "", q.get("class") or ""
     pick = next((o for o in opts if o["track"] == track and o["class"] == cls), None) or (opts[0] if opts else None)
     period = "all" if q.get("period") == "all" else "season"

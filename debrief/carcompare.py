@@ -307,6 +307,16 @@ def options(races) -> list:
     return out
 
 
+def option_label(o: dict) -> str:
+    """The Car vs car dropdown's words for one track and class (2.18): a class with only one car there says
+    there's nothing to compare, so it isn't picked expecting a comparison."""
+    n = len(o.get("cars") or [])
+    what = f"{o.get('track') or 'Unknown track'}, {o.get('class') or 'Unknown class'}"
+    if n < 2:
+        return f"{what} (1 car, nothing to compare)" if n == 1 else f"{what} (no cars, nothing to compare)"
+    return f"{what} ({n} cars)"
+
+
 # ---------------------------------------------------------------- one season at a time
 def seasons() -> list:
     """[(name, first day, day after the last week)] from the saved and bundled iRacing schedules."""

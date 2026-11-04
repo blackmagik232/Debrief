@@ -1523,8 +1523,13 @@ function renderSlTel(){const j=sl.data;if(!j)return;const pill=$('slPill'),run=!
   else{pill.className='pill ok';pill.textContent=plural(j.files,'file')}
   $('slTelNote').textContent=!j.folder_ok?'Debrief can\'t find this folder. If iRacing saves telemetry somewhere else, set the folder in Settings.':
     !j.indexed?(ok(j.unread)?plural(j.unread,'telemetry file')+' to read.':'Not read yet.'):
-    plural(j.files,'telemetry file')+' for '+carTracks(n)+'.'+(ok(j.unread)&&j.unread>0?' '+plural(j.unread,'new file')+' since the last read.':'')+(j.bad?' '+plural(j.bad,'file')+' couldn\'t be read.':'');
+    plural(j.files,'telemetry file')+' for '+carTracks(n)+'.'+(ok(j.unread)&&j.unread>0?' '+plural(j.unread,'new file')+' since the last read.':'')+slBadText(j);
   $('slProg').hidden=!run;$('slNow').hidden=!run}
+/* 2.18: an unreadable file is named, with the reason, so he can find it (Debrief never deletes or changes it) */
+function slBadText(j){const B=j.bad_files||[];if(!j.bad)return '';
+  if(!B.length)return ' '+plural(j.bad,'file')+' couldn\'t be read.';
+  const one=b=>b.file+' ('+b.why+')';
+  return ' '+plural(j.bad,'file')+' couldn\'t be read: '+B.slice(0,3).map(one).join('; ')+(j.bad>3?'; and '+(j.bad-3)+' more':'')+'. Debrief skips '+(j.bad===1?'it':'them')+' and leaves '+(j.bad===1?'it':'them')+' as '+(j.bad===1?'it is':'they are')+'.'}
 function renderSlPick(){const j=sl.data,combos=(j&&j.combos)||[];$('slPick').hidden=!combos.length;if(!combos.length)return;
   const top=combos.slice(0,6),rest=combos.slice(6),label=c=>(c.track||c.track_code)+' · '+(c.car||c.car_path);
   keepFocus($('slCombos'),()=>$('slCombos').replaceChildren(...top.map(c=>pkBtn(label(c),slSame(c,sl.sel),c.car_path+'|'+c.track_code,()=>slPick(c),plural(c.files,'file')+', last '+slWhen(c.last)))));
@@ -1541,19 +1546,30 @@ async function loadSlReport(){if(!sl.sel)return;const seq=++sl.seq,host=$('slRep
   if(!j.ok){slEmpty('That didn\'t load',j.error||'Try again.');$('slStatus').textContent='The report didn\'t load.';return}
   renderSlReport(j.report);csSetupLab(j.report);const R=j.report||{};$('slStatus').textContent='Showing '+(R.track||R.track_code||'')+', '+(R.car||R.car_path||'')+'.'}
 function slSec(title,id){const d=h('section','panel slsec');if(id)d.id=id;d.append(h('h3',null,title));return d}
+function slSourceText(R){if(R.series_override)return 'You set this.';
+  const src=String(R.series_setup_source||'');if(!src)return 'Debrief can\'t tell yet. Set it here if you know.';
+  return (R.series_setup==='unknown'?'Not known yet: ':'From ')+src+'.'}
 function confBadge(c){const x=SL_CONF[c]||[String(c||''),''];const b=h('span','pill sure'+(x[1]?' '+x[1]:''),x[0]);b.title='How sure this is'+(x[2]?': '+x[2]:'');return b}
 function renderSlReport(R){const out=document.createDocumentFragment();
   const head=h('div','panel slhead');const tt=h('div','pvtt');tt.append(h('h2','pvtrack',R.track||R.track_code),h('p','pvby',R.car||R.car_path));head.append(tt);
   const kind=R.series_setup||'unknown',ser=h('div','slser');
   const pill=h('span','pill '+(kind==='open'?'ok':kind==='fixed'?'no':''),kind==='open'?'Open setup':kind==='fixed'?'Fixed setup':'Setup rules unknown');
-  ser.append(pill,h('span','note',R.series_setup_source?'From '+R.series_setup_source+'.':'Debrief can\'t tell yet. Set it here if you know.'));
+  ser.append(pill,h('span','note',slSourceText(R)));
   const lab=h('label','field slover');lab.htmlFor='slSeries';lab.append(h('span',null,'This series is'));const sel=document.createElement('select');sel.id='slSeries';
   [['','Not sure (let Debrief tell)'],['open','Open setup'],['fixed','Fixed setup']].forEach(([v,t])=>{const o=h('option',null,t);o.value=v;sel.append(o)});
-  sel.value=R.series_override||'';sel.addEventListener('change',()=>slSaveSeries(sel.value));lab.append(sel);ser.append(lab);head.append(ser);out.append(head);
+  sel.value=R.series_override||'';sel.addEventListener('change',()=>slSaveSeries(sel.value));lab.append(sel);
+  // known from the schedule, the telemetry or the car itself: nothing to ask, but he can still correct it
+  if(kind!=='unknown'&&!R.series_override){const d=h('details','sub slserfix');d.id='slSeriesFix';d.append(h('summary',null,'Not right? Change it'),lab);ser.append(d)}
+  else ser.append(lab);
+  head.append(ser);out.append(head);
   if(!R.files){const e=h('div','panel pvnone');e.append(h('h2','pvtrack','No telemetry for this car here yet'),h('p','lede','Drive it with telemetry recording on (Alt+L in the car), then press Read my telemetry.'));out.append(e);$('slReport').replaceChildren(out);return}
   const S=R.suggestions||{};
-  if(kind==='fixed'){const sec=slSec('Fixed setup series');const it=(S.items||[]).find(i=>i.rule==='fixed_series');
-    sec.append(h('p',null,it?it.text:'Fixed setup series: the setup is locked, so there are no setup changes to try.'));out.append(sec);$('slReport').replaceChildren(out);return}
+  if(kind==='fixed'){const sec=slSec('Fixed setup series','slFixed');const it=(S.items||[]).find(i=>i.rule==='fixed_series');
+    sec.append(h('p',null,it?it.text:'Fixed setup series: the setup is locked, so there are no garage changes to try.'));
+    const fuel=(S.items||[]).filter(i=>i.rule==='fuel');
+    if(fuel.length){sec.append(h('h4',null,'What the telemetry shows'));const u=h('ul','pvlist slideas');fuel.forEach(i=>u.append(slIdeaLi(i)));sec.append(u)}
+    sec.append(h('p','note','How the car handles, below, points to the in-car dials where this car has them, otherwise to the driving.'));
+    out.append(sec);$('slReport').replaceChildren(out);return}
   // your setups
   const ss=slSec('Your setups','slSetups'),ul=h('ul','pvlist');
   (R.setups||[]).forEach(s=>{const li=h('li');li.append(h('b',null,s.label));
@@ -1575,7 +1591,7 @@ function renderSlReport(R){const out=document.createDocumentFragment();
   out.append(dc);
   // which was faster
   const C=R.compare||{},fc=slSec('Which was faster','slCompare');
-  if(C.verdict)fc.append(h('p','slverdict',C.verdict));
+  const head1=C.headline||C.verdict;if(head1)fc.append(h('p','slverdict',head1));
   const rows=C.setups||[];
   if(rows.length){const wrap=h('div','tblwrap'),t=h('table','pacetbl sltbl'),hr=h('tr');['Setup','Typical lap','Best','Laps counted','Left out','Track'].forEach(x=>hr.append(h('th',null,x)));
     const th=h('thead');th.append(hr);const tb=h('tbody');
@@ -1584,10 +1600,11 @@ function renderSlReport(R){const out=document.createDocumentFragment();
       tr.append(c0,h('td','num',ok(p.median)?fmtT(p.median):'–'),h('td','num',ok(p.best)?fmtT(p.best):'–'),h('td','num',String(p.clean_laps||0)),h('td',null,left),
         h('td','num',(ok(p.surface_temp)?Math.round(p.surface_temp)+' °C':'–')+(p.track_state&&p.track_state!=='dry'?' '+p.track_state:'')));tb.append(tr)});
     t.append(th,tb);wrap.append(t);fc.append(wrap)}
-  (C.pairs||[]).forEach(pr=>{const box=h('div','slpair');if(pr.text&&String(C.verdict||'').trim()!==String(pr.text).trim())box.append(h('p',null,pr.text));
+  (C.pairs||[]).forEach(pr=>{const box=h('div','slpair');if(pr.text&&!String(head1||'').includes(String(pr.text).trim()))box.append(h('p',null,pr.text));
     (pr.confounders||[]).forEach(x=>box.append(h('p','note warn','Not a fair test: '+x+'.')));
     if(box.children.length)fc.append(box)});
   const miss=rows.flatMap(r=>r.missing||[]);if(miss.length)fc.append(h('p','note','Still missing: '+miss.join('; ')+'.'));
+  (C.not_compared||[]).forEach(x=>fc.append(h('p','note',x)));
   fc.append(h('p','note','A lap counts when it is clean, not an out lap or the first flying lap, not spent alongside another car, and not far off that run\'s pace. Debrief only names a faster setup when the laps clearly say so.'));
   out.append(fc);
   // try next
@@ -1596,12 +1613,10 @@ function renderSlReport(R){const out=document.createDocumentFragment();
   if(S.next){const n=S.next,card=h('div','slnextcard');const top=h('div','phead');top.append(h('span','eyebrow','One change to try next'),confBadge(n.confidence));card.append(top);
     card.append(h('p','slaction',n.action||n.text));if(n.why)card.append(h('p',null,n.why));
     if(n.check)card.append(h('p','note','Then check: '+n.check));if(n.data)card.append(h('p','note','From: '+n.data));tn.append(card)}
-  else tn.append(h('p','note',R.suggestions?'No setup change to try from what the telemetry shows so far.':'Nothing to suggest until a setup is recorded.'));
+  else tn.append(h('p','note',R.suggestions?'No tyre pressure, ride height or fuel change to try from the telemetry so far. Ideas for how the car handles are under How the car handles, below.':'Nothing to suggest until a setup is recorded.'));
   const others=items.filter(i=>i!==S.next&&!i.next&&i.kind!=='note');
   const slList=(title,list)=>{if(!list.length)return;tn.append(h('h4',null,title));const u=h('ul','pvlist slideas');
-    list.forEach(i=>{const li=h('li'),top=h('div','slidea');top.append(h('b',null,i.setting||'Note'),confBadge(i.confidence));li.append(top);
-      const lines=Array.isArray(i.lines)&&i.lines.length?i.lines:[(i.kind==='change'&&i.action?i.action+' ':'')+(i.why||i.text||'')];
-      lines.forEach(x=>li.append(h('span','sub2',x)));if(i.check)li.append(h('span','sub2','Check: '+i.check));u.append(li)});tn.append(u)};
+    list.forEach(i=>u.append(slIdeaLi(i)));tn.append(u)};
   slList(S.next?'Other ideas, one at a time':'Also worth a look',others.filter(i=>i.kind==='change'));
   slList('What the telemetry shows',others.filter(i=>i.kind!=='change'));
   out.append(tn);
@@ -1612,6 +1627,9 @@ function renderSlReport(R){const out=document.createDocumentFragment();
       bad.slice(0,50).forEach(b=>bu.append(h('li',null,b.file+': '+(plainText(b.error)||b.error))));d.append(bu);ns.append(d)}
     out.append(ns)}
   $('slReport').replaceChildren(out)}
+function slIdeaLi(i){const li=h('li'),top=h('div','slidea');top.append(h('b',null,i.setting||'Note'),confBadge(i.confidence));li.append(top);
+  const lines=Array.isArray(i.lines)&&i.lines.length?i.lines:[(i.kind==='change'&&i.action?i.action+' ':'')+(i.why||i.text||'')];
+  lines.forEach(x=>li.append(h('span','sub2',x)));if(i.check)li.append(h('span','sub2','Check: '+i.check));return li}
 async function slSaveSeries(v){if(!sl.sel)return;let r;try{r=await post('setuplab/series',{car:sl.sel.car,track:sl.sel.track,setup:v})}catch(e){connectionLost();return}
   if(!r.ok){banner(r.error||'That wasn\'t saved.',true);return}loadSlReport()}
 $('slRead').addEventListener('click',async()=>{
@@ -2417,12 +2435,12 @@ function csRenderBalance(body,j){const R=j.report;body.replaceChildren();
   (R.notes||[]).forEach(n=>body.append(h('p','note warn',n)));
   if(R.ok){const X=R.cross_check;const small=h('p','balsmall');
     small.textContent=(X&&X.of?'Cross-check: worked out again from sideways g instead of how fast the car turns, '+X.agree+' of '+plural(X.of,'clear place')+' read the same. ':'')+
-      'From '+plural(R.laps||0,'clean lap')+' in '+plural(j.files||R.files||0,'file')+'. "Pushes" and "Rotates" are only shown when a fair shuffle test says it isn\'t luck.';
-    body.append(small);
+      'From '+plural(R.laps||0,'clean lap')+' in '+plural(j.files||R.files||0,'file')+'. "Pushes" and "Rotates" are only shown when they pass a luck check: Debrief flips your laps\' readings at random thousands of times, and a result that often turns up that way is not shown.';
+    body.append(small);if(j.laps_note)body.append(h('p','balsmall','Lap counts: '+j.laps_note));
     if(R.car_fit&&R.car_fit.text){const d=h('details','balhow');d.append(h('summary',null,'How this is measured'));
-      d.append(h('p','note','Debrief learns how much steering this car normally needs in gentle bends, then looks at how much you used near the limit. More than normal: the car pushes (the front slides first). Less: it rotates (the rear slides first). So it is always compared with how this car steers.'));
+      d.append(h('p','note','Debrief learns how much steering this car normally needs in gentle bends, then looks at how much you used near the limit. More than normal: the car pushes (the front slides first). Less: it rotates (the rear slides first). So it is always compared with how this car steers. How much the car turns comes from its yaw rate: how fast it rotates, which iRacing records.'));
       d.append(h('p','note',R.car_fit.text));body.append(d)}}
-  body.append(csIdeas(R))}
+  body.append(csIdeas(R,j))}
 
 function csBalanceGrid(R){const wrap=h('div','tblwrap'),t=h('table','baltbl');t.setAttribute('aria-label','How the car handles in each corner');
   const thd=h('thead'),hr=h('tr');hr.append(h('th',null,'Corner'));BAL_PHASE.forEach(([,w])=>hr.append(h('th',null,w)));thd.append(hr);
@@ -2442,16 +2460,18 @@ function csLegend(){const p=h('p','ballegend');
   [['push','Pushes: understeer, the front slides first'],['rotate','Rotates: oversteer, the rear slides first'],['neutral','Neutral: neither'],['unclear','Not clear yet: needs more laps']].forEach(([k,t])=>{
     const s=h('span','balkey');s.append(h('i','bal '+BAL_WORD[k][1]),document.createTextNode(t));p.append(s)});return p}
 
-function csIdeas(R){const box=h('div','balideas');box.append(h('h4',null,'Setup ideas'));
+function csIdeas(R,j){const fixedSeries=R.series_setup==='fixed',box=h('div','balideas');box.append(h('h4',null,fixedSeries?'What you can still change':'Setup ideas'));
   const I=R.setup_ideas||[];
   if(!I.length){box.append(h('p','note',R.ok&&(R.findings||[]).length?'This car\'s setup has nothing Debrief knows how to change for this.':'No setup idea until the car clearly pushes or rotates somewhere.'));return box}
-  const fixed=I.length===1&&!I[0].finding&&!I[0].change;
+  const fixed=I.length===1&&!I[0].finding&&!I[0].change&&!I[0].dial&&!I[0].driving;
   if(fixed){box.append(h('p','note warn',csTurn(I[0].text)));return box}
-  box.append(h('p','note','One change at a time, so you know what did it.'));
+  if(fixedSeries)box.append(h('p','note warn','This series uses a fixed setup, so the garage is locked. These use the in-car dials where this car has them, otherwise the driving.'));
+  else{box.append(h('p','note','One change at a time, so you know what did it.'));
+    const L=j&&j.last_change;if(L&&!L.slower)box.append(h('p','note','Debrief doesn\'t suggest simply undoing your change from '+L.from+' to '+L.to+': the laps don\'t show it made the car slower.'))}
   const ul=h('ul','pvlist');
   I.forEach(i=>{const li=h('li','balidea'+(i.first?' first':'')),top=h('div','slidea');
     const cf=IDEA_CONF[i.confidence]||[i.confidence||'',''];const pill=h('span','pill sure'+(cf[1]?' '+cf[1]:''),cf[0]);pill.title=cf[2]||'How sure this is';
-    top.append(h('b',null,i.change?i.change.label:'Driving'),pill);li.append(top);
+    top.append(h('b',null,i.change?i.change.label:i.dial?i.dial.label:i.driving?'Driving':'No setup change'),pill);li.append(top);
     let t=String(i.text||''),then=String(i.then||''),cav='';
     if(then&&t.endsWith(then))t=t.slice(0,-then.length).trim();
     const k=t.indexOf('On most cars in iRacing');if(k>0){cav=t.slice(k);t=t.slice(0,k).trim()}
@@ -2466,7 +2486,7 @@ async function csLoadPressure(){const sec=$('slPress'),c=cs.combo;if(!sec||!c)re
   if(!$('slPress')||cs.combo!==c)return;
   if(!j.ok){body.replaceChildren(h('p','note warn',j.error||'This didn\'t load.'));return}
   const R=j.report||{};body.replaceChildren();
-  body.append(h('p','note','Your runs grouped by track temperature (5 °C bands): the cold pressure you set, the hot pressure it came up to, and your typical lap. A run is a stint with at least 3 counted laps.'));
+  body.append(h('p','note','Your runs grouped by track temperature (5 °C bands): the cold pressure you set, the hot pressure it came up to, and your typical lap. A run is a stint with at least 3 counted laps. Pressures are in kPa (kilopascals), the unit iRacing\'s garage uses: 100 kPa is about 14.5 psi.'));
   const B=R.bands||[];
   if(B.length){const wrap=h('div','tblwrap'),t=h('table','pacetbl presstbl'),hr=h('tr');['Track','Cold pressure','Runs','Typical lap','Hot (front / rear)'].forEach(x=>hr.append(h('th',null,x)));
     const thd=h('thead');thd.append(hr);const tb=h('tbody');
@@ -2496,7 +2516,8 @@ function csPredictForm(){const f=document.createElement('form');f.className='pre
 /* ---------- share what changed (copy only) */
 function csShareButton(R){const dc=$('slDiffs');if(!dc||!(R.diffs||[]).length)return;
   const row=h('div','row'),b=h('button','btn','Share what changed');b.type='button';b.id='slShare';
-  row.append(b,h('span','note','Text to paste in your team\'s Discord. Debrief never posts it for you.'));
+  const st=h('span','msg');st.id='slShareMsg';st.setAttribute('role','status');
+  row.append(b,h('span','note','Copies a short text to paste in your team\'s Discord. Debrief never posts it for you.'),st);
   const out=h('div','shareout');out.id='slShareOut';out.hidden=true;
   b.addEventListener('click',async()=>{const c=cs.combo;if(!c)return;b.disabled=true;let r;
     try{r=await api('setuplab/share?'+csQ(c.car,c.track))}catch(e){connectionLost();return}finally{b.disabled=false}
@@ -2504,15 +2525,22 @@ function csShareButton(R){const dc=$('slDiffs');if(!dc||!(R.diffs||[]).length)re
     if(!r.ok){out.append(h('p','note warn',r.error||'That didn\'t work.'));return}
     out.append(csCopyBox('Plain text',r.text,'shareText'));
     if(r.ready)out.append(csCopyBox('With bold for Discord',r.markdown,'shareMd'));
-    out.append(h('p','note','No names, no file names: only the car, the track, what you changed and what the laps said.'))});
+    out.append(h('p','note','No names, no file names: only the car, the track, what you changed and what the laps said.'));
+    // 2.18: the click copies (the Discord version when there is one), and says plainly what happened
+    if(!r.ready){st.textContent='Nothing copied: '+r.text;st.className='msg';return}
+    const done=await csCopy(r.markdown||r.text,$(r.markdown?'shareMd':'shareText'));
+    st.textContent=done?'Copied the Discord version (with bold) to your clipboard: paste it in Discord with Ctrl+V. Both versions are below.':
+      'Couldn\'t copy by itself: select the text below and press Ctrl+C.';st.className='msg'+(done?' ok':' bad')});
   dc.append(row,out)}
+
+async function csCopy(text,ta){let done=false;try{await navigator.clipboard.writeText(text);done=true}catch(e){}
+  if(!done&&ta){try{ta.focus();ta.select();done=document.execCommand('copy')}catch(e){}}return done}
 
 function csCopyBox(title,text,id){const box=h('div','copybox'),top=h('div','phead');top.append(h('h4',null,title));
   const b=h('button','btn','Copy');b.type='button';b.id=id+'Copy';top.append(b);
   const ta=document.createElement('textarea');ta.id=id;ta.readOnly=true;ta.value=text||'';ta.rows=Math.min(8,Math.max(3,String(text||'').split('\n').length+1));ta.setAttribute('aria-label',title);
   const m=h('span','msg');m.setAttribute('role','status');
-  b.addEventListener('click',async()=>{let done=false;try{await navigator.clipboard.writeText(ta.value);done=true}catch(e){}
-    if(!done){try{ta.focus();ta.select();done=document.execCommand('copy')}catch(e){}}
+  b.addEventListener('click',async()=>{const done=await csCopy(ta.value,ta);
     m.textContent=done?'Copied.':'Select the text and press Ctrl+C.';m.className='msg'+(done?' ok':' bad')});
   top.append(m);box.append(top,ta);return box}
 
@@ -2603,7 +2631,10 @@ if(typeof HELP==='object'){
     ['Countersteer','Steering the other way to catch the rear. Each one is a moment of oversteer you had to save.'],
     ['Setup ideas: Likely, A guess','How sure a setup idea is. Likely (worth a try) comes from a clear finding; A guess from a likely one. Change one thing, drive at least 6 clean laps, then compare again.'],
     ['Hot pressure','The tyre pressure once the tyres are warm, read from your laps. The prediction says what a cold pressure comes up to at a track temperature, with how far off it typically is.'],
-    ['Share what changed','Setup Lab writes a short text of what you changed and what the laps said, to paste in Discord. Debrief never posts it.'],
+    ['Share what changed','Setup Lab writes a short text of what you changed and what the laps said, with the same numbers as the page, and copies it for you to paste in Discord. Debrief never posts it.'],
+    ['kPa','Kilopascals, the unit iRacing\'s garage uses for tyre pressure. 100 kPa is about 14.5 psi, so 172 kPa is about 25 psi.'],
+    ['Yaw rate','How fast the car rotates, which iRacing records many times a second. Setup Lab compares it with your steering to tell a push from a rotation.'],
+    ['Fixed setup','A series where the garage setup is locked, tyre pressures included. Fuel and the in-car dials (brake bias, traction control and ABS on cars that have them) are still yours, so Setup Lab points there or to the driving.'],
     ['Teammate\'s lap','Their best clean lap from their telemetry file, checked for anything harmful first. The file is read once and never copied; only the worked-out lap is kept if you tick Keep.'])}
 /* ---------- 2.16 Racing: your starts (green flag to the end of lap 1) and your incidents, across your races, from
    the replay scans, telemetry files and saved reviews on this PC (api/racing, read only) */

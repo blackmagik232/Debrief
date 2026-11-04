@@ -198,7 +198,11 @@ def test_balance_endpoint_and_cache():
     assert mid["change"]["text"].startswith("Front anti-roll bar 2 → 1"), mid
     assert ideas[0]["change"] and ideas[0]["change"]["to"], "the first idea is a change that can be made"
     ent = next(i for i in ideas if i["phase"] == "entry")
-    assert ent["change"]["text"].startswith("Front anti-roll bar 2 → 3") and "already at its lowest" in ent["text"], ent
+    # 2.18: front bar 2 -> 3 would only undo his change from B to C (3 -> 2), which the laps don't show slower
+    assert ent["change"] is None and "already at its lowest" in ent["text"] and ent["undo"] \
+        and "would undo the change you made from Setup B to Setup C" in ent["text"], ent
+    assert j["last_change"] == {"from": "Setup B", "to": "Setup C", "verdict": j["last_change"]["verdict"], "slower": False}
+    assert j["laps_note"] and "Which was faster counts" in j["laps_note"], j["laps_note"]
     assert ideas[0]["confidence"] in ("worth a try", "a guess") and "compare again" in ideas[0]["then"]
     assert R["cross_check"] and "params" not in R, "small: no parameter dump"
     no_long_dash(R, "balance report")
@@ -240,7 +244,10 @@ def test_balance_fixed_series():
     try:
         code, j = call("api/balance" + q(car=CAR, track=LR))
         I = j["report"]["setup_ideas"]
-        assert len(I) == 1 and I[0]["change"] is None and "fixed setup" in I[0]["text"] and "adapt the driving" in I[0]["text"], I
+        # 2.18: no garage change; this car has no in-car dial channels, so each finding gets driving advice
+        assert I and all(i["change"] is None and "The setup is locked" in i["text"] and "adapt the driving" in i["text"]
+                         for i in I), I
+        assert j["report"]["series_setup"] == "fixed" and j["last_change"] is None, j.get("last_change")
     finally:
         call("api/setuplab/series", {"car": CAR, "track": LR, "setup": ""})
 
@@ -605,6 +612,8 @@ def test_setuplab_in_the_window():
             assert "Setup C vs B" in txt and "anti-roll bar 3 → 2" in txt, txt
             assert pg.input_value("#shareMd").startswith("**")
             assert "never posts" in pg.text_content("#slDiffs")
+            msg = pg.text_content("#slShareMsg")
+            assert msg.startswith("Copied the Discord version") or msg.startswith("Couldn't copy by itself"), msg
             for sel in ("#slBalance", "#slPress", "#slDiffs"):
                 no_dash_text(pg, sel)
             # the balance on another setup

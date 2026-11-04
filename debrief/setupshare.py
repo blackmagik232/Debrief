@@ -5,7 +5,8 @@
 
 Example:
     McLaren 570S GT4 at Zolder Circuit. Setup B vs A: rear wing 2.5 → 3.5 deg, front camber -4.0 → -3.6 deg
-    (both sides). Result: no clear difference yet (6 and 7 clean laps; about 4 more on each would show a 0.1 s gap).
+    (both sides). Result: no clear difference yet (typical lap 1:39.155 on B, 1:39.175 on A; 9 clean laps on B, 8 on
+    A). If there is a real gap of 0.1 s or more, about 4 more clean laps on each would show it.
 
 What it never contains: setup file names (they often carry a name), driver names, file names, folders, or any
 setup file contents beyond the changed settings. Garage results (corner weights, ride heights) and pit readings
@@ -95,28 +96,40 @@ def _pace(rep: dict, sid: str):
 
 
 def _result(rep: dict, a: str, b: str) -> str:
+    """Setup Lab's verdict on "Setup b vs a", with the same numbers the page shows: the typical laps (in the page's
+    lap format) and the clean laps, always b first, as in the label."""
     p = _pair_for(rep, a, b)
     if p is None:
-        return "Result: not compared yet (Setup Lab compares setups driven one after the other)."
-    na, nb = _pace(rep, a).get("clean_laps"), _pace(rep, b).get("clean_laps")
-    laps = f"{na} and {nb} clean laps" if na is not None and nb is not None else ""
+        return (f"Result: not compared yet (Setup Lab compares two setups once each has at least {setuplab.MIN_LAPS} "
+                f"clean laps).")
+    pa, pb = _pace(rep, a), _pace(rep, b)
+    na, nb = pa.get("clean_laps"), pb.get("clean_laps")
+    laps = f"{nb} clean laps on {b}, {na} on {a}" if na is not None and nb is not None else ""
+    ma, mb = pa.get("median"), pb.get("median")
+    typical = (f"typical lap {setuplab.lap_text(mb)} on {b}, {setuplab.lap_text(ma)} on {a}"
+               if ma is not None and mb is not None else "")
+    both = "; ".join(x for x in (typical, laps) if x)
+    gap = abs(float(p["diff_s"])) if p.get("diff_s") is not None else None
     v = p.get("verdict")
     if v == "faster":
         fast = p.get("faster")
         slow = b if fast == a else a
-        d = abs(float(p.get("diff_s") or 0))
-        s = f"Result: {fast} was faster than {slow} by about {setuplab._fmt_s(d)} s a lap ({laps})."
+        s = f"Result: {fast} was faster than {slow} by about {setuplab._fmt_s(gap or 0)} s a lap ({both})."
         if p.get("caution"):
             s += f" Caution: {fast} was also driven later, so part of it may be getting quicker; worth going back to {slow} for a few laps."
         return s
     if v == "no clear difference":
         more = p.get("more_laps")
         if more and more <= setuplab.MAX_MORE_LAPS:
-            return (f"Result: no clear difference yet ({laps}; about {more} more on each would show a "
-                    f"{setuplab.MIN_DIFF:.1f} s gap).")
+            # the laps still needed are for the gap seen, or for the 0.1 s floor when the gap seen is smaller
+            g = (f"the {setuplab._fmt_s(gap)} s gap is real" if gap is not None and gap >= setuplab.MIN_DIFF else
+                 f"there is a real gap of {setuplab.MIN_DIFF:.1f} s or more")
+            return (f"Result: no clear difference yet ({both}). If {g}, about {more} more clean "
+                    f"lap{'s' if more != 1 else ''} on each would show it.")
         if p.get("diff_s") is not None and more is None:
-            return f"Result: a gap smaller than {setuplab.MIN_DIFF:.1f} s a lap, which counts as no real difference ({laps})."
-        return f"Result: no clear difference: too close to tell apart ({laps})."
+            return (f"Result: a gap smaller than {setuplab.MIN_DIFF:.1f} s a lap, which counts as no real difference "
+                    f"({both}).")
+        return f"Result: no clear difference: too close to tell apart ({both})."
     if v == "confounded":
         why = "; ".join(_clean(_strip_names(x, rep)) for x in (p.get("confounders") or [])[:2])
         return f"Result: can't be compared fairly yet ({why})." if why else "Result: can't be compared fairly yet."

@@ -376,8 +376,16 @@ setup = fi.SETUP_GT4
 ideas = bl.setup_ideas(rep, setup)
 check(ideas and ideas[0]["first"], "setup ideas made, the first marked")
 mid = next((i for i in ideas if i["phase"] == "mid" and i["label"] == "push"), None)
-check(mid is not None and mid["change"]["text"].startswith("Front anti-roll bar 2 → 1"),
-      f"mid-corner push in a slow corner: front bar one step softer ({mid and mid['change']['text']})")
+# 2.18: the entry rotation (front bar stiffer) has the stronger evidence here, so the mid-corner push never gets the
+# front bar the other way: it takes its next option (rear bar stiffer) and says why
+check(mid is not None and mid["change"]["text"].startswith("Rear anti-roll bar 1 → 2")
+      and "front anti-roll bar 2 → 1 would pull against the idea for" in mid["text"].lower(),
+      f"mid-corner push in a slow corner: not the front bar the opposite way ({mid and mid['change']['text']})")
+keys = {}
+for i in ideas:
+    if i["change"]:
+        keys.setdefault(i["change"]["key"], set()).add(i["change"]["way"])
+check(all(len(w) == 1 for w in keys.values()), f"no two ideas move one setting opposite ways ({keys})")
 check(mid is not None and "Setup Lab" in mid["text"] and "Change only this" in mid["text"], "one change, then compare")
 ent = next((i for i in ideas if i["phase"] == "entry"), None)
 # his McLaren: no brake bias in the setup and the rear bar at 1 (its lowest), so the usual "rear bar softer" can't be
@@ -430,7 +438,15 @@ I10 = bl.setup_ideas({"findings": [F("exit", "rotate")]},
 check(I10 and "Traction control TC1 3 → 4" in I10[0]["text"] and "other way round" in I10[0]["text"],
       f"a traction control idea says the number may run the other way on this car ({I10 and I10[0]['text']})")
 fixed = bl.setup_ideas(rep, setup, series_setup="fixed")
-check(len(fixed) == 1 and "fixed setup" in fixed[0]["text"] and fixed[0]["change"] is None, "fixed series: no changes")
+check(fixed and all(i["change"] is None for i in fixed) and all("The setup is locked" in i["text"] for i in fixed),
+      "fixed series: no garage changes")
+# his McLaren has no brake bias dial: driving advice; with the dial (a dc channel), the way in uses it
+check(all(i["dial"] is None and i["driving"] for i in fixed), f"no dials: driving advice ({[i['text'] for i in fixed]})")
+fixd = bl.setup_ideas(rep, setup, series_setup="fixed", dials=["bias"])
+fe = next(i for i in fixd if i["phase"] == "entry")
+fm = next(i for i in fixd if i["phase"] == "mid")
+check(fe["dial"] and fe["dial"]["target"] == "bias" and "to the front on the in-car dial" in fe["text"]
+      and fm["dial"] is None and "adapt the driving" in fm["text"], f"brake bias dial for the way in, driving for the middle ({fe['text']})")
 s3 = json.loads(json.dumps(setup))
 s3["Chassis"]["FrontBrakes"]["ArbSetting"] = "1"
 mid3 = next(i for i in bl.setup_ideas(rep, s3) if i["phase"] == "mid")

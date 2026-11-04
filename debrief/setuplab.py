@@ -89,6 +89,35 @@ BOTTOM_LOSS = 0.05             # s: laps that touch must lose this much near tha
 HIST_BINS, HIST_MM = 80, 0.5   # stored low end of each ride-height trace (40 mm from 10 mm under the 0.5th pct)
 
 _NAME_TIME = re.compile(r"(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2})-(\d{2})\.ibt$", re.I)
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+HOT_RUN_LAPS = 3               # a stint's hot pressures count only when it has this many counted laps (a "run", as in
+#                                the tyre pressure table), so "Now" never shows a reading the table calls "not read"
+
+# Setups only fixed series race in iRacing's official series: Setup Lab doesn't ask "open or fixed?" for these (he can
+# still change it). Matched on the car's iRacing path (start) or screen name (anywhere), lower case.
+KNOWN_FIXED = (("mx5 mx52016", "global mazda mx-5 cup", "the Global Mazda MX-5 Cup"),
+               ("mx5 cup", "mazda mx-5 cup", "the Mazda MX-5 Cup"),
+               ("toyotagr86", "toyota gr86", "the Toyota GR86"))
+
+
+def lap_text(t) -> str:
+    """A lap time the way every Setup Lab table shows it: m:ss.sss ('1:00.343', '0:59.748')."""
+    try:
+        t = float(t)
+    except (TypeError, ValueError):
+        return "-"
+    if not np.isfinite(t):
+        return "-"
+    m = int(t // 60)
+    return f"{m}:{t - 60 * m:06.3f}"
+
+
+def day_text(when: str) -> str:
+    """'2026-10-20 18:00' -> 'Oct 20' (no locale: the window shows English month names)."""
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})", str(when or ""))
+    if not m or not 1 <= int(m.group(2)) <= 12:
+        return str(when or "")
+    return f"{_MONTHS[int(m.group(2)) - 1]} {int(m.group(3))}"
 
 
 # ================================================================ reading files
@@ -497,7 +526,16 @@ def group(records: list, run_gap_hours: float = 3.0) -> dict:
     for s in setups:
         if s["names"] and not s["name"]:
             s["name"] = s["names"][0]
-        if s["name"] and s["fingerprint"]:
+    # setups that share a file name ("lime.sto" saved over three times) are told apart by when they were first driven
+    named = [s for s in setups if s["name"] and s["fingerprint"]]
+    for s in named:
+        same = [o for o in named if o["name"] == s["name"]]
+        if len(same) > 1:
+            day = day_text(s["first"])
+            s["first_day"] = day if sum(day_text(o["first"]) == day for o in same) == 1 else (
+                f"{day}, {str(s['first'])[11:16]}" if len(str(s["first"])) >= 16 else day)
+            s["label"] = f"Setup {s['id']} ({s['name']}, first driven {s['first_day']})"
+        else:
             s["label"] = f"Setup {s['id']} ({s['name']})"
     runs = []
     for r in recs:
@@ -883,13 +921,13 @@ def _pair(a: dict, b: dict, ctx: dict | None = None) -> dict:
         out["verdict"] = "faster"
         out["faster"] = fast["id"]
         out["text"] = (f"{fast['label']} was faster than {slow['label']} by about {_fmt_s(abs(d))} s a lap "
-                       f"(typical clean lap {_names_lap(fast['pace']['median'])} vs {_names_lap(slow['pace']['median'])}, "
+                       f"(typical clean lap {lap_text(fast['pace']['median'])} vs {lap_text(slow['pace']['median'])}, "
                        f"{fast['pace']['clean_laps']} and {slow['pace']['clean_laps']} clean laps)."
                        + (" " + out["caution"] if out["caution"] else ""))
         return out
     out["verdict"] = "no clear difference"
     out["caution"] = None
-    gap = f"typical laps {_names_lap(pa['median'])} vs {_names_lap(pb['median'])}"   # 2.18: one lap-time format
+    gap = f"typical laps {lap_text(pa['median'])} vs {lap_text(pb['median'])}"
     if real:
         out["text"] = (f"{fast['label']} was about {_fmt_s(abs(d))} s a lap quicker than {slow['label']}: smaller than "
                        f"the {MIN_DIFF:.1f} s Debrief counts as a real difference.")
@@ -920,7 +958,10 @@ def compare(runs, setups: list | None = None) -> dict:
                         "faster", "diff_s" (a median - b median), "ci" [lo, hi], "ci_level" (90 | 95), "ci90"
                         (same as ci), "more_laps", "comparable", "confounders", "missing", "interleaved", "trend",
                         "drift_s", "caution", "text"}],
-             "verdict": plain sentences}. Pairs are consecutive setups (A vs B, B vs C)."""
+             "verdict": plain sentences, "headline": one short sentence for the top of the page (the pairs' own
+             texts follow it, so it never repeats them), "not_compared": [why a setup isn't compared with the others]}.
+    Pairs are consecutive setups first (A vs B, B vs C), then every other pair where both setups have enough laps
+    (A vs C), each judged by the same rules."""
     recs = list(runs)
     g = {"setups": setups} if setups is not None else group(recs)
     xmap = _lap_order(recs)
@@ -948,9 +989,23 @@ def compare(runs, setups: list | None = None) -> dict:
         a, b = rows[i], rows[i + 1]
         il = interleaved(a["id"], b["id"], recs, pace_files[a["id"]] | pace_files[b["id"]])
         pairs.append(_pair(a, b, {"interleaved": il}))
+    not_compared = []
+    for i in range(len(rows)):
+        for j in range(i + 2, len(rows)):
+            a, b = rows[i], rows[j]
+            if a["enough"] and b["enough"]:
+                il = interleaved(a["id"], b["id"], recs, pace_files[a["id"]] | pace_files[b["id"]])
+                pairs.append(_pair(a, b, {"interleaved": il}))
+    if len(rows) > 2:
+        for r in rows:
+            if not r["enough"]:
+                need = MIN_LAPS - r["pace"]["clean_laps"]
+                not_compared.append(f"{r['label']} isn't compared with the other setups yet: it needs {need} more "
+                                    f"clean lap{'s' if need != 1 else ''} ({MIN_LAPS} is the minimum).")
     for r in rows:
         for k in ("_x", "_stints", "_trend"):
             r.pop(k, None)
+    headline = None
     if not rows:
         verdict = "No laps with a setup recorded for this car and track yet."
     elif len(rows) == 1:
@@ -962,12 +1017,51 @@ def compare(runs, setups: list | None = None) -> dict:
         verdict = " ".join(p["text"] for p in pairs)
         if not decided:
             verdict = "Not enough to tell which setup is faster yet. " + verdict
-    return {"setups": rows, "pairs": pairs, "verdict": verdict.strip()}
+        lab = {r["id"]: r["label"] for r in rows}
+        wins = [p for p in pairs if p["verdict"] == "faster"]
+        if len(pairs) == 1:
+            headline = pairs[0]["text"] if decided else verdict
+        elif wins:
+            headline = ("; ".join(f"{lab[p['faster']]} was faster than {lab[p['b'] if p['faster'] == p['a'] else p['a']]}"
+                                  for p in wins) + ". Each comparison is below.")
+        elif decided:
+            headline = "No setup was clearly faster than another yet. Each comparison is below."
+        else:
+            headline = "Not enough to tell which setup is faster yet. Each comparison is below."
+    return {"setups": rows, "pairs": pairs, "verdict": verdict.strip(), "headline": (headline or verdict).strip(),
+            "not_compared": not_compared}
+
+
+def change_into(records: list, setup_id: str) -> dict | None:
+    """His change into setup `setup_id`: the settings that changed from the setup he drove just before he first used
+    it, and whether the laps showed that change made the car slower (Setup Lab's own verdict, nothing new).
+    Returns {"from", "to" ("Setup B"), "from_id", "to_id", "changes": diff() settings, "verdict", "slower"} or None."""
+    try:
+        recs = list(records)
+        g = group(recs)
+        by = {s["id"]: s for s in g["setups"] if s["fingerprint"]}
+        if setup_id not in by:
+            return None
+        order = [run["setup"] for run in g["runs"] if run["setup"] in by]
+        prev = next((a for a, b in zip(order, order[1:]) if b == setup_id and a != setup_id), None)
+        if prev is None:
+            return None
+        changes = [c for c in diff(by[prev]["setup"], by[setup_id]["setup"]) if c["kind"] == "setting"]
+        cmp_ = compare(recs, setups=g["setups"])
+        pair = next((p for p in cmp_["pairs"] if {p["a"], p["b"]} == {prev, setup_id}), None)
+        return {"from": f"Setup {prev}", "to": f"Setup {setup_id}", "from_id": prev, "to_id": setup_id,
+                "changes": changes, "verdict": pair["verdict"] if pair else None,
+                "slower": bool(pair and pair["verdict"] == "faster" and pair["faster"] == prev)}
+    except Exception:  # noqa: BLE001
+        return None
 
 
 # ================================================================ suggestions
 
 AFTER = " Then compare again."
+FIXED_TEXT = ("Fixed setup series: the setup is locked, tyre pressures included, so there are no garage changes to "
+              "try. What is still yours is the fuel you carry and the in-car dials, such as brake bias, traction "
+              "control and ABS, on cars that have them.")
 TEMP_CAVEAT = ("Lap time beats temperature rules: pressures that look wrong on the temperatures often work in iRacing, "
                "so keep a change only if the laps are as fast or faster.")
 
@@ -989,10 +1083,32 @@ def series_setup_from_files(recs: list) -> tuple[str, str]:
         det = r.get("detail") or {}
         if det.get("fixed_setup") is not None and det.get("official"):
             kind = "fixed" if det["fixed_setup"] else "open"
-            return kind, f"the telemetry says the official session on {r.get('when') or r['file']} was {kind} setup"
+            return kind, f"the telemetry (the official session on {r.get('when') or r['file']} was {kind} setup)"
     if any((r.get("detail") or {}).get("fixed_setup") is not None for r in rs):
         return "unknown", "only test or unofficial sessions so far, which don't say what the series uses"
     return "unknown", ""
+
+
+def known_fixed(car_path, car_name=None) -> str:
+    """Where Debrief knows a car only races fixed setups in iRacing's official series: the source words, else ''."""
+    path, name = str(car_path or "").lower().strip(), str(car_name or "").lower()
+    for p, n, words in KNOWN_FIXED:
+        if path.startswith(p) or (n and n in name):
+            return f"Debrief's list of fixed-setup cars ({words} races fixed setups in iRacing's official series)"
+    return ""
+
+
+def series_setup_guess(recs: list, car_path, car_name=None) -> tuple[str, str]:
+    """What Setup Lab can tell without his choice or the schedule: the telemetry first, then the cars known to race
+    fixed setups only. Returns ("open" | "fixed" | "unknown", source text)."""
+    kind, source = series_setup_from_files(recs)
+    if kind != "unknown":
+        return kind, source
+    car_name = car_name or next(((r.get("car") or {}).get("name") for r in reversed(recs) if (r.get("car") or {}).get("name")), "")
+    known = known_fixed(car_path, car_name)
+    if known:
+        return "fixed", known
+    return kind, source
 
 
 def _setting_value(setup: dict, corner_key: str, leaf: str):
@@ -1163,13 +1279,22 @@ def _pressure_temp_items(readings: list, setup: dict) -> list:
     return out
 
 
-def _hot_laps(recs: list) -> list:
-    """(file, row) for clean laps 3+ of a stint that have a hot-pressure sample."""
+def _hot_laps(recs: list, runs_only: bool = False) -> list:
+    """(file, row) for clean laps 3+ of a stint that have a hot-pressure sample. runs_only: only stints with at least
+    HOT_RUN_LAPS counted laps (the runs the tyre pressure table shows), so the two never disagree."""
+    ok_stints = None
+    if runs_only:
+        keep, _d = pace_laps(recs)
+        n = {}
+        for f, x in keep:
+            n[(f, x.get("stint"))] = n.get((f, x.get("stint")), 0) + 1
+        ok_stints = {k for k, v in n.items() if v >= HOT_RUN_LAPS}
     out = []
     for r in recs:
         for x in ((r.get("detail") or {}).get("laps") or []):
             if x.get("clean") and x.get("press") and (x.get("pos") or 0) >= HOT_POS:
-                out.append((r["file"], x))
+                if ok_stints is None or (r["file"], x.get("stint")) in ok_stints:
+                    out.append((r["file"], x))
     return out
 
 
@@ -1216,7 +1341,7 @@ def _cold_step(hot_gap: float, cold: float, hot: float) -> int:
 
 
 def _hot_pressure_items(recs: list, setup: dict, car_path: str, targets: dict | None, history: list) -> list:
-    laps = _hot_laps(recs)
+    laps = _hot_laps(recs, runs_only=True)
     if not laps:
         return []
     med = {}
@@ -1410,7 +1535,7 @@ def _fuel_items(recs: list, setup: dict, race_minutes=None, race_laps=None) -> l
         n = int(race_laps) if race_laps else int(np.ceil(race_minutes * 60 / lap_s)) + 1
         need = (n + 1) * per
         length = (f"{int(race_laps)} laps" if race_laps else
-                  f"a {race_minutes:.0f}-minute race at about {lap_s:.1f} s a lap is about {n} laps")
+                  f"a {race_minutes:.0f}-minute race at about {lap_text(lap_s)} a lap is about {n} laps")
         why += f" {_cap(length)}; that needs about {need:.0f} L with one lap spare."
         if setup_fuel is not None:
             why += f" The setup carries {setup_fuel:.1f} L."
@@ -1458,10 +1583,9 @@ def suggestions(run_or_files, car: str = "", series_setup=None, race_minutes=Non
     if kind == "fixed":
         out["items"].append({"rule": "fixed_series", "kind": "note", "setting": None, "direction": None,
                              "confidence": "reading", "data": "series setting", "check": "",
-                             "why": "Fixed setup series.",
-                             "text": "Fixed setup series: the setup is locked, so there are no setup changes to try. "
-                                     "Only what the series lets you change is yours (usually tyre pressures where "
-                                     "allowed, the in-car dials such as brake bias, ABS and traction control, and fuel)."})
+                             "why": "Fixed setup series.", "text": FIXED_TEXT})
+        # the setup (tyre pressures too) is locked, but the fuel he carries is still his
+        out["items"] += _fuel_items(recs, recs[-1].get("setup") or {}, race_minutes, race_laps) if recs else []
         return out
     if not recs:
         out["notes"].append("No telemetry files for this setup.")
@@ -1675,7 +1799,7 @@ def report(folder, car_path, track_code, series_setup=None, cache_path=None, rac
     kind = series_setup_kind(series_setup)
     source = "series setting" if kind != "unknown" else ""
     if kind == "unknown":
-        kind, source = series_setup_from_files(recs)
+        kind, source = series_setup_guess(recs, car_path)
     out = {"car_path": car_path, "track_code": track_code, "car": "", "track": "", "series_setup": kind,
            "series_setup_source": source,
            "files": len(recs), "setups": [], "runs": [], "diffs": [], "compare": None, "suggestions": None,

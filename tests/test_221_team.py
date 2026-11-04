@@ -351,6 +351,48 @@ def test_every_combo_listed_lazy_load_and_no_silent_cap():
     assert "coverage" in html and "who_note" in html
 
 
+class DiscApi(Api):
+    """laps_page with no track: answers with laps at many tracks, or refuses."""
+    def __init__(self, *a, mode="ok", **k):
+        super().__init__(*a, **k)
+        self.mode, self.pages = mode, []
+
+    def laps_page(self, **kw):
+        self.pages.append(kw)
+        assert "tracks" not in kw and "cars" not in kw
+        if self.mode == "400":
+            from debrief.g61 import Garage61Error
+            raise Garage61Error("track is required", status=400)
+        out = []
+        for i, who in ((7, ("josh", "Josh Spence")), (8, ("kenta", "Kenta Young")), (9, ("swazi", "Swazi Williams"))):
+            l = lap(who[0], who[1], 140.0 + i)
+            l["track"] = {"id": i, "name": f"Far Track {i}"}
+            l["car"] = {"id": 2, "name": CAR}
+            out.append(l)
+        return out, len(out)
+
+
+def test_discovery_merges_and_falls_back():
+    cfg = {"team_name": "Midfield Menace", "team_slug": "overdriver-academy", "team_members": list(brand.MEMBERS)}
+    team.library_combos = lambda f: combos((TRACK, 1))
+    logs = []
+    api = DiscApi(_laps_for(9))
+    d = team.build(api, Path(tempfile.mkdtemp()), "overdriver-academy", log=logs.append, cfg=cfg)
+    tr = {c["track"] for c in d["combos"]}
+    assert {"Far Track 7", "Far Track 8", "Far Track 9", TRACK} <= tr, tr           # tracks he never drove
+    assert len(api.pages) == 1 and api.pages[0]["teams"] == ["overdriver-academy"]   # ONE request, no track
+    assert d["discovery"] == "Found 3 tracks where the team has laps on Garage 61.", d["discovery"]
+    assert any("Discovery: Josh Spence: 1 laps, 1 track and car combinations" in l for l in logs), logs
+    assert any("Discovery: Kenta Young: 1 laps" in l for l in logs) and any("Discovery: Swazi Williams: 1 laps" in l for l in logs)
+    far = next(c for c in d["combos"] if c["track"] == "Far Track 7")
+    assert far["who_note"].startswith("Josh") and "you haven't driven this" in far["who_note"] or far["loaded"], far
+    # a 400 falls back and never fails the refresh
+    logs = []
+    d = team.build(DiscApi(_laps_for(9), mode="400"), Path(tempfile.mkdtemp()), "overdriver-academy", log=logs.append, cfg=cfg)
+    assert any(l.startswith("  Garage 61 needs a track for team lap search: 400 track is required") for l in logs), logs
+    assert d["discovery"].startswith("Garage 61 couldn't list the team's tracks") and d["combos"][0]["board"]
+
+
 def test_settings_names():
     from debrief.desktop import settings_io
     assert "team_name" in settings_io.public_view() and settings_io.public_view()["team_members"] == list(brand.MEMBERS)

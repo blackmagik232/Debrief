@@ -530,6 +530,60 @@ def stored_combos(folder, cars=None) -> list[dict]:
     return out
 
 
+def discover_combos(api, slug, members, my_slug="", my_name="", log=print):
+    """ONE request for the group's laps with no track or car (2.21 self-test: Garage 61's docs aren't checked from
+    here). Returns ([combos with "who", source "garage61"], status line). Never raises: a refusal or an empty answer is
+    logged exactly and the caller falls back to stored_combos. Cached 10 minutes like find_laps."""
+    fetch = getattr(api, "laps_page", None)
+    if not callable(fetch):
+        return [], "Garage 61 couldn't list the team's tracks; showing tracks Debrief already knows."
+    params = dict(teams=[slug], group="none", limit=1000, age=-2)
+
+    def go():
+        return list(fetch(**params)[0])
+    try:
+        cached = getattr(api, "_cached", None)
+        items = cached("discover?" + json.dumps(params, sort_keys=True), go, max_age_s=600) if callable(cached) else go()
+    except Exception as e:  # noqa: BLE001
+        body = str(e).replace("\n", " ")[:120]
+        log(f"  Garage 61 needs a track for team lap search: {getattr(e, 'status', None) or type(e).__name__} {body}")
+        return [], "Garage 61 couldn't list the team's tracks; showing tracks Debrief already knows."
+    items = [l for l in items or [] if isinstance(l, dict)]
+    if not items:
+        log("  Garage 61 needs a track for team lap search: 200 (no laps came back)")
+        return [], "Garage 61 couldn't list the team's tracks; showing tracks Debrief already knows."
+    found, per = {}, {}
+    names = {}
+    for l in items:
+        d = driver_of(l)
+        tr, car = g(l, "track"), g(l, "car")
+        if not (isinstance(tr, dict) and isinstance(car, dict) and g(tr, "name") and g(car, "name")):
+            continue
+        v = g(tr, "variant")
+        tname = g(tr, "name") + (f" ({v})" if v else "")
+        is_me = bool(my_slug) and d["slug"] == my_slug
+        who = my_name if is_me else d["name"]
+        names[d["slug"]] = who
+        k = _ckey(tname, g(car, "name"))
+        c = found.setdefault(k, {"track": tname, "car": g(car, "name"), "track_id": g(tr, "id"), "car_id": g(car, "id"),
+                                 "races": 0, "best": None, "best_date": None, "last": "", "who": set(), "source": "garage61"})
+        c["last"] = max(c["last"], str(lap_day(l) or ""))
+        if not is_me:
+            c["who"].add(who)
+        p = per.setdefault(d["slug"], [0, set()])
+        p[0] += 1
+        p[1].add(k)
+    for m in members or []:
+        sl = next((sl for sl, n in names.items() if norm_name(n) == norm_name(m) or norm_name(sl) == norm_name(m)), None)
+        laps_n, combos_n = (per[sl][0], len(per[sl][1])) if sl else (0, 0)
+        log(f"  Discovery: {m}: {laps_n} laps, {combos_n} track and car combinations")
+    out = []
+    for c in found.values():
+        c["who"] = sorted(c["who"])
+        out.append(c)
+    return out, f"Found {len(out)} tracks where the team has laps on Garage 61."
+
+
 def merge_combos(*lists) -> list[dict]:
     """One row per track and car. Your own combos come first in each list's order; the rest follow, newest first.
     A row keeps every source's driver names ("who")."""
@@ -691,7 +745,9 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
                          "and it will use your own tracks and cars.")
         else:
             log("No reviews in your library yet.")
-    allc = merge_combos(mine, stored_combos(folder))
+    found, disc_note = ([], "Garage 61 couldn't list the team's tracks; showing tracks Debrief already knows.") \
+        if ctx["not_member"] else discover_combos(api, ctx["team_slug"], ctx["members"], ctx["my_slug"], ctx["my_name"], log)
+    allc = merge_combos(mine, found, stored_combos(folder))
     notes.append(COVERAGE_NOTE)
     prev = {}
     try:
@@ -712,6 +768,7 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
         else:
             out_combos.append(_unloaded_entry(c, ctx["members"]))
     data = _assemble(ctx, out_combos, api, start_req, folder, notes, cfg, log)
+    data["discovery"] = disc_note
     log(f"Team hub ready. Garage 61 requests used: {data['requests']}.")
     return data
 

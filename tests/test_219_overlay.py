@@ -565,7 +565,8 @@ import re  # noqa: E402
 src = (ROOT / "debrief" / "overlay.py").read_text(encoding="utf-8")
 top = src.split("\nclass ", 1)[0]
 check(not re.search(r"^(import|from) (tkinter|ctypes)", src, re.M), "tkinter and ctypes are never imported at module level")
-check("windll" not in top.split("class Win32")[0], "windll only inside Win32")
+code = src.split("from __future__ import annotations", 1)[1]
+check("windll" not in code.split("class Win32")[0], "windll only inside Win32")
 
 print(f"\n{'FAILED ' + str(fails) if fails else 'ALL OK'}")
 sys.exit(1 if fails else 0)

@@ -228,5 +228,35 @@ check("newest 20 of 25 files" in n2, n2)
 n3 = cs.balance_laps_note(15, 17, "Setup C", 2, 2)
 check("7% off your typical lap" in n3, n3)
 
+# ---------------------------------------------------------------- many setups: no more false "faster" than with two
+import numpy as _np  # noqa: E402
+
+
+def _sim_row(i, rng, shift):
+    t = [float(x) for x in 90 + shift + rng.normal(0, .3, 12)]
+    p = {"median": float(_np.median(t)), "times": t, "surface_temp": 30, "fuel": 20, "track_state": "dry",
+         "clean_laps": len(t)}
+    return {"id": str(i), "label": "S%d" % i, "pace": p, "missing": [], "_stints": None}
+
+
+def _sim_any(k, runs, shifts=None, corrected=True, seed=7):
+    rng = _np.random.default_rng(seed)
+    hits = 0
+    for _ in range(runs):
+        rows = [_sim_row(i, rng, (shifts or [0] * k)[i]) for i in range(k)]
+        m = k * (k - 1) // 2 if corrected else 1
+        hits += any(sl._pair(rows[i], rows[j], {"interleaved": True, "m": m})["verdict"] == "faster"
+                    for i in range(k) for j in range(i + 1, k))
+    return hits / runs
+
+
+for _k in (2, 3, 4):
+    _r = _sim_any(_k, 300)
+    check(_r <= 0.10, f"{_k} setups, no real difference: a false 'faster' in {_r:.0%} of 300 runs (<= 10%)")
+_before = _sim_any(4, 300, corrected=False)
+check(_before > 0.15, f"without the correction 4 setups would claim falsely in {_before:.0%} (the bug)")
+_real = _sim_any(2, 200, shifts=[0, -0.4])
+check(_real >= 0.7, f"a real 0.4 s difference is still found in {_real:.0%} of runs")
+
 print("FAILED" if fails else "ALL OK", fails)
 sys.exit(1 if fails else 0)

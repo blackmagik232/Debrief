@@ -771,13 +771,15 @@ def _fmt_s(x: float) -> str:
     return f"{x:.1f}" if x >= 0.095 else f"{x:.2f}"
 
 
-def _boot_ci(ta: list, tb: list, sa: list | None = None, sb: list | None = None) -> tuple[float, float, int, str]:
+def _boot_ci(ta: list, tb: list, sa: list | None = None, sb: list | None = None, m: int = 1) -> tuple[float, float, float, str]:
     """Bootstrap interval of median(a) - median(b) (fixed seed, so the same laps always give the same answer).
 
     sa / sb: the same laps grouped by stint. When each setup has at least BLOCK_STINTS stints, whole stints are
     resampled (a block bootstrap: laps in one stint share its fuel, tyres and rubber, so they are not independent)
     and the interval is 90%. Otherwise laps are resampled, and with fewer than SMALL_N laps on either setup the
-    interval is widened to 95%. Returns (lo, hi, level %, "stints" | "laps")."""
+    interval is widened to 95%. With m > 1 pairs compared for the same car and track the miss chance is split
+    across them (Bonferroni: 10% / m, or 5% / m), so the chance of any false "faster" stays near the 2-setup level.
+    Returns (lo, hi, level %, "stints" | "laps")."""
     rng = np.random.default_rng(BOOT_SEED)
     if sa and sb and len(sa) >= BLOCK_STINTS and len(sb) >= BLOCK_STINTS:
         def meds(stints):
@@ -790,6 +792,8 @@ def _boot_ci(ta: list, tb: list, sa: list | None = None, sb: list | None = None)
         ma = np.median(a[rng.integers(0, len(a), (BOOT_N, len(a)))], axis=1)
         mb = np.median(b[rng.integers(0, len(b), (BOOT_N, len(b)))], axis=1)
         level, how = (95 if min(len(a), len(b)) < SMALL_N else 90), "laps"
+    if m > 1:
+        level = round(100 - (100 - level) / m, 2)
     tail = (100 - level) / 2
     lo, hi = np.percentile(ma - mb, [tail, 100 - tail])
     return float(lo), float(hi), level, how
@@ -887,7 +891,7 @@ def _pair(a: dict, b: dict, ctx: dict | None = None) -> dict:
                        + ". The lap times are shown but not adjusted. Drive both in similar conditions.")
         return out
     d = out["diff_s"]
-    lo, hi, level, how = _boot_ci(pa["times"], pb["times"], a.get("_stints"), b.get("_stints"))
+    lo, hi, level, how = _boot_ci(pa["times"], pb["times"], a.get("_stints"), b.get("_stints"), int(ctx.get("m") or 1))
     out["ci"], out["ci_level"], out["ci_method"] = [round(lo, 3), round(hi, 3)], level, how
     out["ci90"] = out["ci"]                    # kept for older readers: the interval used, at ci_level %
     # driving order: was one setup simply driven later, while he was getting quicker?
@@ -984,18 +988,15 @@ def compare(runs, setups: list | None = None) -> dict:
         rows.append({"id": s["id"], "label": s["label"], "pace": p, "enough": not miss, "missing": miss,
                      "_x": [xmap[(f, x["lap"])] for f, x in keep if (f, x["lap"]) in xmap],
                      "_stints": [[x["time"] for x in xs] for xs in by_stint.values()], "_trend": trend})
+    todo = [(i, i + 1) for i in range(len(rows) - 1)]
+    todo += [(i, j) for i in range(len(rows)) for j in range(i + 2, len(rows)) if rows[i]["enough"] and rows[j]["enough"]]
+    m = len(todo)                       # every pair judged here: the correction for many looks at the same laps
     pairs = []
-    for i in range(len(rows) - 1):
-        a, b = rows[i], rows[i + 1]
+    for i, j in todo:
+        a, b = rows[i], rows[j]
         il = interleaved(a["id"], b["id"], recs, pace_files[a["id"]] | pace_files[b["id"]])
-        pairs.append(_pair(a, b, {"interleaved": il}))
+        pairs.append(_pair(a, b, {"interleaved": il, "m": m}))
     not_compared = []
-    for i in range(len(rows)):
-        for j in range(i + 2, len(rows)):
-            a, b = rows[i], rows[j]
-            if a["enough"] and b["enough"]:
-                il = interleaved(a["id"], b["id"], recs, pace_files[a["id"]] | pace_files[b["id"]])
-                pairs.append(_pair(a, b, {"interleaved": il}))
     if len(rows) > 2:
         for r in rows:
             if not r["enough"]:

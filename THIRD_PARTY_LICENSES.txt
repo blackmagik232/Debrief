@@ -1419,7 +1419,7 @@ of Debrief; only the generated sound clips are.
 
 ==============================================================================
 Crew Chief
-Licence: MIT (ideas only)
+Licence: not needed (ideas only, no code used)
 ==============================================================================
 
 Crew Chief by Jim Britton and the Crew Chief contributors, https://gitlab.com/mr_belowski/CrewChiefV4.

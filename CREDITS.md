@@ -35,7 +35,7 @@ Every third-party part Debrief uses or ships, who made it, its licence and where
 
 | Name | Author | Licence | Link | What for |
 |---|---|---|---|---|
-| Crew Chief | Jim Britton and the Crew Chief contributors | MIT | <https://gitlab.com/mr_belowski/CrewChiefV4> | Ideas for how a spoken coach should behave in the car. Ideas only: no code or sounds were taken from it. |
+| Crew Chief | Jim Britton and the Crew Chief contributors | Not needed: ideas only, no code used | <https://gitlab.com/mr_belowski/CrewChiefV4> | Ideas for how a spoken coach should behave in the car. Ideas only: no code or sounds were taken from it. |
 
 ## Used if already installed
 

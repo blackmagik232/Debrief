@@ -69,7 +69,7 @@ CREDITS = [
      "Michael: am_michael; Fenrir: am_fenrir; Heart: af_heart) were generated with it once and ship as sound "
      "clips. Kokoro itself is not part of Debrief.", "kind": "voices"},
     # ---------------------------------------------------------------- ideas only
-    {"name": "Crew Chief", "author": "Jim Britton and the Crew Chief contributors", "licence": "MIT",
+    {"name": "Crew Chief", "author": "Jim Britton and the Crew Chief contributors", "licence": "Not needed: ideas only, no code used",
      "link": "https://gitlab.com/mr_belowski/CrewChiefV4", "use": "Ideas for how a spoken coach should behave in "
      "the car. Ideas only: no code or sounds were taken from it.", "kind": "ideas"},
     # ---------------------------------------------------------------- used only if already installed

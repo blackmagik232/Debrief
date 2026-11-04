@@ -15,7 +15,7 @@
     <img src="static/icon.png" alt="" width="34" height="34">
     <div><div class="name">Debrief</div><div class="eyebrow" id="brandMaker">by Black Magik Studios</div></div>
   </div>
-  <button id="btnReview" class="btn primary big" type="button" title="Review last race (Ctrl+R)" aria-keyshortcuts="Control+R">
+  <button id="btnReview" class="btn primary big" type="button" title="Review last race (Ctrl+Enter)" aria-keyshortcuts="Control+Enter">
     <span class="lbl">Review last race</span>
     <span class="minibar" aria-hidden="true"><i></i></span>
   </button>
@@ -24,25 +24,35 @@
     <span class="minibar" aria-hidden="true"><i id="syncBar"></i></span>
   </button>
   <button type="button" id="updStrip" class="updstrip" hidden><b id="updText">Update available</b><span>Update now</span></button>
-  <nav class="nav">
-    <button type="button" class="navbtn" data-nav="library" title="Progress (Ctrl+1)" aria-keyshortcuts="Control+1">Progress</button>
-    <button type="button" class="navbtn" data-nav="season" title="Season (Ctrl+2)" aria-keyshortcuts="Control+2">Season</button>
-    <button type="button" class="navbtn" data-nav="skills" title="Skills (Ctrl+3)" aria-keyshortcuts="Control+3">Skills</button>
-    <button type="button" class="navbtn" data-nav="goals" title="Goals (Ctrl+4)" aria-keyshortcuts="Control+4">Goals</button>
-    <button type="button" class="navbtn" data-nav="sessions" title="Every session Garage 61 has for you (Ctrl+5)" aria-keyshortcuts="Control+5">All sessions</button>
-    <button type="button" class="navbtn" data-nav="practice" title="Practice: every time you drove, from iRacing's telemetry files on this PC (Ctrl+0)" aria-keyshortcuts="Control+0">Practice</button>
-    <button type="button" class="navbtn" data-nav="racing" title="Racing: your starts and incidents across your races">Racing</button>
-    <button type="button" class="navbtn" data-nav="cars" title="Car vs car: which car of a class is quicker at a track">Car vs car</button>
-    <button type="button" class="navbtn" data-nav="prep" title="Prepare (Ctrl+6)" aria-keyshortcuts="Control+6">Prepare</button>
-    <button type="button" class="navbtn" data-nav="team" title="Team (Ctrl+7)" aria-keyshortcuts="Control+7">Team</button>
-    <button type="button" class="navbtn" data-nav="setuplab" title="Setup Lab: your setups from iRacing's telemetry files (Ctrl+8)" aria-keyshortcuts="Control+8">Setup Lab</button>
-    <button type="button" class="navbtn" data-nav="coach" title="Coach: spoken cues while you drive (Ctrl+9)" aria-keyshortcuts="Control+9">Coach</button>
-    <button type="button" class="navbtn" data-nav="settings" title="Settings (Ctrl+,)" aria-keyshortcuts="Control+Comma">Settings</button>
-    <button type="button" class="navbtn" id="btnHelp">Help</button>
+  <div class="sidescroll" id="sideScroll">
+  <nav class="nav" aria-label="Pages">
+    <button type="button" class="navbtn" data-nav="today" title="Today: your one thing right now, your last race and practice (Ctrl+1)" aria-keyshortcuts="Control+1">Today</button>
+    <span class="navgroup" aria-hidden="true">Before you drive</span>
+    <button type="button" class="navbtn" data-nav="prep" title="Prepare: this week's race (Ctrl+2)" aria-keyshortcuts="Control+2">Prepare</button>
+    <button type="button" class="navbtn" data-nav="coach" title="Coach: spoken cues while you drive (Ctrl+3)" aria-keyshortcuts="Control+3">Coach</button>
+    <span class="navgroup" aria-hidden="true">After you drive</span>
+    <button type="button" class="navbtn" data-nav="sessions" title="All sessions: every session Garage 61 has for you (Ctrl+4)" aria-keyshortcuts="Control+4">All sessions</button>
+    <button type="button" class="navbtn" data-nav="practice" title="Practice: every time you drove, from iRacing's telemetry files on this PC (Ctrl+5)" aria-keyshortcuts="Control+5">Practice</button>
+    <button type="button" class="navbtn" data-nav="racing" title="Racing: your starts and incidents across your races (Ctrl+6)" aria-keyshortcuts="Control+6">Racing</button>
+    <span class="navgroup" aria-hidden="true">Car</span>
+    <button type="button" class="navbtn" data-nav="setuplab" title="Setup Lab: your setups from iRacing's telemetry files (Ctrl+7)" aria-keyshortcuts="Control+7">Setup Lab</button>
+    <button type="button" class="navbtn" data-nav="cars" title="Car vs car: which car of a class is quicker at a track (Ctrl+8)" aria-keyshortcuts="Control+8">Car vs car</button>
+    <span class="navgroup" aria-hidden="true">Over time</span>
+    <button type="button" class="navbtn" data-nav="library" title="Progress: am I getting faster? (Ctrl+9)" aria-keyshortcuts="Control+9">Progress</button>
+    <button type="button" class="navbtn sub" data-nav="season" title="Season: this season's races">Season</button>
+    <button type="button" class="navbtn sub" data-nav="skills" title="Skills: your driver profile">Skills</button>
+    <button type="button" class="navbtn sub" data-nav="goals" title="Goals: target lap times">Goals</button>
+    <span class="navgroup" aria-hidden="true">Team</span>
+    <button type="button" class="navbtn" data-nav="team" title="Team (Ctrl+0)" aria-keyshortcuts="Control+0">Team</button>
   </nav>
   <div class="revhead"><span class="eyebrow">Saved reviews</span><span class="eyebrow" id="revcount"></span></div>
   <nav id="revlist" class="revlist" aria-label="Saved reviews"></nav>
+  </div>
   <div class="sidefoot">
+    <div class="footnav">
+      <button type="button" class="navbtn" data-nav="settings" title="Settings (Ctrl+,)" aria-keyshortcuts="Control+Comma">Settings</button>
+      <button type="button" class="navbtn" id="btnHelp" title="Help and the keyboard keys (F1 or ?)" aria-keyshortcuts="F1">Help</button>
+    </div>
     <div class="seg" role="radiogroup" aria-label="Theme">
       <button type="button" role="radio" data-theme-set="auto">Auto</button>
       <button type="button" role="radio" data-theme-set="light">Light</button>
@@ -86,13 +96,51 @@
     <iframe id="frame" title="Review" sandbox="allow-scripts allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads"></iframe>
   </section>
 
+  <section id="vToday" class="view pad" hidden>
+    <div class="col todaycol">
+      <span class="eyebrow" id="tdEyebrow">Debrief</span>
+      <h1>Today</h1>
+      <p class="lede" id="tdLede">Your one thing to work on, your last race and your last practice.</p>
+      <div class="frline" id="tdSetupLine" hidden></div>
+      <div class="panel onething tdone" id="tdOne" aria-live="polite">
+        <div class="phead"><h3>Your #1 thing right now</h3><span class="pill" id="tdSure" hidden></span></div>
+        <p class="note ptwhere" id="tdWhere"></p>
+        <p class="ptmain" id="tdTitle">Loading...</p>
+        <div id="tdLines"></div>
+        <p class="note" id="tdWhy"></p>
+        <div class="row" id="tdActs"></div>
+      </div>
+      <div class="tdgrid">
+        <div class="panel tdcard" id="tdRace">
+          <div class="phead"><h3>Last race</h3><span class="note" id="tdRaceWhen"></span></div>
+          <div id="tdRaceBody"></div>
+        </div>
+        <div class="panel tdcard" id="tdPrac">
+          <div class="phead"><h3>Last practice</h3><span class="note" id="tdPracWhen"></span></div>
+          <div id="tdPracBody"></div>
+        </div>
+      </div>
+      <div id="tdSetupHost"></div>
+      <nav class="tdlinks" aria-label="More pages"><span class="eyebrow">More</span>
+        <button type="button" class="linkbtn" data-nav="prep">Prepare this week</button>
+        <button type="button" class="linkbtn" data-nav="coach">Coach</button>
+        <button type="button" class="linkbtn" data-nav="practice">Practice</button>
+        <button type="button" class="linkbtn" data-nav="racing">Racing</button>
+        <button type="button" class="linkbtn" data-nav="library">Progress</button>
+        <button type="button" class="linkbtn" data-nav="setuplab">Setup Lab</button>
+        <button type="button" class="linkbtn" data-nav="cars">Car vs car</button>
+        <button type="button" class="linkbtn" data-nav="team">Team</button>
+      </nav>
+    </div>
+  </section>
+
   <section id="vWelcome" class="view pad" hidden>
     <div class="col">
       <span class="eyebrow">Debrief</span>
       <h1 id="welcomeTitle">Welcome.</h1>
       <p class="lede" id="welcomeText">No reviews yet. When your race has uploaded to Garage 61, click Review last race.</p>
       <div class="row" id="welcomeActions">
-        <button type="button" class="btn primary" data-act="review" title="Review last race (Ctrl+R)">Review last race</button>
+        <button type="button" class="btn primary" data-act="review" title="Review last race (Ctrl+Enter)">Review last race</button>
         <button type="button" class="btn" data-nav="settings" title="Settings (Ctrl+,)">Settings</button>
       </div>
 

@@ -307,9 +307,13 @@ def test_sidebar_owns_navigation_keys_and_loading_bar():
     ctx, pg, errs = r
     try:
         pg.goto(srv().url)
-        pg.wait_for_function("() => !document.getElementById('vFrame').hidden")
+        # 2.18: Debrief opens on Today; the sidebar is grouped, Settings and Help sit at its foot
+        pg.wait_for_function("() => !document.getElementById('vToday').hidden")
         names = pg.evaluate("() => [...document.querySelectorAll('.nav .navbtn')].map(b => b.textContent.trim())")
-        assert names == ["Progress", "Season", "Skills", "Goals", "All sessions", "Practice", "Racing", "Car vs car", "Prepare", "Team", "Setup Lab", "Coach", "Settings", "Help"], names
+        assert names == ["Today", "Prepare", "Coach", "All sessions", "Practice", "Racing", "Setup Lab", "Car vs car", "Progress", "Season", "Skills", "Goals", "Team"], names
+        assert pg.evaluate("() => [...document.querySelectorAll('.sidefoot .navbtn')].map(b => b.textContent.trim())") == ["Settings", "Help"]
+        wait_nav(pg, "today")
+        pg.click(".navbtn[data-nav=library]")
         wait_nav(pg, "library")
         # the page's own tabs are gone inside the window...
         fr = frame_of(pg)
@@ -327,21 +331,22 @@ def test_sidebar_owns_navigation_keys_and_loading_bar():
         wait_nav(pg, "season")
         assert fr.evaluate("() => window.__same") == 1, "switching tabs reloaded the page"
         # Ctrl+number, from the window and from inside the page
-        for key, nav, sel in (("1", "library", None), ("2", "season", None), ("3", "skills", None), ("4", "goals", "#vGoals"),
-                              ("5", "sessions", "#vSessions"), ("6", "prep", "#vPrep"), ("7", "team", None),
-                              ("8", "setuplab", "#vSetupLab"), ("9", "coach", "#vCoach")):
+        # 2.18: in the sidebar's order (Season, Skills and Goals sit under Progress, without keys)
+        for key, nav, sel in (("1", "today", "#vToday"), ("2", "prep", "#vPrep"), ("3", "coach", "#vCoach"),
+                              ("4", "sessions", "#vSessions"), ("5", "practice", "#vPractice"), ("6", "racing", "#vRacing"),
+                              ("7", "setuplab", "#vSetupLab"), ("8", "cars", "#vCars"), ("9", "library", None), ("0", "team", None)):
             pg.keyboard.press("Control+" + key)
             wait_nav(pg, nav)
             if sel:
                 pg.wait_for_selector(sel, state="visible")
-        pg.keyboard.press("Control+1")
+        pg.keyboard.press("Control+9")
         wait_nav(pg, "library")
         pg.wait_for_function("() => !document.getElementById('vFrame').hidden")
         frame_of(pg).locator("body").click(position={"x": 5, "y": 5})
         pg.keyboard.press("Control+2")
-        wait_nav(pg, "season")
+        wait_nav(pg, "prep")
         # the goal charts: reached from Goals, hidden tab or not
-        pg.keyboard.press("Control+4")
+        pg.click(".navbtn[data-nav=goals]")
         pg.wait_for_selector("#btnGoalCharts", state="visible")
         pg.click("#btnGoalCharts")
         frame_of(pg).wait_for_function("() => { const t = document.getElementById('tab-goals'); return t && !t.hidden }")
@@ -381,7 +386,7 @@ def test_sidebar_owns_navigation_keys_and_loading_bar():
         keys = pg.text_content("#helpBody")
         assert "Ctrl+1 to Ctrl+9" in keys and "J:" in keys and "K:" in keys
         pg.click("#helpClose")
-        pg.keyboard.press("Control+4")
+        pg.click(".navbtn[data-nav=goals]")
         pg.wait_for_selector("#goalNote", state="visible")
         pg.fill("#goalNote", "")
         pg.focus("#goalNote")
@@ -401,6 +406,8 @@ def test_dot_pill_and_themes():
     try:
         pg.goto(srv().url)
         pg.wait_for_function("() => !document.getElementById('syncStrip').hidden")
+        pg.click(".navbtn[data-nav=library]")       # 2.18: Debrief opens on Today; the frame page is Progress
+        pg.wait_for_function("() => !document.getElementById('vFrame').hidden")
         col = "(s) => getComputedStyle(document.querySelector(s)).backgroundColor"
         var = "(n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()"
         dot = pg.evaluate("() => { const e = document.querySelector('#syncStrip'); e.classList.remove('warn','busy'); return getComputedStyle(e.querySelector('.dot')).backgroundColor }")
@@ -432,7 +439,7 @@ def test_resizing_the_window_saves_its_size():
         posted = []
         pg.on("request", lambda q: posted.append(json.loads(q.post_data)) if q.url.endswith("api/window") else None)
         pg.goto(srv().url)
-        pg.wait_for_function("() => !document.getElementById('vFrame').hidden || !document.getElementById('vWelcome').hidden")
+        pg.wait_for_function("() => !document.getElementById('vFrame').hidden || !document.getElementById('vWelcome').hidden || !document.getElementById('vToday').hidden")
         pg.set_viewport_size({"width": 1100, "height": 720})
         deadline = time.time() + 8
         while not posted and time.time() < deadline:

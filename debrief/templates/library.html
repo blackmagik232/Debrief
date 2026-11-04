@@ -980,7 +980,13 @@ window.addEventListener('message',e=>{if(window.parent===window||e.source!==wind
 // ================================================================ tabs (#overview, #season, #skills, #goals)
 const TABS=['overview','season','skills','goals'];let curTab=null;
 const tabOf=hs=>{const t=String(hs==null?'':hs).split('&')[0];return TABS.includes(t)?t:'overview'};
-function showTab(name){name=tabOf(name);
+// 2.18: inside the Debrief window the sidebar picks the tab, so the heading names the tab (Skills never opens under
+// "Progress") and the Progress figures above the tabs show on the Progress tab only
+const TAB_NAMES={overview:'Progress',season:'Season',skills:'Skills',goals:'Goals'};
+function tabHead(name){if(!document.documentElement.classList.contains('in-shell'))return;const hd=document.querySelector('.lib>header');if(!hd)return;
+  const h1=hd.querySelector('h1');if(h1)h1.textContent=TAB_NAMES[name]||'Progress';
+  hd.querySelectorAll('.chiprow,.eyebrow,#lede,#totals,.incprac').forEach(e=>{e.style.display=name==='overview'?'':'none'})}
+function showTab(name){name=tabOf(name);tabHead(name);
   TABS.forEach(t=>{$('tab-'+t).hidden=t!==name});
   document.querySelectorAll('.tabs a').forEach(a=>{if(a.dataset.tab===name)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
   const changed=curTab!==null&&curTab!==name;curTab=name;hideTip();

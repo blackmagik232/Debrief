@@ -538,13 +538,13 @@ def test_practice_plan_in_the_window():
         try:
             pg.goto(s.url)
             pg.wait_for_function("() => document.querySelector('.navbtn[data-nav=practice]')")
-            pg.keyboard.press("Control+0")
+            pg.keyboard.press("Control+5")
             pg.wait_for_selector("#vPractice", state="visible")
             pg.wait_for_selector("#prPlan .ptmain")
             top = pg.text_content("#prPlan")
             assert "This session's one thing" in top and "From " in top and "The check" in top, top
             assert pg.is_visible("#ptCoach") and pg.is_visible("#ptAnother")
-            assert pg.text_content("#ptConf") in ("Clear pattern", "Likely", "Few laps", "Experiment"), pg.text_content("#ptConf")
+            assert pg.text_content("#ptConf") in ("Sure", "Likely", "A hint", "A guess"), pg.text_content("#ptConf")   # 2.18: one scale
             last = pg.text_content("#ptLast")
             assert "Last session" in last and "Next: " in last and ("You hit it on" in last or "didn't get" in last), last
             assert not __import__("re").search(r"\bT\d+\b", pg.text_content("#ptBody")), "corners read Turn N"
@@ -572,7 +572,7 @@ def test_practice_plan_in_the_window():
             # not started, or (this plan was driven with the coach earlier in these tests) the last drive's count
             assert prog == "Not started" or (prog.startswith("Hit ") and pg.text_content("#coFocusPill") == "Last drive"), prog
             # Pick another
-            pg.keyboard.press("Control+0")
+            pg.keyboard.press("Control+5")
             pg.wait_for_selector("#prPlan .ptmain")
             pg.click("#ptAnother")
             pg.wait_for_function("() => /\\b(ok|bad)$/.test(document.getElementById('ptMsg').className)", timeout=60000)
@@ -581,7 +581,7 @@ def test_practice_plan_in_the_window():
             pg.click("#btnHelp")
             pg.click("[data-help=words]")
             words = pg.text_content("#helpBody")
-            assert "One thing this session" in words and "Experiment" in words and "Wheel button mute" in words
+            assert "One thing this session" in words and "A guess (an experiment)" in words and "Wheel button mute" in words
             pg.click("#helpClose")
             assert not errs, errs
         finally:
@@ -607,7 +607,7 @@ def test_coach_page_with_focus_and_wheel():
     try:
         pg.goto(s.url)
         pg.wait_for_function("() => document.querySelector('.navbtn[data-nav=coach]')")
-        pg.keyboard.press("Control+9")
+        pg.keyboard.press("Control+3")
         pg.wait_for_selector("#vCoach", state="visible")
         pg.wait_for_function("() => document.getElementById('coText').textContent === 'Coach off'")
         pg.evaluate("() => document.getElementById('coSet').open = true")
@@ -646,9 +646,22 @@ def test_firstrun_in_the_window():
     ctx, pg, errs = r
     try:
         pg.goto(s.url)
+        # 2.18: with the token saved and a session of clean laps, setup is done: Debrief opens on Today with no
+        # "Getting set up" box, and the step left (the voice) is one quiet line
+        pg.wait_for_selector("#tdSetupLine:not([hidden])")
+        assert pg.evaluate("() => !document.getElementById('vToday').hidden"), "the start page is Today"
+        assert pg.evaluate("() => document.getElementById('firstRun').hidden")
+        line = pg.text_content("#tdSetupLine")
+        assert "1 step left" in line and "Test the coach's voice" in line, line
+        no_dash_text(pg, "#tdSetupLine")
+        pg.click("#tdSetupLine >> text=Open the Coach")
+        pg.wait_for_selector("#vCoach", state="visible")
+        assert pg.evaluate("() => document.getElementById('coSet').open")
+        # Help > Setup checklist shows the whole list on Today
+        pg.click("#btnHelp")
+        pg.click("#helpFirstRun")
         pg.wait_for_selector("#firstRun:not([hidden]) .frstep")
-        assert pg.evaluate("() => !document.getElementById('vWelcome').hidden"), "no reviews yet: the welcome page"
-        assert pg.evaluate("() => document.getElementById('firstRun').closest('#vWelcome') !== null")
+        assert pg.evaluate("() => document.getElementById('firstRun').closest('#vToday') !== null")
         w = call("api/firstrun")[1]
         assert w["total"] == 6 and not dict((x["id"], x["done"]) for x in w["steps"])["voice"], w
         assert pg.text_content("#frPill") == f"{w['done']} of 6 done", pg.text_content("#frPill")
@@ -658,18 +671,14 @@ def test_firstrun_in_the_window():
         no_dash_text(pg, "#firstRun")
         if shots:
             snap(pg, shots / "firstrun-light.png")
-        btn.click()
-        pg.wait_for_selector("#vCoach", state="visible")
-        assert pg.evaluate("() => document.getElementById('coSet').open")
-        pg.wait_for_function("() => document.getElementById('coSetMsg').textContent !== ''")   # it pressed Test voice
-        time.sleep(1)
-        st.write_text("{}", encoding="utf-8")              # the voice was heard: forget it, for the rest of the test
         # hide, then back from Help
-        pg.goto(s.url)
-        pg.wait_for_selector("#firstRun:not([hidden])")
         pg.click("#frHide")
         pg.wait_for_selector("#firstRun", state="hidden")
         assert json.loads(st.read_text(encoding="utf-8"))["dismissed"] is True
+        pg.goto(s.url)
+        pg.wait_for_selector("#vToday", state="visible")
+        pg.wait_for_timeout(500)
+        assert pg.evaluate("() => document.getElementById('tdSetupLine').hidden && document.getElementById('firstRun').hidden")
         pg.click("#btnHelp")
         pg.click("#helpFirstRun")
         pg.wait_for_selector("#firstRun:not([hidden])")

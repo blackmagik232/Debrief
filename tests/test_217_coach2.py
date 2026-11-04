@@ -759,7 +759,7 @@ def window():
         try:
             pg.goto(s.url)
             pg.wait_for_function("() => document.querySelector('.navbtn[data-nav=coach]')")
-            pg.keyboard.press("Control+9")
+            pg.keyboard.press("Control+3")
             pg.wait_for_selector("#vCoach", state="visible")
             pg.wait_for_function("() => document.querySelector('#coPack option')")
             check(pg.locator("#coRepeat").is_disabled() and pg.locator("#coQuiet1").is_disabled(),

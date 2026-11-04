@@ -726,9 +726,10 @@ def test_pages_in_the_window():
                 pg.goto(s.url)
                 pg.wait_for_function("() => document.querySelector('.navbtn[data-nav=setuplab]')")
                 names = pg.evaluate("() => [...document.querySelectorAll('.nav .navbtn')].map(b => b.textContent.trim())")
-                assert names[names.index("Prepare"):][:5] == ["Prepare", "Team", "Setup Lab", "Coach", "Settings"], names
+                # 2.18: grouped (Before you drive: Prepare, Coach; Car: Setup Lab, Car vs car); Settings sits at the foot
+                assert names[names.index("Prepare"):][:2] == ["Prepare", "Coach"] and names[names.index("Setup Lab") + 1] == "Car vs car", names
                 # Setup Lab by key (Ctrl+8), newest car and track picked, the report drawn
-                pg.keyboard.press("Control+8")
+                pg.keyboard.press("Control+7")
                 pg.wait_for_selector("#vSetupLab", state="visible")
                 pg.wait_for_selector("#slSetups")
                 assert "Setup A" in pg.text_content("#slSetups") and "Setup B" in pg.text_content("#slSetups")
@@ -748,7 +749,7 @@ def test_pages_in_the_window():
                     pg.evaluate("() => document.querySelectorAll('#vSetupLab details').forEach(d => d.open = false)")
                     snap(pg, shots / f"setuplab-{'dark' if dark else 'light'}.png")
                 # Coach by key (Ctrl+9): start, cues, mute, stop
-                pg.keyboard.press("Control+9")
+                pg.keyboard.press("Control+3")
                 pg.wait_for_selector("#vCoach", state="visible")
                 pg.wait_for_function("() => document.getElementById('coText').textContent === 'Coach off'")
                 pg.click("#coStart")
@@ -780,7 +781,7 @@ def test_pages_in_the_window():
                 # no polling once the page is left and the coach is off
                 seen = []
                 pg.on("request", lambda rq: seen.append(rq.url) if "coach/status" in rq.url else None)
-                pg.keyboard.press("Control+8")
+                pg.keyboard.press("Control+7")
                 pg.wait_for_selector("#vSetupLab", state="visible")
                 time.sleep(2.5)
                 assert len(seen) <= 1, seen
@@ -788,7 +789,7 @@ def test_pages_in_the_window():
                 pg.click("#btnHelp")
                 pg.click("[data-help=keys]")
                 keys = pg.text_content("#helpBody")
-                assert "Ctrl+1 to Ctrl+9" in keys and "Setup Lab, Coach" in keys and "Ctrl+Shift+M" in keys
+                assert "Ctrl+1 to Ctrl+9" in keys and "Ctrl+7: Setup Lab" in keys and "Ctrl+3: Coach" in keys and "Ctrl+Shift+M" in keys
                 pg.click("#helpClose")
                 assert not errs, errs
             finally:

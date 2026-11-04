@@ -560,7 +560,7 @@ def no_dash_text(pg, sel):
 def open_lime(pg, s):
     pg.goto(s.url)
     pg.wait_for_function("() => document.querySelector('.navbtn[data-nav=setuplab]')")
-    pg.keyboard.press("Control+8")
+    pg.keyboard.press("Control+7")
     pg.wait_for_selector("#vSetupLab", state="visible")
     pg.wait_for_selector("#slCombos button")
     pg.click("#slCombos button:has-text('Lime Rock Park')")
@@ -588,7 +588,7 @@ def test_setuplab_in_the_window():
             assert t5.startswith("Rotates"), t5
             words = {pg.text_content(f"#slBalance .baltbl td:nth-child({k}) .bal").split(" likely")[0] for k in (2, 3, 4)}
             assert words <= {"Pushes", "Rotates", "Neutral", "Not clear yet", "Not measured"}, words
-            assert "Setup ideas" in sec and ("Worth a try" in sec or "A guess" in sec) and "compare again" in sec, sec
+            assert "Setup ideas" in sec and ("Likely" in sec or "A guess" in sec) and "compare again" in sec, sec
             assert "Front anti-roll bar 2 → 1" in sec, sec
             assert pg.is_visible("#slBalance .ballegend") and pg.is_visible("#slBalance .balsmall")
             ps = pg.text_content("#slPress")
@@ -641,7 +641,7 @@ def test_teammate_in_the_window():
     try:
         pg.goto(s.url)
         pg.wait_for_function("() => document.querySelector('.navbtn[data-nav=practice]')")
-        pg.keyboard.press("Control+0")
+        pg.keyboard.press("Control+5")
         pg.wait_for_selector("#vPractice", state="visible")
         pg.wait_for_selector("#prSessions .prrow")
         pg.click("#prSessions .prrow:has-text('Zolder')")

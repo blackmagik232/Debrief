@@ -225,7 +225,7 @@ def test_window_replies_and_pages_use_the_unit():
 
 def test_coach_says_speeds_in_the_unit():
     st = livecoach.Settings(units="mph")
-    assert livecoach.Settings().units == "kmh"     # the coach's own default; the window passes the setting
+    assert livecoach.Settings().units == "mph"     # the coach's own default (mph since 2.17.2); the window passes the setting
     co = livecoach.Coach(settings=st)
     co._push(livecoach.Cue(text="T6: carry 8 km/h more", priority=1, key="feedback:C6"))
     assert [c.text for c in co.queue.items] == ["T6: carry 5 mph more"], [c.text for c in co.queue.items]

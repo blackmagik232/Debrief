@@ -497,7 +497,7 @@ txt = cuelog.summary([{"ev": "session"}, {"ev": "spoken", "lap": 2, "dist_m": 90
                        "why": "minimum speed 9 km/h under the reference", "measured": {"min_kmh": 80.5, "ref_min_kmh": 96.6}}])
 check("min 50 vs ref 60 mph" in txt and " 100 \"T2" in txt and "6 mph under" in txt and "km/h" not in txt,
       "Copy for Claude shows mph, older logs too")
-check("<th>mph</th>" in html and "mphText(" in js and "mphOf(r.kmh)" in js, "the Coach page shows mph")
+check(">mph</th>" in html and "mphText(" in js and "spdOf(r.kmh,'kmh')" in js, "the Coach page shows mph (or the Units setting)")
 
 # ================================================================ his real files
 print("-- real laps")

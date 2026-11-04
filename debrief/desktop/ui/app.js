@@ -2801,7 +2801,7 @@ let rc={data:null,track:'',seq:0};
 const RC_KIND={own:'Your own',contact:'Contact',caught_up:'Caught up',unknown:'Not known'};
 const RC_KIND_LONG={own:'Your own mistake',contact:'Contact',caught_up:'Caught up in someone else\'s',unknown:'Kind not known'};
 const RC_SESS={race:'Race',qualifying:'Qualifying',practice:'Practice'};
-const RC_CONTACT={contact_4x:['Contact (4x)','badc'],possibly:['Possibly',''],no_4x:['No 4x','okc']};
+const RC_CONTACT={contact_4x:['Contact (4x)','badc'],possibly:['Possibly',''],no_4x:['No hard contact','okc']};
 const rcSigned=n=>ok(n)?(n>0?'+'+n:n<0?'−'+Math.abs(n):'0'):'';
 const rcPts=n=>ok(n)?n+'x':'';
 async function openRacing(){current={view:'racing',dir:null};show('vRacing');markNav();await loadRacing()}

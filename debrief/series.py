@@ -107,6 +107,27 @@ def save_choice(library_folder, d) -> dict:
     return keep
 
 
+def effective(library_folder, sched=None) -> dict:
+    """The series the Team page's weekly leaderboards use: your saved list; when that is empty, the series picked on
+    Prepare (2.21: the Team page used to ignore that pick and said "Pick your series on Prepare first").
+    {"chosen", "series": [{"id","name"}], "updated", "from_prepare": bool}."""
+    mine = load(library_folder)
+    mine["from_prepare"] = False
+    if mine["series"]:
+        return mine
+    name = load_choice(library_folder).get("series")
+    if not name:
+        return mine
+    hit = None
+    for s in (sched or {}).get("series") or []:
+        if schedule.norm(s.get("name") or "") == schedule.norm(name):
+            hit = s
+            break
+    if hit is None:
+        return mine
+    return {"chosen": True, "series": [{"id": hit["id"], "name": hit["name"]}], "updated": None, "from_prepare": True}
+
+
 def resolve(mine: dict, sched) -> list:
     """Your saved series as they appear in the loaded schedule (matched by name, then by id), in order.
     Name first: ids made from duplicate names ('-2') depend on the PDF's order and can point at another

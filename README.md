@@ -90,11 +90,11 @@ The source-only launchers live in the `dev` folder (see `dev/README.md`).
 - **Updates**: Debrief checks GitHub for a newer version once a day (on by default; switch it off in Settings > Updates). **Update now** downloads the installer, checks its SHA-256 against the one published with the release (Settings > Updates says "checksum"; once a signing key is published it also checks the signature and says so), installs it and reopens Debrief. Before an update re-draws your saved reviews, Debrief copies every review.json to `.backup` in your reviews folder (the two newest sets are kept).
 - **Privacy**: Debrief talks only to Garage 61 (your sync and reviews) and GitHub (the daily update check). Fonts ship inside the app.
 - **Multi-class races**: a review lists every teammate and followed driver who was in the same session, in any car or class (1 extra request; Garage 61 doesn't share the rest of the field). In a multi-class race, clean laps that lost their time in one short stretch (usually traffic) are left out of your pace and consistency numbers and listed in the review.
-- **Team**: the Midfield Menace hub (you need to be on the team on Garage 61; until then the page shows how to join and your own sections still work). Click **Refresh team data** to get:
+- **Team**: the Midfield Menace hub. Its laps come from the Overdriver Academy group on Garage 61 (you need to be in it; until then the page shows how to join and your own sections still work). The three members are always listed, with a reason for anyone missing; other Overdriver Academy drivers are listed apart. Settings > Team sets the name, the members and the group. Click **Refresh team data** to get:
   - **Leaderboards**: everyone's best clean lap at your six most recent tracks and cars, with you highlighted.
-  - **Corner kings**: who is quickest through each corner, from each driver's best lap with telemetry (up to five drivers per track and car).
+  - **Corner kings**: who is quickest through each corner, from each driver's best lap with telemetry (up to five drivers per track and car; the page says who was left out). Every teammate shows their iRating.
   - **Head-to-heads**: you against each teammate. The gap is your best minus theirs, so a minus number means you were quicker.
-  The page says exactly how many Garage 61 requests the refresh used.
+  The page says when it was last refreshed, when it was already up to date, and exactly how many Garage 61 requests the refresh used. After you change the team in Settings it says the page is out of date until you refresh.
 
 Only one job runs at a time (a review, a prep page or a team refresh). If you close the window while one is running, Debrief finishes it before it shuts down.
 
@@ -129,15 +129,15 @@ The Garage 61 API only shares laps from **you, your teammates, and drivers you f
 - Requests are spaced about a second apart; if Garage 61 asks Debrief to slow down, later requests in that run are spaced further apart.
 - Goals, race results, Season, Practice, Setup Lab and the Coach use no requests at all.
 
-## Midfield Menace on Garage 61
+## Midfield Menace and Overdriver Academy on Garage 61
 
-Debrief's team features are set up for the Midfield Menace team (a team brand; the app itself is by Black Magik Studios). The Team hub, the weekly leaderboards and the teammates' laps on Prep pages come from the **Midfield Menace team on Garage 61**, so you need to be a member there:
+Debrief's team features are set up for the Midfield Menace team (a team brand; the app itself is by Black Magik Studios). The Team hub, the weekly leaderboards and the teammates' laps on Prep pages come from the **Overdriver Academy group on Garage 61** (Settings > Team can change it), so you need to be in it:
 
 1. Make your Garage 61 account and connect iRacing (step 4 of the install).
 2. Ask a Midfield Menace teammate (or Overdriver) to invite you to the team on Garage 61, and accept the invite.
 3. In Debrief, open **Team** and press **Refresh**.
 
-Until you're on the team, the Team page, Prep pages and weekly leaderboards show a "Join Midfield Menace on Garage 61" panel instead of empty boards. Your own reviews, Library, Season, Skills, Goals and Prepare work without it. **Settings > Team and extras > Team** shows whether Debrief sees you as a member.
+Until you're on the team, the Team page, Prep pages and weekly leaderboards show a "Join Overdriver Academy on Garage 61" panel instead of empty boards. Your own reviews, Library, Season, Skills, Goals and Prepare work without it. **Settings > Team and extras > Team** shows whether Debrief sees you as a member.
 
 Developers who want to point Debrief at a different Garage 61 team can use **Advanced: use a different Garage 61 team** under that same card, or `team_slug` in settings.toml.
 

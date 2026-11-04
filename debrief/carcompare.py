@@ -45,7 +45,7 @@ from . import names as _nm   # 2.18: one display name per track and car
 
 VERSION = 2
 FIELD_FILE = "field.json"           # beside review.json: the parsed results table (server.py writes it on Save)
-BANDS = ((0, 1500, "under 1500"), (1500, 2500, "1500 to 2500"), (2500, 3500, "2500 to 3500"), (3500, 10 ** 6, "over 3500"))
+BANDS = ((0, 2000, "under 2000"), (2000, 3500, "2000 to 3500"), (3500, 10 ** 6, "over 3500"))   # 2.21: three wider bands (was four)
 MIN_DRIVERS = 15                    # drivers with an iRating in each car (in shared bands) before a "quicker" sentence
 MIN_LAPS = 3
 FINISH_SHARE = 0.90                 # laps completed against the class winner's before a driver counts as a finisher

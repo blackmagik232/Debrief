@@ -70,7 +70,7 @@ def test_readme_for_buddies():
     assert "Sync each time Debrief opens" in s and "Check for updates when Debrief opens" in s
     assert "2.2.1" not in s
     assert "**Skills**" in s
-    assert "## Midfield Menace on Garage 61" in s and "invite you to the team on Garage 61" in s
+    assert "## Midfield Menace and Overdriver Academy on Garage 61" in s and "invite you to the team on Garage 61" in s
     assert "still work if you ever need them" not in s          # the .bat files aren't recommended any more
     assert "Ctrl+Enter" in s and "Ctrl+R" not in s         # 2.18: Review last race moved off the reload key
 
@@ -111,7 +111,7 @@ def test_templates_are_branded():
     assert "GARAGE 61 TELEMETRY" not in rv
     # the Team page never shows a bare slug as its heading
     assert '<h1 id="title">Midfield Menace</h1>' in team
-    assert "TEAM.name.trim().toLowerCase()!==String(TEAM.slug||'').toLowerCase()" in team
+    assert "(D&&typeof D.team_name==='string'&&D.team_name.trim())||BRAND_NAME" in team   # 2.21: the team's name, never the group's slug
     # join panels when Garage 61 says you're not on the team
     for s in (team, prep):
         assert "membership==='not_member'" in s and "join_title" in s and "join_text" in s
@@ -125,9 +125,9 @@ def test_team_template_join_panel_in_browser():
     b = _browser()
     if not b:
         return
-    data = {"version": 1, "team": {"slug": "midfield-menace", "name": "midfield-menace"}, "me": {"name": "You", "key": "me"},
+    data = {"version": 1, "team": {"slug": "overdriver-academy", "name": "Overdriver Academy"}, "group": {"slug": "overdriver-academy", "name": "Overdriver Academy"}, "me": {"name": "You", "key": "me"},
             "membership": "not_member", "combos": [], "requests": 0,
-            "brand": {"team_name": "Midfield Menace", "join_title": "Join Midfield Menace on Garage 61",
+            "brand": {"team_name": "Midfield Menace", "join_title": "Join Overdriver Academy on Garage 61",
                       "join_text": "Ask a teammate to invite you.", "team_url": "https://garage61.net"}}
     html = _read(TPL / "team.html").replace("window.TEAM=/*TEAM*/null;", "window.TEAM=" + json.dumps(data) + ";")
     pg = b.new_page()
@@ -140,7 +140,7 @@ def test_team_template_join_panel_in_browser():
             join: !document.getElementById('join').hidden, jt: document.getElementById('joinTitle').textContent,
             kings: document.getElementById('kings').hidden, h2h: document.getElementById('h2h').hidden})""")
         assert info == {"title": "Midfield Menace · Team hub", "h1": "Midfield Menace", "join": True,
-                        "jt": "Join Midfield Menace on Garage 61", "kings": True, "h2h": True}, info
+                        "jt": "Join Overdriver Academy on Garage 61", "kings": True, "h2h": True}, info
         assert not errs, errs
     finally:
         pg.close()
@@ -206,14 +206,14 @@ def _api(token=True, reviews=True, **over):
         {"track": "Spa", "car": "GT3", "reviews": [
         {"dir": "2026-10-25_spa", "date": "2026-10-25", "started_at": "2026-10-25T12:00:00Z", "best": "2:18.000", "session": "Race", "laps": 9}]}]
     a = {"settings": {"ok": True, "token_saved": token, "token_hint": "…abcd", "version": "2.6.0", "installed": True,
-                      "data_folder": "C:/x", "team_slug": "midfield-menace", "max_reference_laps": 2},
+                      "data_folder": "C:/x", "team_slug": "overdriver-academy", "max_reference_laps": 2},
          "brand": {"app_name": "Debrief", "publisher": "Midfield Menace", "team_slug": "midfield-menace",
                    "team_name": "Midfield Menace", "team_short": "MM", "team_url": "https://garage61.net",
                    "join_title": "Join Midfield Menace on Garage 61", "join_text": "Ask a teammate to invite you."},
          "reviews": {"ok": True, "folder": "C:/lib", "groups": groups if reviews else []},
          "status": {"state": "idle"}, "sync": {"ok": True, "skipped": True}, "update": {"ok": True, "skipped": True},
          "pages": {"ok": True, "prep": []},
-         "teams": {"ok": True, "token": token, "team_slug": "midfield-menace", "teams": [{"slug": "other", "name": "Other"}]},
+         "teams": {"ok": True, "token": token, "team_slug": "overdriver-academy", "teams": [{"slug": "other", "name": "Other"}]},
          "weekly": {"ok": True, "available": True, "schedule": True, "membership": "not_member", "plan": {"series": []}}}
     a.update(over)
     return a
@@ -357,10 +357,10 @@ def test_window_opens_on_last_race_shortcuts_and_banners():
         pg.keyboard.press("Control+Comma")
         pg.wait_for_function("() => !document.getElementById('vSettings').hidden")
         st = pg.evaluate("""() => ({extras: document.getElementById('pExtras').open, ir: document.getElementById('pIracing').hidden,
-            team: document.getElementById('teamLine').textContent, adv: document.getElementById('teamAdv').open})""")
+            team: document.getElementById('teamLine').textContent, adv: false})""")
         assert st["extras"] is False and st["ir"] is True and st["adv"] is False, st
-        pg.wait_for_function("() => document.getElementById('teamLine').textContent.includes('not on the team yet')")
-        assert pg.text_content("#teamLine") == "Team: Midfield Menace \u2014 not on the team yet (join on Garage 61)"
+        pg.wait_for_function("() => document.getElementById('teamLine').textContent.includes('not in it yet')")
+        assert pg.text_content("#teamLine") == "Team: Midfield Menace. Laps come from the Garage 61 group Overdriver Academy \u2014 you are not in it yet (join on Garage 61)"
         # 2.18: Ctrl+R neither reloads nor starts a review; Ctrl+Enter = Review last race; the error banner stays until it's closed
         pg.evaluate("() => { window.__alive = 1 }")
         pg.keyboard.press("Control+r")
@@ -405,7 +405,7 @@ def test_window_sessions_page_by_page_and_team_join():
         pg.click(".navbtn[data-nav=team]")
         pg.wait_for_function("() => !document.getElementById('teamJoin').hidden", timeout=10000)
         assert pg.text_content("#teamTitle") == "Midfield Menace"
-        assert pg.text_content("#teamJoin .joinTitle") == "Join Midfield Menace on Garage 61"
+        assert pg.text_content("#teamJoin .joinTitle") == "Join Overdriver Academy on Garage 61"
         assert not errs, errs
     finally:
         ctx.close()

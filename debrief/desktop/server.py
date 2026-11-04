@@ -2990,7 +2990,9 @@ class Handler(BaseHTTPRequestHandler):
         if not sched:
             return self._json(out)
         api = self._cache_api(cfg)
-        plan = lb.plan(cfg, api, sched, series.load(cfg["library_folder"]))
+        mine = series.effective(cfg["library_folder"], sched)
+        plan = lb.plan(cfg, api, sched, mine)
+        out["from_prepare"] = bool(mine.get("from_prepare"))
         out["plan"] = plan if isinstance(plan, dict) else None
         out["token"] = api is not None
         return self._json(out)
@@ -3243,6 +3245,14 @@ class Handler(BaseHTTPRequestHandler):
                 what.append("Discord webhook removed")
             if body.get("clear_discord") is True or body.get("discord_webhook"):
                 self.server.discord_info = None   # a new webhook: its name is learnt again by Check
+            if any(k in body for k in ("team_slug", "team_name", "team_members")):
+                try:   # 2.21: the saved team page says it was built with the old team settings
+                    from .. import team as _team
+                    cfg = self._cfg()
+                    _team.mark_stale(cfg["library_folder"], cfg)
+                except Exception:  # noqa: BLE001
+                    import traceback
+                    app.say("Couldn't mark the team page out of date:\n" + traceback.format_exc())
             # never the values themselves: only which secrets changed
             app.say("Settings saved from the desktop app" + (f" ({', '.join(what)})." if what else "."))
             return self._json({"ok": True, "settings": view})

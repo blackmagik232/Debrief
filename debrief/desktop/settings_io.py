@@ -25,7 +25,7 @@ import tempfile
 import threading
 from pathlib import Path
 
-from .. import app, fsutil
+from .. import app, brand, fsutil
 
 PLACEHOLDER_PREFIX = "PASTE"
 _TOKEN_OK = re.compile(r"^[\x21-\x7e]{8,4096}$")  # printable ASCII, no spaces
@@ -468,6 +468,9 @@ def public_view() -> dict:
         "units": clean_units(raw.get("units")),
         "library_folder": None,
         "team_slug": str(raw.get("team_slug") or app.DEFAULT_TEAM).strip().lower() or app.DEFAULT_TEAM,
+        # 2.21: the team's own name and members (Midfield Menace), apart from the Garage 61 group (team_slug)
+        "team_name": " ".join(str(raw.get("team_name") or brand.TEAM_NAME).split())[:60] or brand.TEAM_NAME,
+        "team_members": brand.parse_members(raw.get("team_members")),
         # present/absent only: the values are never sent to the page
         "iracing_client_id_saved": bool(str(raw.get("iracing_client_id") or "").strip()),
         "iracing_client_secret_saved": bool(str(raw.get("iracing_client_secret") or "").strip()),
@@ -735,6 +738,17 @@ def save(updates: dict) -> dict:
         if not _SLUG_OK.match(slug):
             raise ValueError("Pick a team from the list.")
         clean["team_slug"] = slug
+    if "team_name" in updates:
+        v = " ".join(str(updates["team_name"] or "").split())
+        if not v or len(v) > 60 or re.search(r"[\x00-\x1f\x7f<>]", v):
+            raise ValueError("Give the team a short name (up to 60 characters, no < or >).")
+        clean["team_name"] = v
+    if "team_members" in updates:
+        v = updates["team_members"]
+        names = brand.parse_members(v if isinstance(v, (list, str)) else "")
+        if any(re.search(r"[\x00-\x1f\x7f<>]", n) for n in names):
+            raise ValueError("Member names can't contain < or >.")
+        clean["team_members"] = "; ".join(names)
     for k, label in (("iracing_client_id", "client ID"), ("iracing_client_secret", "client secret")):
         v = updates.get(k)
         if v is None or not str(v).strip():

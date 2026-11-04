@@ -351,7 +351,7 @@ def plan(cfg, api_or_none, sched, mine_series) -> dict:
 
 # ---------------------------------------------------------------- membership (2.6)
 def _slug(cfg) -> str:
-    return (cfg or {}).get("team_slug") or brand.TEAM_SLUG
+    return (cfg or {}).get("team_slug") or brand.GROUP_SLUG
 
 
 def _saved_membership(api, cfg) -> dict:
@@ -548,7 +548,7 @@ def fetch_week(api, cfg, ser, w, track_id, car_ids, car_names, my_slug, my_name,
                                 multiclass)
         except Exception:  # noqa: BLE001  (no library: judge the laps against each other)
             refs = {}
-    slug = cfg.get("team_slug") or brand.TEAM_SLUG
+    slug = cfg.get("team_slug") or brand.GROUP_SLUG
     base = dict(tracks=[int(track_id)], cars=list(car_ids), teams=[slug], drivers=["me"],
                 after=_iso(_midnight(a)), age=max(1, (now.date() - a).days + 2))
     used = 1

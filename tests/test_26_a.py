@@ -39,7 +39,7 @@ class CountingApi:
     def __init__(self, teams=None, teams_raises=False, laps=None):
         self.calls = []
         self.requests_made = 0
-        self._teams = [{"slug": "midfield-menace", "name": "Midfield Menace"}] if teams is None else teams
+        self._teams = [{"slug": "overdriver-academy", "name": "Overdriver Academy"}] if teams is None else teams
         self.teams_raises = teams_raises
         self._laps = laps or []
         CountingApi._n += 1
@@ -137,8 +137,8 @@ def test_team_build_member_unchanged_and_keys():
     lib = _newdir()
     _lib_review(lib)
     api = CountingApi()
-    d = team.build(api, lib, "midfield-menace", log=QUIET)
-    assert d["membership"] == brand.MEMBER and d["team"] == {"slug": "midfield-menace", "name": "Midfield Menace"}
+    d = team.build(api, lib, "overdriver-academy", log=QUIET)
+    assert d["membership"] == brand.MEMBER and d["team"] == {"slug": "overdriver-academy", "name": "Overdriver Academy"}
     assert len(api.team_calls()) >= 1
     assert {r["key"] for r in d["combos"][0]["board"]} >= {"jake", "dom", "me"}
 
@@ -147,9 +147,9 @@ def test_team_build_not_member_makes_no_team_requests():
     lib = _newdir()
     _lib_review(lib)
     api = CountingApi(teams=[{"slug": "other-team", "name": "Other"}])
-    d = team.build(api, lib, "midfield-menace", log=QUIET)
+    d = team.build(api, lib, "overdriver-academy", log=QUIET)
     assert d["membership"] == brand.NOT_MEMBER
-    assert d["team"] == {"slug": "midfield-menace", "name": brand.TEAM_NAME}
+    assert d["team"] == {"slug": "overdriver-academy", "name": brand.GROUP_NAME}
     assert api.team_calls() == [], api.calls
     board = d["combos"][0]["board"]
     assert [r["key"] for r in board] == ["me"], board        # your own best still shows
@@ -160,9 +160,9 @@ def test_team_build_unknown_membership_proceeds():
     lib = _newdir()
     _lib_review(lib)
     api = CountingApi(teams_raises=True)
-    d = team.build(api, lib, "midfield-menace", log=QUIET)
+    d = team.build(api, lib, "overdriver-academy", log=QUIET)
     assert d["membership"] == brand.UNKNOWN and len(api.team_calls()) >= 1
-    assert d["team"]["name"] == "Midfield Menace"
+    assert d["team"]["name"] == "Overdriver Academy"
 
 
 def test_render_saved_has_membership_and_team_name():
@@ -170,7 +170,7 @@ def test_render_saved_has_membership_and_team_name():
     p = team.render_saved(lib)
     data = json.loads((Path(lib) / "team" / "team.json").read_text(encoding="utf-8"))
     assert p.exists() and data["membership"] == brand.UNKNOWN
-    assert data["team"] == {"slug": brand.TEAM_SLUG, "name": brand.TEAM_NAME}
+    assert data["team"] == {"slug": brand.GROUP_SLUG, "name": brand.GROUP_NAME}
 
 
 def test_prep_membership():
@@ -178,25 +178,25 @@ def test_prep_membership():
     _lib_review(lib)
     api = CountingApi()
     d = prep.build(api, lib, 468, 190, None, log=QUIET)
-    assert d["membership"] == brand.MEMBER and d["team"]["name"] == "Midfield Menace"
-    assert [kw["teams"] for kw in api.team_calls()] == [["midfield-menace"]]   # always the slug, never "all"
+    assert d["membership"] == brand.MEMBER and d["team"]["name"] == "Overdriver Academy"
+    assert [kw["teams"] for kw in api.team_calls()] == [["overdriver-academy"]]   # always the slug, never "all"
     assert d["teammates"]["laps"]
     api = CountingApi(teams=[])
-    d = prep.build(api, lib, 468, 190, "midfield-menace", log=QUIET)
+    d = prep.build(api, lib, 468, 190, "overdriver-academy", log=QUIET)
     assert d["membership"] == brand.NOT_MEMBER and api.team_calls() == [] and d["teammates"]["laps"] == []
-    assert d["team"] == {"slug": "midfield-menace", "name": "Midfield Menace"}
+    assert d["team"] == {"slug": "overdriver-academy", "name": "Overdriver Academy"}
     assert d["history"]                                    # your own part still works
     api = CountingApi(teams_raises=True)
     d = prep.build(api, lib, 468, 190, None, log=QUIET)
     assert d["membership"] == brand.UNKNOWN and len(api.team_calls()) == 1
     off = prep.build(None, lib, 468, 190, None, log=QUIET)
-    assert off["membership"] == brand.UNKNOWN and off["team"]["name"] == brand.TEAM_NAME
+    assert off["membership"] == brand.UNKNOWN and off["team"]["name"] == brand.GROUP_NAME
 
 
 def test_prep_teammates_uses_brand_slug_when_none_given():
     api = CountingApi()
     prep._teammates(api, 468, 190, None, 90.0, QUIET)
-    assert api.team_calls()[0]["teams"] == [brand.TEAM_SLUG]
+    assert api.team_calls()[0]["teams"] == [brand.GROUP_SLUG]
 
 
 def _sched():
@@ -212,7 +212,7 @@ def _sched():
 
 def test_leaderboards_not_member_no_requests():
     lib = _newdir()
-    cfg = {"library_folder": str(lib), "team_slug": "midfield-menace"}
+    cfg = {"library_folder": str(lib), "team_slug": "overdriver-academy"}
     sched = _sched()
     mine = {"chosen": True, "series": [{"id": sched["series"][0]["id"], "name": "Mazda Cup"}]}
     api = CountingApi(teams=[])
@@ -220,12 +220,12 @@ def test_leaderboards_not_member_no_requests():
     # only the one re-check of the teams list (a cached "not a member" may be a day old); no lap requests
     assert res["membership"] == brand.NOT_MEMBER and api.calls == [("teams", {"refresh": True})]
     assert res["requests"] == 1
-    assert res["team"] == {"slug": "midfield-menace", "name": "Midfield Menace"}
+    assert res["team"] == {"slug": "overdriver-academy", "name": "Overdriver Academy"}
     v = leaderboards.view(lib, sched)
-    assert v["membership"] == brand.NOT_MEMBER and v["series"] == [] and v["team"]["name"] == "Midfield Menace"
+    assert v["membership"] == brand.NOT_MEMBER and v["series"] == [] and v["team"]["name"] == "Overdriver Academy"
     api.calls.clear()   # plan() reads the saved teams list only
     p = leaderboards.plan(cfg, api, sched, mine)
-    assert p["membership"] == brand.NOT_MEMBER and p["team"]["name"] == "Midfield Menace" and api.calls == []
+    assert p["membership"] == brand.NOT_MEMBER and p["team"]["name"] == "Overdriver Academy" and api.calls == []
     # the team page picks the newest weekly check up
     team.render_saved(lib)
     data = json.loads((Path(lib) / "team" / "team.json").read_text(encoding="utf-8"))
@@ -234,19 +234,19 @@ def test_leaderboards_not_member_no_requests():
 
 def test_leaderboards_member_and_unknown_keys():
     lib = _newdir()
-    cfg = {"library_folder": str(lib), "team_slug": "midfield-menace"}
+    cfg = {"library_folder": str(lib), "team_slug": "overdriver-academy"}
     sched = _sched()
     mine = {"chosen": True, "series": [{"id": sched["series"][0]["id"], "name": "Mazda Cup"}]}
     for api, want in ((CountingApi(), brand.MEMBER), (CountingApi(teams_raises=True), brand.UNKNOWN)):
         res = leaderboards.refresh(api, cfg, sched, mine, log=QUIET)
-        assert res["membership"] == want and res["team"]["name"] == "Midfield Menace", res
+        assert res["membership"] == want and res["team"]["name"] == "Overdriver Academy", res
     v = leaderboards.view(_newdir())
-    assert v["membership"] == brand.UNKNOWN and v["team"] == {"slug": brand.TEAM_SLUG, "name": brand.TEAM_NAME}
+    assert v["membership"] == brand.UNKNOWN and v["team"] == {"slug": brand.GROUP_SLUG, "name": brand.GROUP_NAME}
 
 
 # ================================================================ 3. single source
 def test_team_slug_single_source():
-    assert app.DEFAULT_TEAM == brand.TEAM_SLUG
+    assert app.DEFAULT_TEAM == brand.GROUP_SLUG
     for f in ("leaderboards.py", "prep.py", "app.py", "team.py"):
         assert '"midfield-menace"' not in (ROOT / "debrief" / f).read_text(encoding="utf-8"), f
 
@@ -561,7 +561,7 @@ def test_not_member_answer_is_rechecked_once_so_a_new_join_shows_up():
     """H2: the teams list is cached for a day; a cached "not a member" is checked once more against
     Garage 61 so someone who just joined sees the team straight away (1 request)."""
     api = CountingApi(teams=[])
-    api.joined = [{"slug": "midfield-menace", "name": "Midfield Menace"}]
+    api.joined = [{"slug": "overdriver-academy", "name": "Overdriver Academy"}]
     mem, teams_list = team.membership_for(api, None, QUIET)
     assert mem == brand.MEMBER and api.calls == [("teams", {"refresh": True})]
     api2 = CountingApi(teams=[])     # still not on the team: exactly one extra request, still not a member

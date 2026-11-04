@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.21.0
+
+The Team page now works end to end, and it knows who your team is.
+
+- **Midfield Menace is the team; Overdriver Academy is where the laps come from.** Settings > Team now has a team name, the three members (Josh Spence, Swazi Williams, Kenta Young) and, separately, "Garage 61 group the laps come from". Members are matched to Garage 61 drivers by name or short name, ignoring capitals and accents. The Team page lists all three every time; anyone it can't match, or who has no laps at a track and car, is named with a plain reason. Other Overdriver Academy drivers are shown in their own labelled list under each track and car and are never mixed into the Midfield Menace boards, corners or head-to-heads. The join panel now says "Join Overdriver Academy on Garage 61".
+- **The Team page sees the series you picked on Prepare.** "Pick your series on Prepare first" no longer shows when Prepare already has one: Refresh this week uses your saved series, or else the one picked on Prepare. With no series (or no reviews) the page still works, using the track and car picked on Prepare. When Refresh this week can't be pressed, the reason sits next to the button.
+- **One failing track no longer costs the rest.** If Garage 61 doesn't answer for one track and car, that one says "Garage 61 didn't answer for Spa / GT4. Try Refresh again later." and the others are still shown.
+- **iRating next to every teammate** on the Team page and Prepare.
+- **Speeds follow Settings > Units** on the Team page (who to learn from) as well as Car vs car.
+- **Prepare follows the Team page's rules.** Same window of laps, same teammate list; if more than twelve teammates have laps, it says how many were left out and who. Team members' laps are listed apart from the rest of Overdriver Academy.
+- **Two teammates' laps for one car and track no longer overwrite each other** on the Coach page. Each is kept under its teammate's name (laps kept before this version are still found), and Car vs car sees all of them.
+- **Errors no longer vanish.** A section that can't load says so in one line ("Couldn't load your telemetry files...") and the details go to debrief.log.
+- **Refresh tells you what happened.** "Last refreshed ..." is always at the top of the page; when nothing newer was needed it says "Up to date, checked 1:54 pm"; after you change the team in Settings, the saved page says "Team settings changed. Press Refresh team data."
+- **Every empty part says why and what to do**, including that corners are compared for the 4 quickest teammates at most (and who was left out).
+- **Car vs car iRating bands are wider** (under 2000, 2000 to 3500, over 3500), so more drivers share a band. The bar for saying one car is quicker (15 rated drivers in each car) is unchanged.
+- If a member is still missing after all that, the log (debrief.log) now records the rows Garage 61 returned for them, and any flags, so the reason can be read.
+- Not changed: the weekly leaderboard boards and season head-to-heads still list everyone in the group (members are not split out there yet).
+- Only provable with real Garage 61 data: that all three members are matched by name, and whether Garage 61's team list names members (when it does, Debrief uses it too).
+
 ## 2.20.1
 
 A teammate no longer disappears from the Team page, Prepare or the teammate list without saying why.

@@ -124,29 +124,60 @@ def team_roster(teams, slug) -> dict:
     return out
 
 
+def norm_name(s) -> str:
+    """A name for matching: no accents, no case, no spaces or dashes ("Kenta Young" == "kenta-young" == "KENTÁ YOUNG")."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(s or ""))
+    return "".join(ch for ch in t if ch.isalnum() and not unicodedata.combining(ch)).lower()
+
+
+def match_members(members, drivers, me_slug="", me_name="") -> tuple[dict, list]:
+    """Match the team's member names (Settings) to Garage 61 drivers by name or short name, ignoring case and
+    accents. drivers = {slug: display name}. Returns ({member: slug, "me" for you}, [members nobody matched])."""
+    found, left = {}, []
+    for m in members or []:
+        k = norm_name(m)
+        if k and (k == norm_name(me_name) or k == norm_name(me_slug)):
+            found[m] = "me"
+            continue
+        hit = next((sl for sl, nm in drivers.items() if k and k in (norm_name(nm), norm_name(sl))), None)
+        if hit is None:
+            left.append(m)
+        else:
+            found[m] = hit
+    return found, left
+
+
 def _lt(t) -> str:
     t = float(t)
     return f"{int(t // 60)}:{t % 60:06.3f}"
 
 
-def gather_mates(first, fetch_more, my_slug, my_best, roster=None):
-    """Best usable lap per teammate. first = the group=driver answer (one best lap per driver); fetch_more() = ONE
-    request for all their laps, made only when someone's best was rejected or a roster member has no row. Returns
-    (mates {slug: {"slug","name","t","lap"}}, reasons [{"name","text"}]): every teammate who is left out or
-    shown with a substitute lap gets a reason by name."""
+def gather_mates(first, fetch_more, my_slug, my_best, roster=None, members=None, my_name="", group="", log=None):
+    """Best usable lap per driver in the group. first = the group=driver answer (one best lap per driver);
+    fetch_more() = ONE request for all their laps, made only when someone's best was rejected or a roster member has
+    no row. members = the team's names from Settings (2.21): a member with no row is named with a reason, and every
+    mate carries "member" True/False (all True when there are no members). Returns (mates {slug: {"slug","name","t",
+    "lap","member"}}, reasons [{"name","text"}]): everyone left out or shown with a substitute lap gets a reason."""
     roster = {k: v for k, v in (roster or {}).items() if k and k != my_slug}
+    members = list(members or [])
     laps = list(first or [])
     firsts = {}
     for l in laps:
         d = driver_of(l)
         if d["slug"] and d["slug"] != my_slug:
             firsts.setdefault(d["slug"], l)
+    _, want = match_members(members, {**roster, **{k: driver_of(v)["name"] for k, v in firsts.items()}}, my_slug, my_name)
     failed = False
-    if fetch_more is not None and (any(not usable(l) for l in firsts.values()) or any(k not in firsts for k in roster)):
+    if fetch_more is not None and (any(not usable(l) for l in firsts.values()) or any(k not in firsts for k in roster)
+                                   or want):
         try:
-            laps += list(fetch_more() or [])
-        except Exception:  # noqa: BLE001
+            have = {g(l, "id") for l in laps if g(l, "id") is not None}
+            laps += [l for l in (fetch_more() or []) if g(l, "id") is None or g(l, "id") not in have]
+        except Exception as e:  # noqa: BLE001
             failed = True
+            if log:
+                log(f"  Couldn't load everyone's laps: {type(e).__name__}: {e}")
     by, names, unnamed = {}, dict(roster), 0
     for l in laps:
         d = driver_of(l)
@@ -157,6 +188,15 @@ def gather_mates(first, fetch_more, my_slug, my_best, roster=None):
             continue
         by.setdefault(d["slug"], []).append(l)
         names[d["slug"]] = d["name"]
+    matched, missing = match_members(members, names, my_slug, my_name)
+    member_slugs = {v for v in matched.values() if v != "me"}
+    if log:   # the raw counts behind every named person, so the log shows why someone is missing
+        for sl, ls in by.items():
+            flags = sorted({k for l in ls for k in _BAD_FLAGS if g(l, k)})
+            log(f"  Garage 61 rows for {names[sl]}: {len(ls)} returned, {sum(1 for l in ls if usable(l))} usable"
+                + (f", flags seen: {', '.join(flags)}" if flags else ""))
+        for m in missing:
+            log(f"  Garage 61 rows for {m}: 0 returned (no driver in this group matched that name)")
     bests = [min(app.lap_time(l) for l in ls if usable(l)) for ls in by.values() if any(usable(l) for l in ls)]
     anchor = anchor_for(bests, my_best)
     mates, reasons = {}, []
@@ -172,12 +212,19 @@ def gather_mates(first, fetch_more, my_slug, my_best, roster=None):
                             "(far from a normal lap), so it was left out"})
             continue
         pick = fit[0]
-        mates[sl] = {"slug": sl, "name": nm, "t": app.lap_time(pick), "lap": pick}
+        mates[sl] = {"slug": sl, "name": nm, "t": app.lap_time(pick), "lap": pick,
+                     "member": (sl in member_slugs) if members else True}
         f = firsts.get(sl)
         if f is not None and f is not pick and (not usable(f) or not plausible(app.lap_time(f), anchor, 2.5)):
             reasons.append({"name": nm, "text": "best lap was partial or unclean, used their best clean lap instead"})
+    where = f"in {group}" if group else "in the group"
+    for m in missing:
+        reasons.append({"name": m, "text": ("laps couldn't be loaded this time. Try Refresh again." if failed else
+                        f"no laps came back from Garage 61 {where} at this track and car. If they have driven it, "
+                        "check their laps are shared with the group in Garage 61."), "member": True})
+    named = {norm_name(r["name"]) for r in reasons}
     for sl, nm in roster.items():
-        if sl not in by:
+        if sl not in by and norm_name(nm) not in named:
             reasons.append({"name": nm, "text": "is on your team but Garage 61 returned no laps for them. Ask them to "
                             "share laps and telemetry with the team in Garage 61." if not failed else
                             "laps couldn't be loaded this time. Try again."})
@@ -334,7 +381,7 @@ def can_refresh_teams(api) -> bool:
 def membership_for(api, slug=None, log=print) -> tuple[str, list | None]:
     """(brand.MEMBER / NOT_MEMBER / UNKNOWN, the teams list or None) from api.teams(), which the client
     caches for a day. UNKNOWN when the list couldn't be loaded: callers then carry on as before."""
-    slug = slug or brand.TEAM_SLUG
+    slug = slug or brand.GROUP_SLUG
     try:
         teams = api.teams()
     except Exception as e:  # noqa: BLE001  (unknown membership never stops a page)
@@ -366,28 +413,66 @@ def membership_for(api, slug=None, log=print) -> tuple[str, list | None]:
 
 def team_info(slug=None, teams=None) -> dict:
     """{"slug", "name"} for a data dict: the display name, never the bare slug."""
-    slug = slug or brand.TEAM_SLUG
+    slug = slug or brand.GROUP_SLUG
     return {"slug": slug, "name": brand.team_name_for(teams, slug)}
 
 
-# ---------------------------------------------------------------- build
-def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
+# ---------------------------------------------------------------- 2.21: the team, the group, and the combos to look at
+def settings_of(cfg) -> dict:
+    """{"name", "members", "slug"} from the settings (defaults: Midfield Menace, its three drivers, Overdriver Academy)."""
+    cfg = cfg or {}
+    return {"name": str(cfg.get("team_name") or brand.TEAM_NAME), "slug": str(cfg.get("team_slug") or brand.GROUP_SLUG),
+            "members": (brand.parse_members(cfg.get("team_members")) if "team_members" in cfg else list(brand.MEMBERS))
+            if cfg else []}   # no settings at all (a bare call): no fixed team, everyone in the group counts
+
+
+def prepare_combos(folder) -> list[dict]:
+    """With no reviews yet: the track and car picked on Prepare, so the Team page still has something to compare."""
+    try:
+        from . import series
+        c = series.load_choice(folder)
+    except Exception:  # noqa: BLE001
+        return []
+    if not c.get("track") or not c.get("car"):
+        return []
+    return [{"track": c["track"], "car": c["car"], "track_id": None, "car_id": None, "races": 0, "best": None,
+             "best_date": None, "last": "", "from_prepare": True}]
+
+
+def _slim(r) -> dict:
+    return {k: r.get(k) for k in ("key", "name", "t", "gap", "irating", "date")}
+
+
+def _combo_notes_failed(c, e) -> str:
+    return (f"Garage 61 didn't answer for {library.short_track_name(c['track'])} / {c['car']}. "
+            "Try Refresh again later. The other tracks are fine.")
+
+
+def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) -> dict:
     max_combos = max(1, min(MAX_COMBOS, int(max_combos)))
     start_req = api.requests_made
     notes = []
+    st = settings_of(cfg)
+    members = st["members"]
     me = api.me() or {}
     my_slug = g(me, "slug", default="") or ""
     my_name = " ".join(filter(None, [g(me, "firstName", "firstname"), g(me, "lastName", "lastname")])) or my_slug or "You"
-    team_slug = team_slug or brand.TEAM_SLUG
+    team_slug = team_slug or st["slug"] or brand.GROUP_SLUG
     mem, teams_list = membership_for(api, team_slug, log)
-    team_name = brand.team_name_for(teams_list, team_slug)
+    group_name = brand.team_name_for(teams_list, team_slug)
     not_member = mem == brand.NOT_MEMBER
     if not_member:
-        log(f"You're not on the {team_name} team on Garage 61, so no team laps were loaded.")
+        log(f"You're not in the {group_name} group on Garage 61, so no team laps were loaded.")
+    roster_g61 = team_roster(teams_list, team_slug)
 
     combos_lib = library_combos(folder)
     if not combos_lib:
-        log("No reviews in your library yet, so there are no tracks to compare.")
+        combos_lib = prepare_combos(folder)
+        if combos_lib:
+            notes.append("No race reviews yet, so this page uses the track and car picked on Prepare. Review a race "
+                         "and it will use your own tracks and cars.")
+        else:
+            log("No reviews in your library yet, so there are no tracks to compare.")
     picked = combos_lib[:max_combos]
     if len(combos_lib) > max_combos:
         notes.append(f"Showing your {max_combos} most recent track and car combinations "
@@ -406,101 +491,43 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
 
     track_items = api.cached_items("tracks") or []
     out_combos = []
+    seen_drivers = {}          # every Garage 61 driver any combo returned: slug -> name
+    group_rows = 0
     for i, c in enumerate(picked):
         short = library.short_track_name(c["track"])
         log(f"{short} · {c['car']}: loading teammates' best laps ({i + 1} of {len(picked)})...")
-        tid, cid = ids_for(c)
-        entry = {"track": c["track"], "track_short": short, "car": c["car"], "track_id": tid, "car_id": cid,
-                 "races": c["races"], "last_date": library.local_day(c["last"]) or None,
-                 "board": [], "kings": None, "note": None}
+        entry = {"track": c["track"], "track_short": short, "car": c["car"], "track_id": c["track_id"],
+                 "car_id": c["car_id"], "races": c["races"], "last_date": library.local_day(c["last"]) or None,
+                 "board": [], "academy": [], "kings": None, "note": None, "mate_notes": []}
         out_combos.append(entry)
-        if tid is None or cid is None:
-            entry["note"] = NO_MATCH_NOTE
-            continue
-        # not on the team: zero team-lap requests, only your own laps (your board row and telemetry)
-        team_laps = [] if not_member else api.find_laps(tracks=[tid], cars=[cid], teams=[team_slug],
-                                                         group="driver", age=-2, limit=100)
-        my_laps = api.find_laps(tracks=[tid], cars=[cid], drivers=["me"], group="none", age=-2, limit=1000)
-        anchor = anchor_for([app.lap_time(l) for l in my_laps if usable(l)], c["best"])
-        my_ok = sorted((l for l in my_laps if usable(l) and plausible(app.lap_time(l), anchor)), key=app.lap_time)
-        my_api = my_ok[0] if my_ok else None
-        my_best = c["best"] or (app.lap_time(my_api) if my_api else None)
-        mates, reasons = {}, []
-        if not not_member:
-            # 2.20.1: one extra request at most (all their laps) when a best lap was rejected or a member has no row
-            found, reasons = gather_mates(
-                team_laps, lambda: api.find_laps(tracks=[tid], cars=[cid], teams=[team_slug], group="none",
-                                                 age=-2, limit=1000),
-                my_slug, my_best, team_roster(teams_list, team_slug))
-            for sl, m in found.items():
-                l = m["lap"]
-                mates[sl] = {"key": sl, "name": m["name"], "t": m["t"], "is_me": False,
-                             "date": lap_day(l), "irating": g(l, "driverRating"), "_lap": g(l, "id")}
-        # your best: the quicker of your reviewed races and anything on Garage 61 (practice counts too)
-        mine = None
-        cands = []
-        if c["best"] is not None:
-            cands.append((c["best"], "your reviewed races", c["best_date"]))
-        if my_api is not None:
-            cands.append((app.lap_time(my_api), "Garage 61", lap_day(my_api)))
-        if cands:
-            t, src, day = min(cands, key=lambda z: z[0])
-            mine = {"key": "me", "name": my_name, "t": t, "is_me": True, "date": day, "source": src,
-                    "irating": g(my_api, "driverRating") if my_api else None}
-        board = sorted(list(mates.values()) + ([mine] if mine else []), key=lambda r: r["t"])
-        p1 = board[0]["t"] if board else None
-        for pos, r in enumerate(board, 1):
-            r["pos"] = pos
-            r["gap"] = round(r["t"] - p1, 3)  # always >= 0
-        entry["mate_notes"] = [reason_text(r) for r in reasons]
-        if not mates:
-            entry["note"] = brand.JOIN_TITLE + "." if not_member else (
-                "No teammate laps here yet." if not reasons else "No teammate lap could be used here. Reasons are below.")
-        # corner kings: one lap of yours + the fastest teammates, MAX_TEL_DRIVERS in all
-        entries = []
-        mates_sorted = [r for r in board if not r["is_me"]][:MAX_TEL_DRIVERS - (1 if my_ok else 0)]
-        if mates_sorted and (my_ok or len(mates_sorted) >= 2):
-            log(f"  Telemetry for up to {len(mates_sorted) + (1 if my_ok else 0)} best laps (laps saved earlier are reused)...")
-            # your lap: the fastest one, else one already saved, else the next fastest (<= 2 requests)
-            top = my_ok[:8]
-            saved = [l for l in top[1:] if api.has_csv(g(l, "id"))]
-            tries = (top[:1] + saved[:1] + [l for l in top[1:] if l not in saved][:1]) if top else []
-            asked = 0
-            for l in tries:
-                if not api.has_csv(g(l, "id")):
-                    if asked >= 2:
-                        continue
-                    asked += 1
-                csv = api.lap_csv(g(l, "id"))
-                if csv:
-                    entries.append({"key": "me", "name": my_name, "t": app.lap_time(l), "csv": csv, "is_me": True})
-                    entry["my_tel_lap"] = {"t": app.lap_time(l), "date": lap_day(l)}
-                    break
-            for r in mates_sorted:
-                csv = api.lap_csv(r["_lap"])
-                if csv:
-                    entries.append({"key": r["key"], "name": r["name"], "t": r["t"], "csv": csv, "is_me": False})
-                else:
-                    entry["mate_notes"].append(reason_text({"name": r["name"], "text": "lap time only, they aren't "
-                                                            "sharing telemetry with the team"}))
-        tl = next((g(it, "lap_length", "lapLength", "length") for it in track_items if g(it, "id") == tid), None)
-        try:
-            entry["kings"] = corner_kings(entries, tl)
-        except Exception:  # noqa: BLE001  (one odd telemetry file shouldn't stop the hub)
+        try:   # 2.21: one combination failing never costs the others
+            _build_combo(api, entry, c, ids_for, track_items, team_slug, not_member, my_slug, my_name, members,
+                         group_name, roster_g61, seen_drivers, log)
+            group_rows += len(entry["board"]) + len(entry["academy"])
+        except Exception as e:  # noqa: BLE001
             import traceback
-            log("  Couldn't work out corner kings here:\n" + traceback.format_exc())
-        if entry["kings"] is None and mates_sorted:
-            entry["kings_note"] = "Not enough telemetry from these laps to compare corners."
-        for r in board:
-            r.pop("_lap", None)
-        entry["board"] = board
-        try:
-            entry["learn"] = learn_for_combo(entry)
-        except Exception:  # noqa: BLE001  (a hint is never worth breaking the hub)
-            entry["learn"] = []
+            log(f"  {short} · {c['car']} failed ({type(e).__name__}: {e}):\n" + traceback.format_exc())
+            entry["note"] = _combo_notes_failed(c, e)
+            entry["failed"] = True
+    names_all = {**roster_g61, **seen_drivers}
+    matched, unmatched = match_members(members, names_all, my_slug, my_name)
+    member_rows = []
+    for m in members:
+        row = {"name": m, "key": matched.get(m), "is_me": matched.get(m) == "me", "matched": m in matched}
+        if m not in matched:
+            row["problem"] = (f"No driver in {group_name} on Garage 61 matched the name \u201c{m}\u201d (checked their name "
+                              "and short name). If Garage 61 shows them under another name, change it in Settings > Team."
+                              if (seen_drivers or roster_g61) and not not_member else
+                              f"Not seen yet: no {group_name} laps have been loaded, so this name couldn't be matched.")
+        member_rows.append(row)
+    if unmatched and not not_member and (seen_drivers or roster_g61):
+        log("  Team members with no matching Garage 61 driver: " + ", ".join(unmatched))
     data = {
-        "version": 1,
-        "team": {"slug": team_slug, "name": team_name},
+        "version": 2,
+        "team": {"slug": team_slug, "name": group_name},          # the Garage 61 group (kept for older readers)
+        "group": {"slug": team_slug, "name": group_name},
+        "team_name": st["name"],
+        "members": member_rows,
         "membership": mem,
         "me": {"name": my_name, "key": "me"},
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -508,14 +535,135 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
         "h2h": head_to_heads(out_combos),
         "requests": api.requests_made - start_req,
         "notes": notes,
+        "settings_stamp": settings_stamp(cfg),
+        "section_notes": [],
     }
     try:
         from . import leaderboards
         data["weekly"] = leaderboards.view(folder)   # saved snapshots only: no requests
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        import traceback
+        log("  Couldn't load this week's leaderboards:\n" + traceback.format_exc())
+        data["section_notes"].append(f"Couldn't load this week's leaderboards: {type(e).__name__}. "
+                                     "Press Refresh this week to try again.")
     log(f"Team hub ready. Garage 61 requests used: {data['requests']}.")
     return data
+
+
+def settings_stamp(cfg) -> str:
+    """A short fingerprint of the team settings a page was built with, so a change can mark the page out of date."""
+    st = settings_of(cfg)
+    return "|".join([st["name"], st["slug"]] + st["members"])
+
+
+def _build_combo(api, entry, c, ids_for, track_items, team_slug, not_member, my_slug, my_name, members, group_name,
+                 roster_g61, seen_drivers, log):
+    tid, cid = ids_for(c)
+    entry["track_id"], entry["car_id"] = tid, cid
+    if tid is None or cid is None:
+        entry["note"] = NO_MATCH_NOTE
+        return
+    # not on the team: zero team-lap requests, only your own laps (your board row and telemetry)
+    team_laps = [] if not_member else api.find_laps(tracks=[tid], cars=[cid], teams=[team_slug],
+                                                     group="driver", age=-2, limit=100)
+    my_laps = api.find_laps(tracks=[tid], cars=[cid], drivers=["me"], group="none", age=-2, limit=1000)
+    anchor = anchor_for([app.lap_time(l) for l in my_laps if usable(l)], c["best"])
+    my_ok = sorted((l for l in my_laps if usable(l) and plausible(app.lap_time(l), anchor)), key=app.lap_time)
+    my_api = my_ok[0] if my_ok else None
+    my_best = c["best"] or (app.lap_time(my_api) if my_api else None)
+    mates, reasons = {}, []
+    if not not_member:
+        # 2.20.1: one extra request at most (all their laps) when a best lap was rejected or a member has no row
+        found, reasons = gather_mates(
+            team_laps, lambda: api.find_laps(tracks=[tid], cars=[cid], teams=[team_slug], group="none",
+                                             age=-2, limit=1000),
+            my_slug, my_best, roster_g61, members=members, my_name=my_name, group=group_name, log=log)
+        for sl, m in found.items():
+            l = m["lap"]
+            seen_drivers[sl] = m["name"]
+            mates[sl] = {"key": sl, "name": m["name"], "t": m["t"], "is_me": False, "member": m["member"],
+                         "date": lap_day(l), "irating": g(l, "driverRating"), "_lap": g(l, "id")}
+        for l in team_laps:
+            d = driver_of(l)
+            if d["slug"] and d["slug"] != my_slug:
+                seen_drivers.setdefault(d["slug"], d["name"])
+    # your best: the quicker of your reviewed races and anything on Garage 61 (practice counts too)
+    mine = None
+    cands = []
+    if c["best"] is not None:
+        cands.append((c["best"], "your reviewed races", c["best_date"]))
+    if my_api is not None:
+        cands.append((app.lap_time(my_api), "Garage 61", lap_day(my_api)))
+    if cands:
+        t, src, day = min(cands, key=lambda z: z[0])
+        mine = {"key": "me", "name": my_name, "t": t, "is_me": True, "date": day, "source": src,
+                "irating": g(my_api, "driverRating") if my_api else None}
+    # the team's board has the team's members and you; other drivers in the group are listed apart (never mixed in)
+    team_mates = {k: m for k, m in mates.items() if m["member"]}
+    others = {k: m for k, m in mates.items() if not m["member"]}
+    board = sorted(list(team_mates.values()) + ([mine] if mine else []), key=lambda r: r["t"])
+    p1 = board[0]["t"] if board else None
+    for pos, r in enumerate(board, 1):
+        r["pos"] = pos
+        r["gap"] = round(r["t"] - p1, 3)  # always >= 0
+    entry["academy"] = [_slim({**m, "gap": None}) for m in sorted(others.values(), key=lambda m: m["t"])]
+    entry["mate_notes"] = [reason_text(r) for r in reasons]
+    if not team_mates:
+        entry["note"] = brand.join_title(group_name) + "." if not_member else (
+            "No teammate lap here yet, so there is nothing to compare. They appear once a teammate sets a clean lap in this "
+            "car at this track." if not reasons else
+            "No teammate lap could be used here. Reasons are below.")
+    # corner kings: one lap of yours + the fastest teammates, MAX_TEL_DRIVERS in all
+    entries = []
+    mates_all = [r for r in board if not r["is_me"]]
+    cap = MAX_TEL_DRIVERS - (1 if my_ok else 0)
+    mates_sorted = mates_all[:cap]
+    if len(mates_all) > cap:
+        left = ", ".join(r["name"] for r in mates_all[cap:])
+        entry["kings_note"] = (f"Corners are compared for the {cap} quickest teammates only ({left} left out) "
+                               "to keep Garage 61 requests down.")
+    if mates_sorted and (my_ok or len(mates_sorted) >= 2):
+        log(f"  Telemetry for up to {len(mates_sorted) + (1 if my_ok else 0)} best laps (laps saved earlier are reused)...")
+        # your lap: the fastest one, else one already saved, else the next fastest (<= 2 requests)
+        top = my_ok[:8]
+        saved = [l for l in top[1:] if api.has_csv(g(l, "id"))]
+        tries = (top[:1] + saved[:1] + [l for l in top[1:] if l not in saved][:1]) if top else []
+        asked = 0
+        for l in tries:
+            if not api.has_csv(g(l, "id")):
+                if asked >= 2:
+                    continue
+                asked += 1
+            csv = api.lap_csv(g(l, "id"))
+            if csv:
+                entries.append({"key": "me", "name": my_name, "t": app.lap_time(l), "csv": csv, "is_me": True})
+                entry["my_tel_lap"] = {"t": app.lap_time(l), "date": lap_day(l)}
+                break
+        for r in mates_sorted:
+            csv = api.lap_csv(r["_lap"])
+            if csv:
+                entries.append({"key": r["key"], "name": r["name"], "t": r["t"], "csv": csv, "is_me": False})
+            else:
+                entry["mate_notes"].append(reason_text({"name": r["name"], "text": "lap time only, they aren't "
+                                                        "sharing telemetry with the team"}))
+    tl = next((g(it, "lap_length", "lapLength", "length") for it in track_items if g(it, "id") == tid), None)
+    try:
+        entry["kings"] = corner_kings(entries, tl)
+    except Exception:  # noqa: BLE001  (one odd telemetry file shouldn't stop the hub)
+        import traceback
+        log("  Couldn't work out corner kings here:\n" + traceback.format_exc())
+        entry["kings_note"] = "Couldn't compare corners here. Details were saved to debrief.log."
+    if entry["kings"] is None and mates_sorted and not entry.get("kings_note"):
+        entry["kings_note"] = "Not enough telemetry from these laps to compare corners."
+    elif entry["kings"] is None and mates_sorted:
+        entry["kings_note"] += " Not enough telemetry from these laps to compare corners."
+    for r in board:
+        r.pop("_lap", None)
+    entry["board"] = board
+    try:
+        entry["learn"] = learn_for_combo(entry)
+    except Exception:  # noqa: BLE001  (a hint is never worth breaking the hub)
+        entry["learn"] = []
 
 
 NO_SHARED = "no shared track yet"
@@ -572,8 +720,35 @@ def _embed(obj) -> str:
     return report._embed(obj)  # escapes <, > and & so names can't break the script element
 
 
-def write(folder, data) -> Path:
+def _unit() -> str:
+    try:
+        from .desktop import settings_io
+        return settings_io.units()
+    except Exception:  # noqa: BLE001
+        return "mph"
+
+
+def _in_unit(data, unit):
+    """2.21: the sentences in the learn rows say speeds in Settings > Units' unit (the raw numbers stay as measured)."""
+    from . import units
+    for c in data.get("combos") or []:
+        for r in (c.get("learn") or []) if isinstance(c, dict) else []:
+            if isinstance(r, dict) and isinstance(r.get("text"), str):
+                r["text"] = units.convert_text(r["text"], unit)
+    data["units"] = units.norm(unit)
+
+
+def write(folder, data, unit=None) -> Path:
     from . import report
+    try:
+        _in_unit(data, unit or _unit())
+    except Exception:  # noqa: BLE001  (words in the wrong unit are better than no page)
+        data.setdefault("units", "mph")
+    try:   # the join words name the Garage 61 group (from the data), not a brand constant
+        gname = ((data.get("group") or {}).get("name")) or ((data.get("team") or {}).get("name")) or brand.GROUP_NAME
+        data["brand"] = {**brand.as_dict(), "join_title": brand.join_title(gname), "join_text": brand.join_text(gname)}
+    except Exception:  # noqa: BLE001
+        pass
     out = Path(folder) / "team"
     out.mkdir(parents=True, exist_ok=True)
     tj = out / "team.json"
@@ -757,7 +932,22 @@ def learn_from_saved(library_folder, review: dict) -> list[dict]:
         return []
 
 
-def render_saved(library_folder) -> Path:
+def mark_stale(library_folder, cfg) -> bool:
+    """2.21: after a change to the team settings, say on the saved page that it was built with the old ones.
+    No requests. True when the page was changed."""
+    folder = Path(library_folder)
+    try:
+        data = json.loads((folder / "team" / "team.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(data, dict) or data.get("settings_stamp") in (None, settings_stamp(cfg)):
+        return False
+    data["stale"] = "Team settings changed. Press Refresh team data to see the new team."
+    write(folder, data)
+    return True
+
+
+def render_saved(library_folder, cfg=None) -> Path:
     """Rebuild the team page from team.json plus the saved weekly snapshots. No requests."""
     from . import leaderboards
     folder = Path(library_folder)
@@ -779,6 +969,10 @@ def render_saved(library_folder) -> Path:
             except Exception:  # noqa: BLE001
                 c["learn"] = []
     data["weekly"] = leaderboards.view(folder)
+    if cfg is not None and data.get("settings_stamp") not in (None, settings_stamp(cfg)):
+        data["stale"] = "Team settings changed. Press Refresh team data to see the new team."
+    elif cfg is not None:
+        data.pop("stale", None)
     wk = data["weekly"] if isinstance(data["weekly"], dict) else {}
     if wk.get("membership") in (brand.MEMBER, brand.NOT_MEMBER):   # the newest check wins
         data["membership"] = wk["membership"]

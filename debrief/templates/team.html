@@ -277,6 +277,9 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
   <span class="eyebrow">Team hub</span>
   <h1 id="title">Midfield Menace</h1>
   <p class="lede" id="lede">How you stack up against your teammates on the tracks and cars you race.</p>
+  <p class="note" id="refreshed"></p>
+  <p class="note" id="stale" hidden></p>
+  <ul class="note" id="secNotes" hidden></ul>
   <div class="stats" id="totals"></div>
 </header>
 
@@ -289,8 +292,8 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 </section>
 
 <section id="roster" hidden>
-  <div class="sechead"><span class="eyebrow">Teammates</span><h2>Who is on your team</h2>
-    <p class="lede">Everyone Garage 61 showed for your team, and what is still missing to compare with them.</p></div>
+  <div class="sechead"><span class="eyebrow">Teammates</span><h2 id="rosterTitle">Who is on your team</h2>
+    <p class="lede" id="rosterLede">Your team's drivers, and what is still missing to compare with them.</p></div>
   <div class="panel"><ul id="rosterList"></ul></div>
 </section>
 
@@ -377,12 +380,14 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;',
 const BRAND=(D&&D.brand&&typeof D.brand==='object')?D.brand:{};
 const BRAND_NAME=(typeof BRAND.team_name==='string'&&BRAND.team_name.trim())||'Midfield Menace';
 const TEAM=(D&&D.team&&typeof D.team==='object')?D.team:{};
-const teamName=(typeof TEAM.name==='string'&&TEAM.name.trim()&&TEAM.name.trim().toLowerCase()!==String(TEAM.slug||'').toLowerCase()&&TEAM.name.trim())||BRAND_NAME;
+// 2.21: the page's name is the TEAM (Midfield Menace); the Garage 61 GROUP the laps come from (Overdriver Academy) is named apart
+const teamName=(D&&typeof D.team_name==='string'&&D.team_name.trim())||BRAND_NAME;
+const GROUP=(D&&D.group&&typeof D.group.name==='string'&&D.group.name.trim())||(typeof TEAM.name==='string'&&TEAM.name.trim())||'your Garage 61 group';
 $('chipTeam').textContent=teamName;$('title').textContent=teamName;document.title=teamName+' · Team hub';
 // not on the team on Garage 61: a join panel instead of empty boards (your own times still show where there are any)
 const NOT_MEMBER=!!D&&(D.membership==='not_member'||(D.weekly&&typeof D.weekly==='object'&&D.weekly.membership==='not_member'));
-if(NOT_MEMBER){$('join').hidden=false;$('joinTitle').textContent=BRAND.join_title||('Join '+teamName+' on Garage 61');
-  $('joinText').textContent=BRAND.join_text||('Team comparisons need you on the '+teamName+' team on Garage 61. Ask a teammate to invite you, then press Refresh.');
+if(NOT_MEMBER){$('join').hidden=false;$('joinTitle').textContent=BRAND.join_title||('Join '+GROUP+' on Garage 61');   // the data's brand words are built from the group's name
+  $('joinText').textContent=BRAND.join_text||('Team comparisons need you in the '+GROUP+' group on Garage 61. Ask someone in it to invite you, then press Refresh. Your own reviews, practice and prep work without it.');
   if(/^https:\/\//.test(BRAND.team_url||''))$('joinLink').href=BRAND.team_url}
 
 if(!D||!Array.isArray(D.combos)){
@@ -392,7 +397,22 @@ if(!D||!Array.isArray(D.combos)){
   $('lede').textContent=wk?'This week\'s team leaderboards for your series.':'No team data yet. In Debrief, open Team and click Refresh.';return}
 
 // 2.19.2: with no series picked there are no weekly boards, so the teammates are listed by name with what is missing
-(function roster(){const R=Array.isArray(D.roster)?D.roster.filter(x=>x&&typeof x==='object'&&x.name):[];
+(function freshness(){
+  const when=v=>{const d=new Date(v);return isFinite(d)?MON[d.getMonth()]+' '+d.getDate()+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):null};
+  const g=when(D.generated_at),c=when(D.checked_at);
+  $('refreshed').textContent=(g?'Last refreshed '+g+'.':'Not refreshed yet.')+(D.cache_reused&&c?' Up to date, checked '+c+': Garage 61 had nothing newer.':'');
+  if(typeof D.stale==='string'&&D.stale){$('stale').hidden=false;$('stale').textContent=D.stale}
+  const sn=Array.isArray(D.section_notes)?D.section_notes.filter(x=>typeof x==='string'):[];
+  if(sn.length){$('secNotes').hidden=false;sn.forEach(x=>$('secNotes').append(h('li',null,x)))}})();
+(function roster(){const M=Array.isArray(D.members)?D.members.filter(x=>x&&typeof x==='object'&&x.name):[];
+  if(M.length){$('roster').hidden=false;$('rosterTitle').textContent=teamName;$('rosterLede').textContent='The team\'s drivers, and whether their laps reached this page.';
+    const ul=$('rosterList');ul.replaceChildren();
+    M.forEach(m=>{const li=h('li');li.append(h('b',null,String(m.name)+(m.is_me?' (you)':'')));
+      let n=0,total=0;(D.combos||[]).forEach(c=>{if(c&&Array.isArray(c.board)){total++;if(c.board.some(r=>r&&(r.key===m.key)))n++}});
+      let t;if(m.problem)t=m.problem;else if(!total)t='no track and car to compare yet.';else if(n===total)t='lap at all '+n+' track'+(n===1?'':'s')+' and car'+(n===1?'':'s')+'.';
+      else t='lap at '+n+' of '+total+' tracks and cars. The other'+(total-n===1?'':'s')+' say why below.';
+      li.append(document.createTextNode(': '+t));ul.append(li)});return}
+  const R=Array.isArray(D.roster)?D.roster.filter(x=>x&&typeof x==='object'&&x.name):[];
   const noSeries=!(D.weekly&&Array.isArray(D.weekly.series)&&D.weekly.series.length);
   if(!R.length||!noSeries)return;$('roster').hidden=false;const ul=$('rosterList');
   R.forEach(t=>{const li=h('li');li.append(h('b',null,String(t.name)));const m=Array.isArray(t.missing)?t.missing.filter(x=>typeof x==='string'):[];
@@ -419,19 +439,24 @@ let p1s=0;combos.forEach(c=>{if(c.board[0]&&c.board[0].key===meKey&&c.board.leng
 
 // ---------- leaderboards
 (function boards(){const host=$('boardList');
-  if(!combos.length){const e=h('div','empty');e.append(h('b',null,'No races in your library yet.'),h('span',null,'Review a race first; the team hub compares the tracks and cars you have raced.'));host.append(e);return}
+  if(!combos.length){const e=h('div','empty');e.append(h('b',null,'No races in your library yet.'),h('span',null,'Review a race, or pick a track and car on Prepare, then press Refresh team data. The team hub compares the tracks and cars you have raced.'));host.append(e);return}
   combos.forEach(c=>{const p=h('div','panel');const hd=h('div','phead');const t=h('h3',null,c.track_short||c.track);t.title=c.track;t.append(h('span','u',c.car));hd.append(t);
     hd.append(h('p','note',(c.races?plural(c.races,'reviewed race'):'')+(c.last_date?' · last '+fmtDate(c.last_date):'')));p.append(hd);
     if(c.note)p.append(h('p','note',c.note));
     if(Array.isArray(c.mate_notes)&&c.mate_notes.length){const ul=h('ul','note');c.mate_notes.forEach(n=>{if(typeof n==='string')ul.append(h('li',null,n))});p.append(ul)}
     if(c.board.length){const maxGap=Math.max(0.5,...c.board.map(r=>r.gap||0));
-      const tw=h('div','tablewrap');const tb=h('table');tb.innerHTML='<thead><tr><th>Pos</th><th>Driver</th><th class="n">Best lap</th><th class="n">Gap</th><th>Set on</th></tr></thead>';
+      const tw=h('div','tablewrap');const tb=h('table');tb.innerHTML='<thead><tr><th>Pos</th><th>Driver</th><th class="n">Best lap</th><th class="n">Gap</th><th class="n">iRating</th><th>Set on</th></tr></thead>';
       const body=h('tbody');c.board.forEach(r=>{const tr=h('tr',r.key===meKey?'me':null);
         const nm=h('td');nm.append(document.createTextNode(r.name));if(r.key===meKey)nm.append(h('span','you','You'));
         if(r.key===meKey&&r.source)nm.append(h('span','src','From '+r.source));
         const g=h('td','n');g.append(document.createTextNode(r.pos===1?'P1':fmtD(r.gap)));const b=h('span','gapbar');b.style.width=Math.round(4+56*(r.gap||0)/maxGap)+'px';b.setAttribute('aria-hidden','true');g.append(b);
-        tr.append(h('td','pos',String(r.pos)),nm,h('td','n',fmt(r.t)),g,h('td','mono nw',fmtDate(r.date)));body.append(tr)});
+        tr.append(h('td','pos',String(r.pos)),nm,h('td','n',fmt(r.t)),g,h('td','n',ok(r.irating)?String(Math.round(r.irating)):'–'),h('td','mono nw',fmtDate(r.date)));body.append(tr)});
       tb.append(body);tw.append(tb);p.append(tw)}
+    if(c.kings_note)p.append(h('p','note',c.kings_note));
+    if(Array.isArray(c.academy)&&c.academy.length){p.append(h('h4',null,'Also in '+GROUP+' (not part of '+teamName+')'));
+      const tw2=h('div','tablewrap');const t2=h('table');t2.innerHTML='<thead><tr><th>Driver</th><th class="n">Best lap</th><th class="n">iRating</th><th>Set on</th></tr></thead>';
+      const b2=h('tbody');c.academy.forEach(r=>{const tr=h('tr');tr.append(h('td',null,str(r.name)),h('td','n',fmt(r.t)),h('td','n',ok(r.irating)?String(Math.round(r.irating)):'–'),h('td','mono nw',fmtDate(r.date)));b2.append(tr)});
+      t2.append(b2);tw2.append(t2);p.append(tw2)}
     host.append(p)})})();
 
 // ---------- corner kings
@@ -482,7 +507,7 @@ function kings(i){const host=$('kingBody');host.replaceChildren();const c=kc[i];
   tp.append(h('p','note','"You vs king" is your time through the stretch minus the king\'s: plus means you were slower there. It compares single laps, so treat small gaps as a hint, not a verdict.'));host.append(tp);
 }
 let redraw=null;
-if(!kc.length){$('kingLede').textContent='';const e=h('div','empty');e.append(h('b',null,'No corner comparison yet.'),h('span',null,'This needs telemetry from at least two drivers at the same track and car. Garage 61 only shares telemetry from you, your teammates and drivers you follow.'));$('kingBody').append(e)}
+if(!kc.length){$('kingLede').textContent='';const e=h('div','empty');e.append(h('b',null,'No corner comparison yet.'),h('span',null,'This needs telemetry from at least two drivers at the same track and car. Garage 61 only shares telemetry from you, your teammates and drivers you follow. Corners are compared for the 4 quickest teammates at most.'),h('span',null,combos.map(c=>c.kings_note).filter(x=>typeof x==='string'&&x).join(' ')));$('kingBody').append(e)}
 else{sel.addEventListener('change',()=>kings(+sel.value));kings(0)}
 
 // ---------- head-to-heads
@@ -649,8 +674,9 @@ safe('season head-to-heads',()=>{if(!W||!Array.isArray(W.h2h))return;show('seaso
 // ---------- who to learn from (combos[].learn = team.learn_from rows; `how` arrays are [you, them])
 function howFacts(how){const o=[];if(!isObj(how))return o;const pr=k=>Array.isArray(how[k])&&how[k].length===2&&num(how[k][0])&&num(how[k][1])?how[k]:null;let p;
   if((p=pr('brake_before_apex_m'))){const d=p[0]-p[1];if(Math.abs(d)>=0.5)o.push('Braked '+Math.round(Math.abs(d))+' m '+(d>0?'later':'earlier'))}
-  if((p=pr('min_mph'))){const d=p[1]-p[0];if(Math.abs(d)>=0.05)o.push((d>0?'+':'−')+Math.abs(d).toFixed(1)+' mph at the slowest point')}
-  if((p=pr('exit_mph'))){const d=p[1]-p[0];if(Math.abs(d)>=0.05)o.push((d>0?'+':'−')+Math.abs(d).toFixed(1)+' mph on exit')}
+  const KM=D.units==='kmh',UF=KM?1.609344:1,UL=KM?'km/h':'mph';   // 2.21: Settings > Units
+  if((p=pr('min_mph'))){const d=(p[1]-p[0])*UF;if(Math.abs(d)>=0.05)o.push((d>0?'+':'−')+Math.abs(d).toFixed(1)+' '+UL+' at the slowest point')}
+  if((p=pr('exit_mph'))){const d=(p[1]-p[0])*UF;if(Math.abs(d)>=0.05)o.push((d>0?'+':'−')+Math.abs(d).toFixed(1)+' '+UL+' on exit')}
   if((p=pr('full_thr_after_apex_m'))){const d=p[0]-p[1];if(Math.abs(d)>=0.5)o.push('Full throttle '+Math.round(Math.abs(d))+' m '+(d>0?'sooner':'later')+' after the apex')}
   if((p=pr('gear'))&&p[0]!==p[1])o.push('Gear '+p[1]+' (you: '+p[0]+')');
   return o}

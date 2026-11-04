@@ -193,7 +193,7 @@ def fakes(rec=None, post_raises=None, check_result=None, learn=True):
             return sample("learn_from")
         return []
 
-    def render_saved(folder):
+    def render_saved(folder, cfg=None):
         rec.calls.append(("team.render_saved",))
         out = Path(folder) / "team"
         out.mkdir(parents=True, exist_ok=True)
@@ -678,7 +678,7 @@ def test_weekly_passes_saved_series_to_leaderboards():
             return old(api, cfg, sched, mine, **kw)
         lb.refresh = refresh
         res = app.cmd_weekly({"library_folder": str(lib), "team_slug": "midfield-menace", "cache_dir": str(TMP / "c")})
-    assert seen["mine"] == series.load(lib) and seen["sched"]["season"] == "2026 Season 4"
+    assert seen["mine"]["series"] == series.load(lib)["series"] and seen["sched"]["season"] == "2026 Season 4"
     assert seen["kw"] == {"series_ids": None, "force_old": False, "log": seen["kw"]["log"]} and seen["slug"] == "midfield-menace"
     assert res["page"] == lib / "team" / "index.html" and res["requests"] == 2
     write_settings()

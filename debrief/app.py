@@ -26,7 +26,7 @@ from . import brand, engine, report, library
 from .engine import g
 from .g61 import Garage61, Garage61Error
 
-DEFAULT_TEAM = brand.TEAM_SLUG
+DEFAULT_TEAM = brand.GROUP_SLUG
 
 # Two ways Debrief runs:
 #  * from source (Setup.bat + .venv): everything lives in the Debrief folder next to the code, as always.
@@ -158,6 +158,9 @@ def load_settings() -> dict:
     cfg["include_practice"] = bool(cfg.get("include_practice", False))
     cfg["salutation"] = normalise_salutation(cfg.get("salutation", ""))
     cfg["team_slug"] = str(cfg.get("team_slug") or DEFAULT_TEAM).strip().lower() or DEFAULT_TEAM
+    # 2.21: the team (a name and its members) is not the Garage 61 group the laps come from (team_slug above)
+    cfg["team_name"] = " ".join(str(cfg.get("team_name") or brand.TEAM_NAME).split())[:60] or brand.TEAM_NAME
+    cfg["team_members"] = brand.parse_members(cfg.get("team_members"))
     # history sync: catch up with Garage 61 each time the window opens; telemetry "best" or "none"
     cfg["sync_on_open"] = bool(cfg.get("sync_on_open", True))
     cfg["check_updates"] = bool(cfg.get("check_updates", True))
@@ -1140,7 +1143,8 @@ def cmd_prep(cfg, track_id, car_id, progress=None, open_after=False) -> Path:
     step, log = _job_logger(progress)
     step("Getting your history at this track and car...", 0.04)
     api = make_api(cfg)
-    data = prep.build(api, cfg["library_folder"], track_id, car_id, cfg.get("team_slug") or None, log=log)
+    data = prep.build(api, cfg["library_folder"], track_id, car_id, cfg.get("team_slug") or None, log=log,
+                      members=cfg.get("team_members"))
     data.update(prep_strategy(cfg, api, data))
     step("Saving the prep page...", 0.95)
     page = prep.write(cfg["library_folder"], data)
@@ -1157,10 +1161,16 @@ def cmd_team(cfg, progress=None, open_after=False) -> Path:
     step, log = _job_logger(progress)
     step("Connecting to Garage 61...", 0.03)
     api = make_api(cfg)
-    data = team.build(api, cfg["library_folder"], cfg.get("team_slug") or DEFAULT_TEAM, log=log, max_combos=6)
+    data = team.build(api, cfg["library_folder"], cfg.get("team_slug") or DEFAULT_TEAM, log=log, max_combos=6, cfg=cfg)
     step("Saving the team hub...", 0.96)
+    data["checked_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    data["cache_reused"] = (data.get("requests") or 0) == 0
     page = team.write(cfg["library_folder"], data)
-    step(f"Done. Team hub saved to {page}", 1.0)
+    if data["cache_reused"]:   # 2.21: say so, instead of looking like nothing happened
+        step("Up to date, checked " + datetime.now().strftime("%I:%M %p").lstrip("0").lower()
+             + ". Garage 61 had nothing newer than the last refresh.", 1.0)
+    else:
+        step(f"Done. Team hub saved to {page}", 1.0)
     say(f"Garage 61 requests this run: {api.requests_made}")
     if open_after:
         webbrowser.open(Path(page).as_uri())
@@ -1179,13 +1189,13 @@ def cmd_weekly(cfg, progress=None, series_ids=None, force_old=False, open_after=
     if not sched:
         raise SystemExit("Load the season schedule first (Prepare > Season schedule), then pick your series.")
     lib = cfg["library_folder"]
-    mine = series.load(lib)
+    mine = series.effective(lib, sched)    # 2.21: your saved series, else the one picked on Prepare
     step, log = _job_logger(progress)
     step("Connecting to Garage 61...", 0.03)
     api = make_api(cfg)
     summary = lb.refresh(api, cfg, sched, mine, series_ids=series_ids, force_old=bool(force_old), log=log)
     step("Saving the team page...", 0.96)
-    page = team.render_saved(lib)
+    page = team.render_saved(lib, cfg)
     step(f"Done. Team page saved to {page}", 1.0)
     say(f"Garage 61 requests this run: {api.requests_made}")
     if open_after:

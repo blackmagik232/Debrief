@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import traceback
 from pathlib import Path
 
 from .. import app
@@ -47,7 +48,7 @@ def inputs(cfg) -> dict:
     return inp
 
 
-def _telemetry(cfg, inp) -> list:
+def _telemetry(cfg, inp, notes=None) -> list:
     """Setup Lab's index records of the telemetry folder (its cache: files read once), each with its full path."""
     if not inp["telemetry_folder"]:
         return []
@@ -55,8 +56,11 @@ def _telemetry(cfg, inp) -> list:
     from .server import setuplab_cache_path
     try:
         idx = setuplab.index(inp["telemetry_folder"], cache_path=setuplab_cache_path(cfg))
-    except Exception:  # noqa: BLE001
-        app.say("Car vs car: the telemetry folder couldn't be read.")
+    except Exception as x:  # noqa: BLE001
+        app.say("Car vs car: the telemetry folder couldn't be read:\n" + traceback.format_exc())
+        if notes is not None:   # 2.21: said on the page, not only in the log
+            notes.append(f"Couldn't load your telemetry files: {type(x).__name__}. Check the telemetry folder in "
+                         "Settings, then open this page again.")
         return []
     out = []
     for r in idx.get("files") or []:
@@ -70,20 +74,23 @@ def _telemetry(cfg, inp) -> list:
 
 
 def _teammates(server, cfg) -> list:
-    """Teammate laps from the Coach page: loaded this session (memory) or kept (the cache folder). Each:
+    """Teammate laps from the Coach page: loaded this session (memory) or kept (the cache folder). 2.21: one per
+    teammate per car and track (the old one-per-track list dropped a second teammate). Each:
     {"driver", "car", "track", "lap" (cornercoach lap), "key"}."""
     out, seen = [], set()
     try:
         st = carsetup.state(server)
         with st.lock:
-            mem = list(st.team.items())
+            mem = [(tuple(k)[:2], e) for k, e in list(st.team.items()) + list(st.team_all.items())]
     except Exception:  # noqa: BLE001
+        app.say("Car vs car: the teammate laps loaded this session couldn't be read:\n" + traceback.format_exc())
         mem = []
-    entries = [(k, e) for k, e in mem]
+    entries = list(mem)
     folder = Path(cfg["cache_dir"]) / carsetup.TEAM_DIR
     try:
         files = sorted(folder.glob("*.json")) if folder.is_dir() else []
-    except OSError:
+    except OSError as x:
+        app.say(f"Car vs car: the kept teammate laps folder couldn't be read ({type(x).__name__}: {x}).")
         files = []
     for f in files:
         try:
@@ -92,15 +99,19 @@ def _teammates(server, cfg) -> list:
                 continue
             k = carsetup._team_key(raw.get("car_path"), raw.get("track_code"))
             entries.append((k, {"summary": raw.get("summary") or {}, "cornercoach": carsetup._from_plain(raw.get("cornercoach"))}))
-        except (OSError, ValueError, AttributeError, TypeError):
+        except (OSError, ValueError, AttributeError, TypeError) as x:
+            app.say(f"Car vs car: a kept teammate lap couldn't be read ({f.name}: {type(x).__name__}).")
             continue
     for k, e in entries:
-        if k in seen or not e.get("cornercoach"):
+        if not e.get("cornercoach"):
             continue
-        seen.add(k)
         s = e.get("summary") or {}
+        full = tuple(k) + (carsetup.dkey(s),)
+        if full in seen:
+            continue
+        seen.add(full)
         out.append({"driver": str(s.get("driver") or "Your teammate"), "car": str(s.get("car") or ""),
-                    "track": str(s.get("track") or ""), "lap": e["cornercoach"], "key": [str(x) for x in k],
+                    "track": str(s.get("track") or ""), "lap": e["cornercoach"], "key": [str(x) for x in full],
                     "label": str(s.get("label") or ""), "lap_time": s.get("lap_time")})
     return out
 
@@ -113,7 +124,8 @@ def work_out(cfg, inp, q, team=None) -> dict:
     got = cc.collect(inp["library"], inp["racecap"])
     races = got["races"]
     me = sorted({str(r.get("me")) for r in _field_docs(inp["library"]) if r.get("me")})
-    tel = _telemetry(cfg, inp)
+    notes = list(got["notes"])
+    tel = _telemetry(cfg, inp, notes)
     team = team or []
     opts = cc.options(races)
     # telemetry-only pairs (two of his cars in one class at one track) are options too
@@ -143,7 +155,7 @@ def work_out(cfg, inp, q, team=None) -> dict:
     track, cls = q.get("track") or "", q.get("class") or ""
     pick = next((o for o in opts if o["track"] == track and o["class"] == cls), None) or (opts[0] if opts else None)
     period = "all" if q.get("period") == "all" else "season"
-    out = {"options": opts[:200], "notes": got["notes"], "races": len(races), "telemetry_files": len(tel),
+    out = {"options": opts[:200], "notes": notes, "races": len(races), "telemetry_files": len(tel),
            "selected": None, "compare": None, "where": None, "tel_cars": [], "period": period}
     if pick is None:
         return out
@@ -160,7 +172,11 @@ def work_out(cfg, inp, q, team=None) -> dict:
                        for c, v in sorted(cars.items(), key=lambda kv: -sum(t["clean"] for t in kv[1]))]
     mates = [t for t in team if t["_track"] == pick["track"] and t["_class"] == pick["class"]
              and not any(cc._same_car(t["car"], c) for c in cars)]
+    listed = set()
     for t in mates:
+        if t["car"] in listed:      # two teammates in one car: the car is listed once
+            continue
+        listed.add(t["car"])
         out["tel_cars"].append({"car": t["car"], "clean_laps": 1, "files": 0, "driver": t["driver"]})
     names = [c["car"] for c in out["tel_cars"]]
     a = next((c for c in names if c == q.get("a")), names[0] if names else None)

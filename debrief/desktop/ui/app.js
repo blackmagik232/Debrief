@@ -75,21 +75,25 @@ addEventListener('pagehide',()=>{try{fetch(BASE+'api/bye',{method:'POST',headers
 /* ---------- brand: the team name and join copy come from /api/brand (debrief/brand.py). 2.18: the app is
    "Debrief · by Black Magik Studios"; the team name only appears in team and league features */
 const BRAND0={app_name:'Debrief',maker:'Black Magik Studios',team_slug:'midfield-menace',team_name:'Midfield Menace',team_short:'MM',team_url:'https://garage61.net',
-  join_title:'Join Midfield Menace on Garage 61',join_text:'Team comparisons need you on the Midfield Menace team on Garage 61. Ask a teammate to invite you, then press Refresh. Your own reviews, practice and prep work without it.'};
+  group_slug:'overdriver-academy',group_name:'Overdriver Academy',
+  join_title:'Join Overdriver Academy on Garage 61',join_text:'Team comparisons need you in the Overdriver Academy group on Garage 61. Ask someone in it to invite you, then press Refresh. Your own reviews, practice and prep work without it.'};
+// 2.21: the team (name and members from Settings) and the Garage 61 group its laps come from are two things
+let groupName=null,teamDisplay=null;
+function joinWords(){const n=groupName||brand.group_name;return {title:'Join '+n+' on Garage 61',text:'Team comparisons need you in the '+n+' group on Garage 61. Ask someone in it to invite you, then press Refresh. Your own reviews, practice and prep work without it.'}}
 let brand=Object.assign({},BRAND0);
 const appTitle=()=>(brand.app_name||'Debrief')+' · by '+(brand.maker||BRAND0.maker);
 function applyBrand(){
   document.querySelectorAll('.brandName').forEach(e=>{e.textContent=brand.team_name});
-  document.querySelectorAll('.joinTitle').forEach(e=>{e.textContent=brand.join_title});
-  document.querySelectorAll('.joinText').forEach(e=>{e.textContent=brand.join_text});
+  document.querySelectorAll('.joinTitle').forEach(e=>{e.textContent=joinWords().title});
+  document.querySelectorAll('.joinText').forEach(e=>{e.textContent=joinWords().text});
   document.querySelectorAll('a.joinLink').forEach(e=>{if(/^https:\/\//.test(brand.team_url||''))e.href=brand.team_url});
-  $('brandMaker').textContent='by '+(brand.maker||BRAND0.maker);$('teamTitle').textContent=teamName||brand.team_name;
+  $('brandMaker').textContent='by '+(brand.maker||BRAND0.maker);$('teamTitle').textContent=teamDisplay||brand.team_name;
   if(!FRAME_VIEWS.includes(current.view))document.title=appTitle()}
 async function loadBrand(){try{const j=await api('brand');
     if(j&&typeof j==='object')Object.keys(BRAND0).forEach(k=>{if(typeof j[k]==='string'&&j[k].trim())brand[k]=j[k].trim()});
     if(j&&typeof j==='object'&&typeof creditsHelp==='function')creditsHelp(j);
     if(j&&typeof j.copyright==='string'&&j.copyright&&$('aboutCopy'))$('aboutCopy').textContent=brand.app_name+' \u00b7 by '+brand.maker+'. '+j.copyright+'.'}catch(e){}
-  if(!teamSlug)teamSlug=brand.team_slug;applyBrand();return brand}
+  if(!teamSlug)teamSlug=brand.group_slug;applyBrand();return brand}
 // Team, Prepare and the weekly leaderboards show a join panel when Garage 61 says you aren't on the team
 const notMember=j=>!!j&&typeof j==='object'&&(j.membership==='not_member'||(j.weekly&&typeof j.weekly==='object'&&j.weekly.membership==='not_member'));
 
@@ -1276,7 +1280,7 @@ function weeklyText(j){
   if(!j.schedule)return 'Load the season schedule on the Prepare page and pick your series to see this week\'s team leaderboards.';
   if(j.token===false)return 'Add your Garage 61 token in Settings first.';
   if(!weeklyRows(j).length)return 'Pick your series on the Prepare page to see this week\'s team leaderboards.';
-  return 'This week\'s leaderboards for your series.'}
+  return j.from_prepare?'This week\'s leaderboards for the series picked on Prepare.':'This week\'s leaderboards for your series.'}
 function renderWeekly(){const j=weeklyInfo;teamJoinPanel();const t=weeklyText(j);$('weeklyNote').textContent=t;$('fbWeekly').title=t;
   const rows=weeklyRows(j);const can=!!(j&&j.ok&&j.available&&j.schedule&&j.token!==false&&rows.length);
   $('btnWeekly').disabled=!can;$('fbWeekly').disabled=!can;
@@ -1289,7 +1293,8 @@ function weeklyBlock(j){
   if(!j)return null;
   if(!j.ok)return {text:j.error||'Couldn\'t work out this week\'s leaderboards right now.'};
   if(!j.available)return {text:'Weekly leaderboards aren\'t available right now. Details were saved to debrief.log.'};
-  if(!j.schedule||!weeklyRows(j).length)return {text:'Pick your series on Prepare first.',go:'Open Prepare',to:'prep'};
+  if(!j.schedule)return {text:'Load this season\'s schedule on Prepare first, then pick your series.',go:'Open Prepare',to:'prep'};
+  if(!weeklyRows(j).length)return {text:'No series picked yet, and none is saved. Pick one on Prepare (or tick it under My series). Everything else on this page works without it.',go:'Open Prepare',to:'prep'};
   if(j.token===false)return {text:'Add your Garage 61 token in Settings first.',go:'Open Settings',to:'settings'};
   return null}
 function weeklyWhy(b){weeklyBlk=b;[['weeklyWhy','weeklyWhyText','weeklyWhyGo'],['fbWeeklyWhy','fbWeeklyWhyText','fbWeeklyWhyGo']].forEach(([w,t,g])=>{
@@ -2394,6 +2399,9 @@ function fillSettings(v){if(v&&(v.units==='kmh'||v.units==='mph'))UNITS=v.units;
   $('libPath').textContent=v.library_folder||'Not set yet. It will be Documents\\Debrief Reviews once settings are saved.';
   const fe=$('setFileErr');fe.hidden=!v.error;fe.textContent=v.error||'';fe.className='note msg bad';
   teamSlug=v.team_slug||teamSlug;
+  teamDisplay=(typeof v.team_name==='string'&&v.team_name)||null;$('teamTitle').textContent=teamDisplay||brand.team_name;
+  if(document.activeElement!==$('teamNameIn'))$('teamNameIn').value=teamDisplay||brand.team_name;
+  if(document.activeElement!==$('teamMembersIn'))$('teamMembersIn').value=Array.isArray(v.team_members)?v.team_members.join('\n'):'';
   const idS=!!v.iracing_client_id_saved,seS=!!v.iracing_client_secret_saved;
   $('irIdStatus').textContent='Client ID: '+(idS?'saved':'not saved');$('irIdStatus').className='pill'+(idS?' ok':'');
   $('irSecStatus').textContent='Client secret: '+(seS?'saved':'not saved');$('irSecStatus').className='pill'+(seS?' ok':'');
@@ -2435,23 +2443,23 @@ $('discordClear').addEventListener('click',async()=>{const b=$('discordClear');
 let teamSlug=null;   // 2.6: from /api/brand (Midfield Menace), or settings.toml's team_slug override
 async function loadSettings(){try{fillSettings(await api('settings'))}catch(e){connectionLost()}}
 // Settings > Team is a read-only status: Midfield Menace, member or not. The override is under Advanced.
-let teamMember='unknown',teamName=null;
-function teamJoinPanel(){const isBrand=!teamSlug||String(teamSlug).toLowerCase()===String(brand.team_slug).toLowerCase();
+let teamMember='unknown';
+function teamJoinPanel(){const isBrand=!teamSlug||String(teamSlug).toLowerCase()===String(brand.group_slug).toLowerCase();
   $('teamJoin').hidden=!(notMember(weeklyInfo)||(teamMember==='not_member'&&isBrand))}
 async function loadTeams(fetchIt){let j;try{j=await api('teams'+(fetchIt?'?fetch=1':''))}catch(e){connectionLost();return}
   if(!j.ok){setMsg('teamSetMsg',j.error,'bad');return}
-  teamSlug=j.team_slug||teamSlug||brand.team_slug;
+  teamSlug=j.team_slug||teamSlug||brand.group_slug;
   const teams=Array.isArray(j.teams)?j.teams.filter(t=>t&&typeof t.slug==='string'):null;
   const cur=teams&&teams.find(t=>t.slug.toLowerCase()===String(teamSlug).toLowerCase());
   teamMember=typeof j.membership==='string'?j.membership:(teams?(cur?'member':'not_member'):'unknown');
-  const isBrand=String(teamSlug).toLowerCase()===String(brand.team_slug).toLowerCase();
-  const name=(j.team&&typeof j.team.name==='string'&&j.team.name&&j.team.name.toLowerCase()!==String(teamSlug).toLowerCase()&&j.team.name)||(cur&&cur.name)||(isBrand?brand.team_name:teamSlug);
-  teamName=name;$('teamTitle').textContent=name;teamJoinPanel();
-  const state=teamMember==='member'?'member':teamMember==='not_member'?'not on the team yet (join on Garage 61)':'not checked yet';
-  $('teamLine').textContent='Team: '+name+' — '+state;
-  const st=$('teamStatus');st.textContent=teamMember==='member'?'Member':teamMember==='not_member'?'Not on the team yet':name;
+  const isBrand=String(teamSlug).toLowerCase()===String(brand.group_slug).toLowerCase();
+  const name=(j.team&&typeof j.team.name==='string'&&j.team.name&&j.team.name.toLowerCase()!==String(teamSlug).toLowerCase()&&j.team.name)||(cur&&cur.name)||(isBrand?brand.group_name:teamSlug);
+  groupName=name;$('teamTitle').textContent=teamDisplay||brand.team_name;applyBrand();teamJoinPanel();
+  const state=teamMember==='member'?'you are in it':teamMember==='not_member'?'you are not in it yet (join on Garage 61)':'not checked yet';
+  $('teamLine').textContent='Team: '+(teamDisplay||brand.team_name)+'. Laps come from the Garage 61 group '+name+' — '+state;
+  const st=$('teamStatus');st.textContent=teamMember==='member'?'In the group':teamMember==='not_member'?'Not in the group yet':name;
   st.className='pill'+(teamMember==='member'?' ok':teamMember==='not_member'?' no':'');
-  const jn=$('teamJoinNote');jn.hidden=teamMember!=='not_member'||!isBrand;jn.textContent=brand.join_text;
+  const jn=$('teamJoinNote');jn.hidden=teamMember!=='not_member'||!isBrand;jn.textContent=joinWords().text;
   if(document.activeElement!==$('teamSlugIn'))$('teamSlugIn').value=teamSlug||'';
   const dl=$('dlTeams');dl.replaceChildren(...(teams||[]).map(t=>{const o=h('option');o.value=t.slug;o.label=t.name;return o}));
   $('teamReset').hidden=isBrand;
@@ -2465,8 +2473,13 @@ async function saveTeam(v){setMsg('teamSetMsg','Saving...');let r;
   try{r=await post('settings',{team_slug:v})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('teamSetMsg',r.error,'bad');return}
   fillSettings(r.settings);await loadTeams(false);setMsg('teamSetMsg','Saved. Refresh the Team hub to see the new team.','ok')}
-$('fTeam').addEventListener('submit',e=>{e.preventDefault();const v=$('teamSlugIn').value.trim().toLowerCase();if(!v){$('teamSlugIn').focus();return}saveTeam(v)});
-$('teamReset').addEventListener('click',()=>saveTeam(brand.team_slug));
+$('fTeam').addEventListener('submit',async e=>{e.preventDefault();const v=$('teamSlugIn').value.trim().toLowerCase();if(!v){$('teamSlugIn').focus();return}
+  const nm=$('teamNameIn').value.trim();if(!nm){$('teamNameIn').focus();setMsg('teamSetMsg','Give the team a name.','bad');return}
+  setMsg('teamSetMsg','Saving...');let r;
+  try{r=await post('settings',{team_slug:v,team_name:nm,team_members:$('teamMembersIn').value.split(/\n|;/).map(x=>x.trim()).filter(Boolean)})}catch(err){connectionLost();return}
+  if(!r.ok){setMsg('teamSetMsg',r.error,'bad');return}
+  fillSettings(r.settings);await loadTeams(false);setMsg('teamSetMsg','Saved. The saved Team page now says it is out of date: press Refresh team data.','ok')});
+$('teamReset').addEventListener('click',()=>saveTeam(brand.group_slug));
 $('fIracing').addEventListener('submit',async e=>{e.preventDefault();
   const id=$('irId').value.trim(),sec=$('irSecret').value.trim();
   if(!id&&!sec){setMsg('irMsg','Paste a client ID or secret first.','bad');return}

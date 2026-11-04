@@ -65,7 +65,8 @@ class State:
         self.mem = {}                 # cache key -> value
         self.busy = {}                # cache key -> lock while being worked out
         self.made = 0                 # results worked out (not read back): for tests
-        self.team = {}                # (car, track) -> teammate entry (see _team_entry)
+        self.team = {}                # (car, track) -> the teammate entry in use (see _team_entry)
+        self.team_all = {}            # 2.21: (car, track, driver) -> every teammate lap loaded, so two teammates never overwrite each other
         self.team_cards = {}          # (car, track, paths key) -> corner coach report against the teammate
         self.coach_on = None          # (car, track) the coach uses the teammate's lap for, or None
 
@@ -393,9 +394,52 @@ def _team_key(car, track):
     return (str(car).lower(), str(track).lower())
 
 
-def _team_file(cfg, car, track) -> Path:
-    k = hashlib.sha1("|".join(_team_key(car, track)).encode("utf-8")).hexdigest()[:20]
+def dkey(summary) -> str:
+    """2.21: who a kept lap belongs to, as one lower-case key ("alex teammate"); 'unknown' when the file names no one."""
+    d = " ".join(str((summary or {}).get("driver") or "").lower().split())
+    return d if d and d != "your teammate" else "unknown"
+
+
+def _team_file(cfg, car, track, driver=None) -> Path:
+    """The kept file. 2.21: one per driver (a second teammate no longer replaces the first). driver=None is the
+    pre-2.21 name, one file per car and track, which is still read and migrated."""
+    parts = _team_key(car, track) + ((driver,) if driver is not None else ())
+    k = hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()[:20]
     return Path(cfg["cache_dir"]) / TEAM_DIR / (k + ".json")
+
+
+def _read_team_file(f, k=None):
+    """(raw, entry) from one kept file, or None. k = (car, track) key to require."""
+    try:
+        raw = json.loads(f.read_text(encoding="utf-8"))
+        if raw.get("version") != VERSION:
+            return None
+        if k is not None and _team_key(raw.get("car_path"), raw.get("track_code")) != k:
+            return None
+        return raw, {"summary": raw["summary"], "livecoach": _ref_from_plain(raw.get("livecoach")),
+                     "cornercoach": _from_plain(raw.get("cornercoach")), "kept": True}
+    except (OSError, ValueError, KeyError, AttributeError, TypeError):
+        return None
+    except Exception:  # noqa: BLE001
+        app.say("Car and setup: a kept teammate lap couldn't be read:\n" + traceback.format_exc())
+        return None
+
+
+def kept_files(cfg, car, track) -> list:
+    """Every kept teammate lap for this car and track, newest first: [(path, raw, entry)]. Old one-per-track files
+    count too (their driver comes from the file), so nothing kept before 2.21 is lost."""
+    k = _team_key(car, track)
+    folder = Path(cfg["cache_dir"]) / TEAM_DIR
+    try:
+        files = sorted(folder.glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True) if folder.is_dir() else []
+    except OSError:
+        return []
+    out = []
+    for f in files:
+        r = _read_team_file(f, k)
+        if r:
+            out.append((f, r[0], r[1]))
+    return out
 
 
 def _to_plain(o):
@@ -444,33 +488,26 @@ def _team_entry(res: dict, kept: bool) -> dict:
 
 
 def _team_get(server, cfg, car, track):
-    """The teammate entry for this car + track: from memory, else from a kept file (his choice), else None."""
+    """The teammate entry in use for this car + track: from memory, else the newest kept file (his choice), else None."""
     st = state(server)
     k = _team_key(car, track)
     with st.lock:
         e = st.team.get(k)
     if e is not None:
         return e
-    f = _team_file(cfg, car, track)
-    try:
-        raw = json.loads(f.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    kept = kept_files(cfg, car, track)
+    if not kept:
         return None
-    try:
-        if raw.get("version") != VERSION or _team_key(raw.get("car_path"), raw.get("track_code")) != k:
-            return None
-        e = {"summary": raw["summary"], "livecoach": _ref_from_plain(raw.get("livecoach")),
-             "cornercoach": _from_plain(raw.get("cornercoach")), "kept": True}
-    except Exception:  # noqa: BLE001
-        app.say("Car and setup: a kept teammate lap couldn't be read:\n" + traceback.format_exc())
-        return None
+    e = kept[0][2]
     with st.lock:
         st.team.setdefault(k, e)
+        st.team_all.setdefault(k + (dkey(e["summary"]),), e)
         return st.team[k]
 
 
 def _team_save(cfg, car, track, e) -> bool:
-    f = _team_file(cfg, car, track)
+    d = dkey(e["summary"])
+    f = _team_file(cfg, car, track, d)
     data = {"version": VERSION, "car_path": car, "track_code": track, "summary": e["summary"],
             "livecoach": _ref_to_plain(e.get("livecoach")), "cornercoach": _to_plain(e.get("cornercoach"))}
     try:
@@ -478,10 +515,17 @@ def _team_save(cfg, car, track, e) -> bool:
         tmp = f.with_suffix(".tmp")
         tmp.write_text(json.dumps(data), encoding="utf-8")
         os.replace(tmp, f)
-        return True
-    except (OSError, ValueError) as e:
-        app.say(f"Car and setup: couldn't keep the teammate lap ({type(e).__name__}: {e}).")
+    except (OSError, ValueError) as x:
+        app.say(f"Car and setup: couldn't keep the teammate lap ({type(x).__name__}: {x}).")
         return False
+    old = _team_file(cfg, car, track)        # the pre-2.21 file for this car and track: moved to the new name
+    try:
+        r = _read_team_file(old, _team_key(car, track))
+        if r and dkey(r[0].get("summary")) == d:
+            old.unlink()
+    except OSError:
+        pass
+    return True
 
 
 def _team_public(e, server, car, track) -> dict | None:
@@ -570,6 +614,7 @@ def upload(h):
         before = _kept_label(cfg, car, track)
         with st.lock:
             st.team[k] = e
+            st.team_all[k + (dkey(e["summary"]),)] = e
             st.team_cards = {kk: v for kk, v in st.team_cards.items() if kk[:2] != k}
         if keep:
             e["kept"] = _team_save(cfg, car, track, e)
@@ -602,11 +647,19 @@ def _remove_temp(d: Path, wait: float = 0.3) -> bool:
 
 def _kept_label(cfg, car, track) -> str | None:
     """The label of the lap kept on disk for this car + track, or None."""
-    try:
-        raw = json.loads(_team_file(cfg, car, track).read_text(encoding="utf-8"))
-        return str((raw.get("summary") or {}).get("label") or "a teammate's lap")
-    except (OSError, ValueError, AttributeError):
-        return None
+    kept = kept_files(cfg, car, track)
+    return str((kept[0][1].get("summary") or {}).get("label") or "a teammate's lap") if kept else None
+
+
+def _unlink_kept(cfg, car, track, driver) -> None:
+    """Remove this driver's kept lap for the car and track (their own file, or the pre-2.21 one if it is theirs).
+    Other teammates' kept laps stay."""
+    for f, raw, _e in kept_files(cfg, car, track):
+        if dkey(raw.get("summary")) == driver:
+            try:
+                f.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def post_teamref_keep(h, body):
@@ -624,9 +677,7 @@ def post_teamref_keep(h, body):
         e["kept"] = True
     else:
         try:
-            _team_file(cfg, car, track).unlink()
-        except FileNotFoundError:
-            pass
+            _unlink_kept(cfg, car, track, dkey(e["summary"]))
         except OSError as x:
             app.say(f"Car and setup: couldn't remove a kept teammate lap ({type(x).__name__}: {x}).")
             raise ValueError("Debrief couldn't remove the kept lap. Details were saved to debrief.log.")
@@ -761,17 +812,24 @@ def get_teamref_for_review(h, q):
 
 
 def post_teamref_forget(h, body):
+    """Forget the teammate lap in use for this car and track (memory and kept file). 2.21: other teammates' laps
+    for the same car and track stay."""
     cfg = h._cfg()
     car, track = _combo(body)
     st = state(h.server)
     k = _team_key(car, track)
+    cur = _team_get(h.server, cfg, car, track)
+    d = dkey(cur["summary"]) if cur else None
     with st.lock:
         st.team.pop(k, None)
+        if d is not None:
+            st.team_all.pop(k + (d,), None)
         st.team_cards = {kk: v for kk, v in st.team_cards.items() if kk[:2] != k}
         if st.coach_on == k:
             st.coach_on = None
     try:
-        _team_file(cfg, car, track).unlink()
+        if d is not None:
+            _unlink_kept(cfg, car, track, d)
     except OSError:
         pass
     return h._json({"ok": True})

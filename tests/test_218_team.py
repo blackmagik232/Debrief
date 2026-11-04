@@ -387,7 +387,7 @@ def test_window_weekly_reason_cars_dropdown_and_session_jump():
         pg.wait_for_function("() => !document.getElementById('weeklyWhy').hidden || !document.getElementById('fbWeeklyWhy').hidden",
                              timeout=20000)
         why = pg.evaluate("() => [document.getElementById('weeklyWhyText').textContent, document.getElementById('fbWeeklyWhyText').textContent]")
-        assert "Pick your series on Prepare first." in why, why
+        assert any(w.startswith("No series picked yet, and none is saved. Pick one on Prepare") for w in why), why   # 2.21 wording
         assert pg.evaluate("() => document.getElementById('btnWeekly').disabled && document.getElementById('fbWeekly').disabled")
         vis = "weeklyWhyGo" if pg.evaluate("() => !document.getElementById('weeklyWhy').hidden") else "fbWeeklyWhyGo"
         assert pg.text_content("#" + vis) == "Open Prepare"

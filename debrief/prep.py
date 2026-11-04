@@ -205,10 +205,10 @@ def _membership(api, slug):
     return mem, team.team_info(slug, teams)
 
 
-def _teammates(api, track_id, car_id, team_slug, my_best, log):
+def _teammates(api, track_id, car_id, team_slug, my_best, log, members=None):
     """ONE /laps request: best lap per driver on the team at this combo (group=driver). None when you're
     not on the team (then no request at all)."""
-    team_slug = team_slug or brand.TEAM_SLUG
+    team_slug = team_slug or brand.GROUP_SLUG
     if api is None:
         return {"laps": [], "team": team_slug, "error": "Offline: teammates' laps weren't loaded."}
     if track_id is None or car_id is None:
@@ -218,32 +218,45 @@ def _teammates(api, track_id, car_id, team_slug, my_best, log):
         teams = [team_slug]
         me = (api.me() or {})
         my_slug = g(me, "slug", default="")
-        laps = api.find_laps(teams=teams, tracks=[track_id], cars=[car_id], group="driver", limit=100)
+        my_name = " ".join(filter(None, [g(me, "firstName", "firstname"), g(me, "lastName", "lastname")])) or my_slug
+        laps = api.find_laps(teams=teams, tracks=[track_id], cars=[car_id], group="driver", age=-2, limit=100)   # age: as the Team page
     except Garage61Error as e:
         log(f"  Couldn't load teammates' laps: {e}")
         return {"laps": [], "team": team_slug, "error": str(e)}
     from . import team
     try:
-        roster = team.team_roster(api.teams(), team_slug)
+        tl = api.teams()
+        roster = team.team_roster(tl, team_slug)
+        group = brand.team_name_for(tl, team_slug)
     except Exception:  # noqa: BLE001
-        roster = {}
+        roster, group = {}, ""
     # 2.20.1: one extra request at most (all their laps) when a best lap was rejected or a member has no row
     found, reasons = team.gather_mates(
-        laps, lambda: api.find_laps(teams=teams, tracks=[track_id], cars=[car_id], group="none", limit=1000),
-        my_slug, my_best, roster)
-    out = []
+        laps, lambda: api.find_laps(teams=teams, tracks=[track_id], cars=[car_id], group="none", age=-2, limit=1000),
+        my_slug, my_best, roster, members=members, my_name=my_name, group=group, log=log)
+    out, others = [], []
     for m in found.values():
         l, t = m["lap"], m["t"]
         season = g(l, "season", default=None)
-        out.append({"name": m["name"], "slug": m["slug"], "t": round(t, 3),
-                    "date": library.local_day(g(l, "startTime", "start_time")),
-                    "irating": g(l, "driverRating", "driver_rating"), "clean": True,
-                    "season": g(season, "name") if isinstance(season, dict) else None,
-                    # gap = their lap - your best (negative = they were quicker)
-                    "gap": round(t - my_best, 3) if my_best else None})
+        row = {"name": m["name"], "slug": m["slug"], "t": round(t, 3),
+               "date": library.local_day(g(l, "startTime", "start_time")),
+               "irating": g(l, "driverRating", "driver_rating"), "clean": True,
+               "season": g(season, "name") if isinstance(season, dict) else None,
+               # gap = their lap - your best (negative = they were quicker)
+               "gap": round(t - my_best, 3) if my_best else None}
+        (out if m.get("member", True) else others).append(row)
     out.sort(key=lambda x: x["t"])
-    return {"laps": out[:MAX_TEAMMATES], "team": ",".join(teams), "error": None, "skipped": len([r for r in reasons if r["name"] not in {m["name"] for m in found.values()}]),
-            "notes": [team.reason_text(r) for r in reasons]}
+    notes = [team.reason_text(r) for r in reasons]
+    if len(out) > MAX_TEAMMATES:   # said, with names, never silently
+        notes.append(f"{len(out) - MAX_TEAMMATES} slower teammate{'s' if len(out) - MAX_TEAMMATES != 1 else ''} left out to "
+                     "keep the list short: " + ", ".join(r["name"] for r in out[MAX_TEAMMATES:]) + ".")
+    if others:   # not on the team's list: apart, never mixed in
+        others.sort(key=lambda x: x["t"])
+        notes.append(f"Also in {group or 'the group'} (not on your team): " + ", ".join(
+            f"{r['name']} {team._lt(r['t'])}" for r in others[:MAX_TEAMMATES]) + ".")
+    return {"laps": out[:MAX_TEAMMATES], "team": ",".join(teams), "error": None, "others": others[:MAX_TEAMMATES],
+            "skipped": len([r for r in reasons if r["name"] not in {m["name"] for m in found.values()}]),
+            "notes": notes}
 
 
 # ---------------------------------------------------------------- practice plan
@@ -559,7 +572,7 @@ def race_brief(folder, rows: list, track: str, car: str, hist: dict | None, weak
 
 # ---------------------------------------------------------------- build / write
 def build(api, folder, track_id: int, car_id: int, team_slug: str | None, log=print,
-          track: str | None = None, car: str | None = None, include_practice: bool = False) -> dict:
+          track: str | None = None, car: str | None = None, include_practice: bool = False, members=None) -> dict:
     """Prep data for one track + car. api may be None (offline: no teammates).
     track/car (full names) are optional fallbacks for old reviews without Garage 61 ids.
     Request worst case: 4 (see module docstring); data["requests"] says how many were used.
@@ -608,14 +621,14 @@ def build(api, folder, track_id: int, car_id: int, team_slug: str | None, log=pr
     if track_id is None or car_id is None:
         ids = next(((r["track_id"], r["car_id"]) for r in mine if r.get("track_id") is not None), (None, None))
         track_id, car_id = track_id if track_id is not None else ids[0], car_id if car_id is not None else ids[1]
-    team_slug = team_slug or brand.TEAM_SLUG
+    team_slug = team_slug or brand.GROUP_SLUG
     mem, team_d = _membership(api, team_slug)
     if mem == brand.NOT_MEMBER:
         log(f"You're not on the {team_d['name']} team on Garage 61, so teammates' laps weren't loaded.")
         mates = {"laps": [], "team": team_slug, "error": None, "skipped": 0}
     else:
         log("Loading your teammates' best laps here (1 request)...")
-        mates = _teammates(api, track_id, car_id, team_slug, hist["best"] if hist else None, log)
+        mates = _teammates(api, track_id, car_id, team_slug, hist["best"] if hist else None, log, members)
     # drills quote technique as "in your latest race", so only use it when it IS from the latest race
     tech_latest = tech if (tech_src is not None and latest is not None and tech_src.get("meta") == latest.get("meta")) else None
     plan = practice_plan(hist, weak, latest, tech_latest, goal, mates)

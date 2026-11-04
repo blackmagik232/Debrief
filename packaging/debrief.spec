@@ -8,7 +8,7 @@
 import re
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, copy_metadata
 
 ROOT = Path(SPECPATH).resolve().parent          # SPECPATH = the folder this spec is in (packaging/)
 PKG = ROOT / "debrief"
@@ -38,6 +38,20 @@ for _d in _packs:
 datas += [(str(PKG / "desktop" / "icon.png"), "debrief/desktop"),
           (str(PKG / "desktop" / "debrief.ico"), "debrief/desktop"),
           (str(ROOT / "settings.example.toml"), ".")]
+# 2.18: the credits and the licence texts of everything Debrief bundles (Help > Credits shows the same list).
+# They go to the bundle root (next to Debrief.exe's _internal files), and the build stops if one is missing.
+for _f in ("CREDITS.md", "THIRD_PARTY_LICENSES.txt"):
+    if not (ROOT / _f).is_file():
+        raise SystemExit(f"{_f} is missing: the build would ship without its credits and licence notices")
+    datas.append((str(ROOT / _f), "."))
+# Each bundled package's own metadata folder (its LICENSE and NOTICE files) goes in too, so its exact licence
+# text ships with it. A package that isn't installed on the build PC is skipped (pywin32 on Linux, for one).
+for _dist in ("requests", "urllib3", "certifi", "charset-normalizer", "idna", "numpy", "pypdf", "pyirsdk", "PyYAML",
+              "pywin32", "comtypes", "tomli"):
+    try:
+        datas += copy_metadata(_dist)
+    except Exception:  # noqa: BLE001  (not installed here: nothing to copy)
+        print(f"{_dist} isn't installed: its licence metadata is left out (it isn't bundled either)")
 
 # app.optional_module() imports feature modules by name (prep, goals, results, team, ...), which
 # PyInstaller can't see, so include every debrief module. make_icon is a build-time helper (needs Pillow).
@@ -88,7 +102,8 @@ VERSION_FILE.write_text(f"""VSVersionInfo(
   ffi=FixedFileInfo(filevers={_vt}, prodvers={_vt}, mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1,
                     subtype=0x0, date=(0, 0)),
   kids=[StringFileInfo([StringTable('040904B0', [
-          StringStruct('CompanyName', 'Midfield Menace'),
+          StringStruct('CompanyName', 'Black Magik Studios'),
+          StringStruct('LegalCopyright', 'Copyright (C) 2026 Black Magik Studios'),
           StringStruct('FileDescription', 'Debrief'),
           StringStruct('FileVersion', '{VERSION}'),
           StringStruct('InternalName', 'Debrief'),

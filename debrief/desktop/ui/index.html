@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Debrief · Midfield Menace</title>
+<title>Debrief · by Black Magik Studios</title>
 <link rel="icon" type="image/png" href="static/icon.png">
 <link rel="stylesheet" href="static/fonts/fonts.css">
 <link rel="stylesheet" href="static/tokens.css">
@@ -13,7 +13,7 @@
 <aside class="side" id="side" aria-label="Debrief">
   <div class="brand">
     <img src="static/icon.png" alt="" width="34" height="34">
-    <div><div class="name">Debrief</div><div class="eyebrow" id="brandTeam">Midfield Menace</div></div>
+    <div><div class="name">Debrief</div><div class="eyebrow" id="brandMaker">by Black Magik Studios</div></div>
   </div>
   <button id="btnReview" class="btn primary big" type="button" title="Review last race (Ctrl+R)" aria-keyshortcuts="Control+R">
     <span class="lbl">Review last race</span>
@@ -96,20 +96,21 @@
         <button type="button" class="btn" data-nav="settings" title="Settings (Ctrl+,)">Settings</button>
       </div>
 
-      <ol class="guide" id="guide" hidden aria-label="Getting started">
+      <h3 class="guidehead" id="guideHead" hidden>Connect Garage 61 for race reviews</h3>
+      <ol class="guide" id="guide" hidden aria-label="Connect Garage 61">
         <li class="gstep" id="gs1">
           <span class="gnum" aria-hidden="true">1</span>
           <div class="gbody">
             <h3>Get a free Garage 61 account</h3>
-            <p class="note">Sign up at <a href="https://garage61.net" target="_blank" rel="noreferrer">garage61.net</a> and connect your iRacing account there. To compare laps with your teammates, ask a teammate to invite you to the <b class="brandName">Midfield Menace</b> team on Garage 61.</p>
+            <p class="note">Sign up at <a href="https://garage61.net" target="_blank" rel="noreferrer">garage61.net</a> and connect your iRacing account there. If you're on a team, ask a teammate to invite you to it on Garage 61 so you can compare laps.</p>
           </div>
         </li>
         <li class="gstep" id="gs2">
           <span class="gnum" aria-hidden="true">2</span>
           <div class="gbody">
-            <h3>Ask for your personal token</h3>
-            <p class="note">Go to <a href="https://garage61.net/developer" target="_blank" rel="noreferrer">garage61.net/developer</a> and request a personal API token. It's free for personal, non-commercial use. Garage 61 looks at each request by hand, so it can take a little while to arrive.</p>
-            <p class="note"><b>Waiting for Garage 61's email? Close Debrief. These steps will be here when you come back.</b></p>
+            <h3>Ask for your personal access token</h3>
+            <p class="note">Go to <a href="https://garage61.net/developer" target="_blank" rel="noreferrer">garage61.net/developer</a> and request a personal access token. It's free for personal, non-commercial use. Garage 61 looks at each request by hand, so it can take a little while to arrive.</p>
+            <p class="note"><b>Waiting for Garage 61's email? Practice, Setup Lab, the Coach and Racing already work from your telemetry: open them in the sidebar. These steps will be here when you come back.</b></p>
             <p class="note">Curious what you'll get? Have a look at a made-up race while you wait.</p>
             <div class="row"><button type="button" class="btn" id="btnSample">See a sample review</button></div>
           </div>
@@ -117,10 +118,10 @@
         <li class="gstep" id="gs3">
           <span class="gnum" aria-hidden="true">3</span>
           <form class="gbody" id="fGuideToken" autocomplete="off">
-            <h3>Paste your personal API token here</h3>
+            <h3>Paste your personal access token here</h3>
             <p class="note msg bad" id="gTokUnread" role="alert" hidden>Your saved Garage 61 token can't be opened on this Windows account. Paste it again.</p>
             <p class="note">It's saved on this PC only, and Debrief never shows it again. Debrief then checks the connection.</p>
-            <label class="field" for="gTok"><span>Your Garage 61 personal API token</span>
+            <label class="field" for="gTok"><span>Your Garage 61 personal access token</span>
               <input id="gTok" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste here">
             </label>
             <div class="row"><button type="submit" class="btn primary" id="gTokSave">Save and check</button><span class="msg" id="gTokMsg" role="status"></span></div>
@@ -417,7 +418,7 @@
         <div class="progress small" id="coRhProg" hidden><div class="bar" id="coRhBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Rehearsal"><i></i></div><span class="pct num" id="coRhPct"></span></div>
         <p class="note" id="coQuiet" hidden></p>
         <p class="note" id="coVoiceLine"></p>
-        <p class="note warn">Keep Debrief open while you drive. Unproven in the car until you've driven with it.</p>
+        <p class="note warn">Keep Debrief open while you drive.</p>
       </div>
       <div class="cogrid">
         <div class="panel">
@@ -479,7 +480,7 @@
         <p class="note">Every cue the coach makes, says, drops or cuts off, with the lap, the spot on track and the numbers behind it. The last 30 sessions are kept. Only the car and track, nothing about you.</p>
         <div class="tblwrap"><table class="maptbl" id="coLogTbl"><thead><tr><th>Date</th><th>Car and track</th><th>Laps</th><th>Said</th><th>Dropped</th><th></th></tr></thead><tbody id="coLogList"></tbody></table></div>
         <div id="coLogView" hidden>
-          <div class="phead"><h4 id="coLogTitle"></h4><button type="button" class="btn" id="coLogCopy">Copy for Claude</button><span class="msg" id="coLogMsg" role="status"></span></div>
+          <div class="phead"><h4 id="coLogTitle"></h4><button type="button" class="btn" id="coLogCopy">Copy summary</button><span class="msg" id="coLogMsg" role="status"></span></div>
           <div class="tblwrap colog"><table class="maptbl"><thead><tr><th>Lap</th><th>Where</th><th>mph</th><th>What</th><th>Cue</th><th>Why</th></tr></thead><tbody id="coLogRows"></tbody></table></div>
         </div>
       </details>
@@ -577,8 +578,8 @@
       <form class="panel" id="fToken" autocomplete="off">
         <div class="phead"><h3>Garage 61 token</h3><span class="pill" id="tokStatus">Checking...</span></div>
         <p class="note msg bad" id="tokUnread" role="alert" hidden>Your saved Garage 61 token can't be opened on this Windows account. Paste it again.</p>
-        <p class="note">Go to <a href="https://garage61.net/developer" target="_blank" rel="noreferrer">garage61.net/developer</a> and request a personal API token, then paste it here. It's saved on this PC and Debrief never shows it again. Save and check also tests the connection; with the box empty it just checks the saved token.</p>
-        <label class="field" for="tok"><span>Your Garage 61 personal API token</span>
+        <p class="note">Go to <a href="https://garage61.net/developer" target="_blank" rel="noreferrer">garage61.net/developer</a> and request a personal access token, then paste it here. It's saved on this PC and Debrief never shows it again. Save and check also tests the connection; with the box empty it just checks the saved token.</p>
+        <label class="field" for="tok"><span>Your Garage 61 personal access token</span>
           <input id="tok" name="tok" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste here">
         </label>
         <div class="row"><button type="submit" class="btn primary" id="btnCheck">Save and check</button><span class="msg" id="tokMsg" role="status"></span><span class="msg" id="chkMsg" role="status"></span></div>
@@ -596,7 +597,7 @@
         <label class="field" for="salut"><span>How Debrief addresses you</span>
           <input id="salut" type="text" maxlength="20" autocomplete="off" spellcheck="false" placeholder="For example: Sir" aria-describedby="salutNote">
         </label>
-        <p class="note" id="salutNote">Used in the race summary ("Sir, you completed..."). Up to 20 characters. Leave it empty for a plain "You completed...". New reviews use it.</p>
+        <p class="note" id="salutNote">A name or title the race summary starts with (for example "Alex, you completed..."). Up to 20 characters. Leave it empty for a plain "You completed...". New reviews use it.</p>
         <div class="row"><button type="submit" class="btn">Save options</button><span class="msg" id="optMsg" role="status"></span></div>
       </form>
 
@@ -690,12 +691,13 @@
 
       <div class="panel" id="pAbout">
         <div class="phead"><h3>About</h3><span class="pill" id="aboutVersion">Debrief</span></div>
+        <p class="note" id="aboutCopy">Debrief · by Black Magik Studios. © 2026 Black Magik Studios.</p>
         <p class="note" id="aboutText"></p>
         <p class="mono path" id="dataPath"></p>
         <p class="note" id="secretsNote"></p>
         <p class="note" id="aboutRequests">Garage 61 asks apps to go easy on it, so Debrief makes about one request a second and reuses what it already has. Checking your token uses about six requests, a review or prep page a handful, and a first team refresh up to about 60. <span id="aboutLastSync"></span></p>
         <p class="note">Need help with a problem? Copy diagnostics puts Debrief's version, what it has saved and the end of its log on the clipboard, with your user name, token, webhook and any e-mail addresses taken out. Paste it to whoever is helping.</p>
-        <div class="row"><button type="button" class="btn" id="btnDiag">Copy diagnostics</button><span class="msg" id="diagMsg" role="status"></span></div>
+        <div class="row"><button type="button" class="btn" id="btnDiag">Copy diagnostics</button><button type="button" class="btn" id="btnCredits">Credits</button><span class="msg" id="diagMsg" role="status"></span></div>
       </div>
     </div>
   </section>

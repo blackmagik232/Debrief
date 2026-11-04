@@ -450,6 +450,8 @@ def public_view() -> dict:
         "file_exists": app.settings_path().exists(),
         "error": err,
         "token_saved": has,
+        # 2.18: Garage 61 said no to the saved token at the last check: the setup steps stay open
+        "token_rejected": has and _token_rejected(),
         # 2.7.1 (M1): a token_dpapi is saved but this Windows account can't open it (not "never saved")
         "token_unreadable": secret_unreadable(raw, "token"),
         "discord_unreadable": secret_unreadable(raw, "discord_webhook"),
@@ -781,4 +783,24 @@ def save(updates: dict) -> dict:
             except OSError:
                 pass
             raise
+    if clean.get("token"):
+        _token_check_clear()   # 2.18: a new token hasn't been turned down yet
     return public_view()
+
+
+def _token_rejected() -> bool:
+    """2.18: Garage 61 rejected the saved token at the last connection check (firstrun.json). Never raises."""
+    try:
+        from .. import firstrun
+        return firstrun.token_rejected()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _token_check_clear():
+    try:
+        from .. import firstrun
+        if firstrun.token_rejected():
+            firstrun.mark("token_rejected", value=False)
+    except Exception:  # noqa: BLE001
+        pass

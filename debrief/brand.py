@@ -1,4 +1,8 @@
-"""Single source of truth for Debrief's team identity (Midfield Menace).
+"""Single source of truth for Debrief's maker (Black Magik Studios) and its team identity (Midfield Menace).
+
+2.18: Debrief is made by Black Magik Studios ("Magik" with a K): the window, About, the README and the installer say
+"Debrief · by Black Magik Studios". Midfield Menace is a team brand inside it and only names team and league features
+(the Team page, team leaderboards, teammates' laps, the team Discord).
 
 Everything that names the team, links to it on Garage 61 or brands a page imports from here:
 app.DEFAULT_TEAM, team.py, leaderboards.py, prep.py, the desktop server's /api/brand, the report templates,
@@ -9,7 +13,10 @@ mode stay consistent.
 """
 
 APP_NAME = "Debrief"
-PUBLISHER = "Midfield Menace"
+MAKER = "Black Magik Studios"
+PUBLISHER = MAKER
+COPYRIGHT = f"\u00a9 2026 {MAKER}"
+BYLINE = f"{APP_NAME} \u00b7 by {MAKER}"
 
 TEAM_SLUG = "midfield-menace"
 TEAM_NAME = "Midfield Menace"
@@ -26,7 +33,7 @@ JOIN_TEXT = (f"Team comparisons need you on the {TEAM_NAME} team on Garage 61. A
 
 def as_dict() -> dict:
     """What the desktop server returns from /api/brand and what the templates get as D.brand."""
-    return {"app_name": APP_NAME, "publisher": PUBLISHER, "team_slug": TEAM_SLUG, "team_name": TEAM_NAME,
+    return {"app_name": APP_NAME, "maker": MAKER, "publisher": PUBLISHER, "copyright": COPYRIGHT, "team_slug": TEAM_SLUG, "team_name": TEAM_NAME,
             "team_short": TEAM_SHORT, "team_url": TEAM_URL, "join_title": JOIN_TITLE, "join_text": JOIN_TEXT}
 
 

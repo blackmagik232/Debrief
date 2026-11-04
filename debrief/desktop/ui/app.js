@@ -46,20 +46,23 @@ addEventListener('resize',()=>{winPending=true;clearTimeout(saveWindowSize.t);sa
 addEventListener('pagehide',()=>{if(winPending)saveWindowSize(true)});
 addEventListener('pagehide',()=>{try{fetch(BASE+'api/bye',{method:'POST',headers:{'X-Debrief':'1'},keepalive:true})}catch(e){}});
 
-/* ---------- brand: the team name and join copy come from /api/brand (debrief/brand.py) */
-const BRAND0={app_name:'Debrief',team_slug:'midfield-menace',team_name:'Midfield Menace',team_short:'MM',team_url:'https://garage61.net',
+/* ---------- brand: the team name and join copy come from /api/brand (debrief/brand.py). 2.18: the app is
+   "Debrief · by Black Magik Studios"; the team name only appears in team and league features */
+const BRAND0={app_name:'Debrief',maker:'Black Magik Studios',team_slug:'midfield-menace',team_name:'Midfield Menace',team_short:'MM',team_url:'https://garage61.net',
   join_title:'Join Midfield Menace on Garage 61',join_text:'Team comparisons need you on the Midfield Menace team on Garage 61. Ask a teammate to invite you, then press Refresh. Your own reviews, practice and prep work without it.'};
 let brand=Object.assign({},BRAND0);
-const appTitle=()=>(brand.app_name||'Debrief')+' · '+(brand.team_name||BRAND0.team_name);
+const appTitle=()=>(brand.app_name||'Debrief')+' · by '+(brand.maker||BRAND0.maker);
 function applyBrand(){
   document.querySelectorAll('.brandName').forEach(e=>{e.textContent=brand.team_name});
   document.querySelectorAll('.joinTitle').forEach(e=>{e.textContent=brand.join_title});
   document.querySelectorAll('.joinText').forEach(e=>{e.textContent=brand.join_text});
   document.querySelectorAll('a.joinLink').forEach(e=>{if(/^https:\/\//.test(brand.team_url||''))e.href=brand.team_url});
-  $('brandTeam').textContent=brand.team_name;$('teamTitle').textContent=teamName||brand.team_name;
+  $('brandMaker').textContent='by '+(brand.maker||BRAND0.maker);$('teamTitle').textContent=teamName||brand.team_name;
   if(!FRAME_VIEWS.includes(current.view))document.title=appTitle()}
 async function loadBrand(){try{const j=await api('brand');
-    if(j&&typeof j==='object')Object.keys(BRAND0).forEach(k=>{if(typeof j[k]==='string'&&j[k].trim())brand[k]=j[k].trim()})}catch(e){}
+    if(j&&typeof j==='object')Object.keys(BRAND0).forEach(k=>{if(typeof j[k]==='string'&&j[k].trim())brand[k]=j[k].trim()});
+    if(j&&typeof j==='object'&&typeof creditsHelp==='function')creditsHelp(j);
+    if(j&&typeof j.copyright==='string'&&j.copyright&&$('aboutCopy'))$('aboutCopy').textContent=brand.app_name+' \u00b7 by '+brand.maker+'. '+j.copyright+'.'}catch(e){}
   if(!teamSlug)teamSlug=brand.team_slug;applyBrand();return brand}
 // Team, Prepare and the weekly leaderboards show a join panel when Garage 61 says you aren't on the team
 const notMember=j=>!!j&&typeof j==='object'&&(j.membership==='not_member'||(j.weekly&&typeof j.weekly==='object'&&j.weekly.membership==='not_member'));
@@ -175,20 +178,24 @@ function openPage(rel,view){current={view,dir:null,page:rel};openFrame('lib/'+re
 function openSettings(){current={view:'settings',dir:null};show('vSettings');markNav();loadSettings();loadTeams(false)}
 function openJob(){current={view:'job',dir:null};show('vJob');markNav()}
 /* ---------- welcome + first-run guide (shown until a token is saved, then for the rest of that session) */
-let guideOn=false,checkOk=false,firstName=null,installed=false;
+let guideOn=false,checkOk=false,checkFail=false,tokenRejected=false,firstName=null,installed=false;
+// 2.18: Garage 61's pages, Review last race and the guide's steps wait for a token Garage 61 accepted: a check that
+// failed (or a token it rejected, remembered by the server) turns nothing green and unlocks nothing
+const g61Ready=()=>tokenSaved&&!tokenRejected&&!checkFail;
 function greet(){$('welcomeTitle').textContent=firstName?'Welcome, '+firstName+'.':'Welcome.'}
 function updateGuide(){
   const st=(id,cls)=>{$(id).classList.toggle('now',cls==='now');$(id).classList.toggle('done',cls==='done')};
-  st('gs1',tokenSaved?'done':'');st('gs2',tokenSaved?'done':'');
-  st('gs3',tokenSaved&&checkOk?'done':'now');st('gs4',tokenSaved&&checkOk?'now':'');
-  $('gReview').disabled=!tokenSaved;
+  const good=g61Ready();
+  st('gs1',good?'done':'');st('gs2',good?'done':'');
+  st('gs3',good&&checkOk?'done':'now');st('gs4',good&&checkOk?'now':'');
+  $('gReview').disabled=!good;
 }
 function welcome(){
   greet();
-  if(!tokenSaved)guideOn=true;
+  if(!g61Ready())guideOn=true;
   const t=$('welcomeText');
-  $('guide').hidden=!guideOn;$('welcomeActions').hidden=guideOn;
-  if(guideOn){t.textContent='Four quick steps and Debrief is ready to review your races.';updateGuide()}
+  $('guide').hidden=!guideOn;$('guideHead').hidden=!guideOn;$('welcomeActions').hidden=guideOn;
+  if(guideOn){t.textContent='Practice, Setup Lab, the Coach and Racing work now, from the telemetry iRacing saves on this PC. Race reviews also need Garage 61: four quick steps below.';updateGuide()}
   else t.textContent='No reviews yet. When your race has uploaded to Garage 61, click Review last race.';
   show('vWelcome');markNav()}
 
@@ -258,15 +265,17 @@ function framePlace(path,title){
   markNav();
 }
 
-// 2.8: while setting up (no token and no saved reviews) the pages have nothing to show, so the sidebar
-// keeps you on the steps. Settings and Help stay open, and Review last race has its own gate.
-const onboarding=()=>!tokenSaved&&!groupsCache.some(g=>(g.reviews||[]).length);
+// 2.8: while setting up (no token and no saved reviews) Garage 61's pages have nothing to show, so the sidebar
+// keeps you on the steps for those. 2.18: only those: Practice, Setup Lab, the Coach, Racing, Car vs car and Prepare
+// read files on this PC and open straight away. Settings and Help stay open, and Review last race has its own gate.
+const G61_NAV=new Set(['library','season','skills','goals','sessions','team']);
+const onboarding=()=>!g61Ready()&&!groupsCache.some(g=>(g.reviews||[]).length);
 function navGate(){const off=onboarding();
-  document.querySelectorAll('.navbtn[data-nav]').forEach(b=>{if(b.dataset.nav==='settings')return;
+  document.querySelectorAll('.navbtn[data-nav]').forEach(b=>{if(!G61_NAV.has(b.dataset.nav))return;
     if(b.dataset.t==null)b.dataset.t=b.title||'';
-    b.setAttribute('aria-disabled',String(off));b.title=off?'Finish the setup steps first.':b.dataset.t})}
+    b.setAttribute('aria-disabled',String(off));b.title=off?'Needs Garage 61: finish the setup steps first.':b.dataset.t})}
 function goNav(name){
-  if(name!=='settings'&&onboarding()){current={view:'welcome'};welcome();banner('Finish the setup steps first, then the rest of Debrief opens up.');return}
+  if(G61_NAV.has(name)&&onboarding()){current={view:'welcome'};welcome();banner('Finish the setup steps first: this page needs Garage 61. Practice, Setup Lab, the Coach and Racing work now, from your telemetry.');return}
   ({sessions:openSessions,library:openLibrary,season:openSeason,skills:openSkills,goals:openGoals,prep:openPrep,team:openTeam,settings:openSettings,
     setuplab:()=>openSetupLab(),coach:()=>openCoach(),practice:()=>openPractice(),racing:()=>openRacing(),cars:()=>openCars()})[name]()}
 $('btnSample').addEventListener('click',openSample);
@@ -320,7 +329,7 @@ async function startJob(kind,body){
 }
 async function startCheck(){
   if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){banner('Debrief is busy: '+(lastJob.title||'a job').toLowerCase()+'. Wait for it to finish.',true);return}
-  setMsg('chkMsg','Checking...');setMsg('tokMsg','');$('btnCheck').disabled=true;
+  setMsg('chkMsg','Checking...');setMsg('tokMsg','');$('btnCheck').disabled=true;checkFail=false;
   let r;try{r=await post('check')}catch(e){$('btnCheck').disabled=false;setMsg('chkMsg','');connectionLost();return}
   if(!r.ok){$('btnCheck').disabled=false;setMsg('chkMsg',r.error,'bad');return}
   $('chkOut').hidden=true;$('chkOut').replaceChildren();$('chkProg').hidden=false;$('chkBar').firstElementChild.style.width='4%';
@@ -328,9 +337,9 @@ async function startCheck(){
   $('btnCheck').disabled=true;setMsg('chkMsg','Checking...');poll();
 }
 // 2.6: Review last race waits for a saved token (aria-disabled, so the tooltip still shows why)
-function reviewGate(){const b=$('btnReview');const off=!tokenSaved;b.setAttribute('aria-disabled',String(off));
+function reviewGate(){const b=$('btnReview');const off=!g61Ready();b.setAttribute('aria-disabled',String(off));
   b.title=off?'Finish step 3 first.':'Review last race (Ctrl+R)';if(off)$('syncStrip').hidden=true;navGate()}
-function startReview(){if(!tokenSaved){current={view:'welcome'};welcome();return}startJob('review')}
+function startReview(){if(!g61Ready()){current={view:'welcome'};welcome();return}startJob('review')}
 $('btnReview').addEventListener('click',startReview);
 
 // 2.8: request counts live in Settings > About. The job's own lines are for the log too, so they keep
@@ -413,15 +422,16 @@ function render(s){
       if(s.state==='error')out.append(h('li','bad',s.error));
       out.hidden=!out.children.length;
       setMsg('chkMsg',s.state==='done'?'Connection works.':'Connection check failed.',s.state==='done'?'ok':'bad');
-      // the same result in the first-run guide
-      const gout=$('gChkOut');gout.replaceChildren(...Array.from(out.children).map(li=>li.cloneNode(true)));
+      // the same result in the first-run guide (2.18: its error is said once, in the line under the button)
+      const gout=$('gChkOut');gout.replaceChildren(...Array.from(out.children).slice(0,s.state==='error'?-1:undefined).map(li=>li.cloneNode(true)));
       gout.hidden=!gout.children.length;$('gChkProg').hidden=true;
-      checkOk=s.state==='done';
+      checkOk=s.state==='done';checkFail=s.state==='error';
       const e401=/\b401\b|rejected the token/i.test(String(s.error||''));
       setMsg('gTokMsg',checkOk?'Connection works. Debrief is downloading your history in the background. You can review your last race right now.':
         (e401?'Garage 61 didn\'t accept that token. Check the token and paste it again.':(s.error||'The connection check failed.')),checkOk?'ok':'bad');
-      updateGuide();
+      updateGuide();reviewGate();loadFirstRun();
       if(s.state==='done'){loadSettings();loadTeams(false);loadSessions().then(()=>startSync(true))}
+      else loadSettings();   // a rejected token is remembered by the server (token_rejected)
     }
   }
 }
@@ -1313,11 +1323,11 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
   ['One thing this session','The top of Practice picks one thing to work on next time at that track, with a number you can check. Coach this has the live coach watch it. After you drive, open the session: Debrief counts the laps where you did it and says whether to keep it or move on.'],
   ['Getting set up','The setup checklist on the start page shows what is done and the next step. Hide it when you like; Help > Setup checklist brings it back.']],
  words:[['Clean lap','A full lap Garage 61 didn\'t flag: no incident and not a pit lap.'],['Typical lap','The middle of your clean laps. Half were quicker, half slower.'],
-  ['Comparison lap','A lap by a teammate, a followed driver or, with RaceCap, a rival, that yours are measured against.'],['Best sectors added up','Your best time through each part of the track, added together. A guide, not a lap you must be able to drive.'],
+  ['Comparison lap','A lap by a teammate, a followed driver or a rival, that yours are measured against.'],['Best sectors added up','Your best time through each part of the track, added together. A guide, not a lap you must be able to drive.'],
   ['Brake point','Where on the track you first brake.'],['Apex','The slowest point of a corner, near the inside.'],['Coasting','Time with neither pedal pressed.'],['Stint','A run of laps between pit stops.'],
-  ['Possibly traffic','A lap lost time in one short stretch your other laps didn\'t. It could be another car or a mistake.'],['Race log','Passes, fights, incidents and pit stops from a replay scan. Press Scan this race on a review, or link a scan from RaceCap.'],
+  ['Possibly traffic','A lap lost time in one short stretch your other laps didn\'t. It could be another car or a mistake.'],['Race log','Passes, fights, incidents and pit stops from a replay scan. Open one of your race reviews and press Scan this race.'],
   ['On the road','The order the cars crossed the line in the replay. The iRacing results are the official order.'],['Rolling or standing start','Whether the field was moving at the green flag.'],
-  ['Resolve markers','A file DaVinci Resolve imports to mark your race\'s moments on a timeline.'],
+  ['Resolve markers','For making a video of your race: a file the DaVinci Resolve video editor imports to mark the race\'s moments on its timeline.'],
   ['Setup','The car settings you drive with (pressures, camber, springs, wing...). Setup Lab reads them from your telemetry files, because iRacing\'s .sto setup files are locked.'],
   ['Open or fixed setup','In an open setup series you can change the setup; in a fixed one it is locked, so Setup Lab has nothing to suggest.'],
   ['Laps counted','The clean laps Setup Lab compares setups on: not out laps, first flying laps, laps in traffic or laps far off the pace.'],
@@ -1344,7 +1354,7 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
 function showHelp(k){const b=$('helpBody');b.replaceChildren(...(k==='tour'?[h('p','note','A quick look at how Debrief works.')]:[]),...HELP[k].map(([t,d])=>{const p=h('p');p.append(h('b',null,t+': '),document.createTextNode(d));return p}));
   document.querySelectorAll('[data-help]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.help===k?'true':'false'))}
 function openHelp(k){showHelp(k);openDlg($('dlgHelp'))}
-$('btnHelp').addEventListener('click',()=>openHelp('tour'));$('helpClose').addEventListener('click',()=>closeDlg($('dlgHelp')));
+$('btnHelp').addEventListener('click',()=>openHelp('tour'));$('btnCredits').addEventListener('click',()=>openHelp('credits'));$('helpClose').addEventListener('click',()=>closeDlg($('dlgHelp')));
 document.querySelectorAll('[data-help]').forEach(x=>x.addEventListener('click',()=>showHelp(x.dataset.help)));
 function closeResult(){const d=$('dlgResult');if(d.close)d.close();else d.removeAttribute('open')}
 $('fbResult').addEventListener('click',openResult);
@@ -1398,10 +1408,13 @@ async function loadSetupLab(withReport){let j;try{j=await api('setuplab/combos')
   renderSlTel();renderSlPick();
   if(j.running&&!polling)poll();
   if(!withReport)return;
-  if(!j.folder_ok)slEmpty('Debrief can\'t find your telemetry folder','iRacing saves telemetry in Documents\\iRacing\\telemetry. If yours is somewhere else, set the folder in Settings > Setup Lab and Coach.');
+  if(!j.folder_ok)slEmpty('Debrief can\'t find your telemetry folder','iRacing saves telemetry in Documents\\iRacing\\telemetry. If yours is somewhere else, set the folder in Settings > Setup Lab and Coach. '+TEL_HOW);
+  else if(!j.indexed&&j.unread===0&&!j.running)slEmpty('No telemetry files yet',TEL_HOW+' Then press Read my telemetry.');
   else if(!j.indexed)slEmpty(j.running?'Reading your telemetry...':'Not read yet','Press Read my telemetry. The first time reads every file, so a few hundred files take a few minutes; after that only new ones.');
-  else if(!combos.length)slEmpty('No telemetry files yet','In iRacing, press Alt+L in the car to record telemetry (or switch on automatic recording in iRacing\'s options), then press Read my telemetry.');
+  else if(!combos.length)slEmpty('No telemetry files yet',TEL_HOW+' Then press Read my telemetry.');
   else loadSlReport()}
+// 2.18: iRacing records no telemetry until it is turned on; every telemetry page's empty state says so the same way
+const TEL_HOW='iRacing doesn\'t save telemetry until you turn it on: in the car, press Alt+L (or turn on telemetry recording in iRacing\'s settings), then drive a few laps.';
 function slEmpty(title,text){const e=h('div','panel pvnone');e.append(h('h2','pvtrack',title),h('p','lede',text));$('slReport').replaceChildren(e)}
 function renderSlTel(){const j=sl.data;if(!j)return;const pill=$('slPill'),run=!!j.running||(lastJob&&lastJob.state==='running'&&lastJob.kind==='setuplab');
   $('slPath').textContent=j.folder||'';$('slFolderSet').hidden=!!j.folder_ok;$('slRead').disabled=!j.folder_ok||run;$('slStop').hidden=!run;
@@ -1555,7 +1568,7 @@ function renderCoach(st){co.st=st;const run=!!st.running,state=CO_STATE[st.state
   if(st.state==='error'&&st.error)setMsg('coMsg',st.error,'bad');
   const R=st.reference;$('coRef').textContent=R?R.text||R.lap_text:'None yet';
   $('coRefNote').textContent=R?(R.source&&R.source.kind==='live'?'A lap you drove just now.':'Your best clean lap in your telemetry files'+(st.car?' for the '+st.car+(st.track?' at '+st.track:''):'')+'.'):
-    'Debrief uses your best clean lap for the car and track iRacing shows, from your telemetry files. No lap yet? Drive a clean one and it becomes the reference.';
+    'Debrief uses your best clean lap for the car and track iRacing shows, from your telemetry files. No lap yet? '+TEL_HOW+' Your best clean lap becomes the reference.';
   const L=st.last_lap,ll=$('coLast');ll.hidden=!(L&&ok(L.time));
   if(L&&ok(L.time))ll.textContent='Last lap '+fmtT(L.time)+(ok(L.delta)?', '+Math.abs(L.delta).toFixed(2)+' s '+(L.delta>0?'down on':'up on')+' your reference':'')+(L.clean===false?' (not clean)':'')+'.';
   const W=st.weak||[],wu=$('coWeak');wu.replaceChildren(...W.map(w=>{const li=h('li');li.append(h('b',null,coCornerLabel(w)),h('span','sub2',ok(w.lost_s)?(w.source==='session'?'about '+w.lost_s.toFixed(2)+' s a lap lost to your reference this session':w.source==='corner coach'?'your best laps were about '+w.lost_s.toFixed(2)+' s quicker here':'about '+w.lost_s.toFixed(2)+' s a lap to find'):'a corner that keeps costing you'));
@@ -1715,18 +1728,27 @@ async function co2ShowLog(name,title){co2.logName=name;let j;try{j=await api('co
   setMsg('coLogMsg',plural(C.spoken||0,'cue')+' said, '+(C.dropped||0)+' dropped, '+plural(C.laps||0,'lap')+'.')}
 $('coLogCopy').addEventListener('click',async()=>{if(!co2.logName)return;let j;try{j=await api('coach/log?'+new URLSearchParams({name:co2.logName,summary:'1'}))}catch(e){return}
   if(!j||!j.ok){setMsg('coLogMsg',(j&&j.error)||'Couldn\'t make the summary.','bad');return}
-  const done=await copyText(j.text);setMsg('coLogMsg',done?'Copied. Paste it to Claude.':'Couldn\'t copy to the clipboard.',done?'ok':'bad')});
+  const done=await copyText(j.text);setMsg('coLogMsg',done?'Copied. Paste it wherever you\'re asking for help.':'Couldn\'t copy to the clipboard.',done?'ok':'bad')});
 // help: Coach 2.0 and credits
 HELP.tour.push(['Coach voice','The coach speaks with a natural voice, through the headset you pick on the Coach page (Voice and sound). Rehearse plays one of your sessions through it first.']);
 HELP.words.push(['Voice pack','The recorded phrases the coach says. Six come with Debrief; you can add your own.'],
   ['Audio delay','How long Windows takes to start a sound. The coach starts each cue that much earlier, so it ends before your brake point.'],
-  ['Coach log','Every cue the coach made, said or dropped and why. Copy for Claude puts a short summary on the clipboard.'],
+  ['Coach log','Every cue the coach made, said or dropped and why. Copy summary puts a short summary on the clipboard.'],
   ['Fixed corner','A focus corner where you made a mistake and then drove it well twice in a row. The coach stops talking about it until it slips twice in three laps.']);
 HELP.keys.push(['Ctrl+Shift+R','Say the coach\'s last cue again'],['Ctrl+Shift+N','Mute the coach for 1 minute'],['Ctrl+Shift+P','Ask the coach how your pace is']);
-HELP.credits=[['Coach voices','Made with Kokoro-82M by hexgrad, Apache-2.0 licence. The voices were generated once and come with Debrief as sound clips; Kokoro itself is not part of Debrief.'],
-  ['Voices','George, Michael, Fenrir, Heart, Kumo and Omega are Kokoro voices.'],
-  ['Windows speech','Used only for the rare phrase a voice pack can\'t say.'],
-  ['Fonts and the rest','See the README for every part Debrief uses and its licence.']];
+// 2.18: Help > Credits is the list in debrief/credits.py (sent with /api/brand), the same as CREDITS.md. This short
+// version shows only if that didn't load.
+HELP.credits=[['Debrief','Made by Black Magik Studios. \u00a9 2026 Black Magik Studios.'],
+  ['Coach voices','Made with Kokoro-82M by hexgrad, Apache-2.0 licence. The voices were generated once and come with Debrief as sound clips; Kokoro itself is not part of Debrief.'],
+  ['Everything else','CREDITS.md and THIRD_PARTY_LICENSES.txt, in Debrief\'s program folder, list every part Debrief uses, who made it and its licence.']];
+function creditsHelp(j){const L=Array.isArray(j&&j.credits)?j.credits.filter(c=>c&&typeof c.name==='string'):[];if(!L.length)return;
+  const kinds=(j.kinds&&typeof j.kinds==='object')?j.kinds:{};const by=String(j.maker||BRAND0.maker);
+  const out=[['Debrief','Made by '+by+'. '+(typeof j.copyright==='string'&&j.copyright?j.copyright+'.':'')]];
+  L.forEach(c=>out.push([c.name+(kinds[c.kind]&&c.kind!=='bundled'?' ('+kinds[c.kind].toLowerCase()+')':''),
+    [c.author,c.licence?'Licence: '+c.licence:'',c.use,c.link].filter(Boolean).map(x=>String(x).replace(/[.]$/,'')).join('. ')+'.']));
+  out.push(['Licence texts','THIRD_PARTY_LICENSES.txt, in Debrief\'s program folder, holds the licence texts and notices these parts ask to be passed on.']);
+  if(typeof j.trademarks==='string'&&j.trademarks)out.push(['Trademarks',j.trademarks]);
+  HELP.credits=out}
 
 /* ---------- Practice (2.13): every time you drove, from the telemetry files iRacing saves (read only). A session
    page: how it went, the best possible lap, the corner coach, the laps, fuel, conditions and setups */
@@ -1753,9 +1775,10 @@ function renderPrTel(){const j=pr.data;if(!j)return;const run=!!j.running||(last
   $('prNow').hidden=!run}
 function prEmpty(host,title,text){const e=h('div','panel pvnone');e.append(h('h2','pvtrack',title),h('p','lede',text));host.replaceChildren(e)}
 function renderPrList(){const j=pr.data,host=$('prSessions'),ss=(j&&j.sessions)||[];if(!j)return;
-  if(!j.folder_ok){prEmpty(host,'Debrief can\'t find your telemetry folder','iRacing saves telemetry in Documents\\iRacing\\telemetry. If yours is somewhere else, set the folder in Settings > Setup Lab and Coach.');return}
+  if(!j.folder_ok){prEmpty(host,'Debrief can\'t find your telemetry folder','iRacing saves telemetry in Documents\\iRacing\\telemetry. If yours is somewhere else, set the folder in Settings > Setup Lab and Coach. '+TEL_HOW);return}
+  if(!j.indexed&&j.unread===0&&!j.running){prEmpty(host,'No telemetry files yet',TEL_HOW+' Then press Read my telemetry.');return}
   if(!j.indexed){prEmpty(host,j.running?'Reading your telemetry...':'Not read yet','Press Read my telemetry. A few hundred files take a few minutes the first time; after that only new ones are read.');return}
-  if(!ss.length){prEmpty(host,'No telemetry files yet','In iRacing, press Alt+L in the car to record telemetry (or switch on automatic recording in iRacing\'s options), then press Read my telemetry.');return}
+  if(!ss.length){prEmpty(host,'No telemetry files yet',TEL_HOW+' Then press Read my telemetry.');return}
   const box=h('div','panel'),top=h('div','phead');top.append(h('h3',null,'Your sessions'),h('span','note','Newest first'));box.append(top);
   const ul=h('ul','prlist');ul.setAttribute('aria-label','Your sessions, newest first');
   (pr.more?ss:ss.slice(0,40)).forEach(x=>{const li=h('li'),b=h('button','prrow');b.type='button';b.dataset.id=x.id;
@@ -1969,20 +1992,28 @@ $('coWheelClear').addEventListener('click',async()=>{let r;try{r=await post('coa
 
 /* ---------- first-run checklist (2.14): on the start page until every step is done or it is hidden */
 let fr={data:null,force:false,at:0};
-const FR_ACT={settings_token:['Open Settings',()=>openSettings()],
+const FR_ACT={settings_token:['Open Settings',()=>{if(!$('vWelcome').hidden&&guideOn){const g=$('gs3');if(g&&g.scrollIntoView)g.scrollIntoView({block:'start'});$('gTok').focus();return}openSettings()}],
   settings_folder:['Open Settings',()=>{openSettings();const f=$('fTelemetry');if(f&&f.scrollIntoView)f.scrollIntoView({block:'start'})}],
   read_telemetry:['Read my telemetry',()=>{openSetupLab();const b=$('slRead');if(b&&!b.disabled)b.click()}],
   practice:['Open Practice',()=>goNav('practice')],
-  test_voice:['Open the Coach',()=>{openCoach();const d=$('coSet');if(d)d.open=true}]};
+  // 2.18: Test voice is folded under the Coach page's Settings: open it there and press it, so you hear it at once
+  test_voice:['Test voice',()=>{openCoach();const d=$('coSet');if(d)d.open=true;const b=$('coTest');if(!b)return;
+    if(b.scrollIntoView)b.scrollIntoView({block:'center'});b.focus();if(!b.disabled)b.click()}]};
 async function loadFirstRun(){fr.at=Date.now();let j;try{j=await api('firstrun')}catch(e){return}if(!j||!j.ok)return;fr.data=j;renderFirstRun()}
 function renderFirstRun(){const box=$('firstRun'),j=fr.data;if(!box)return;
-  const where=current.view==='library'?'lib':(!$('vWelcome').hidden&&!guideOn)?'wel':null;
+  // 2.18: on Welcome too while Garage 61 is being set up, so the telemetry steps show from the first minute
+  const where=current.view==='library'?'lib':!$('vWelcome').hidden?'wel':null;
   if(where&&Date.now()-fr.at>15000)loadFirstRun();
   const want=!!(j&&where&&(fr.force||j.show));box.hidden=!want;if(!want)return;
-  if(where==='wel'){const host=$('vWelcome').querySelector('.col');if(box.parentNode!==host)host.append(box)}
+  if(where==='wel'){const host=$('vWelcome').querySelector('.col');
+    // with the Garage 61 steps showing, the checklist goes above them and leaves its own Garage 61 step to them
+    if(guideOn){if(box.nextElementSibling!==$('guideHead'))host.insertBefore(box,$('guideHead'))}else if(box.parentNode!==host||box.nextElementSibling)host.append(box)}
   else if(box.previousElementSibling!==$('lastRace'))$('lastRace').after(box);
-  $('frPill').textContent=j.done+' of '+j.total+' done';$('frPill').className='pill'+(j.all_done?' ok':'');
-  $('frList').replaceChildren(...(j.steps||[]).map(st=>{const li=h('li','frstep'+(st.done?' done':'')+(st.id===j.next?' now':''));
+  const steps=(j.steps||[]).filter(st=>!(where==='wel'&&guideOn&&st.id==='token'));
+  const nDone=steps.filter(st=>st.done).length;
+  $('frTitle').textContent=where==='wel'&&guideOn?'Start with your telemetry':'Getting set up';
+  $('frPill').textContent=nDone+' of '+steps.length+' done';$('frPill').className='pill'+(nDone===steps.length?' ok':'');
+  $('frList').replaceChildren(...steps.map(st=>{const li=h('li','frstep'+(st.done?' done':'')+(st.id===j.next?' now':''));
     const mk=h('span','frtick',st.done?'\u2713':'');mk.setAttribute('aria-hidden','true');
     const tx=h('div','frtx');tx.append(h('b',null,st.title),h('span','note',st.text));li.append(mk,tx);
     li.setAttribute('aria-label',(st.done?'Done: ':'To do: ')+st.title);
@@ -1992,13 +2023,13 @@ $('frHide').addEventListener('click',async()=>{let r;try{r=await post('firstrun/
   if(r&&r.ok){fr.data=r;fr.force=false;renderFirstRun();banner('Hidden. Help > Setup checklist shows it again.')}});
 $('helpFirstRun').addEventListener('click',async()=>{let r;try{r=await post('firstrun/dismiss',{dismissed:false})}catch(e){connectionLost();return}
   if(!r||!r.ok)return;fr.data=r;fr.at=Date.now();fr.force=true;closeDlg($('dlgHelp'));
-  if(current.view!=='library'&&!(!$('vWelcome').hidden&&!guideOn)){if(libFolder)openLibrary();else{current={view:'welcome'};welcome()}}
+  if(current.view!=='library'&&$('vWelcome').hidden){if(libFolder&&!onboarding())openLibrary();else{current={view:'welcome'};welcome()}}
   renderFirstRun()});
 
 /* ---------- settings */
 function setMsg(id,t,cls){const e=$(id);e.textContent=t||'';e.className='msg'+(cls?' '+cls:'')}
 function fillSettings(v){
-  tokenSaved=!!v.token_saved;reviewGate();
+  tokenSaved=!!v.token_saved;tokenRejected=!!v.token_rejected;reviewGate();
   firstName=typeof v.first_name==='string'&&v.first_name?v.first_name:null;installed=!!v.installed;greet();
   $('aboutVersion').textContent='Debrief '+(v.version||'');
   $('aboutText').textContent=(installed?'Installed app. ':'Running from source. ')+'Your settings, the Garage 61 data Debrief has saved, and its log (debrief.log) are in this folder:';

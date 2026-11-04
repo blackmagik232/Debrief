@@ -2,21 +2,26 @@
 
 # Debrief
 
+**Debrief · by Black Magik Studios**
+
+© 2026 Black Magik Studios.
+
 Reviews your iRacing races from Garage 61 and keeps a library of every review, in its own window.
 
 **New in 2.18:** **Car vs car**: which car of a class is quicker at a track for drivers of similar iRating (only said when the numbers hold up), you vs drivers in the same car, and where you were faster in each car from your telemetry. **2.17.2:** the **coach talks more**: pick **Quiet**, **Normal**, **Busy** or **Only when I ask**; it says a word after corners where you lost or gained time, sector times, learns your focus corners from the session, builds a reference from your first clean lap, and tells you your pace when you ask (**Ctrl+Shift+P** or a wheel button). Every cue is checked once more just before it plays. **2.17:** **Coach 2.0**: the live coach speaks with a natural voice (four to pick from), through the headset you choose, with a **coach log** you can copy for Claude, **Rehearse** with a session, **Repeat that** and **Mute for 1 minute**. **2.16:** **Racing**: one page for your **starts** (places gained or lost on lap 1, corner by corner from a replay scan) and your **incidents** (which corners, what kind, how sure), across all your races. **2.15:** **Car and setup**: Setup Lab shows **how the car handles** in every corner (where it pushes or rotates, with one setup change to try at a time), **tyre pressures over time** (and what a cold pressure comes up to), and **Share what changed** to paste in Discord; compare with, or be coached against, a **teammate's lap** from their telemetry file. **2.14:** the **Practice loop**: Practice picks **one thing** to work on next session at a track, with a number you can check; the coach watches that corner and keeps count; afterwards the session page scores it ("You hit it on 7 of 10 laps") and says whether to keep it or move on. Also: mute the coach from a **wheel button**, and a **setup checklist** on the start page. **2.13:** **Practice** reviews every session straight from your telemetry files, with the best possible lap and the **Corner coach** (one thing to try in each corner, which the live coach then says while you drive). **2.12:** **Setup Lab** reads the telemetry files iRacing saves on your PC and shows what changed between your setups, which one was faster and one change to try next; the **Coach** says a few short cues while you drive, from your own best lap. **2.11:** Prepare is one clean page: pick a car, series, track and week at the top and everything below follows. **2.10:** a season plan and sharper pre-race brief on Prepare, and Read a rival's lap from a replay for Compare. Earlier: **New in 2.7.5:** Scan this race on any race review: with its replay loaded in iRacing, Debrief fast-forwards through it (recording nothing) and adds a race log of every pass, fight, incident and pit stop. Also: load iRacing's results file instead of typing a result; a Resolve marker file for any review; Help (tour, what the words mean, keys). If you also use RaceCap, point Settings > RaceCap link at its library folder: reviews gain a race log (passes, fights, incidents, pit stops, position by lap), race stories, a traffic check and rival laps. Debrief only reads RaceCap's race folders, never its settings or keys, and everything works the same without it.
 
-## For Midfield Menace drivers: install
+## Install
 
 You need Windows 10 or 11. Microsoft Edge is used for the Debrief window (it comes with Windows).
 
 1. Download **Debrief-Setup-x.y.z.exe** from the newest release at **github.com/blackmagik232/debrief/releases**. No GitHub account needed. Don't use the green Code button (that's the source code, not the app).
 2. Double-click it. Windows will probably show a blue **"Windows protected your PC"** box, because the installer isn't code-signed. Click **More info**, then **Run anyway**.
 3. Click through the installer. It installs just for you (no admin password needed), adds Debrief to the Start menu and, if you leave the box ticked, to your desktop. Leave **Launch Debrief** ticked at the end.
-4. Debrief opens on a short getting-started guide:
-   - Make a free account at **garage61.net** and connect your iRacing account. To compare laps with the team, join **Midfield Menace** on Garage 61 (see [Midfield Menace on Garage 61](#midfield-menace-on-garage-61) below).
-   - Request a personal API token at **garage61.net/developer**. It's free for personal, non-commercial use. Garage 61 checks each request by hand, so it can take a little while.
-   - Paste the token into Debrief and click **Save and check**. Debrief checks the connection straight away, then starts downloading your history in the background. Waiting for Garage 61's email? Close Debrief; the steps are still there when you come back.
+4. Debrief opens on a short getting-started guide. Practice, Setup Lab, the Coach and Racing work straight away, from the telemetry iRacing saves on your PC; only race reviews, your Garage 61 history and team features wait for Garage 61:
+   - **Turn on telemetry in iRacing.** iRacing doesn't save telemetry until you turn it on: in the car, press **Alt+L** (or turn on telemetry recording in iRacing's settings), then drive a few laps. The checklist shows whether Debrief found your telemetry folder and any telemetry files (.ibt) in it.
+   - Make a free account at **garage61.net** and connect your iRacing account. If you're on a team, ask a teammate to invite you to it on Garage 61 (Midfield Menace drivers: see [Midfield Menace on Garage 61](#midfield-menace-on-garage-61) below).
+   - Request a personal access token at **garage61.net/developer**. It's free for personal, non-commercial use. Garage 61 checks each request by hand, so it can take a little while. Practice, Setup Lab, the Coach and Racing work while you wait.
+   - Paste the token into Debrief and click **Save and check**. Debrief checks the connection straight away, then starts downloading your history in the background. If the check fails, the steps stay open and say why once. Waiting for Garage 61's email? Close Debrief; the steps are still there when you come back.
    - Click **Review last race** (or press **Ctrl+R**) once your race has uploaded to Garage 61.
 
 **Updating:** Debrief tells you when a new version is out (**Update now** in the sidebar). You can also download the newer installer and run it. It installs over the old version and keeps your token, settings and reviews.
@@ -94,13 +99,15 @@ Reviews are saved in `Documents\Debrief Reviews`. You can open them in a browser
 
 From a command prompt you can also run `python -m debrief team` or `python -m debrief prep --track ID --car ID`.
 
-Setup checklist: until everything is set up, the start page shows what is done and the next step, each with a button (Settings, Read my telemetry, Practice, the Coach). **Hide** it whenever you like; **Help > Setup checklist** shows it again.
+Setup checklist: until everything is set up, the start page (and the welcome screen, before Garage 61 is connected) shows what is done and the next step, telemetry first: find the telemetry folder, turn on telemetry in iRacing (Alt+L), read it, drive 10 clean laps in one session (what Practice needs to pick one thing to work on), test the coach's voice, then connect Garage 61. Each step has a button where there is one to press (Settings, Read my telemetry, Practice, Test voice). **Hide** it whenever you like; **Help > Setup checklist** shows it again. Until Garage 61 is connected only Progress, Season, Skills, Goals, All sessions and Team wait for it; a token Garage 61 turned down unlocks nothing.
 
 Keyboard: **Ctrl+R** reviews your last race, **Ctrl+1** to **Ctrl+9** open the pages in sidebar order (Setup Lab is **Ctrl+8**, Coach **Ctrl+9**), **Ctrl+0** opens Practice, **Ctrl+,** opens Settings, **Ctrl+Shift+M** mutes the coach, **Ctrl+Shift+R** repeats its last cue, **Ctrl+Shift+N** mutes it for 1 minute, **Ctrl+Shift+P** asks it for your pace.
 
 ## Credits
 
-The coach's voices were made with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) by hexgrad (Apache-2.0 licence), voices bm_george, am_michael, am_fenrir and af_heart. They were generated once with `tools/make_voicepack.py` and ship as sound clips; Kokoro itself is not part of Debrief.
+Debrief is made by Black Magik Studios. © 2026 Black Magik Studios.
+
+[CREDITS.md](CREDITS.md) lists every third-party part Debrief uses or ships, who made it, its licence and a link; **Help > Credits** (also **Settings > About > Credits**) shows the same list in the app. The licence texts and notices those parts ask to be passed on are in [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt), and the installed app carries both files. The coach's voices were made with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) by hexgrad (Apache-2.0 licence); they were generated once with `tools/make_voicepack.py` and ship as sound clips, and Kokoro itself is not part of Debrief.
 
 ## Comparison laps
 
@@ -121,7 +128,7 @@ The Garage 61 API only shares laps from **you, your teammates, and drivers you f
 
 ## Midfield Menace on Garage 61
 
-Debrief is built for the Midfield Menace team. The Team hub, the weekly leaderboards and the teammates' laps on Prep pages come from the **Midfield Menace team on Garage 61**, so you need to be a member there:
+Debrief's team features are set up for the Midfield Menace team (a team brand; the app itself is by Black Magik Studios). The Team hub, the weekly leaderboards and the teammates' laps on Prep pages come from the **Midfield Menace team on Garage 61**, so you need to be a member there:
 
 1. Make your Garage 61 account and connect iRacing (step 4 of the install).
 2. Ask a Midfield Menace teammate (or Overdriver) to invite you to the team on Garage 61, and accept the invite.

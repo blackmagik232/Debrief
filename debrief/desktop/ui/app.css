@@ -136,6 +136,7 @@ dialog::backdrop{background:rgba(10,12,14,.45)}
 dialog form{display:grid;gap:14px}
 
 /* first-run guide (welcome screen, until a token is saved) */
+.guidehead{margin:22px 0 2px;font-size:17px}
 .guide{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:0;max-width:760px}
 .gstep{display:grid;grid-template-columns:44px minmax(0,1fr);gap:14px;padding:16px 0;border-top:1px solid var(--grid)}
 .gstep:first-child{border-top:3px solid var(--fg)}

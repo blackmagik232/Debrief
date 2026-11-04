@@ -31,7 +31,7 @@ def test_installer_publisher_is_the_brand_and_upgrade_ids_unchanged():
     from debrief import brand
     iss = _read(ROOT / "packaging" / "debrief.iss")
     pub = re.search(r"^AppPublisher=(.+)$", iss, re.M).group(1).strip()
-    assert pub == brand.PUBLISHER == "Midfield Menace", pub
+    assert pub == brand.PUBLISHER == "Black Magik Studios", pub    # 2.18: the maker; Midfield Menace is a team brand
     # upgrades from 2.5.0 must still install over the old copy: same AppId and install folder
     assert "AppId={{14DA940F-67E3-4A45-8F42-4FC631C59763}" in iss
     assert re.search(r"^DefaultDirName=\{localappdata\}\\Programs\\\{#AppName\}$", iss, re.M)
@@ -101,12 +101,13 @@ def test_gitignore_secrets_and_nothing_tracked_is_ignored():
 # ---------------------------------------------------------------- templates
 def test_templates_are_branded():
     rv, lib, prep, team = (_read(TPL / n) for n in ("review.html", "library.html", "prep.html", "team.html"))
-    assert "<title>Midfield Menace · Race Review</title>" in rv
-    assert "<title>Midfield Menace · Library</title>" in lib
+    # 2.18: your own reviews and library carry the app's name; the team's name is for team features
+    assert "<title>Debrief · Race Review</title>" in rv
+    assert "<title>Debrief · Library</title>" in lib
     assert "<title>Midfield Menace · Prep</title>" in prep
     assert "<title>Midfield Menace · Team hub</title>" in team
-    # share card footer: MIDFIELD MENACE · DEBRIEF (from the brand, upper-cased)
-    assert "x.fillText((TEAM_NAME+' · Debrief').toUpperCase(),W-64,H-48)" in rv
+    # share card footer: DEBRIEF · BLACK MAGIK STUDIOS (2.18: the maker, not the team)
+    assert "x.fillText('Debrief · Black Magik Studios'.toUpperCase(),W-64,H-48)" in rv
     assert "GARAGE 61 TELEMETRY" not in rv
     # the Team page never shows a bare slug as its heading
     assert '<h1 id="title">Midfield Menace</h1>' in team
@@ -116,6 +117,7 @@ def test_templates_are_branded():
         assert "membership==='not_member'" in s and "join_title" in s and "join_text" in s
     for s in (rv, lib, prep, team):
         assert "debrief-key" in s                       # Ctrl+R / Ctrl+, from inside a page reach the window
+    for s in (prep, team):
         assert "Midfield Menace" in s
 
 
@@ -147,17 +149,19 @@ def test_team_template_join_panel_in_browser():
 # ---------------------------------------------------------------- window (static)
 def test_window_static_bits():
     js, html = _read(UI / "app.js"), _read(UI / "index.html")
-    assert "<title>Debrief · Midfield Menace</title>" in html
+    assert "<title>Debrief · by Black Magik Studios</title>" in html and "Midfield Menace</div>" not in html
     assert "let teamSlug='midfield-menace'" not in js and "api('brand')" in js
     # one heartbeat source: the worker; the main thread pings every 5 s only if the worker can't start
     assert js.count("setInterval(ping,5000)") == 1 and "catch(e){setInterval(ping,5000)}" in js
     # first screen loads side by side
     assert "await Promise.all([loadSettings(),loadBrand(),loadReviews(),loadSessions()])" in js
     assert "Set up Settings first." not in js and "Finish setup on the welcome screen first." in js
-    assert "Waiting for Garage 61's email? Close Debrief. These steps will be here when you come back." in html
+    assert "Waiting for Garage 61's email? Practice, Setup Lab, the Coach and Racing already work from your telemetry" in html
+    assert "These steps will be here when you come back." in html
     assert "Pause sync (carries on next time)" in html
     assert ">All sessions<" in html and ">Saved reviews<" in html and ">Past reviews<" not in html
-    assert html.count("request a personal API token") >= 2          # guide and Settings say the same thing
+    assert html.count("request a personal access token") >= 2       # guide and Settings say the same thing
+    assert "API token" not in html and "API token" not in js        # 2.18: one name: personal access token
     assert 'id="pIracing" hidden' in html                           # credentials panel hidden; keys still work
     assert 'id="btnCheck">Save and check<' in html and "Save token" not in html and ">Check connection<" not in html
     assert 'data-nav="sessions">Open Sessions<' in html
@@ -279,7 +283,7 @@ def test_window_first_run_gate_and_check_messages():
         pg.keyboard.press("Control+r")
         pg.wait_for_timeout(200)
         assert not [c for c in calls if c[0] == "POST" and c[1] == "review"], calls
-        assert pg.evaluate("() => document.title") == "Debrief · Midfield Menace"
+        assert pg.evaluate("() => document.title") == "Debrief · by Black Magik Studios"
         # a check that fails for another reason shows the server's message, not "paste it again"
         api["settings"] = dict(api["settings"], token_saved=True)
         api["check"] = {"ok": True, "id": 1}
@@ -288,12 +292,28 @@ def test_window_first_run_gate_and_check_messages():
         pg.click("#gTokSave")
         pg.wait_for_function("() => document.getElementById('gTokMsg').classList.contains('bad')")
         assert pg.text_content("#gTokMsg") == "Couldn't reach Garage 61. Check your internet connection."
+        # 2.18: a failed check turns no step green, unlocks nothing and says its error once
+        assert pg.evaluate("() => ['gs1','gs2','gs3'].map(i => document.getElementById(i).classList.contains('done'))") == [False, False, False]
+        assert pg.evaluate("() => document.getElementById('btnReview').getAttribute('aria-disabled')") == "true"
+        assert pg.evaluate("() => document.getElementById('gReview').disabled") is True
+        assert pg.evaluate("() => document.querySelector('.navbtn[data-nav=library]').getAttribute('aria-disabled')") == "true"
+        assert "Couldn't reach Garage 61" not in pg.text_content("#gChkOut")
         # a 401 does say to paste it again
         api["check"] = {"ok": True, "id": 2}
         st["status"] = {"state": "error", "kind": "check", "id": 2, "error": "Garage 61 rejected the token (401). Paste it again in Settings.", "steps": []}
         pg.fill("#gTok", "tok456")
         pg.click("#gTokSave")
         pg.wait_for_function("() => /paste it again/.test(document.getElementById('gTokMsg').textContent)")
+        assert pg.evaluate("() => document.getElementById('btnReview').getAttribute('aria-disabled')") == "true"
+        # the server remembers a rejected token (token_rejected): still locked after the window reloads its settings
+        api["settings"] = dict(api["settings"], token_saved=True, token_rejected=True)
+        pg.click(".navbtn[data-nav=settings]")          # Settings loads them again
+        pg.wait_for_function("() => !document.getElementById('vSettings').hidden")
+        pg.wait_for_timeout(200)
+        assert pg.evaluate("() => document.getElementById('btnReview').getAttribute('aria-disabled')") == "true"
+        pg.click("#btnReview", force=True)              # a token that was turned down: back to the steps
+        pg.wait_for_function("() => !document.getElementById('vWelcome').hidden")
+        api["settings"] = dict(api["settings"], token_rejected=False)
         # success: the new wording, and info-level lines stay neutral
         api["check"] = {"ok": True, "id": 3}
         st["status"] = {"state": "done", "kind": "check", "id": 3, "result": {"lines": [

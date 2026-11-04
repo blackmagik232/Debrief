@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.19.0
+
+- **Coach overlay** (Coach > Overlay, off until you turn it on): a small see-through box on top of iRacing while the coach runs, showing Coaching, Muted (in red), Rehearsing or Off, your one thing and its count, the last cue and your gap to your reference lap. Clicks pass through it, Edit position lets you drag it, and it remembers its place, size and opacity on each monitor. iRacing must be in borderless windowed mode (fullscreen hides every overlay). The build now bundles Tk for it.
+- **Setup Lab is more careful about which setup was faster:** each setup needs at least 3 separate stints before Debrief names a faster one, and the comparison now allows for day-to-day swings between stints and for comparing several setups at once. With fewer stints it says how many more it needs. A real 0.4 s difference now takes about 6 stints to show reliably.
+- **Coasting and both pedals together** are only called a habit when a shuffle test says chance can't explain them.
+- **Plain words:** the glossary is rewritten, and yaw rate, kPa, Lone Qualify (qualifying alone on track), the update checksum, Discord webhooks and lap 1 places are explained where they appear. Today shows what Sure, Likely, A hint and A guess mean.
+- **One track, one entry:** the same track and layout no longer shows twice in Practice and Setup Lab when iRacing uses two codes for it.
+
 ## 2.18.0
 
 - **Car vs car** (new page, after Racing in the sidebar): pick a track and class (any class at any track: GT4 at Zolder, GT3 at Spa) and see every car of that class side by side: drivers, typical race lap, best lap, the gap for drivers of similar iRating, and how sure that gap is.

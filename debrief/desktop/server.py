@@ -31,6 +31,7 @@ from . import carsetup    # 2.15 Car and setup
 from . import racing      # 2.16 Racing
 from . import carcompare as carcompare_page     # 2.18 Car vs car
 from . import coach2      # Coach 2.0: voice packs, device, cue log, rehearsal
+from . import home        # 2.18 Today, the start page
 
 UI = Path(__file__).resolve().parent / "ui"
 ICON_PNG = Path(__file__).resolve().parent / "icon.png"
@@ -103,7 +104,11 @@ FRAME_BRIDGE = ("<script>/* debrief-frame-bridge */(function(){if(parent===windo
                 # 2.8: the sidebar owns Progress / Season / Skills / Goals, and these keys work inside the page too (2.12: Ctrl+1-9, 2.13: Ctrl+0)
                 "document.body&&document.body.classList.add('in-shell');"
                 "addEventListener('keydown',function(e){var k=String(e.key).toLowerCase(),m=null,t=e.target;"
+                "var w=t&&t.closest&&t.closest('input,select,textarea,[contenteditable]');"
                 "if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&/^[0-9]$/.test(k))m='page'+k;"
+                # 2.18: Ctrl+Enter = Review last race, F1 or ? = the key list
+                "else if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&k==='enter'&&!w)m='reviewgo';"
+                "else if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&(k==='f1'||(e.key==='?'&&!w)))m='help';"
                 "else if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey&&(k==='j'||k==='k')&&"
                 "!(t&&t.closest&&t.closest('input,select,textarea,[contenteditable]')))m=k==='j'?'prev':'next';"
                 "if(!m)return;e.preventDefault();try{parent.postMessage({type:'debrief-key',key:m},P)}catch(x){}});"
@@ -2361,6 +2366,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._carsetup_call(lambda: racing.get(self, r, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}), r, get=True)
         if r in carcompare_page.GET_ROUTES:     # 2.18 Car vs car
             return self._carsetup_call(lambda: carcompare_page.get(self, r, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}), r, get=True)
+        if r in home.GET_ROUTES:                # 2.18 Today
+            return self._carsetup_call(lambda: home.get(self, r, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}), r, get=True)
         return self._nf()
 
     def _carsetup_call(self, fn, r, get=False):
@@ -2883,6 +2890,11 @@ class Handler(BaseHTTPRequestHandler):
             gf = lib / "goals.json"   # goals saved elsewhere (or a rebuild that failed) show up too
             if gf.exists():
                 newest = max(newest, gf.stat().st_mtime)
+            try:            # 2.18: a new Debrief's library template (Today's tab headings) rebuilds the page too
+                from .. import report as _report
+                newest = max(newest, (_report.TPL / "library.html").stat().st_mtime)
+            except (OSError, AttributeError):
+                pass
             # while the saved-review refresh rewrites every review.json, each one looks newer than the page:
             # show the page as it is (refresh_all rebuilds it once at the end) unless there isn't one yet
             refreshing = self.server.jobs.background_running("refresh")

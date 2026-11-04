@@ -72,7 +72,7 @@ def test_readme_for_buddies():
     assert "**Skills**" in s
     assert "## Midfield Menace on Garage 61" in s and "invite you to the team on Garage 61" in s
     assert "still work if you ever need them" not in s          # the .bat files aren't recommended any more
-    assert "Ctrl+R" in s
+    assert "Ctrl+Enter" in s and "Ctrl+R" not in s         # 2.18: Review last race moved off the reload key
 
 
 def test_updater_strings_point_at_the_public_releases():
@@ -161,7 +161,7 @@ def test_window_static_bits():
     assert 'id="pIracing" hidden' in html                           # credentials panel hidden; keys still work
     assert 'id="btnCheck">Save and check<' in html and "Save token" not in html and ">Check connection<" not in html
     assert 'data-nav="sessions">Open Sessions<' in html
-    assert 'title="Review last race (Ctrl+R)"' in html and 'title="Settings (Ctrl+,)"' in html
+    assert 'title="Review last race (Ctrl+Enter)"' in html and 'title="Settings (Ctrl+,)"' in html     # 2.18: not Ctrl+R
 
 
 # ---------------------------------------------------------------- window (browser, mocked API)
@@ -318,10 +318,13 @@ def test_window_opens_on_last_race_shortcuts_and_banners():
         return
     ctx, pg, errs, calls = r
     try:
+        # 2.18: Debrief opens on Today; Progress keeps the last race strip
+        pg.wait_for_function("() => !document.getElementById('vToday').hidden", timeout=10000)
+        nav = pg.evaluate("() => [...document.querySelectorAll('[aria-current=page]')].map(b => b.dataset.nav)")
+        assert nav == ["today"], nav
+        pg.click(".navbtn[data-nav=library]")
         pg.wait_for_function("() => !document.getElementById('lastRace').hidden", timeout=10000)
         assert pg.text_content("#lrWhat") == "Roval · GT4"
-        nav = pg.evaluate("() => [...document.querySelectorAll('[aria-current=page]')].map(b => b.dataset.nav)")
-        assert nav == ["library"], nav
         # Season / Skills are parts of the Progress page; their deep links still work
         pg.click(".navbtn[data-nav=season]")
         pg.wait_for_function("() => document.getElementById('frame').src.endsWith('#season')")
@@ -338,9 +341,12 @@ def test_window_opens_on_last_race_shortcuts_and_banners():
         assert st["extras"] is False and st["ir"] is True and st["adv"] is False, st
         pg.wait_for_function("() => document.getElementById('teamLine').textContent.includes('not on the team yet')")
         assert pg.text_content("#teamLine") == "Team: Midfield Menace \u2014 not on the team yet (join on Garage 61)"
-        # Ctrl+R = Review last race (and not a reload); the error banner stays until it's closed
+        # 2.18: Ctrl+R neither reloads nor starts a review; Ctrl+Enter = Review last race; the error banner stays until it's closed
         pg.evaluate("() => { window.__alive = 1 }")
         pg.keyboard.press("Control+r")
+        pg.wait_for_function("() => /Ctrl\\+Enter/.test(document.getElementById('bannerText').textContent)")
+        assert not [c for c in calls if c[0] == "POST" and c[1] == "review"]
+        pg.keyboard.press("Control+Enter")
         pg.wait_for_function("() => document.getElementById('bannerText').textContent === 'Garage 61 is busy.' && !document.getElementById('banner').hidden")
         assert pg.evaluate("() => window.__alive") == 1
         assert [c for c in calls if c[0] == "POST" and c[1] == "review"]
@@ -363,7 +369,7 @@ def test_window_sessions_page_by_page_and_team_join():
         return
     ctx, pg, errs, calls = r
     try:
-        pg.wait_for_function("() => !document.getElementById('lastRace').hidden", timeout=10000)
+        pg.wait_for_function("() => !document.getElementById('vToday').hidden", timeout=10000)
         pg.click(".navbtn[data-nav=sessions]")
         pg.wait_for_function("() => document.querySelectorAll('#sessList .item.sess').length === 60")
         assert pg.text_content("#sessCount") == "Showing 60 of 150"
@@ -393,7 +399,7 @@ def test_window_job_error_offers_sessions():
         return
     ctx, pg, errs, calls = r
     try:
-        pg.wait_for_function("() => !document.getElementById('lastRace').hidden", timeout=10000)
+        pg.wait_for_function("() => !document.getElementById('vToday').hidden", timeout=10000)
         st["s"] = {"state": "error", "kind": "review", "id": 9, "error": "No new race found.", "steps": []}
         pg.click("#btnReview")
         pg.wait_for_function("() => !document.getElementById('jobErr').hidden")

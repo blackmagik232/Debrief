@@ -519,7 +519,7 @@ def test_practice_in_the_window():
             names = pg.evaluate("() => [...document.querySelectorAll('.nav .navbtn')].map(b => b.textContent.trim())")
             assert names[names.index("All sessions") + 1] == "Practice", names
             # Practice by key (Ctrl+0): the sessions, newest first
-            pg.keyboard.press("Control+0")
+            pg.keyboard.press("Control+5")
             pg.wait_for_selector("#vPractice", state="visible")
             pg.wait_for_selector("#prSessions .prrow")
             rows = pg.evaluate("() => [...document.querySelectorAll('#prSessions .prrow')].map(b => b.textContent)")
@@ -560,7 +560,7 @@ def test_practice_in_the_window():
             pg.wait_for_selector("#slSetups")
             assert pg.evaluate("() => document.querySelector('#slCombos .pkbtn.on').textContent").startswith("Zolder")
             # back to the session and on to the coach
-            pg.keyboard.press("Control+0")
+            pg.keyboard.press("Control+5")
             pg.wait_for_selector("#prSessions .prrow")
             pg.click("#prSessions .prrow")
             pg.wait_for_selector("#prCoach")
@@ -570,7 +570,7 @@ def test_practice_in_the_window():
             plan = pg.text_content("#coPlan")
             assert "From the Corner coach" in plan and "T4: lighter brake" in plan and "Turn 4 (C4)" in plan, plan
             # back from a session to the list
-            pg.keyboard.press("Control+0")
+            pg.keyboard.press("Control+5")
             pg.wait_for_selector("#prSessions .prrow")
             pg.click("#prSessions .prrow >> nth=1")
             pg.wait_for_selector("#prReport .slhead")
@@ -580,7 +580,7 @@ def test_practice_in_the_window():
             pg.click("#btnHelp")
             pg.click("[data-help=keys]")
             keys = pg.text_content("#helpBody")
-            assert "Ctrl+0: Practice" in keys and "Ctrl+1 to Ctrl+9" in keys, keys
+            assert "Ctrl+5: Practice" in keys and "Ctrl+1 to Ctrl+9" in keys, keys
             pg.click("[data-help=words]")
             assert "Corner coach" in pg.text_content("#helpBody") and "Best possible lap" in pg.text_content("#helpBody")
             pg.click("#helpClose")
@@ -603,7 +603,7 @@ def test_coach_page_with_corner_coach():
     try:
         pg.goto(s.url)
         pg.wait_for_function("() => document.querySelector('.navbtn[data-nav=coach]')")
-        pg.keyboard.press("Control+9")
+        pg.keyboard.press("Control+3")
         pg.wait_for_selector("#vCoach", state="visible")
         pg.wait_for_function("() => document.getElementById('coText').textContent === 'Coach off'")
         pg.click("#coStart")

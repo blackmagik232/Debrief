@@ -1,8 +1,10 @@
 [hidden]{display:none!important}
 *{box-sizing:border-box}
 html,body{height:100%}
+/* 2.18: the window itself never scrolls (a click in a page used to scroll it and hide the sidebar's top) */
+html,body{overflow:clip}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.5;
-  display:grid;grid-template-columns:268px minmax(0,1fr);overflow:hidden}
+  display:grid;grid-template-columns:268px minmax(0,1fr);overflow:clip}
 @media (max-width:1100px){body{grid-template-columns:236px minmax(0,1fr)}}
 h1,h3{font-family:var(--display);font-weight:700;margin:0;line-height:1.05}
 h1{font-size:46px;text-transform:uppercase;letter-spacing:.01em}
@@ -16,7 +18,10 @@ a{color:var(--me)}
 :focus-visible{outline:2px solid var(--me);outline-offset:2px}
 
 /* sidebar */
-.side{background:var(--panel);border-right:1px solid var(--grid);display:flex;flex-direction:column;gap:14px;padding:18px 14px 12px;min-height:0;height:100vh}
+.side{background:var(--panel);border-right:1px solid var(--grid);display:flex;flex-direction:column;gap:12px;padding:16px 14px 10px;min-height:0;height:100vh;overflow:hidden}
+/* 2.18: only the middle scrolls (pages and saved reviews); the Review button, Settings, Help and the theme always show */
+.side>*{flex-shrink:0}
+.side>.sidescroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:10px;margin:0 -8px;padding:0 8px 6px;scrollbar-width:thin}
 .brand{display:flex;gap:10px;align-items:center;padding:0 4px 12px;border-bottom:3px solid var(--fg)}
 .brand img{border-radius:7px;flex:none}
 .brand .name{font-family:var(--display);font-weight:700;font-size:28px;line-height:1;text-transform:uppercase;letter-spacing:.02em}
@@ -37,7 +42,10 @@ a{color:var(--me)}
 .navbtn:hover,.rev:hover{background:var(--band)}
 .navbtn.active,.rev.active{background:var(--band);border-left-color:var(--me)}
 .revhead{display:flex;justify-content:space-between;align-items:baseline;padding:8px 4px 0;border-top:1px solid var(--grid)}
-.revlist{flex:1;min-height:0;overflow-y:auto;display:grid;align-content:start;gap:12px;margin:0 -6px;padding:0 6px 8px}
+.revlist{display:grid;align-content:start;gap:12px;margin:0 -6px;padding:0 6px 4px}
+.navgroup{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:9px 11px 2px 14px}
+.navbtn.sub{padding:5px 11px 5px 26px;font-size:13.5px;color:var(--fg2)}
+.navbtn.sub.active{color:var(--fg)}
 .grp{display:grid;gap:1px}
 .grp .gh{padding:0 4px 4px 14px;min-width:0}
 .grp .gt{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -47,7 +55,12 @@ a{color:var(--me)}
 .rev .b{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .rev.active .d{color:var(--fg)}
 .revempty{font-size:12.5px;color:var(--muted);padding:0 4px}
-.sidefoot{border-top:1px solid var(--grid);padding-top:10px}
+.sidefoot{border-top:1px solid var(--grid);padding-top:8px;display:grid;gap:8px}
+.footnav{display:grid;grid-template-columns:1fr 1fr;gap:2px}
+.footnav .navbtn{padding:6px 11px}
+/* short windows (1093x614, 1280x720): tighter, so the page list still has room */
+@media (max-height:780px){.side{gap:8px;padding-top:12px}.brand{padding-bottom:8px}.brand .name{font-size:24px}.brand img{width:28px;height:28px}
+  .btn.big{padding:9px 12px;font-size:14.5px}.navbtn{padding:6px 11px}.navbtn.sub{padding:4px 11px 4px 26px}.navgroup{padding-top:6px}}
 .seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--axis);border-radius:5px;overflow:hidden}
 .seg button{font:inherit;font-size:12px;font-family:var(--mono);letter-spacing:.04em;background:none;color:var(--fg2);border:0;padding:5px 0;cursor:pointer}
 .seg button+button{border-left:1px solid var(--axis)}
@@ -67,6 +80,8 @@ main{position:relative;min-width:0;height:100vh;display:flex;flex-direction:colu
 .framebar .fbbar i{background:var(--me)}
 .pad{overflow-y:auto;padding:44px clamp(20px,4vw,56px) 56px}
 .col{max-width:860px;display:grid;gap:18px;align-content:start}
+/* 2.18: a wide window uses its width: the pages grow and sit in the middle (small windows are unchanged) */
+@media (min-width:1500px){.pad>.col{max-width:1180px;margin-inline:auto}.pad>.prepcol{max-width:1180px}}
 .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .panel{background:var(--panel);border:1px solid var(--grid);padding:18px 20px;display:grid;gap:12px;margin:0}
 .phead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
@@ -642,3 +657,29 @@ td.rcwhen .linkbtn{font-size:12.5px;margin-top:2px}
 .cctbl .ccconf{text-align:left;white-space:nowrap;padding-left:20px}
 .cctbl td.gain{font-weight:600}
 .ccwlist{margin:0;padding-left:18px;display:grid;gap:6px;max-width:80ch}
+
+/* ---------- 2.18 Today */
+.todaycol .tdone{gap:8px}
+.tdone .ptmain{font-size:25px}
+.tdone #tdLines p{max-width:72ch}
+.tdgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.tdcard{align-content:start}
+.tdcard .phead h3{font-size:18px}
+.tdwhat{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.tdwhat .tdbest{font-size:13px;color:var(--fg2)}
+.tdlinks{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;padding-top:4px}
+.frline{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;font-size:13.5px;color:var(--fg2);padding:8px 12px;border:1px dashed var(--grid);border-radius:5px}
+#tdSetupHost .frcard{border:1px solid var(--grid);border-radius:6px}
+.tdptr{margin-top:6px}
+/* the shared sureness scale reads as a label, not a button */
+.pill.sure{font-family:var(--body);font-size:12.5px;letter-spacing:0}
+/* debug text kept for bug reports, folded away */
+details.dbg>summary{font-size:12.5px;color:var(--muted);cursor:pointer}
+.dbgtext{white-space:pre-wrap;word-break:break-word;font-size:11.5px;color:var(--fg2);margin:6px 0 0;max-height:220px;overflow:auto}
+/* Racing: the race table fits its panel (where the positions came from is on each race's own line) */
+.rctbl td .rcsrc{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.rctbl td .rcwhere{min-width:120px}
+/* the key list in two columns, so it fits a short window */
+#helpBody.keygrid{columns:2 240px;column-gap:28px}
+#helpBody.keygrid>p{break-inside:avoid;margin:0 0 3px}
+#helpBody.keygrid>p.note{column-span:all;margin-bottom:6px}

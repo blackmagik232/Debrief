@@ -618,7 +618,7 @@ def test_page_in_the_window():
         pg.wait_for_selector("#ccTable table", timeout=120000)
         t = pg.text_content("#vCars")
         assert "Car vs car" in t and "Drivers of similar iRating were about" in t and "You vs the field" in t, t[:800]
-        assert "Car choice and driver skill can't be fully separated." in t and "Unlikely to be chance" in t, t[:1500]
+        assert "Car choice and driver skill can't be fully separated." in t and "Likely: unlikely to be chance" in t, t[:1500]
         assert "Where you were faster in each car" in t and "different sessions, days and setups" in t, t[:2500]
         assert "Clear" not in t and "per 1000 iRating" in pg.inner_html("#vCars")
         assert "One season: " in t

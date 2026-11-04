@@ -303,6 +303,30 @@ check(sp4 and not bad, f"at 4x every cue still ends before its brake point ({len
 check(len(sp4) <= len(sp1), f"fewer cues fit at 4x than at 1x ({len(sp4)} vs {len(sp1)})")
 check(all(e.get("dur_s") and e["dur_s"] < 3 for e in sp4), "the log keeps each cue's real length")
 
+print("-- the speed picked is the speed played")
+
+
+def played_rate(start_speed, then=None, secs=2.0):
+    run = lc.LiveRunner(coach2.ChainPlayback([NOV2], speed=start_speed), vc.FakeVoice(), mode="rehearsal")
+    run.start()
+    try:
+        time.sleep(0.5)
+        if then:
+            run.set_speed(then)        # what POST api/coach/rehearse-speed does to a running rehearsal
+            time.sleep(0.3)
+        a = run.source.progress()["at_s"]
+        t0 = time.monotonic()
+        time.sleep(secs)
+        return (run.source.progress()["at_s"] - a) / (time.monotonic() - t0)
+    finally:
+        run.stop()
+
+
+r1, r4, rs = played_rate(1.0), played_rate(4.0), played_rate(1.0, then=4.0)
+check(0.8 <= r1 <= 1.25, f"1x plays the file at about real time ({r1:.2f}x)")
+check(r4 >= 3.4, f"4x set before the start really plays 4 seconds of file a second ({r4:.2f}x)")
+check(rs >= 3.4, f"4x set while it plays takes hold ({rs:.2f}x)")
+
 print("-- skip ahead")
 sk = lc.LiveRunner(coach2.ChainPlayback([NOV2]), vc.FakeVoice(), mode="rehearsal")
 sk._skip = {"what": "lap", "lap": None, "laps": 0}

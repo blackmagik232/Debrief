@@ -2784,8 +2784,19 @@ class LiveRunner:
                 iv = getattr(self.source, "interval", 0.0) or 0.0
                 if self._skip is not None:
                     iv = 0.0                             # skipping ahead: as fast as it goes
-                if iv > 0:
-                    self._stop.wait(max(0.0, iv - (self._clock() - t0)))
+                if iv > 0 and float(getattr(self.source, "speed", 1.0) or 1.0) > 1.0 and self._skip is None:
+                    # 2.18 rehearsal at 2x / 4x: keep to a schedule, so a slow step or a coarse timer (Windows waits
+                    # in ~15 ms steps) is caught up on the next samples instead of lowering the speed for good
+                    now = self._clock()
+                    due = (self._due if self._due is not None else t0) + iv
+                    if now - due > 1.0:
+                        due = now                    # a long stall (a file opening): carry on from here
+                    self._due = due
+                    self._stop.wait(max(0.0, due - now))
+                else:
+                    self._due = None
+                    if iv > 0:
+                        self._stop.wait(max(0.0, iv - (self._clock() - t0)))
         except BaseException as e:  # noqa: BLE001  (never out of the thread)
             self._error = f"{e.__class__.__name__}: {str(e)[:160]}"
             self._state = "error"
@@ -2923,6 +2934,7 @@ class LiveRunner:
         src.interval = want
 
     _base_interval = None
+    _due = None
 
     def _prepare(self):
         """Hand the voice every fixed phrase for this reference, to render ahead of time (once per reference; with

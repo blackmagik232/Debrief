@@ -1,6 +1,11 @@
-Omega (Indian accent, male) (omega): 500 clips, 17.22 MB, 16000 Hz, speed 1.05, comma pause 70 ms
-Coach phrases covered: 3808 of 3808 (100.0%)
+Omega (Indian accent, male) (omega): 560 clips, 20.24 MB, 16000 Hz, speed 1.05, comma pause 70 ms
+Coach phrases covered: 5308 of 5308 (100.0%)
 Left to Windows speech by design: Good, 0 .. Good, 19 (20 phrases)
+Takes to listen to: 2 (new lines only)
+  line 463 'Turn three, off track.': spoken as 'Turn three... off track.' to get a pause at the comma (listen to the join)
+  line 483 'Turn two, braked fifteen metres later.': spoken as 'Turn two. Braked fifteen metres later.' to get a pause at the comma (listen to the join)
+
+Earlier lines:
 Takes to listen to: 43 (new lines only)
   line 357 'Down a tenth, most in turn one.': spoken as 'Down a tenth. Most in turn one.' to get a pause at the comma (listen to the join)
   line 384 'Oh oh, oh.': the two halves were said separately (listen to the join)

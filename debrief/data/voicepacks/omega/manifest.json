@@ -3012,6 +3012,366 @@
    "text": "more speed, three down.",
    "ms": 1470,
    "role": "tail"
+  },
+  "best_down_3": {
+   "file": "best_down_3.wav",
+   "text": "three down on your best.",
+   "ms": 1240,
+   "role": "tail"
+  },
+  "best_down_4": {
+   "file": "best_down_4.wav",
+   "text": "four down on your best.",
+   "ms": 1290,
+   "role": "tail"
+  },
+  "best_down_5": {
+   "file": "best_down_5.wav",
+   "text": "five down on your best.",
+   "ms": 1380,
+   "role": "tail"
+  },
+  "best_down_6": {
+   "file": "best_down_6.wav",
+   "text": "six down on your best.",
+   "ms": 1330,
+   "role": "tail"
+  },
+  "best_down_7": {
+   "file": "best_down_7.wav",
+   "text": "seven down on your best.",
+   "ms": 1450,
+   "role": "tail"
+  },
+  "best_down_8": {
+   "file": "best_down_8.wav",
+   "text": "eight down on your best.",
+   "ms": 1240,
+   "role": "tail"
+  },
+  "best_down_9": {
+   "file": "best_down_9.wav",
+   "text": "nine down on your best.",
+   "ms": 1400,
+   "role": "tail"
+  },
+  "best_down_10": {
+   "file": "best_down_10.wav",
+   "text": "ten down on your best.",
+   "ms": 1240,
+   "role": "tail"
+  },
+  "best_down_11": {
+   "file": "best_down_11.wav",
+   "text": "eleven down on your best.",
+   "ms": 1360,
+   "role": "tail"
+  },
+  "best_down_12": {
+   "file": "best_down_12.wav",
+   "text": "twelve down on your best.",
+   "ms": 1320,
+   "role": "tail"
+  },
+  "best_down_13": {
+   "file": "best_down_13.wav",
+   "text": "thirteen down on your best.",
+   "ms": 1450,
+   "role": "tail"
+  },
+  "best_down_14": {
+   "file": "best_down_14.wav",
+   "text": "fourteen down on your best.",
+   "ms": 1540,
+   "role": "tail"
+  },
+  "best_down_15": {
+   "file": "best_down_15.wav",
+   "text": "fifteen down on your best.",
+   "ms": 1450,
+   "role": "tail"
+  },
+  "best_down_16": {
+   "file": "best_down_16.wav",
+   "text": "sixteen down on your best.",
+   "ms": 1410,
+   "role": "tail"
+  },
+  "best_down_17": {
+   "file": "best_down_17.wav",
+   "text": "seventeen down on your best.",
+   "ms": 1550,
+   "role": "tail"
+  },
+  "best_down_18": {
+   "file": "best_down_18.wav",
+   "text": "eighteen down on your best.",
+   "ms": 1440,
+   "role": "tail"
+  },
+  "best_down_19": {
+   "file": "best_down_19.wav",
+   "text": "nineteen down on your best.",
+   "ms": 1610,
+   "role": "tail"
+  },
+  "best_down_20": {
+   "file": "best_down_20.wav",
+   "text": "twenty down on your best.",
+   "ms": 1350,
+   "role": "tail"
+  },
+  "off_track": {
+   "file": "off_track.wav",
+   "text": "off track.",
+   "ms": 420,
+   "role": "tail"
+  },
+  "off_track_fast_3": {
+   "file": "off_track_fast_3.wav",
+   "text": "off track and three faster in.",
+   "ms": 1720,
+   "role": "tail"
+  },
+  "off_track_fast_4": {
+   "file": "off_track_fast_4.wav",
+   "text": "off track and four faster in.",
+   "ms": 1670,
+   "role": "tail"
+  },
+  "off_track_fast_5": {
+   "file": "off_track_fast_5.wav",
+   "text": "off track and five faster in.",
+   "ms": 1790,
+   "role": "tail"
+  },
+  "off_track_fast_6": {
+   "file": "off_track_fast_6.wav",
+   "text": "off track and six faster in.",
+   "ms": 1770,
+   "role": "tail"
+  },
+  "off_track_fast_7": {
+   "file": "off_track_fast_7.wav",
+   "text": "off track and seven faster in.",
+   "ms": 1850,
+   "role": "tail"
+  },
+  "off_track_fast_8": {
+   "file": "off_track_fast_8.wav",
+   "text": "off track and eight faster in.",
+   "ms": 1690,
+   "role": "tail"
+  },
+  "off_track_fast_9": {
+   "file": "off_track_fast_9.wav",
+   "text": "off track and nine faster in.",
+   "ms": 1710,
+   "role": "tail"
+  },
+  "off_track_fast_10": {
+   "file": "off_track_fast_10.wav",
+   "text": "off track and ten faster in.",
+   "ms": 1660,
+   "role": "tail"
+  },
+  "off_track_fast_11": {
+   "file": "off_track_fast_11.wav",
+   "text": "off track and eleven faster in.",
+   "ms": 1880,
+   "role": "tail"
+  },
+  "off_track_fast_12": {
+   "file": "off_track_fast_12.wav",
+   "text": "off track and twelve faster in.",
+   "ms": 1710,
+   "role": "tail"
+  },
+  "off_track_fast_13": {
+   "file": "off_track_fast_13.wav",
+   "text": "off track and thirteen faster in.",
+   "ms": 1910,
+   "role": "tail"
+  },
+  "off_track_fast_14": {
+   "file": "off_track_fast_14.wav",
+   "text": "off track and fourteen faster in.",
+   "ms": 1910,
+   "role": "tail"
+  },
+  "off_track_fast_15": {
+   "file": "off_track_fast_15.wav",
+   "text": "off track and fifteen faster in.",
+   "ms": 1810,
+   "role": "tail"
+  },
+  "off_track_fast_16": {
+   "file": "off_track_fast_16.wav",
+   "text": "off track and sixteen faster in.",
+   "ms": 1910,
+   "role": "tail"
+  },
+  "off_track_fast_17": {
+   "file": "off_track_fast_17.wav",
+   "text": "off track and seventeen faster in.",
+   "ms": 2020,
+   "role": "tail"
+  },
+  "off_track_fast_18": {
+   "file": "off_track_fast_18.wav",
+   "text": "off track and eighteen faster in.",
+   "ms": 1830,
+   "role": "tail"
+  },
+  "off_track_fast_19": {
+   "file": "off_track_fast_19.wav",
+   "text": "off track and nineteen faster in.",
+   "ms": 1930,
+   "role": "tail"
+  },
+  "off_track_fast_20": {
+   "file": "off_track_fast_20.wav",
+   "text": "off track and twenty faster in.",
+   "ms": 1780,
+   "role": "tail"
+  },
+  "braked_later_10": {
+   "file": "braked_later_10.wav",
+   "text": "braked ten metres later.",
+   "ms": 1420,
+   "role": "tail"
+  },
+  "braked_later_15": {
+   "file": "braked_later_15.wav",
+   "text": "braked fifteen metres later.",
+   "ms": 1440,
+   "role": "tail"
+  },
+  "braked_later_20": {
+   "file": "braked_later_20.wav",
+   "text": "braked twenty metres later.",
+   "ms": 1480,
+   "role": "tail"
+  },
+  "braked_later_25": {
+   "file": "braked_later_25.wav",
+   "text": "braked twenty-five metres later.",
+   "ms": 1750,
+   "role": "tail"
+  },
+  "braked_later_30": {
+   "file": "braked_later_30.wav",
+   "text": "braked thirty metres later.",
+   "ms": 1420,
+   "role": "tail"
+  },
+  "braked_later_35": {
+   "file": "braked_later_35.wav",
+   "text": "braked thirty-five metres later.",
+   "ms": 1830,
+   "role": "tail"
+  },
+  "braked_later_40": {
+   "file": "braked_later_40.wav",
+   "text": "braked forty metres later.",
+   "ms": 1510,
+   "role": "tail"
+  },
+  "braked_later_45": {
+   "file": "braked_later_45.wav",
+   "text": "braked forty-five metres later.",
+   "ms": 1790,
+   "role": "tail"
+  },
+  "braked_later_50": {
+   "file": "braked_later_50.wav",
+   "text": "braked fifty metres later.",
+   "ms": 1450,
+   "role": "tail"
+  },
+  "braked_later_55": {
+   "file": "braked_later_55.wav",
+   "text": "braked fifty-five metres later.",
+   "ms": 1710,
+   "role": "tail"
+  },
+  "braked_later_60": {
+   "file": "braked_later_60.wav",
+   "text": "braked sixty metres later.",
+   "ms": 1510,
+   "role": "tail"
+  },
+  "braked_earlier_10": {
+   "file": "braked_earlier_10.wav",
+   "text": "braked ten metres earlier.",
+   "ms": 1440,
+   "role": "tail"
+  },
+  "braked_earlier_15": {
+   "file": "braked_earlier_15.wav",
+   "text": "braked fifteen metres earlier.",
+   "ms": 1530,
+   "role": "tail"
+  },
+  "braked_earlier_20": {
+   "file": "braked_earlier_20.wav",
+   "text": "braked twenty metres earlier.",
+   "ms": 1430,
+   "role": "tail"
+  },
+  "braked_earlier_25": {
+   "file": "braked_earlier_25.wav",
+   "text": "braked twenty-five metres earlier.",
+   "ms": 1760,
+   "role": "tail"
+  },
+  "braked_earlier_30": {
+   "file": "braked_earlier_30.wav",
+   "text": "braked thirty metres earlier.",
+   "ms": 1490,
+   "role": "tail"
+  },
+  "braked_earlier_35": {
+   "file": "braked_earlier_35.wav",
+   "text": "braked thirty-five metres earlier.",
+   "ms": 1870,
+   "role": "tail"
+  },
+  "braked_earlier_40": {
+   "file": "braked_earlier_40.wav",
+   "text": "braked forty metres earlier.",
+   "ms": 1510,
+   "role": "tail"
+  },
+  "braked_earlier_45": {
+   "file": "braked_earlier_45.wav",
+   "text": "braked forty-five metres earlier.",
+   "ms": 1890,
+   "role": "tail"
+  },
+  "braked_earlier_50": {
+   "file": "braked_earlier_50.wav",
+   "text": "braked fifty metres earlier.",
+   "ms": 1470,
+   "role": "tail"
+  },
+  "braked_earlier_55": {
+   "file": "braked_earlier_55.wav",
+   "text": "braked fifty-five metres earlier.",
+   "ms": 1750,
+   "role": "tail"
+  },
+  "braked_earlier_60": {
+   "file": "braked_earlier_60.wav",
+   "text": "braked sixty metres earlier.",
+   "ms": 1590,
+   "role": "tail"
+  },
+  "on_your_best": {
+   "file": "on_your_best.wav",
+   "text": "on your best.",
+   "ms": 730,
+   "role": "tail"
   }
  }
 }

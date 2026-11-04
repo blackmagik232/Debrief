@@ -70,7 +70,8 @@ _missing = [m for m in _on_disk if m not in hiddenimports]
 if _missing:
     print(f"collect_submodules missed {_missing}; adding them by name")
 hiddenimports = sorted(set(hiddenimports) | set(_on_disk) | {"irsdk", "yaml", "winsound", "win32com", "win32com.client",
-                                                          "win32com.client.dynamic", "pythoncom", "pywintypes"})
+                                                          "win32com.client.dynamic", "pythoncom", "pywintypes",
+                                                          "tkinter", "_tkinter"})
 for _must in ("debrief.prep", "debrief.goals", "debrief.results", "debrief.team", "debrief.sync",
               "debrief.schedule", "debrief.series", "debrief.notes", "debrief.prepare", "debrief.updater", "debrief.insights",
               "debrief.technique_plus", "debrief.skills", "debrief.session_review", "debrief.profile",
@@ -82,11 +83,12 @@ for _must in ("debrief.prep", "debrief.goals", "debrief.results", "debrief.team"
               "debrief.balance", "debrief.pressurelearn", "debrief.setupshare", "debrief.teamref",
               "debrief.startreport", "debrief.incidentmap",
               "debrief.voicepack", "debrief.audioout", "debrief.coachvoice", "debrief.cuelog",
-              "debrief.desktop.coach2", "debrief.carcompare", "debrief.desktop.carcompare"):
+              "debrief.desktop.coach2", "debrief.overlay", "debrief.carcompare", "debrief.desktop.carcompare"):
     if _must not in hiddenimports:
         raise SystemExit(f"Build stopped: {_must} would be left out of Debrief.exe")
 
-excludes = ["tkinter", "_tkinter", "turtle", "turtledemo", "idlelib", "lib2to3", "pydoc_data",
+# tkinter / _tkinter are NOT excluded any more (2.19): the coach overlay draws its window with Tk.
+excludes = ["turtle", "turtledemo", "idlelib", "lib2to3", "pydoc_data",
             "test", "tests", "pytest", "_pytest", "playwright", "PIL", "matplotlib", "IPython",
             "setuptools", "pip", "debrief.desktop.make_icon",
             # optional extras requests/urllib3 can use when present; Debrief doesn't need them

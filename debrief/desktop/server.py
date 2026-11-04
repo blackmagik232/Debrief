@@ -2121,6 +2121,7 @@ class DebriefServer(ThreadingHTTPServer):
         if hk is not None:      # stopped while the key was starting
             self._close_coach_parts(None, hk, None)
         self._start_wheel()
+        coach2.overlay_autostart(self)        # 2.19: the overlay, if he left it turned on
         coach2.start_wheel(self)              # Coach 2.0: the wheel button for "Repeat that"
         app.say("Coach started." if mode == "live" else "Coach rehearsal started.")
         return {"ok": True}

@@ -498,12 +498,35 @@
         <p class="note">A small see-through box on top of iRacing while the coach runs: the state, your one thing and its count, the last cue and your delta to the reference. Clicks go through it. iRacing must run in <b>borderless windowed</b> mode: in exclusive fullscreen no overlay can show.</p>
         <div class="row">
           <label class="check" for="ovShow"><input id="ovShow" type="checkbox"><span>Show overlay</span></label>
-          <button type="button" class="btn" id="ovEdit" aria-pressed="false" disabled title="Drag the overlay where you want it, then press Done">Edit position</button>
+          <button type="button" class="btn" id="ovEdit" aria-pressed="false" disabled title="Drag the overlay where you want it, then press Done (on the overlay or here)">Edit position</button>
           <label class="field" for="ovSize"><span>Size</span><select id="ovSize" disabled><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="custom" hidden>Custom</option></select></label>
           <label class="field" for="ovOpacity"><span>Opacity <b class="num" id="ovOpacityV"></b></span><input id="ovOpacity" type="range" min="30" max="100" step="5" disabled></label>
           <span class="msg" id="ovMsg" role="status"></span>
         </div>
         <p class="note" id="ovWhy" hidden></p>
+        <p class="note" id="ovStatus" role="status"></p>
+        <div class="row" id="ovPlace">
+          <div class="ovgrid" role="group" aria-label="Move the overlay to a spot">
+            <button type="button" class="btn" data-ovp="top-left" title="Top left">&#8598;</button>
+            <button type="button" class="btn" data-ovp="top-center" title="Top centre">&#8593;</button>
+            <button type="button" class="btn" data-ovp="top-right" title="Top right">&#8599;</button>
+            <button type="button" class="btn" data-ovp="middle-left" title="Middle left">&#8592;</button>
+            <button type="button" class="btn" data-ovp="center" title="Centre">&#9679;</button>
+            <button type="button" class="btn" data-ovp="middle-right" title="Middle right">&#8594;</button>
+            <button type="button" class="btn" data-ovp="bottom-left" title="Bottom left">&#8601;</button>
+            <button type="button" class="btn" data-ovp="bottom-center" title="Bottom centre">&#8595;</button>
+            <button type="button" class="btn" data-ovp="bottom-right" title="Bottom right">&#8600;</button>
+          </div>
+          <div class="ovgrid ovnudge" role="group" aria-label="Nudge the overlay (hold Shift for bigger steps)">
+            <span></span><button type="button" class="btn" data-ovn="up" aria-label="Nudge up">&#9650;</button><span></span>
+            <button type="button" class="btn" data-ovn="left" aria-label="Nudge left">&#9664;</button><span class="note">10 px<br>Shift: 50</span><button type="button" class="btn" data-ovn="right" aria-label="Nudge right">&#9654;</button>
+            <span></span><button type="button" class="btn" data-ovn="down" aria-label="Nudge down">&#9660;</button><span></span>
+          </div>
+          <div class="ovbtns">
+            <button type="button" class="btn" id="ovReset" disabled>Reset position</button>
+            <button type="button" class="btn" id="ovTest" title="Opens the overlay for 15 seconds in Edit position with sample text. No iRacing needed.">Test the overlay (15 s)</button>
+          </div>
+        </div>
       </div>
       <div class="cogrid">
         <div class="panel">

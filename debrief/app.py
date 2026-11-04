@@ -1269,6 +1269,7 @@ def main(argv=None):
     pp.add_argument("--track", type=int, required=True, help="Garage 61 track id")
     pp.add_argument("--car", type=int, required=True, help="Garage 61 car id")
     pp.add_argument("--no-open", action="store_true")
+    sub.add_parser("overlay-test", help="open the coach overlay for 15 seconds with sample text, no iRacing needed")
     sub.add_parser("sync", help="download your Garage 61 history (first time: everything; then new laps)")
     tp = sub.add_parser("team", help="update the team hub")
     tp.add_argument("--no-open", action="store_true")
@@ -1292,6 +1293,11 @@ def main(argv=None):
             cmd_weekly(cfg, open_after=not a.no_open)
         elif a.cmd == "sync":
             cmd_sync(cfg)
+        elif a.cmd == "overlay-test":
+            from . import overlay
+            code = overlay.run_test(out=say)
+            if code:
+                raise SystemExit("The overlay did not open. The reason is above and in the Debrief log.")
         else:
             cmd_review(cfg, getattr(a, "event", None), open_after=not getattr(a, "no_open", False))
     except Garage61Error as e:

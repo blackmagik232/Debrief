@@ -109,8 +109,8 @@ for name, flag in (("layered", ov.WS_EX_LAYERED), ("transparent (click-through)"
 check(ct & ov.WS_EX_APPWINDOW == 0, "no taskbar button: APPWINDOW cleared")
 check(ct & 0x8 == 0x8, "other styles are kept")
 ed = ov.ex_style(ct, False)
-check(ed & ov.WS_EX_TRANSPARENT == 0 and ed & ov.WS_EX_NOACTIVATE and ed & ov.WS_EX_LAYERED and ed & ov.WS_EX_TOOLWINDOW,
-      "Edit position: mouse reaches it, still no focus, no taskbar button")
+check(ed & ov.WS_EX_TRANSPARENT == 0 and ed & ov.WS_EX_NOACTIVATE == 0 and ed & ov.WS_EX_LAYERED and ed & ov.WS_EX_TOOLWINDOW,
+      "Edit position: mouse reaches it, can take a click, no taskbar button")
 check(ov.ex_style(ed, True) == ct, "and back to click-through")
 check(ov.WS_EX_LAYERED == 0x80000 and ov.WS_EX_TRANSPARENT == 0x20 and ov.WS_EX_TOOLWINDOW == 0x80
       and ov.WS_EX_NOACTIVATE == 0x08000000 and ov.GWL_EXSTYLE == -20, "the Win32 constants")
@@ -361,8 +361,9 @@ wnd.get_status = lambda: box[0]
 
 # Edit position: mouse reaches it, drag moves it, saved per monitor
 wnd.command(edit=True)
+wnd._drain()
 wnd.tick()
-check(wnd.edit and w32.ex & ov.WS_EX_TRANSPARENT == 0 and w32.ex & ov.WS_EX_NOACTIVATE, "Edit position: not click-through, still no focus")
+check(wnd.edit and w32.ex & ov.WS_EX_TRANSPARENT == 0 and w32.ex & ov.WS_EX_NOACTIVATE == 0, "Edit position: not click-through, can take a click")
 check(wnd.w_grip.placed and wnd.w_sub.kw["text"] == ov.EDIT_HINT, "grip and hint shown")
 check(wnd.root.kw.get("bg") == ov.COLORS["edit"], "edit colour")
 wnd.w_word.bound["<ButtonPress-1>"](event(1600, 60))
@@ -384,7 +385,7 @@ check(ov.monitor_key(wnd.mon) == ov.monitor_key(M2) and store.data()["last_monit
 check(store.geometry(M1)["x"] == 936, "monitor 1 keeps its own place")
 # a drag when not editing does nothing
 wnd.command(edit=False)
-wnd.tick()
+wnd._drain()
 check(not wnd.edit and w32.ex & ov.WS_EX_TRANSPARENT and not wnd.w_grip.placed, "Edit position off: click-through again, grip gone")
 before = root.geom
 wnd.w_word.bound["<ButtonPress-1>"](event(10, 10))
@@ -392,12 +393,12 @@ wnd.w_word.bound["<B1-Motion>"](event(50, 50))
 check(root.geom == before, "never moves while click-through")
 # size and opacity
 wnd.command(size="large", opacity=0.5)
-wnd.tick()
+wnd._drain()
 check((wnd.geom["w"], wnd.geom["h"]) == ov.SIZES["large"] and wnd.geom["opacity"] == 0.5 and abs(w32.alpha - 0.5) < 1e-9,
       "size and opacity applied")
 check(store.geometry(wnd.mon)["opacity"] == 0.5 and store.geometry(wnd.mon)["w"] == 480, "and remembered for this monitor")
 wnd.command(stop=True)
-wnd.tick()
+wnd._drain()
 check(root.quit_flag, "stop quits the loop")
 wnd.close()
 check(root.destroyed and wnd.root is None, "closed")
@@ -438,13 +439,14 @@ lg = []
 c3 = ov.Overlay(ov.Store(Mem().load, Mem().save), lambda: None, lambda: "mph", log=lg.append, platform="win32",
                 tk_factory=lambda: BrokenTk, win32_factory=FWin32)
 s_ = c3.start()
-check(not s_["running"] and "couldn't be made" in s_["why"] and "coach is not affected" in s_["why"], f"window failed: {s_['why']}")
-check(lg and "RuntimeError" in lg[0], "and logged")
+check(not s_["running"] and "RuntimeError: no display" in s_["why"] and "The coach carries on." in s_["problem"]
+      and s_["state"] == "failed", f"window failed: {s_['problem']}")
+check(lg and "RuntimeError" in lg[0] and "Traceback" in lg[0], "and logged with its traceback")
 # Win32 shim missing too
 c3b = ov.Overlay(ov.Store(Mem().load, Mem().save), lambda: None, lambda: "mph", platform="win32",
                  tk_factory=lambda: FTk, win32_factory=lambda: (_ for _ in ()).throw(OSError("no windll")))
 s_ = c3b.start()
-check(not s_["running"] and "couldn't be made" in s_["why"], "no Win32 calls: same")
+check(not s_["running"] and "OSError" in s_["why"] and s_["problem"].startswith("The overlay couldn't open: "), "no Win32 calls: same")
 
 # a real run on a thread with the stand-ins
 FRoot.instances.clear()
@@ -466,9 +468,11 @@ deadline = time.time() + 5
 while time.time() < deadline and not c4.window.edit:
     time.sleep(0.02)
 check(c4.status()["edit"] and c4.status()["size"] == "medium", "Edit position on")
+t4 = c4.thread
 c4.stop()
-check(not c4.running() and c4.window is None and not c4.status()["edit"], "stopped: thread and window gone")
-check(FRoot.instances[0].destroyed, "its window was destroyed")
+check(not c4.running() and c4.window is None and not c4.status()["edit"], "stopped: off at once")
+t4.join(5)
+check(not t4.is_alive() and FRoot.instances[0].destroyed, "its window was destroyed by its own thread")
 # stop works again, and it can restart
 s_ = c4.start()
 check(s_["running"], "restarts")
@@ -551,6 +555,321 @@ srv8 = SimpleNamespace(coach=fake_runner, coach_lock=threading.Lock())
 check(coach2._overlay_status_source(srv8) == {"running": True, "show": "coaching"}, "reads the coach's one status")
 check(coach2._overlay_status_source(SimpleNamespace(coach=None, coach_lock=threading.Lock())) is None, "no coach: None")
 
+# ---------------------------------------------------------------- (h) 2.19.1: hardening
+def wait_for(fn, secs=5.0):
+    end = time.time() + secs
+    while time.time() < end:
+        if fn():
+            return True
+        time.sleep(0.01)
+    return fn()
+
+
+def overlay_threads():
+    return [t for t in threading.enumerate() if t.name == "coach-overlay" and t.is_alive()]
+
+
+# -- one thread for Tk: every Tk call, from every command the server can send, is made on the overlay's own thread
+CALLS = []
+
+
+class Tracked:
+    def __getattribute__(self, n):
+        v = object.__getattribute__(self, n)
+        if callable(v) and not n.startswith("__"):
+            CALLS.append((n, threading.get_ident()))
+        return v
+
+
+class TRoot(Tracked, FRoot):
+    pass
+
+
+class TLabel(Tracked, FLabel):
+    pass
+
+
+TTk = SimpleNamespace(Tk=TRoot, Label=TLabel)
+mt = Mem()
+ct_ = ov.Overlay(ov.Store(mt.load, mt.save), lambda: status(), lambda: "mph", platform="win32", tk_factory=lambda: TTk,
+                 win32_factory=FWin32)
+ct_.start()
+tk_ident = ct_.thread.ident
+main_ident = threading.get_ident()
+for kw in ({"edit": True}, {"size": "large"}, {"opacity": 0.6}, {"preset": "bottom-left"}, {"nudge": "up", "big": True},
+           {"reset": True}, {"edit": False}, {"test": 30}):
+    ct_.command(**kw)
+    ct_.status()
+    ct_.running()
+ct_.command(edit=False)
+check(wait_for(lambda: not ct_.window.edit), "commands from the server are applied")
+ct_.stop()
+check(wait_for(lambda: not overlay_threads()), "and it closes")
+check(len(CALLS) > 50 and all(i == tk_ident for _n, i in CALLS) and main_ident != tk_ident,
+      f"all {len(CALLS)} Tk calls (show/hide, edit, size, opacity, position, test) came from the overlay's own thread")
+
+# the queue is emptied only on the Tk thread
+wq, _w, _s, _m = make_window([None])
+wq.command(edit=True)
+other = threading.Thread(target=wq._drain)
+other.start()
+other.join()
+check(not wq.edit and not wq._q.empty(), "drained from another thread: nothing happens, the order waits")
+wq._drain()
+check(wq.edit and wq._q.empty(), "drained on the Tk thread: applied")
+check(ov.PUMP_MS <= 250, "the Tk thread looks for orders at least every quarter second")
+
+# -- a failure stays in the overlay: logged with its traceback, one plain line, the coach carries on
+class CrashRoot(FRoot):
+    def mainloop(self):
+        raise RuntimeError("tcl exploded")
+
+
+lg2 = []
+cc = ov.Overlay(ov.Store(Mem().load, Mem().save), lambda: None, lambda: "mph", log=lg2.append, platform="win32",
+                tk_factory=lambda: SimpleNamespace(Tk=CrashRoot, Label=FLabel), win32_factory=FWin32)
+s_ = cc.start()
+wait_for(lambda: not overlay_threads())
+s_ = cc.status()
+check(s_["state"] == "failed" and not s_["running"] and s_["problem"] == "The overlay couldn't open: RuntimeError: tcl exploded. The coach carries on.",
+      f"a crash in the overlay's thread: {s_['problem']}")
+check(lg2 and "Traceback" in lg2[0] and "tcl exploded" in lg2[0], "its traceback is in the log")
+check(s_["line"].startswith("Couldn't start: RuntimeError"), f"status line: {s_['line']}")
+# a bad Tk callback is logged, not printed to a missing stderr
+wcb, _w, _s, _m = make_window([None])
+cb_logs = []
+wcb.log = cb_logs.append
+try:
+    raise ValueError("in a button")
+except ValueError:
+    import sys as _sys
+    wcb.root.report_callback_exception(*_sys.exc_info())
+check(cb_logs and "in a button" in cb_logs[0], "a window callback error goes to the log")
+# the coach never waits for the overlay: autostart with a slow or missing Tk, stop with a stuck window
+def slow_no_tk():
+    time.sleep(1.0)
+    raise ImportError("no tkinter")
+
+
+cs = ov.Overlay(ov.Store(Mem({"enabled": True}).load, Mem().save), lambda: None, lambda: "mph", platform="win32",
+                tk_factory=slow_no_tk)
+srv_s = SimpleNamespace(_overlay=cs, _overlay_autostarted=False, coach_lock=threading.Lock(), coach=None,
+                        stopping=threading.Event())
+t0 = time.time()
+coach2.overlay_autostart(srv_s)
+check(time.time() - t0 < 0.5, f"autostart with a slow Tk library returns at once ({time.time() - t0:.2f} s)")
+check(wait_for(lambda: "Tk" in cs.status()["why"], 5), "and the reason arrives: " + cs.status()["why"][:60])
+
+
+class StuckRoot(FRoot):
+    def mainloop(self):
+        time.sleep(1.5)          # ignores quit
+
+
+cst = ov.Overlay(ov.Store(Mem().load, Mem().save), lambda: None, lambda: "mph", platform="win32",
+                 tk_factory=lambda: SimpleNamespace(Tk=StuckRoot, Label=FLabel), win32_factory=FWin32)
+cst.start()
+t0 = time.time()
+cst.stop()
+on_shutdown_srv = SimpleNamespace(_overlay=cst, coach_lock=threading.Lock(), coach=None, stopping=threading.Event())
+check(time.time() - t0 < 0.5 and not cst.running(), "stopping never waits for a window that is stuck")
+
+
+class RaisingOverlay:
+    store = SimpleNamespace(enabled=lambda: True)
+
+    def start(self, wait_s=0):
+        raise RuntimeError("start blew up")
+
+    def status(self):
+        return {}
+
+
+srv_r = SimpleNamespace(_overlay=RaisingOverlay(), _overlay_autostarted=False, coach_lock=threading.Lock(), coach=None,
+                        stopping=threading.Event())
+coach2.overlay_autostart(srv_r)
+check(srv_r._overlay_autostarted is True, "an overlay that raises on autostart does not raise at the server")
+
+# -- Edit position, on the window itself
+wE, wE32, stE, memE = make_window([None])
+rE = wE.root
+wE.command(edit=True)
+wE._drain()
+check(wE32.ex & ov.WS_EX_TRANSPARENT == 0 and wE32.ex & ov.WS_EX_NOACTIVATE == 0 and wE32.ex & ov.WS_EX_LAYERED
+      and wE32.ex & ov.WS_EX_TOOLWINDOW, "editing: TRANSPARENT and NOACTIVATE removed, layered tool window kept")
+check(rE.kw.get("highlightthickness") == 3 and rE.kw.get("highlightbackground") == ov.EDIT_BORDER, "a clear border")
+check(wE.w_bar.placed and wE.w_done.placed and "Drag to move" in wE.w_bar.kw["text"] and wE.w_done.kw["text"] == "Done",
+      "the bar reads Drag to move, then Done")
+wE.w_thing.bound["<ButtonPress-1>"](event(1600, 100))      # drag by any part of the box
+wE.w_thing.bound["<B1-Motion>"](event(1500, 400))
+check(rE.geom == "360x170+1436+324", f"dragged by the text: {rE.geom}")
+wE.w_bar.bound["<ButtonRelease-1>"](event(1500, 400))
+wE.w_done.bound["<ButtonRelease-1>"](event(0, 0))
+check(not wE.edit and wE32.ex & ov.WS_EX_TRANSPARENT and wE32.ex & ov.WS_EX_NOACTIVATE
+      and rE.kw.get("highlightthickness") == 0 and not wE.w_bar.placed, "Done on the overlay locks it: click-through again")
+check(stE.geometry(M1)["x"] == 1436 and stE.geometry(M1)["y"] == 324, "and the place is saved")
+# the controller hears Done pressed on the overlay itself
+mD = Mem()
+cD = ov.Overlay(ov.Store(mD.load, mD.save), lambda: None, lambda: "mph", platform="win32", tk_factory=lambda: FTk,
+                win32_factory=FWin32)
+cD.start()
+cD.command(edit=True)
+check(cD.status()["edit"] is True, "Edit position shows as on at once")
+check(wait_for(lambda: cD.window.edit), "and the window follows within a moment")
+cD.window.w_done.bound["<ButtonRelease-1>"](event(0, 0))
+check(cD.status()["edit"] is False, "Done on the overlay turns it off on the Coach page too")
+cD.stop()
+
+# -- placement: presets, nudges, reset
+g0 = {"x": 0, "y": 0, "w": 360, "h": 170}
+want = {"top-left": (24, 24), "top-center": (780, 24), "top-right": (1536, 24), "middle-left": (24, 455),
+        "center": (780, 455), "middle-right": (1536, 455), "bottom-left": (24, 886), "bottom-center": (780, 886),
+        "bottom-right": (1536, 886)}
+check(set(ov.PRESETS) == set(want) and len(ov.PRESETS) == 9, "nine spots")
+check(all(ov.preset_xy(n, g0, M1) == xy for n, xy in want.items()), "preset spots on a 1920x1080 monitor")
+check(ov.preset_xy("top-left", g0, M2) == (1944, 24) and ov.preset_xy("bottom-right", g0, M2) == (1920 + 2560 - 360 - 24, 1440 - 170 - 24),
+      "and on a monitor that is not at 0,0")
+try:
+    ov.preset_xy("nowhere", g0, M1)
+    check(False, "an unknown spot is refused")
+except ValueError:
+    check(True, "an unknown spot is refused")
+gg = {"x": 100, "y": 100, "w": 360, "h": 170}
+check(ov.nudge_xy(gg, "right", False, M1) == (110, 100) and ov.nudge_xy(gg, "left", False, M1) == (90, 100)
+      and ov.nudge_xy(gg, "up", False, M1) == (100, 90) and ov.nudge_xy(gg, "down", False, M1) == (100, 110), "nudge: 10 px")
+check(ov.nudge_xy(gg, "right", True, M1) == (150, 100) and ov.nudge_xy(gg, "down", True, M1) == (100, 150), "Shift: 50 px")
+check(ov.nudge_xy(dict(gg, x=3), "left", True, M1) == (0, 100) and ov.nudge_xy(dict(gg, y=3), "up", False, M1) == (100, 0)
+      and ov.nudge_xy(dict(gg, x=1560), "right", True, M1) == (1560, 100), "a nudge stops at the monitor's edge")
+wP, wP32, stP, _m = make_window([None])
+wP.command(preset="bottom-left")
+wP._drain()
+check(wP.root.geom == "360x170+24+886" and stP.geometry(M1)["x"] == 24 and stP.geometry(M1)["y"] == 886,
+      f"preset applied and saved (not in Edit position): {wP.root.geom}")
+wP.command(nudge="right", big=True)
+wP._drain()
+check(wP.root.geom == "360x170+74+886", f"nudge: {wP.root.geom}")
+wP.command(reset=True)
+wP._drain()
+check(wP.root.geom == "360x170+1536+24" and stP.geometry(M1)["x"] == 1536, f"reset: back to the top right: {wP.root.geom}")
+check(not wP.edit, "placing never needs Edit position")
+
+# -- never lost off-screen
+M4 = {"x": 0, "y": 0, "w": 1280, "h": 720, "primary": True}
+gc, mc = ov.clamp_to_monitors({"x": 5000, "y": 5000, "w": 360, "h": 170}, [M1, M2])
+check(mc == M1 and gc["x"] == 1920 - 360 and gc["y"] == 1080 - 170, f"far off the screen: back on the primary monitor {gc}")
+gc, mc = ov.clamp_to_monitors({"x": -1200, "y": 100, "w": 360, "h": 170}, [M1])
+check(mc == M1 and gc["x"] == 0 and gc["y"] == 100, "left of the only monitor: pulled back")
+gc, mc = ov.clamp_to_monitors({"x": 4300, "y": 200, "w": 360, "h": 170}, [M1, M2])
+check(mc == M2 and gc["x"] == 1920 + 2560 - 360, "mostly on monitor 2: kept there, fully inside")
+gc, mc = ov.clamp_to_monitors({"x": 1800, "y": 1000, "w": 360, "h": 170}, [M4])
+check(mc == M4 and 0 <= gc["x"] <= 1280 - 360 and 0 <= gc["y"] <= 720 - 170, "monitor became smaller: inside it")
+check(ov.clamp_to_monitors({"x": 5, "y": 5, "w": 360, "h": 170}, [])[1] is None, "no monitor known: left alone")
+check(ov.valid_monitors([{"x": 0, "y": 0, "w": 0, "h": 0}, {"bad": 1}, M1]) == [M1], "broken monitor answers are ignored")
+# saved for a monitor that has since been unplugged
+mG = Mem({"last_monitor": ov.monitor_key(M3), "monitors": {ov.monitor_key(M3): {"x": -1000, "y": 900, "w": 400, "h": 200, "opacity": 0.9},
+                                                          ov.monitor_key(M2): {"x": 4000, "y": 1300, "w": 480, "h": 226}}})
+wG, _w, _s, _m = make_window([None], win=FWin32([dict(M1)]), mem_=mG)
+gx = wG.geom
+check(0 <= gx["x"] and gx["x"] + gx["w"] <= 1920 and 0 <= gx["y"] and gx["y"] + gx["h"] <= 1080,
+      f"its monitor is gone: it opens fully on the one that is there {gx}")
+wG2, _w, _s, _m = make_window([None], win=FWin32([]), mem_=Mem())
+check(wG2.geom["x"] >= 0 and wG2.root.geom, "Windows listing no monitor: falls back to the screen size")
+wG3, _w, _s, _m = make_window([None], win=FWin32([dict(M3)]), mem_=mG)
+check(M3["x"] <= wG3.geom["x"] and wG3.geom["x"] + wG3.geom["w"] <= M3["x"] + M3["w"] and wG3.geom["y"] + wG3.geom["h"] <= M3["y"] + M3["h"],
+      "a monitor to the left of the main one (negative x): inside it")
+
+# -- on, off, on, off
+FRoot.instances.clear()
+mR = Mem()
+cR = ov.Overlay(ov.Store(mR.load, mR.save), lambda: None, lambda: "mph", platform="win32", tk_factory=lambda: FTk,
+                win32_factory=FWin32)
+ok_all = True
+for i in range(6):
+    s_ = cR.start()
+    ok_all &= bool(s_["running"])
+    cR.command(edit=(i % 2 == 0))
+    cR.stop()                         # straight away, without waiting for the window to close
+    ok_all &= not cR.running()
+check(ok_all, "six times on and straight off again")
+check(wait_for(lambda: not overlay_threads()) and all(r.destroyed for r in FRoot.instances) and len(FRoot.instances) == 6,
+      "every window was closed by its own thread, none left behind")
+for i in range(3):
+    r = route(cR, {"enabled": True})
+    ok_all &= bool(r["ok"] and r["overlay"]["running"])
+    r = route(cR, {"enabled": False})
+    ok_all &= bool(r["ok"] and not r["overlay"]["running"])
+check(ok_all, "and through the Coach page's own switch")
+check(route(cR, {"enabled": True})["overlay"]["running"], "and on again")
+on_shutdown_srv2 = SimpleNamespace(_overlay=cR, coach_lock=threading.Lock(), coach=None, stopping=threading.Event(),
+                                   _wheels={})
+try:
+    coach2.on_shutdown(on_shutdown_srv2)
+except Exception:  # noqa: BLE001  (the wheel parts need a real server; only the overlay matters here)
+    pass
+check(not cR.running() and wait_for(lambda: not overlay_threads()), "closing Debrief closes the overlay")
+
+# -- diagnostics
+cI = ov.Overlay(ov.Store(Mem().load, Mem().save), lambda: None, lambda: "mph", platform="win32", tk_factory=lambda: FTk,
+                win32_factory=FWin32)
+si = cI.status()
+check(si["state"] == "off" and si["line"] == "Off." and si["hwnd"] == 0 and si["problem"] == "", f"off: {si['line']}")
+si = cI.start()
+check(si["state"] == "running" and si["hwnd"] == 4242 and si["line"] == "Running. Window found (handle 4242).", f"running: {si['line']}")
+cI.stop()
+cN = ov.Overlay(ov.Store(Mem().load, Mem().save), lambda: None, lambda: "mph", platform="linux", tk_factory=lambda: FTk)
+si = cN.start()
+check(si["state"] == "failed" and si["line"] == "Couldn't start: The overlay needs Windows." and si["problem"].endswith("The coach carries on."),
+      f"couldn't start: {si['line']}")
+
+# -- the 15 second test
+mT = Mem()
+cT = ov.Overlay(ov.Store(mT.load, mT.save), lambda: None, lambda: "mph", platform="win32", tk_factory=lambda: FTk,
+                win32_factory=FWin32)
+cT.test(0.4, close_after=True)
+check(wait_for(lambda: cT.window is not None and cT.window.edit and "Turn 4" in cT.window.w_thing.kw.get("text", "")),
+      "the test opens in Edit position with sample text (no iRacing)")
+check(cT.status()["edit"] is True, "and the page shows Edit position")
+check(wait_for(lambda: not cT.running(), 5) and not overlay_threads(), "and closes itself when the time is up")
+cT.stop()
+cK = ov.Overlay(ov.Store(Mem().load, Mem().save), lambda: None, lambda: "mph", platform="win32", tk_factory=lambda: FTk,
+                win32_factory=FWin32)
+cK.start()
+cK.test(0.3, close_after=False)
+check(wait_for(lambda: cK.window is not None and cK.window.edit), "test on an overlay that is already shown: Edit position")
+check(wait_for(lambda: not cK.window.edit) and cK.running(), "then it locks and stays")
+cK.stop()
+cU = ov.Overlay(ov.Store(Mem().load, Mem().save), lambda: None, lambda: "mph", platform="win32", tk_factory=lambda: FTk,
+                win32_factory=FWin32)
+out_lines = []
+check(ov.run_test(0.3, out=out_lines.append, ctl=cU) == 0 and any("Running" in x for x in out_lines),
+      "python -m debrief overlay-test opens it, says what it found, and returns")
+out_lines = []
+check(ov.run_test(0.3, out=out_lines.append, ctl=cN) == 1 and any("Windows" in x for x in out_lines), "and says why when it can't")
+app_src = (ROOT / "debrief" / "app.py").read_text(encoding="utf-8")
+check('"overlay-test"' in app_src and "run_test" in app_src, "overlay-test is a command")
+
+# -- the new buttons on the route
+cB = ov.Overlay(ov.Store(Mem().load, Mem().save), lambda: None, lambda: "mph", platform="win32", tk_factory=lambda: FTk,
+                win32_factory=FWin32)
+for body in ({"preset": "top-left"}, {"nudge": "up"}, {"reset": True}):
+    check(route(cB, body)["ok"] is False, f"{list(body)[0]} before Show overlay is refused politely")
+route(cB, {"enabled": True})
+check(route(cB, {"preset": "center"})["ok"] and route(cB, {"nudge": "left", "big": True})["ok"] and route(cB, {"reset": True})["ok"],
+      "preset, nudge (Shift) and reset are accepted")
+for bad in ({"preset": "mid"}, {"nudge": "diagonal"}, {"big": True}, {"nudge": "up", "big": "yes"}, {"reset": 1}, {"test": "yes"}):
+    check(route(cB, bad)["ok"] is False, f"bad body {bad}")
+check(wait_for(lambda: cB.window.geom["x"] == 1536 and cB.window.geom["y"] == 24), "reset put it back at the top right")
+r = route(cB, {"test": True})
+check(r["ok"] and r["overlay"]["edit"] is True, "Test the overlay from the page")
+route(cB, {"enabled": False})
+cB2 = ov.Overlay(ov.Store(Mem().load, Mem().save), lambda: None, lambda: "mph", platform="win32", tk_factory=lambda: FTk,
+                 win32_factory=FWin32)
+r = route(cB2, {"test": True})
+check(r["ok"] and r["overlay"]["running"] and cB2.store.enabled() is False, "Test works with the overlay off, and does not turn it on")
+cB2.stop()
+r = route(cN, {"test": True})
+check(r["ok"] is False and "couldn't open" in r["error"], f"Test on a PC that can't: the reason, not a crash: {r['error'][:70]}")
+
 # ---------------------------------------------------------------- (g) the build and the page
 spec = (ROOT / "packaging" / "debrief.spec").read_text(encoding="utf-8")
 excl = spec.split("excludes = [", 1)[1].split("]", 1)[0]
@@ -567,6 +886,11 @@ top = src.split("\nclass ", 1)[0]
 check(not re.search(r"^(import|from) (tkinter|ctypes)", src, re.M), "tkinter and ctypes are never imported at module level")
 code = src.split("from __future__ import annotations", 1)[1]
 check("windll" not in code.split("class Win32")[0], "windll only inside Win32")
+
+# the page
+check('id="ovStatus"' in html and html.count("data-ovp=") == 9 and "data-ovn=" in html and 'id="ovReset"' in html
+      and 'id="ovTest"' in html, "Coach page: status line, nine spots, nudge arrows, Reset position, Test")
+check("Overlay status: " in js and "e.shiftKey" in js and "ovSet({reset:true})" in js, "page script: status, Shift nudge, reset")
 
 print(f"\n{'FAILED ' + str(fails) if fails else 'ALL OK'}")
 sys.exit(1 if fails else 0)

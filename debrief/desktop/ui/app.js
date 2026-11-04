@@ -1861,12 +1861,19 @@ function ovRender(o){if(current.view!=='coach'||!o||ov.busy)return;const on=!!o.
   $('ovSize').disabled=!on;$('ovSize').value=o.size||'medium';
   const op=$('ovOpacity');op.disabled=!on;if(document.activeElement!==op){op.value=Math.round(100*(o.opacity||0.85))}$('ovOpacityV').textContent=op.value+'%';
   const p=$('ovPill');p.className='pill'+(on?' ok':'');p.textContent=on?(o.edit?'Editing':'On'):'Off';
-  const w=$('ovWhy');w.hidden=!o.why;w.textContent=o.why||''}
+  const w=$('ovWhy');w.hidden=!o.problem;w.textContent=o.problem||'';
+  $('ovStatus').textContent='Overlay status: '+(o.line||(on?'Running.':'Off.'));
+  document.querySelectorAll('#ovPlace [data-ovp],#ovPlace [data-ovn]').forEach(b=>{b.disabled=!on});$('ovReset').disabled=!on;
+  $('ovTest').disabled=!o.available&&!on}
 async function ovSet(body){ov.busy=true;const r=await co2Post('overlay/set',body,'ovMsg');ov.busy=false;
   if(r&&r.ok){setMsg('ovMsg','');if(r.overlay){ovRender(r.overlay);if(body.enabled&&!r.overlay.running&&r.overlay.why)setMsg('ovMsg','Not shown.','bad')}}
   else if(co.st)ovRender(co.st.overlay)}
 $('ovShow').addEventListener('change',()=>ovSet({enabled:$('ovShow').checked}));
 $('ovEdit').addEventListener('click',()=>ovSet({edit:$('ovEdit').getAttribute('aria-pressed')!=='true'}));
+document.querySelectorAll('#ovPlace [data-ovp]').forEach(b=>b.addEventListener('click',()=>ovSet({preset:b.dataset.ovp})));
+document.querySelectorAll('#ovPlace [data-ovn]').forEach(b=>b.addEventListener('click',e=>ovSet({nudge:b.dataset.ovn,big:!!e.shiftKey})));
+$('ovReset').addEventListener('click',()=>ovSet({reset:true}));
+$('ovTest').addEventListener('click',()=>ovSet({test:true}));
 $('ovSize').addEventListener('change',()=>{if($('ovSize').value!=='custom')ovSet({size:$('ovSize').value})});
 $('ovOpacity').addEventListener('input',()=>{$('ovOpacityV').textContent=$('ovOpacity').value+'%'});
 $('ovOpacity').addEventListener('change',()=>ovSet({opacity:+$('ovOpacity').value/100}));

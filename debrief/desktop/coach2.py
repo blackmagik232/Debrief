@@ -349,7 +349,7 @@ def on_shutdown(server):
     ov = getattr(server, "_overlay", None)
     if ov is not None:
         try:
-            ov.stop()
+            ov.stop(wait_s=1.0)          # closing Debrief closes it (the thread is a daemon either way)
         except Exception:  # noqa: BLE001
             pass
     close_side(server)
@@ -424,8 +424,16 @@ def overlay_autostart(server):
         if not server._overlay_autostarted:
             server._overlay_autostarted = True
             if ov.store.enabled() and not server.stopping.is_set():
-                ov.start(wait_s=0.0)
+                # on its own thread: looking for Tk and opening the window never holds up Debrief starting
+                threading.Thread(target=_overlay_autostart_run, args=(ov,), name="overlay-autostart", daemon=True).start()
     except Exception:  # noqa: BLE001  (the overlay never gets in the coach's way)
+        app.say("ERROR starting the coach overlay:\n" + traceback.format_exc())
+
+
+def _overlay_autostart_run(ov):
+    try:
+        ov.start(wait_s=0.0)
+    except Exception:  # noqa: BLE001
         app.say("ERROR starting the coach overlay:\n" + traceback.format_exc())
 
 
@@ -438,12 +446,14 @@ def post_overlay(h, body):
     """2.19: Show overlay on/off, Edit position on/off, opacity and size. Off by default; one choice per call."""
     from .. import overlay
     ov = overlay_of(h.server)
-    allowed = {"enabled", "edit", "opacity", "size"}
+    allowed = {"enabled", "edit", "opacity", "size", "preset", "nudge", "big", "reset", "test"}
     if not body or not set(body) <= allowed:
         raise ValueError("Bad request.")
-    for k in ("enabled", "edit"):
+    for k in ("enabled", "edit", "big", "reset", "test"):
         if k in body and not isinstance(body[k], bool):
             raise ValueError("Bad request.")
+    if "big" in body and "nudge" not in body:
+        raise ValueError("Bad request.")
     try:
         if "enabled" in body:
             if body["enabled"]:
@@ -471,6 +481,26 @@ def post_overlay(h, body):
             if not ov.running():
                 raise ValueError("Show the overlay first.")
             ov.command(size=body["size"])
+        if "preset" in body:
+            if body["preset"] not in overlay.PRESETS:
+                raise ValueError("Pick one of the nine spots.")
+            if not ov.running():
+                raise ValueError("Show the overlay first.")
+            ov.command(preset=body["preset"])
+        if "nudge" in body:
+            if body["nudge"] not in overlay.DIRECTIONS:
+                raise ValueError("Pick left, right, up or down.")
+            if not ov.running():
+                raise ValueError("Show the overlay first.")
+            ov.command(nudge=body["nudge"], big=bool(body.get("big")))
+        if body.get("reset"):
+            if not ov.running():
+                raise ValueError("Show the overlay first.")
+            ov.command(reset=True)
+        if body.get("test"):
+            st = ov.test(close_after=not ov.store.enabled())
+            if not ov.running():
+                raise ValueError(st.get("problem") or "The overlay didn't open.")
     except OSError as e:
         app.say(f"ERROR saving the overlay settings: {type(e).__name__}: {e}")
         raise ValueError("The overlay setting couldn't be saved. Details were saved to debrief.log.")

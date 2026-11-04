@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.19.1
+
+- **The coach overlay can no longer get in the coach's way.** Everything the Coach page asks of it (show, hide, Edit position, size, opacity, place) now goes to the overlay window in a queue, so Windows' "main thread is not in main loop" errors and hangs should be gone. If the overlay can't open, the Coach page says so in one line ("The overlay couldn't open: ... The coach carries on.") and the full details go to debrief.log. Starting or stopping the coach, or Debrief itself, never waits on it, and it can be turned off and on again as often as you like.
+- **Easy to move.** Edit position now shows a blue border and a bar reading "Drag to move - Done". Drag from anywhere on the box, resize from the corner, and press Done on the overlay or on the Coach page. It takes effect within a quarter of a second. The Coach page also has nine preset spots (corners, edges, centre), arrows that nudge 10 px (hold Shift for 50 px) and Reset position, so you don't need to drag at all. A saved spot is always pulled back onto a screen that is connected, so it can't be lost after a monitor change.
+- **Checking it without iRacing:** the Coach page has an "Overlay status" line (Running, Off or Couldn't start and why, and whether its window was found) and a Test the overlay (15 s) button. `python -m debrief overlay-test` does the same from a command window.
+
 ## 2.19.0
 
 - **Coach overlay** (Coach > Overlay, off until you turn it on): a small see-through box on top of iRacing while the coach runs, showing Coaching, Muted (in red), Rehearsing or Off, your one thing and its count, the last cue and your gap to your reference lap. Clicks pass through it, Edit position lets you drag it, and it remembers its place, size and opacity on each monitor. iRacing must be in borderless windowed mode (fullscreen hides every overlay). The build now bundles Tk for it.

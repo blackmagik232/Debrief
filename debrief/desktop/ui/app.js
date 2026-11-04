@@ -2527,8 +2527,8 @@ $('fUpdate').addEventListener('submit',async e=>{e.preventDefault();setMsg('updM
 let cs={seq:0,balSetup:null,combo:null,coachCombo:null,coachTeam:null,coachSeq:0};
 const BAL_WORD={push:['Pushes','push'],rotate:['Rotates','rot'],neutral:['Neutral','neu'],unclear:['Not clear yet','unc']};
 const BAL_PHASE=[['entry','On the way in'],['mid','In the middle'],['exit','On the way out']];
-// 2.18 shared scale: an idea from a clear finding is Likely to help (only driving it tells), one from a likely finding A guess
-const IDEA_CONF={'worth a try':['Likely','','Likely: worth a try, from a clear finding in your laps'],'a guess':['A guess','no','A guess: from a likely finding']};
+// 2.18 shared scale: an idea comes from a balance finding and is never tested on the laps, so it is only A hint (or A guess)
+const IDEA_CONF={'worth a try':['A hint','no','A hint: worth a try, from a clear finding in your laps, but the idea itself is untested'],'a guess':['A guess','no','A guess: from a likely finding']};
 const csQ=(car,track,extra)=>new URLSearchParams(Object.assign({car,track},extra||{}));
 const csTurn=t=>turnWords(String(t||''));
 

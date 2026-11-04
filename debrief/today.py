@@ -31,7 +31,7 @@ SURE_WORDS = {"sure": "Sure", "likely": "Likely", "hint": "A hint", "guess": "A 
 _SCALE = {
     "corner": {"clear": "sure", "likely": "likely", "thin": "hint", "unclear": "guess"},     # Corner coach, plan
     "setup": {"reading": "sure", "low-medium": "hint", "guess": "guess"},                      # Setup Lab
-    "idea": {"worth a try": "likely", "a guess": "guess"},                                     # setup ideas
+    "idea": {"worth a try": "hint", "a guess": "guess"},                                     # setup ideas
     "cars": {"unlikely to be chance": "likely", "likely": "hint"},                             # Car vs car
     "racing": {"lose": "likely", "gain": "likely"},                                            # lap 1 habits
 }

@@ -89,7 +89,7 @@ def test_one_sureness_scale():
     assert today.SURE_WORDS == {"sure": "Sure", "likely": "Likely", "hint": "A hint", "guess": "A guess"}
     cases = [("corner", "clear", "sure"), ("corner", "likely", "likely"), ("corner", "thin", "hint"), ("corner", "unclear", "guess"),
              ("setup", "reading", "sure"), ("setup", "low-medium", "hint"), ("setup", "guess", "guess"),
-             ("idea", "worth a try", "likely"), ("idea", "a guess", "guess"),
+             ("idea", "worth a try", "hint"), ("idea", "a guess", "guess"),
              ("cars", "unlikely to be chance", "likely"), ("cars", "likely", "hint"), ("cars", "not enough to tell", None),
              ("racing", "lose", "likely"), ("nope", "clear", None)]
     for kind, v, want in cases:

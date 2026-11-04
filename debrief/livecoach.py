@@ -163,6 +163,7 @@ class Settings:
     level: str = DEFAULT_LEVEL          # 2.17.2 Coaching level: quiet / normal / busy / ask (LEVELS)
     pace_hotkey: str = "ctrl+shift+p"   # 2.17.2 "How's my pace?"
     lap_times: str = "short"            # 2.17.2 how a lap time is read: "full" or "short" (no minute)
+    units: str = "mph"                  # 2.18: spoken speeds in "mph" or "kmh" (the window passes Settings > Units)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -1151,6 +1152,11 @@ class Coach:
         if self.settings.ask_only and cue.kind != KIND_ASK:
             self._emit("not_made", cue, why="Only when I ask")   # 2.17.2: nothing but the answer he asks for
             return
+        try:   # 2.18: every speed it says in the one unit from Settings > Units
+            from . import units
+            cue.text = units.convert_text(cue.text, self.settings.units)
+        except Exception:  # noqa: BLE001
+            pass
         if cue.still_valid is None:
             cue.still_valid = self._validity(cue)
         self.queue.push(cue)
@@ -1177,9 +1183,13 @@ class Coach:
         for w in self.weak:
             if w.corner.brake_pct is not None:
                 out += [marker_text(w.name), early_text(w.name)]
-            out += [speed_text(w.name, n) for n in range(max(1, int(self.settings.slower_mph())), 13)]
+            if self.settings.units == "kmh":   # 2.18: the same speeds, said in km/h
+                out += [speed_text(w.name, n) for n in range(max(1, int(math.ceil(self.settings.slower_kmh))), 21)]
+            else:
+                out += [speed_text(w.name, n) for n in range(max(1, int(self.settings.slower_mph())), 13)]
             if w.phrase:
-                out.append(w.phrase)
+                from . import units
+                out.append(units.convert_text(w.phrase, self.settings.units))
         for k in range(1, 10):
             out += [f"Down {delta_words(k / 10)}", f"New best, up {delta_words(k / 10)}"]
         out.append("New best")
@@ -1677,7 +1687,8 @@ class Coach:
             text, why = w.phrase, "corner coach advice; this pass " + (
                 f"{mph} mph slow" if slow else f"braked {early:.0f} m early")
         elif slow:
-            text, why = speed_text(w.name, mph), f"minimum speed {mph} mph under the reference"
+            said = mph if st.units != "kmh" else max(1, int(round(down)))   # 2.18: the number in the chosen unit
+            text, why = speed_text(w.name, int(said)), f"minimum speed {mph} mph under the reference"
         else:
             text, why = early_text(w.name), f"braked {early:.0f} m before the reference"
         self._push(Cue(text=text, priority=PRIORITY[KIND_FEEDBACK], key=f"feedback:{c.id}", t=t,
@@ -2413,7 +2424,8 @@ class LiveRunner:
         'Coaching: Mclaren 570s GT4 at Zolder, reference 1:38.874 from Nov 2'."""
         cs = self.coach.status()
         info = self._info or {}
-        car = (info.get("car") or {}).get("name") or ""
+        from . import names
+        car = names.car((info.get("car") or {}).get("name") or "")
         track = short_track((info.get("track") or {}).get("name") or "")
         st = self._state
         if st == "waiting":

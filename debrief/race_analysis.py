@@ -437,7 +437,12 @@ def _verdict(rc, rows, pace, scan) -> str:
     grid, fin = rc.get("grid"), rc.get("finish")
     where = " overall." if rc.get("official") else " overall on the road."
     if grid and fin:
-        bits.append(f"P{grid} to P{fin}" + where)
+        ps = [r.get("pos") for r in rows if isinstance(r.get("pos"), int) and r.get("pos") > 0]
+        # 2.18: a start and finish in the same place never reads as "held it all race" over a chart that moved
+        if grid == fin and ps and min(ps) != max(ps):
+            bits.append(f"P{grid} to P{fin}{where[:-1]}, after running P{min(ps)} to P{max(ps)} along the way.")
+        else:
+            bits.append(f"P{grid} to P{fin}" + where)
     elif fin:
         cf = rc.get("class_finish")
         bits.append(f"Finished P{cf} in class, P{fin}" + where if cf else f"Finished P{fin}" + where)

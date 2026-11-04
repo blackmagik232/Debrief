@@ -767,9 +767,81 @@ def _racecap_race(cfg, api, event_id, track_name, laps, my_name):
         return None
 
 
-def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=None, track_id=None, car_id=None):
+def saved_review_dir(library_folder, event, stype):
+    """2.18: the saved review folder of this event and session type (1 practice, 2 qualifying, 3 or None race),
+    or None. Same folder-name rule as _already_reviewed; the newest such folder when there are several."""
+    if not library_folder or not event:
+        return None
+    end = "_" + str(event)[-6:].lower() + {1: "_practice", 2: "_qualifying"}.get(stype, "")
+    want = session_label(stype if stype in (1, 2) else 3)
+    hits = []
+    try:
+        for d in (Path(library_folder) / "reviews").iterdir():
+            if not d.name.lower().endswith(end):
+                continue
+            try:   # only a review of this session as such: an old mixed "Session" review is made again (2.7.2)
+                m = json.loads((d / "review.json").read_text(encoding="utf-8")).get("meta") or {}
+            except (OSError, ValueError, AttributeError):
+                continue
+            if str(m.get("event_id") or "") == str(event) and m.get("session") == want:
+                hits.append(d)
+    except OSError:
+        return None
+    return sorted(hits, key=lambda d: d.name)[-1] if hits else None
+
+
+def _fmt_or(t):
+    return fmt_t(t) if isinstance(t, (int, float)) and t > 0 else "none"
+
+
+def rebuild_changes(old, new) -> list:
+    """2.18: what a rebuild changed, in plain sentences, comparing the review saved before (old review.json) with
+    the new one. Pure. ["Nothing changed: ..."] when the numbers a driver sees are the same."""
+    if not isinstance(old, dict):
+        return ["This review had no saved data before, so it was built fresh."]
+    out = []
+
+    def laps(d):
+        return [l for l in (d.get("laps") or []) if isinstance(l, dict)]
+
+    def analysed(d):
+        c = d.get("counts") if isinstance(d.get("counts"), dict) else {}
+        v = c.get("analysed")
+        return v if isinstance(v, int) else len(laps(d))
+
+    def best(d):
+        b = d.get("best") if isinstance(d.get("best"), dict) else {}
+        v = b.get("t")
+        return float(v) if isinstance(v, (int, float)) else None
+
+    def refs(d):
+        return len([r for r in (d.get("refs") or []) if isinstance(r, dict)])
+
+    for name, fn, unit in (("Laps", lambda d: len(laps(d)), "lap"), ("Laps with telemetry", analysed, "lap"),
+                           ("Comparison laps", refs, "lap")):
+        a, b = fn(old), fn(new)
+        if a != b:
+            out.append(f"{name}: {a} before, {b} now.")
+    a, b = best(old), best(new)
+    if (a is None) != (b is None) or (a is not None and abs(a - b) >= 0.0005):
+        out.append(f"Best lap: {_fmt_or(a)} before, {_fmt_or(b)} now.")
+    ra = (old.get("result") or {}) if isinstance(old.get("result"), dict) else {}
+    rb = (new.get("result") or {}) if isinstance(new.get("result"), dict) else {}
+    if ra.get("finish_pos") != rb.get("finish_pos") and rb.get("finish_pos") is not None:
+        out.append(f"Finishing place: P{rb['finish_pos']} now.")
+    if not out:
+        out.append("Nothing changed: the same laps, best lap and comparison laps as the saved review.")
+    return out
+
+
+def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=None, track_id=None, car_id=None,
+               rebuild=False, info=None):
     """Review your newest race, or (from the Sessions page) one synced session: event_id plus its
-    session_kind (1 practice, 2 qualifying, 3 race) and track/car, so no search is needed."""
+    session_kind (1 practice, 2 qualifying, 3 race) and track/car, so no search is needed.
+    2.18: when that session already has a saved review and rebuild is False, nothing is downloaded: the saved
+    page comes back and info (a dict, when given) gets {"saved": True}. With rebuild=True the review is made
+    again and info["changes"] says what changed (rebuild_changes)."""
+    info = info if isinstance(info, dict) else {}
     step = _stepper(progress)
     step("Connecting to Garage 61...", 0.02)
     api = make_api(cfg)
@@ -784,6 +856,16 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     if not event_id:
         step("Finding your most recent race...", 0.08)
         event_id, ev_track, ev_car = find_last_event(api, sessions, cfg["cache_dir"], cfg["library_folder"])
+    if not rebuild:
+        for k in sorted(sessions, key=lambda k: k != 3):
+            d = saved_review_dir(cfg.get("library_folder"), event_id, k if k in (1, 2) else 3)
+            if d is not None:
+                info["saved"] = True
+                step("Already reviewed: opening the saved review. Nothing was downloaded.", 1.0)
+                page = d / "index.html"
+                if open_after and page.is_file():
+                    webbrowser.open(page.as_uri())
+                return page
     step(f"Loading event {event_id}...", 0.18)
     if ev_track is not None:
         all_laps = laps_for(api, ev_track, ev_car, event=event_id, unclean=True, limit=1000)
@@ -947,6 +1029,12 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     learn = learn_from_for(cfg["library_folder"], data)
     if learn:
         data["learn_from"] = learn
+    if rebuild:
+        try:
+            old = json.loads((out_dir / "review.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            old = None
+        info["changes"] = rebuild_changes(old, data)
     page = report.write(out_dir, data)
     try:
         library.rebuild(cfg["library_folder"])

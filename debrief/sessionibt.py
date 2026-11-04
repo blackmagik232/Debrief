@@ -29,6 +29,7 @@ import numpy as np
 
 from debrief import engine, ibt
 from debrief import setuplab as sl
+from . import names as _names   # 2.18: one display name per track and car
 
 VERSION = 2                     # the review's shape and wording (part of the window's cache key)
 GAP_HOURS = 3.0                 # more than this between files starts a new session
@@ -154,8 +155,8 @@ def _session_info(recs: list, folder=None, ids: dict | None = None) -> dict:
     sub = next(((ids or {}).get(r.get("file")) for r in recs if (ids or {}).get(r.get("file"))), None)
     first = recs[0]
     out = {"kind": "session", "id": f"{c.get('path') or ''}|{t.get('code') or ''}|{sub or first.get('file')}",
-           "car": c.get("name") or c.get("path") or "", "car_path": c.get("path") or "",
-           "track": " - ".join(x for x in (t.get("name"), t.get("config")) if x) or (t.get("code") or ""),
+           "car": _names.car(c.get("name") or c.get("path") or ""), "car_path": c.get("path") or "",
+           "track": _names.track(t.get("name"), t.get("config")) or (t.get("code") or ""),
            "track_code": t.get("code") or "", "date": first.get("when") or "", "last": last.get("when") or "",
            "sort": float(first.get("sort") or 0), "subsession": sub, "files": [r["file"] for r in recs],
            "session_types": types, "laps": sum(int(r.get("laps") or 0) for r in recs),
@@ -794,8 +795,8 @@ def review(files, history=None, race_minutes=None, race_laps=None, idx: dict | N
         out["notes"].append(f"{_plural(len(other), 'file')} for another car or track left out of this review.")
         read = [f for f in read if _key(f) == key]
     c, t = read[-1]["car"], read[-1]["track"]
-    out.update(car=c.get("name") or c.get("path") or "", car_path=c.get("path") or "",
-               track=" - ".join(x for x in (t.get("name"), t.get("config")) if x) or (t.get("code") or ""),
+    out.update(car=_names.car(c.get("name") or c.get("path") or ""), car_path=c.get("path") or "",
+               track=_names.track(t.get("name"), t.get("config")) or (t.get("code") or ""),
                track_code=t.get("code") or "", date=read[0]["when"], sort=read[0]["sort"],
                files=[f["file"] for f in read])
     subs = sorted({f["subsession"] for f in read if f["subsession"]})

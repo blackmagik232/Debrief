@@ -114,6 +114,40 @@ FRAME_BRIDGE = ("<script>/* debrief-frame-bridge */(function(){if(parent===windo
 FRAME_EARLY = ("<script>/* debrief-in-shell */if(parent!==window)document.documentElement.classList.add('in-shell')"
                "</script><style>.in-shell .tabs{display:none!important}</style>")
 _INLINE_SCRIPT = re.compile(r"<script>(.*?)</script>", re.S)
+# 2.18 Settings > Units: library pages are written with mph (reviews) and km/h (practice) inside. As a page is
+# served, this script writes every "N mph" / "N km/h" it shows (text, titles, aria labels, and anything a chart or
+# tooltip adds later) in the chosen unit, keeping the number of decimals. It also writes Debrief's corner ids
+# ("C8") as "Turn 8", the name every other page uses (Debrief's own numbering; the review's notes say so). A
+# "C8.R" (Corvette) is left alone. @U@ is "mph" or "kmh".
+FRAME_UNITS = (r"<script>/* debrief-units */(function(){var U='@U@',K=1.609344,L=U==='kmh'?'km/h':'mph';"
+               r"var RX=/(^|[^\w.])([+\-−]?\d+(?:\.\d+)?(?:(?:\s+(?:vs\.?|to|and|or)\s+|[-–\/])[+\-−]?\d+(?:\.\d+)?)*)(\s*)(km\/h|mph)(?![\w\/])/gi;"
+               r"var RN=/[+\-−]?\d+(?:\.\d+)?/g;"
+               r"var RC=/(^|[^\w.\-])C(\d{1,2})(?!\w|\.\w)/g;"
+               r"function cv(t){if(t&&/C\d/.test(t))t=t.replace(RC,function(m,pre,n){return pre+'Turn '+n});"
+               r"if(!t||(t.indexOf('mph')<0&&t.indexOf('km/h')<0))return t;"
+               r"return t.replace(RX,function(m,pre,nums,sp,u){var f=u.toLowerCase()==='mph'?'mph':'kmh';if(f===U)return m;"
+               r"return pre+nums.replace(RN,function(n){var s=/^[+\-−]/.test(n)?n.charAt(0):'',b=s?n.slice(1):n,"
+               r"i=b.indexOf('.'),d=i<0?0:b.length-i-1,v=parseFloat(b)*(f==='mph'?K:1/K);return s+v.toFixed(d)})+sp+L})}"
+               r"function at(e){if(!e.getAttribute)return;['title','aria-label'].forEach(function(a){var v=e.getAttribute(a);"
+               r"if(v){var w=cv(v);if(w!==v)e.setAttribute(a,w)}})}"
+               r"function walk(n){if(n.nodeType===3){var t=cv(n.nodeValue);if(t!==n.nodeValue)n.nodeValue=t;return}"
+               r"if(n.nodeType!==1)return;var g=n.tagName;if(g==='SCRIPT'||g==='STYLE'||g==='TEXTAREA')return;at(n);"
+               r"for(var c=n.firstChild;c;c=c.nextSibling)walk(c)}"
+               r"function go(){if(!document.body)return;walk(document.body);new MutationObserver(function(ms){ms.forEach(function(m){"
+               r"if(m.type==='attributes')at(m.target);else if(m.type==='characterData')walk(m.target);"
+               r"else m.addedNodes.forEach(walk)})}).observe(document.body,{subtree:true,childList:true,characterData:true,"
+               r"attributes:true,attributeFilter:['title','aria-label']})}"
+               r"document.documentElement.setAttribute('data-units',U);"
+               r"if(document.readyState==='loading')addEventListener('DOMContentLoaded',go);else go()})();</script>")
+
+
+def with_units(html: bytes, unit: str) -> bytes:
+    """2.18: a library page as served, with FRAME_UNITS for the saved unit in its <head>."""
+    tag = FRAME_UNITS.replace("@U@", "kmh" if unit == "kmh" else "mph").encode("utf-8")
+    i = html.lower().find(b"</head>")
+    return html[:i] + tag + html[i:] if i >= 0 else tag + html
+
+
 
 
 def ui_csp(html: str) -> str:
@@ -320,8 +354,34 @@ def clean_review_params(raw) -> dict:
     st = raw.get("session_type")
     if st not in (1, 2, 3) or isinstance(st, bool):
         raise ValueError("That session wasn't found.")
-    return {"event": ev, "session_type": st, "track_id": _pos_int(raw.get("track_id"), "track"),
-            "car_id": _pos_int(raw.get("car_id"), "car")}
+    out = {"event": ev, "session_type": st, "track_id": _pos_int(raw.get("track_id"), "track"),
+           "car_id": _pos_int(raw.get("car_id"), "car")}
+    if raw.get("rebuild") is True:   # 2.18: make it again even though a saved review exists
+        out["rebuild"] = True
+    return out
+
+
+def review_rebuild_params(review_dir: Path) -> dict:
+    """2.18: POST api/review {"review": <folder>, "rebuild": true}: the job params that make this saved review
+    again (its event, session type and track/car ids from review.json). ValueError when it can't be rebuilt."""
+    try:
+        d = json.loads((Path(review_dir) / "review.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError("This review's saved data can't be read, so Debrief can't tell which race to rebuild. "
+                         "Use Review last race, or Review on the All sessions page.")
+    m = d.get("meta") if isinstance(d, dict) and isinstance(d.get("meta"), dict) else {}
+    ids = d.get("combo_ids") if isinstance(d, dict) and isinstance(d.get("combo_ids"), dict) else {}
+    st = {"practice": 1, "qualifying": 2}.get(library.session_kind(m.get("session")), 3)
+    ev = str(m.get("event_id") or "")
+    if not re.match(r"^[A-Za-z0-9_-]{1,80}$", ev):
+        raise ValueError("This review doesn't say which Garage 61 event it was, so it can't be rebuilt here. "
+                         "Use Review on the All sessions page.")
+    out = {"event": ev, "session_type": st, "track_id": None, "car_id": None, "rebuild": True}
+    for k in ("track_id", "car_id"):   # older reviews have no ids: the review then finds the race by its event
+        v = ids.get(k)
+        if isinstance(v, int) and not isinstance(v, bool) and v > 0:
+            out[k] = v
+    return out
 
 
 def clean_goal(raw) -> dict:
@@ -602,6 +662,8 @@ class Jobs:
             title = JOB_TITLES[kind]
             if kind == "review" and (params or {}).get("event"):
                 title = "Reviewing your " + {1: "practice session", 2: "qualifying session"}.get((params or {}).get("session_type"), "race")
+            if kind == "review" and (params or {}).get("rebuild"):
+                title = "Rebuilding this review"
             self.st = {"state": "running", "kind": kind, "id": self.seq, "title": title, "frac": 0.0,
                        "message": "Starting...", "steps": [], "started": time.time()}
             jid = self.seq
@@ -639,10 +701,12 @@ class Jobs:
         try:
             cfg = app.load_settings()
             if kind == "review":
+                info = {}
                 page = app.cmd_review(cfg, params.get("event"), open_after=False, progress=cb,
                                       session_kind=params.get("session_type"), track_id=params.get("track_id"),
-                                      car_id=params.get("car_id"))
-                result = {"review": Path(page).parent.name}
+                                      car_id=params.get("car_id"), rebuild=bool(params.get("rebuild")), info=info)
+                result = {"review": Path(page).parent.name, "saved": bool(info.get("saved")),
+                          "changes": info.get("changes")}
             elif kind == "scan":
                 from .. import replay_scan
                 try:
@@ -914,8 +978,8 @@ def car_names_match(a, b, path=None) -> bool:
 
 def ibt_track_label(track: dict) -> str:
     t = track or {}
-    name, cfg = str(t.get("name") or t.get("code") or ""), str(t.get("config") or "")
-    return f"{name} ({cfg})" if cfg else name
+    from .. import names
+    return names.track(t.get("name") or t.get("code") or "", t.get("config") or "")
 
 
 def match_setuplab_combo(combos: list, car, track):
@@ -1089,7 +1153,9 @@ class ReviewIndex:
         if s.get("n_laps") is None:
             raise ValueError("no laps list")
         best = s.get("best_t")
-        return {"dir": s["dir"], "track": s.get("track") or "Unknown track", "car": s.get("car") or "Unknown car",
+        from .. import names   # 2.18: one spelling per track and car, so one combination is one group
+        return {"dir": s["dir"], "track": names.track(s.get("track")) or "Unknown track",
+                "car": names.car(s.get("car")) or "Unknown car",
                 "started_at": s.get("started_at") or "",
                 "date": library.local_day(s.get("started_at")) or s["dir"][:10],
                 "session": s.get("session") or "", "best": app.fmt_t(best) if best else "",
@@ -1618,7 +1684,8 @@ class DebriefServer(ThreadingHTTPServer):
 
     def coach_settings(self):
         from .. import livecoach
-        return livecoach.Settings.from_dict(saved_coach_settings())
+        # 2.18: the coach says speeds in Settings > Units
+        return livecoach.Settings.from_dict(dict(saved_coach_settings(), units=settings_io.units()))
 
     def coach_weak_for(self, car: dict, track: dict) -> list:
         """The weak corners for the car + track iRacing reports. 2.13: the corner coach's cards for that car and
@@ -2273,6 +2340,11 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _json(self, obj, code=200):
+        try:   # 2.18: every speed the window shows in the one unit from Settings > Units
+            from .. import units
+            obj = units.convert(obj, settings_io.units())
+        except Exception:  # noqa: BLE001  (never worth a failed reply)
+            pass
         self._send(code, json.dumps(obj).encode("utf-8"))
 
     def _nf(self):
@@ -2527,6 +2599,8 @@ class Handler(BaseHTTPRequestHandler):
         if isinstance(prof, dict):
             out["available"] = True
             out["n_races"] = prof.get("n_races") or 0
+            out["n_rows"] = prof.get("n_rows") or 0     # 2.18: race reviews with lap times (scored or not)
+            out["why"] = prof.get("why") if isinstance(prof.get("why"), dict) else {}
             w = prof.get("weakest")
             out["weakest"] = w if isinstance(w, dict) else None
         return self._json(out)
@@ -2881,7 +2955,7 @@ class Handler(BaseHTTPRequestHandler):
         ctype = MIME.get(p.suffix.lower(), "application/octet-stream")
         if lib:
             if p.suffix.lower() == ".html":
-                body = with_bridge(with_fonts(body, self.server.secret))
+                body = with_units(with_bridge(with_fonts(body, self.server.secret)), settings_io.units())
             return self._send(200, body, ctype, {"Content-Security-Policy": LIB_CSP})
         self._send(200, body, ctype)
 
@@ -2892,7 +2966,7 @@ class Handler(BaseHTTPRequestHandler):
             app.say("ERROR making the sample review:\n" + traceback.format_exc())
             body = (b"<!doctype html><html><head><title>Sample review</title></head><body><p>The sample review "
                     b"couldn't be made on this PC. Your own reviews aren't affected.</p></body></html>")
-        body = with_bridge(with_fonts(body, self.server.secret))
+        body = with_units(with_bridge(with_fonts(body, self.server.secret)), settings_io.units())
         return self._send(200, body, MIME[".html"], {"Content-Security-Policy": LIB_CSP})
 
     def _font(self, name: str):
@@ -2938,9 +3012,50 @@ class Handler(BaseHTTPRequestHandler):
             p.relative_to(root)
         except (ValueError, OSError):
             return self._nf()
-        if p.suffix.lower() not in LIB_TYPES or not p.is_file() or p.name.lower() == library.INDEX_FILE.lower():
+        if p.suffix.lower() not in LIB_TYPES or p.name.lower() == library.INDEX_FILE.lower():
+            return self._nf()
+        if not p.is_file():
+            m = re.match(r"^reviews/([^/]+)/index\.html$", rel)
+            if m and REVIEW_DIR_OK.match(m.group(1)) and (root / "reviews" / m.group(1)).is_dir():
+                return self._missing_review_page(root / "reviews" / m.group(1))
             return self._nf()
         self._file(p, lib=True)
+
+    def _missing_review_page(self, d: Path):
+        """2.18: a saved review whose page is missing. From its review.json the page is made again on the spot
+        (no downloads, the same as the layout refresh); when that can't be done, a page that says why and
+        offers Rebuild, never a bare "Not found"."""
+        from html import escape as html_escape
+        from .. import report
+        page = d / "index.html"
+        try:
+            data = json.loads((d / "review.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = None
+        if isinstance(data, dict) and data.get("laps"):
+            try:
+                report.write(d, data, log=app.say)
+                return self._file(page, lib=True)
+            except Exception:  # noqa: BLE001
+                app.say("ERROR remaking a missing review page:\n" + traceback.format_exc())
+        can = isinstance(data, dict) and bool((data.get("meta") or {}).get("event_id"))
+        why = ("Its saved data has no laps to show." if isinstance(data, dict) else
+               "Its saved data (review.json) is missing or can't be read.")
+        act = ("<p>Rebuild downloads this race again from Garage 61 and makes the page. Your typed race result "
+               "is kept.</p><p><button type=button id=rb>Rebuild this review</button></p>" if can else
+               "<p>Debrief can't tell which race this was, so it can't rebuild it here. Open <b>All sessions</b> "
+               "and press Review on the race to make it again.</p>")
+        html = ("<!doctype html><html><head><meta charset=utf-8><title>Review page missing</title><style>"
+                "body{font:16px/1.5 system-ui,sans-serif;max-width:640px;margin:48px auto;padding:0 20px;"
+                "color:#1c2024;background:#fff}@media(prefers-color-scheme:dark){body{color:#e8eaed;background:#16191d}}"
+                ":root[data-theme=dark] body{color:#e8eaed;background:#16191d}:root[data-theme=light] body{color:#1c2024;background:#fff}"
+                "button{font:inherit;padding:8px 16px;border-radius:6px;border:1px solid #2a6fdb;background:#2a6fdb;"
+                "color:#fff;cursor:pointer}</style></head><body><h1>This review's page is missing</h1>"
+                f"<p>The folder <b>{html_escape(d.name)}</b> is still in your library, but its page isn't. {why}</p>"
+                + act + "<script>var b=document.getElementById('rb');if(b)b.onclick=function(){try{parent.postMessage("
+                "{type:'debrief-key',key:'rebuild'},new URL(location.href).origin)}catch(e){}}</script></body></html>")
+        body = with_bridge(with_fonts(html.encode("utf-8"), self.server.secret))
+        return self._send(200, body, MIME[".html"], {"Content-Security-Policy": LIB_CSP})
 
     # ---------- POST
     def do_POST(self):
@@ -2977,7 +3092,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": settings_io.save_window_size(body)})
         if r == "api/review":
             try:
-                params = clean_review_params(body)
+                if isinstance(body, dict) and body.get("review") and body.get("rebuild") is True:
+                    params = review_rebuild_params(self._review_dir(self._cfg(), body.get("review")))
+                else:
+                    params = clean_review_params(body)
             except ValueError as e:
                 return self._json({"ok": False, "error": str(e)}, 400)
             if not self._token_saved():

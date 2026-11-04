@@ -41,6 +41,7 @@ import re
 from pathlib import Path
 
 import numpy as np
+from . import names as _dn   # 2.18: one display name per track and car
 
 VERSION = 2                 # 2: careful wording, field baseline for patterns, UTC lap match for reviews
 
@@ -313,7 +314,7 @@ def _read_open(ib, p: Path) -> dict:
     if not L and "LapDist" in col and n:
         L = float(np.nanmax(col["LapDist"])) or None
     base = {"ok": True, "file": p.name, "path": str(p), "when": int(ib.start_date or 0), "subsession": sub,
-            "track": " ".join(x for x in (tr.get("name"), tr.get("config")) if x).strip() or str(tr.get("code") or ""),
+            "track": _dn.track(tr.get("name"), tr.get("config")) or str(tr.get("code") or ""),
             "track_code": str(tr.get("code") or ""), "car": ib.car().get("name") or "", "driver": name, "me_idx": me_idx,
             "L": L, "classes": {str(k): v for k, v in classes.items()},
             "multiclass": len({v for v in classes.values() if v}) > 1, "class_size": size.get(classes.get(me_idx), None) if me_idx is not None else None,
@@ -664,7 +665,7 @@ class _Tracks:
 
     def key(self, name) -> str:
         from .racecap_link import same_track
-        name = str(name or "").strip() or "Unknown track"
+        name = _dn.track(name) or "Unknown track"   # 2.18: one spelling (names.track)
         for n in self.names:
             if same_track(n, name):
                 return n

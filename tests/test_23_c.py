@@ -124,7 +124,7 @@ def test_static_new_ids_and_guards():
     lib = (TPL / "library.html").read_text(encoding="utf-8")
     assert 'data-tab="skills"' in lib and 'id="skills"' in lib and "'skills'" in lib
     assert "EX.skills&&typeof EX.skills==='object'" in lib
-    assert "Skill scores appear after a race with at least 6 clean laps." in lib
+    assert "Skill scores appear after a race with at least 6 clean laps with telemetry." in lib   # 2.18
 
 
 def test_static_no_new_colours_and_no_data_innerhtml():
@@ -446,7 +446,7 @@ def test_library_skills_empty_states():
             ctx.close()
             assert not errs, (extra, errs)
             assert r["vis"] and r["cur"] == "skills", r
-            assert "Skill scores appear after a race with at least 6 clean laps. Older reviews get them when Debrief refreshes the library." in r["txt"], r
+            assert "Skill scores appear after a race with at least 6 clean laps with telemetry." in r["txt"], r   # 2.18
 
 
 def test_library_skills_profile():

@@ -154,7 +154,7 @@ def test_names_match():
     assert cm("McLaren 570S GT4", "Mclaren 570s GT4") and cm("McLaren 570S GT4", "", "mclaren570sgt4")
     assert cm("Global Mazda MX-5 Cup", "Mazda MX-5 Cup") and not cm("Porsche 911 GT3 R", "Porsche 911 GT3 Cup")
     assert not cm("BMW M4 GT4", "BMW M4 GT3") and not cm("", "")
-    assert S.ibt_track_label({"name": "Zolder Circuit", "config": "Grand Prix"}) == "Zolder Circuit (Grand Prix)"
+    assert S.ibt_track_label({"name": "Zolder Circuit", "config": "Grand Prix"}) == "Circuit Zolder (Grand Prix)"   # 2.18: names.track
     combos = [{"car": "Mclaren 570s GT4", "car_path": CAR, "track": "Zolder Circuit - Grand Prix", "track_code": TRACK}]
     assert S.match_setuplab_combo(combos, "McLaren 570S GT4", "Circuit Zolder (Grand Prix)") is combos[0]
     assert S.match_setuplab_combo(combos, "McLaren 570S GT4", "Road America") is None

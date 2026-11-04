@@ -1251,8 +1251,9 @@ class Coach:
                 out += [good_text(name, k / 10) for k in range(1, 4)]
             for k in range(2):
                 out += [sector_text(k, d / 10) for d in (-3, -2, -1, 1, 2, 3, 4, 5)]
+            lo = int(math.ceil(st.slower_kmh)) if st.units == "kmh" else int(st.slower_mph())
             for c in self.reference.corners:
-                out += [speed_text(f"{pre}{c.num}", n) for n in range(max(1, int(st.slower_mph())), 9)]
+                out += [speed_text(f"{pre}{c.num}", n) for n in range(max(1, lo), 21 if st.units == "kmh" else 9)]
         if self.focus is not None:                       # 2.14 practice focus cues
             try:
                 out += list(self.focus.vocabulary())
@@ -1815,8 +1816,10 @@ class Coach:
             re_, rd = early / st.early_m, down / st.slower_kmh
             if max(re_, rd) >= 1.0 and re_ >= rd:
                 text, why = early_text(name), f"lost {lost:.2f} s here, braked {early:.0f} m before the reference"
-            elif down / KMH_PER_MPH >= st.slower_mph() - 1e-9 and mph_down(down) <= voicepack.MAX_KMH:
-                text, why = speed_text(name, mph_down(down)), \
+            elif down / KMH_PER_MPH >= st.slower_mph() - 1e-9 and (
+                    mph_down(down) if st.units != "kmh" else int(round(down))) <= voicepack.MAX_KMH:
+                said = mph_down(down) if st.units != "kmh" else max(1, int(round(down)))   # the number in the chosen unit
+                text, why = speed_text(name, said), \
                     f"lost {lost:.2f} s here, minimum speed {mph_down(down)} mph under the reference"
             else:
                 text, why = corner_time_text(name, lost), f"lost {lost:.2f} s here against the reference"

@@ -493,6 +493,13 @@ sp = [(c.text, c.measured.get("down_kmh"), c.why) for _l, c, _s in said if "more
 check(sp and all(int(t.split(", ")[-1].split()[0]) == lc.mph_down(k) >= 3 and k / lc.KMH_PER_MPH >= 3.0 - 1e-6
               and "mph under the reference" in w for t, k, w in sp),
       f"spoken speeds and the log's reason are mph ({sp[:2]})")
+# review 2.18: with Settings > Units on km/h the corner cue's number is km/h too (it was always mph)
+_ck, saidk, _ek, _mk = play(cur, lc.Settings(units="kmh"), ref=ref)
+spk = [(c.text, c.measured.get("down_kmh")) for _l, c, _s in saidk if "more speed" in c.text and c.kind == lc.KIND_CORNER]
+check(spk and all(int(t.split(", ")[-1].split()[0]) == max(1, int(round(k))) for t, k in spk),
+      f"km/h: the corner cue says km/h ({spk[:2]})")
+check(all(c.text in set(_ck.vocabulary()) for _l, c, _s in saidk if "more speed" in c.text),
+      "km/h: every speed said is in the vocabulary rendered ahead")
 txt = cuelog.summary([{"ev": "session"}, {"ev": "spoken", "lap": 2, "dist_m": 900, "kmh": 160.9, "text": "T2: more speed, 4 down",
                        "why": "minimum speed 9 km/h under the reference", "measured": {"min_kmh": 80.5, "ref_min_kmh": 96.6}}])
 check("min 50 vs ref 60 mph" in txt and " 100 \"T2" in txt and "6 mph under" in txt and "km/h" not in txt,

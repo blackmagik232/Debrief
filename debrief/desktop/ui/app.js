@@ -48,7 +48,7 @@ function fileNotesEl(files){if(!files.length)return null;const d=h('details','su
   files.slice(0,50).forEach(f=>u.append(h('li',null,plainText(f))));d.append(u);return d}
 try{window.debriefUi=Object.freeze({plainText,plainLines,fileNotes,keyList:()=>keyList(),pageKeys:()=>PAGE_KEYS.slice(),sure:k=>SURE[k]&&SURE[k][0]})}catch(e){}
 // 2.6: error banners stay until the close button is pressed; other banners still fade after a few seconds
-function banner(msg,bad,ms){msg=plainText(msg)||msg;const b=$('banner');const ba=$('bannerAct');if(ba)ba.remove();$('bannerText').textContent=msg;b.className='banner'+(bad?' bad':'');b.hidden=false;clearTimeout(banner.t);
+function banner(msg,bad,ms){msg=plainText(msg)||msg;const b=$('banner');const ba=$('bannerAct');if(ba)ba.remove();const so=$('shareOpen');if(so)so.remove();$('bannerText').textContent=msg;b.className='banner'+(bad?' bad':'');b.hidden=false;clearTimeout(banner.t);
   if(ms!==0&&!bad)banner.t=setTimeout(()=>b.hidden=true,ms||5000)}
 $('bannerClose').addEventListener('click',()=>{clearTimeout(banner.t);$('banner').hidden=true});
 // 2.18: a banner with one action button (e.g. Rebuild), gone with the next banner
@@ -287,12 +287,17 @@ function welcome(){
 
 /* ---------- the bar above pages in the frame */
 let pages={team:null,prep:[]},resultFor={dir:null,result:null},racecapOn=false;
+let weeklyBlk=null;   // 2.18: why Refresh this week can't be pressed (weeklyBlock), or null
 function frameBar(){
   const v=current.view,bar=$('frameBar');
   const want=v==='review'||(v==='season'&&discordSaved)||v==='prepPage'||v==='teamPage'||v==='skills'||v==='sample'||v==='goalCharts';
   bar.hidden=!want;if(!want)return;
   $('fbResult').hidden=v!=='review';$('fbPrep').hidden=v!=='prepPage';$('fbTeam').hidden=v!=='teamPage';$('fbWeekly').hidden=v!=='teamPage';
-  $('fbDiscord').hidden=(v!=='review'&&v!=='season')||!discordSaved;
+  $('fbWeeklyWhy').hidden=v!=='teamPage'||!weeklyBlk;
+  // 2.18: Post to Discord is always there on a review; without a webhook it explains how to set one up
+  $('fbDiscord').hidden=v!=='review'&&!(v==='season'&&discordSaved);
+  $('fbDiscord').title=discordSaved?'Preview this race\'s share card, then post it to your team\'s Discord channel':'Set up once: paste your team\'s Discord webhook link in Settings';
+  $('fbTeamLap').hidden=v!=='review';
   $('fbMarkers').hidden=v!=='review';$('fbRaceCap').hidden=v!=='review'||!racecapOn;$('fbScan').hidden=v!=='review';$('fbRival').hidden=v!=='review';
   $('fbSampleBack').hidden=v!=='sample';$('fbGoals').hidden=v!=='goalCharts';
   const pill=$('fbPill');pill.hidden=true;$('fbBar').hidden=true;
@@ -1272,9 +1277,21 @@ function weeklyText(j){
 function renderWeekly(){const j=weeklyInfo;teamJoinPanel();const t=weeklyText(j);$('weeklyNote').textContent=t;$('fbWeekly').title=t;
   const rows=weeklyRows(j);const can=!!(j&&j.ok&&j.available&&j.schedule&&j.token!==false&&rows.length);
   $('btnWeekly').disabled=!can;$('fbWeekly').disabled=!can;
+  weeklyWhy(can?null:weeklyBlock(j));
   const pill=$('weeklyPill');pill.hidden=!rows.length;pill.textContent=rows.length+' series';pill.className='pill'+(can?' ok':'');
   const p=(j&&j.plan)||{};const sk=(Array.isArray(p.skipped)?p.skipped:[]).concat(Array.isArray(p.notes)?p.notes:[]);
   showWarnings('weeklySkipped',[...new Set(sk.map(x=>typeof x==='string'?x:(x&&typeof x==='object'?[x.name,x.note||x.reason].filter(v=>typeof v==='string'&&v).join(': '):'')))],'Not included:')}
+// 2.18: why Refresh this week can't be pressed, said beside it (not only in its tooltip), with a link to the fix
+function weeklyBlock(j){
+  if(!j)return null;
+  if(!j.ok)return {text:j.error||'Couldn\'t work out this week\'s leaderboards right now.'};
+  if(!j.available)return {text:'Weekly leaderboards aren\'t available right now. Details were saved to debrief.log.'};
+  if(!j.schedule||!weeklyRows(j).length)return {text:'Pick your series on Prepare first.',go:'Open Prepare',to:'prep'};
+  if(j.token===false)return {text:'Add your Garage 61 token in Settings first.',go:'Open Settings',to:'settings'};
+  return null}
+function weeklyWhy(b){weeklyBlk=b;[['weeklyWhy','weeklyWhyText','weeklyWhyGo'],['fbWeeklyWhy','fbWeeklyWhyText','fbWeeklyWhyGo']].forEach(([w,t,g])=>{
+  $(w).hidden=!b||(w==='fbWeeklyWhy'&&current.view!=='teamPage');if(!b)return;$(t).textContent=b.text;const go=$(g);go.hidden=!b.go;go.textContent=b.go||'';go.dataset.to=b.to||''})}
+['weeklyWhyGo','fbWeeklyWhyGo'].forEach(id=>$(id).addEventListener('click',e=>{const to=e.currentTarget.dataset.to;if(to==='prep')openPrep();else if(to==='settings')openSettings()}));
 function startWeekly(){if(lastJob&&lastJob.state==='running'&&lastJob.kind==='weekly'){openJob();return}startJob('weekly',{})}
 $('btnWeekly').addEventListener('click',startWeekly);$('fbWeekly').addEventListener('click',startWeekly);
 
@@ -1282,7 +1299,14 @@ $('btnWeekly').addEventListener('click',startWeekly);$('fbWeekly').addEventListe
    window stages it on the server (no network), shows it, and posts only when you press Post in the dialog. */
 let discordSaved=false,discordHint=null,share=null,staged=null;
 function shareId(){const a=new Uint8Array(12);crypto.getRandomValues(a);return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('')}
-function requestShare(){if((current.view!=='review'&&current.view!=='season')||!discordSaved||share)return;
+function discordHow(){const d=$('dlgDiscordHow');if(d.showModal)d.showModal();else d.setAttribute('open','')}
+function closeDiscordHow(){const d=$('dlgDiscordHow');if(d.open){if(d.close)d.close();else d.removeAttribute('open')}}
+$('discordHowClose').addEventListener('click',closeDiscordHow);$('discordHowCancel').addEventListener('click',closeDiscordHow);
+$('discordHowGo').addEventListener('click',()=>{closeDiscordHow();openSettings();const f=$('fDiscord');
+  for(let e=f&&f.parentNode;e;e=e.parentNode)if(e.tagName==='DETAILS')e.open=true;
+  if(f){f.scrollIntoView({block:'start'});$('discordHook').focus()}});
+function requestShare(){if(current.view==='review'&&!discordSaved){discordHow();return}
+  if((current.view!=='review'&&current.view!=='season')||!discordSaved||share)return;
   const w=$('frame').contentWindow;if(!w)return;
   const id=shareId();share={id,dir:current.dir,view:current.view};$('fbDiscord').disabled=true;
   share.t=setTimeout(()=>{if(share&&share.id===id){share=null;$('fbDiscord').disabled=false;
@@ -1298,6 +1322,23 @@ addEventListener('message',e=>{const f=$('frame');if(!f||e.source!==f.contentWin
   if(m.error!=null&&m.png==null){banner(s.view==='season'&&typeof m.error==='string'?m.error.slice(0,200):'Couldn\'t make the share card.',true);return}   // the page couldn't draw it: stage nothing
   if(typeof m.png!=='string'||!m.png.startsWith('data:image/png;base64,')||m.png.length>6e6){banner('The share card couldn\'t be made. Reload the review and try again.',true);return}
   stageCard(m.png,typeof m.text==='string'?m.text:'')});
+// 2.18 Share card: the review page hands its picture to the window, which saves it in the Downloads folder and
+// says where. Only from our own frame, one at a time, a PNG only (the server checks it again).
+let shareSaving=false;
+addEventListener('message',async e=>{const f=$('frame');if(!f||e.source!==f.contentWindow)return;const m=e.data;
+  if(!m||typeof m!=='object'||m.type!=='debrief:share-save'||shareSaving)return;
+  if(typeof m.png!=='string'||!m.png.startsWith('data:image/png;base64,')||m.png.length>6e6){banner('The share card couldn\'t be made. Reload the review and try again.',true);return}
+  let blob;try{blob=pngBlob(m.png)}catch(err){banner('The share card couldn\'t be read. Reload the review and try again.',true);return}
+  shareSaving=true;let r;
+  try{r=await fetch(BASE+'api/share-save?'+new URLSearchParams({name:typeof m.name==='string'?m.name.slice(0,200):''}),{method:'POST',headers:{'X-Debrief':'1','Content-Type':'image/png'},body:blob}).then(x=>x.json())}
+  catch(err){shareSaving=false;banner('Couldn\'t save the share card. Try again.',true);return}
+  shareSaving=false;
+  if(!r||!r.ok){banner((r&&r.error)||'Couldn\'t save the share card.',true);return}
+  shareSaved(r)});
+function shareSaved(r){banner('Share card saved: '+r.path,false,15000);const b=$('banner');
+  const o=h('button','btn ghost bannerbtn','Open the folder');o.type='button';o.id='shareOpen';
+  o.addEventListener('click',async()=>{let x;try{x=await post('share-open')}catch(err){connectionLost();return}if(!x.ok&&x.error)banner(x.error,false,15000)});
+  const old=$('shareOpen');if(old)old.remove();$('bannerText').after(o)}
 function pngBlob(url){const b=atob(url.slice(url.indexOf(',')+1));const a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return new Blob([a],{type:'image/png'})}
 async function stageCard(url,text){let blob;try{blob=pngBlob(url)}catch(e){banner('The share card couldn\'t be read. Reload the review and try again.',true);return}
   let r;try{r=await fetch(BASE+'api/discord-stage',{method:'POST',headers:{'X-Debrief':'1','Content-Type':'image/png'},body:blob}).then(x=>x.json())}
@@ -1940,7 +1981,9 @@ function turnEl(tag,cls,name,id){const e=h(tag,cls,turnName(name));const n=turnN
   if(n!==null&&turnNum(name)!==null)e.title=TURN_NOTE;return e}
 const TURN_NOTE='Debrief numbers the corners itself, from the speed trace, so Turn 3 here may not be the track map\u2019s Turn 3.';
 function ccCard(c){const card=h('article','cccard'),top=h('div','cchead');
-  const ls=h('span','cclost num',ok(c.lost_s)?'best laps '+c.lost_s.toFixed(2)+' s quicker':'');if(ok(c.lost_s))ls.title='Your best laps were about '+c.lost_s.toFixed(2)+' s quicker here than your typical ones (this corner\'s share of the gap between your quickest laps and the rest). Not a promise of lap time.';
+  // 2.18: a teammate's card says the gap between the two drivers (their lap against your typical laps)
+  const ref=!!c.reference,ls=h('span','cclost num',ok(c.lost_s)?(ref&&c.gap_text?c.gap_text:'best laps '+c.lost_s.toFixed(2)+' s quicker'):'');
+  if(ok(c.lost_s))ls.title=ref?cap(String(c.reference))+' was about '+c.lost_s.toFixed(2)+' s quicker through this corner than your typical laps. One lap of theirs, so treat it as a hint.':'Your best laps were about '+c.lost_s.toFixed(2)+' s quicker here than your typical ones (this corner\'s share of the gap between your quickest laps and the rest). Not a promise of lap time.';
   top.append(turnEl('h4',null,c.corner,c.id),ls,ccBadge(c.confidence));card.append(top);
   const row=(k,v,cls)=>{const p=h('p',cls||null);p.append(h('b',null,k+': '),document.createTextNode(cap(v)));return p};
   card.append(row('What\'s different',c.different),row('How to try it',c.how));if(c.gets)card.append(row('What it gets you',c.gets));
@@ -2563,6 +2606,8 @@ function csTeamPanel(car,track,where,onChange){const sec=where==='coach'?h('div'
 function csTeamBody(body,T,car,track,where,redraw,onChange){body.replaceChildren();const id=where==='coach'?'co':'pr';
   if(T){const p=h('p','teamnow');p.append(document.createTextNode('Using '),h('b',null,T.label),document.createTextNode(T.kept?'. Kept for this car and track.':'. Kept until Debrief closes.'));body.append(p)}
   else body.append(h('p','note','Got a teammate\'s telemetry file (.ibt) for this car and track? Debrief checks it for anything harmful, takes their best clean lap and compares yours with it. The file itself is read once and never copied.'));
+  // 2.18: the teammate laps Debrief already has here, and how to get a file
+  const have=h('div','teamhave');have.id=id+'TeamHave';body.append(have);csTeamHave(have,car,track,!T);
   const row=h('div','row'),inp=document.createElement('input');inp.type='file';inp.accept='.ibt';inp.hidden=true;inp.id=id+'TeamFile';
   const b=h('button','btn'+(T?'':' primary'),T?'Pick another file...':'Pick a teammate\'s file...');b.type='button';b.id=id+'TeamPick';
   const keepL=h('label','check');keepL.htmlFor=id+'TeamKeep';const keep=document.createElement('input');keep.type='checkbox';keep.id=id+'TeamKeep';keep.checked=!!(T&&T.kept);
@@ -2598,23 +2643,43 @@ function csTeamBody(body,T,car,track,where,redraw,onChange){body.replaceChildren
       if(!r.ok){cb.checked=!cb.checked;setMsg(m.id,r.error||'That didn\'t work.','bad');return}
       csTeamNote(cb.checked,r.restart);coachPoll()})}}
 
+function csTeamHave(box,car,track,open){(async()=>{let j;try{j=await api('teamref/laps?'+csQ(car,track))}catch(e){return}
+  if(!j||!j.ok)return;box.replaceChildren();const L=j.laps||[];
+  if(L.length){box.append(h('h4',null,'Teammate laps Debrief already has here'));const ul=h('ul','pvlist teamlaps');
+    L.forEach(x=>{const li=h('li');li.append(h('b',null,String(x.driver||'A teammate')),document.createTextNode(' '+(x.lap_text||'')+(x.in_use?' (in use)':'')),h('span','sub2',' '+(x.note||'')));ul.append(li)});box.append(ul)}
+  else box.append(h('p','note','Debrief has no teammate laps for this car and track yet.'+(j.team_page?'':' Refresh team data on the Team page lists your teammates\' best lap times here too.')));
+  const how=h('details','teamhow');how.open=!!open;how.append(h('summary',null,'How to get a teammate\'s file'),h('p','note',j.how||''));box.append(how)})()}
 function csTeamNote(on,restart){const n=$('coTeamNote');if(!n)return;
   n.textContent=on?(restart?'On. Stop and start the coach to switch to their lap.':'On. The coach measures you against their lap the next time you start it, and your own new bests don\'t replace it.'):'Off: the coach uses your own best lap.'}
 
+// 2.18: teammate cards in mph, like the rest of the pages (the corner coach words its speeds in km/h)
+function ccMph(c){const o=Object.assign({},c);['different','how','gets','why','evidence'].forEach(k=>{if(typeof o[k]==='string')o[k]=mphText(o[k])});return o}
 function csTeamCards(car,track,T){const box=h('div','teamcards');box.append(h('p','note','Comparing your laps with '+T.short+'...'));
   (async()=>{let j;try{j=await api('teamref/cards?'+csQ(car,track))}catch(e){connectionLost();return}
     box.replaceChildren();
     if(!j.ok){box.append(h('p','note warn',j.error||'This didn\'t load.'));return}
+    if(j.headline){const hl=h('p','teamheadline',mphText(turnWords(j.headline)));hl.id='prTeamHead';box.append(hl)}   // 2.18: who is quicker, and where
     box.append(h('p','note',j.message||''));const C=j.cards||[];
     if(!C.length){box.append(h('p','note','No corner where your typical laps clearly differ from '+T.short+' yet.'));return}
-    const g=h('div','cccards');C.forEach(c=>{const card=ccCard(c);const ey=h('span','eyebrow teamey','Against '+T.short);card.prepend(ey);g.append(card)});box.append(g);
+    const g=h('div','cccards');C.forEach(c=>{const card=ccCard(ccMph(c));const ey=h('span','eyebrow teamey','Against '+T.short);card.prepend(ey);g.append(card)});box.append(g);
     box.append(h('p','balsmall','A single lap of theirs: its own lap-to-lap spread can\'t be measured, so these are always "Few laps".'))})();
   return box}
 
-/* the session page: after the Corner coach */
+/* the session page: after the Corner coach, with a one-click way there from the top (2.18) */
 function csSession(R){const old=$('prTeam');if(old)old.remove();if(!R||!R.car_path||!R.track_code)return;
   const sec=csTeamPanel(R.car_path,R.track_code,'session');const after=$('prCorners'),host=$('prReport');
-  if(after&&after.parentNode===host)after.after(sec);else host.append(sec)}
+  if(after&&after.parentNode===host)after.after(sec);else host.append(sec);
+  const head=host.querySelector('.slhead');
+  if(head&&!$('prTeamJump')){const b=h('button','btn','Compare with a teammate\'s lap');b.type='button';b.id='prTeamJump';
+    b.addEventListener('click',csTeamFocus);head.append(b)}
+  if(cs.teamFocus){cs.teamFocus=false;setTimeout(csTeamFocus,0)}}   // after the page scrolls to its top
+function csTeamFocus(){const t=$('prTeam');if(!t)return;t.scrollIntoView({block:'start'});const b=$('prTeamPick');if(b)b.focus({preventScroll:true})}
+/* a race review: open the Practice session of the same car and track, at its teammate panel (2.18) */
+$('fbTeamLap').addEventListener('click',async()=>{if(current.view!=='review'||!current.dir)return;const b=$('fbTeamLap');b.disabled=true;let j;
+  try{j=await api('teamref/for-review?'+new URLSearchParams({dir:current.dir}))}catch(e){connectionLost();return}finally{b.disabled=false}
+  if(!j.ok){banner(j.error||'That didn\'t work.',true);return}
+  if(!j.session){banner(j.message||'No telemetry of yours for this car and track yet.',true);return}
+  cs.teamFocus=true;openPrSession(j.session)});
 
 /* the Coach page: under the reference lap, for the car and track the Coach page shows */
 function csCoachCombo(p){cs.coachCombo=p&&p.car_path?{car:p.car_path,track:p.track_code}:null;const old=$('coTeam');if(old)old.remove();
@@ -2816,9 +2881,13 @@ const ccGap=g=>!ok(g)?'':(Math.abs(g)<0.005?'0.00 s':(g<0?'−':'+')+Math.abs(g)
 function ccPillOf(C){if(!C)return['Nothing yet',' no'];if(C.enough)return['Likely',' ok'];
   if((C.pairs||[]).some(p=>p.confidence==='likely'))return['A hint',' no'];return['Not enough to tell','']}
 function renderCars(){const j=cc.data;if(!j)return;const F=j.found||{},opts=j.options||[],sel=j.selected;
-  const s=$('ccPick');s.replaceChildren(...opts.map(o=>{const op=new Option(o.track+', '+o.class+' ('+plural(o.cars.length,'car')+')',JSON.stringify([o.track,o.class]));return op}));
+  // 2.18: a class with one car at that track can't be compared: said in its label and not pickable; no races, no choice
+  const s=$('ccPick');s.replaceChildren(...opts.map(o=>{const one=o.comparable===false||(o.cars||[]).length<2;
+    const op=new Option(o.label||(o.track+', '+o.class+(one?' (1 car, nothing to compare)':' ('+plural(o.cars.length,'car')+')')),JSON.stringify([o.track,o.class]));op.disabled=one;return op}));
+  if(!opts.length)s.append(new Option(j.races?'Nothing to compare yet':'No races yet',''));
   if(sel){s.value=JSON.stringify([sel.track,sel.class]);cc.pick=s.value}
-  s.disabled=opts.length<2;
+  const good=opts.filter(o=>o.comparable!==false&&(o.cars||[]).length>1),selGood=!!sel&&good.some(o=>o.track===sel.track&&o.class===sel.class);
+  s.disabled=!good.length||(good.length===1&&selGood);
   const P=(j.compare||{}).period||{},ps=$('ccPeriod');
   ps.options[0].textContent=P.mode==='season'?'One season: '+String(P.label).split(' (')[0]:'One season (the newest race\'s)';
   ps.value=j.period==='all'?'all':'season';
@@ -2866,7 +2935,7 @@ function ccWhere(j){const host=$('ccWhere'),W=j.where,cars=j.tel_cars||[];
   sec.append(h('p','note','The laps in each car come from different sessions, days and setups'+(W.teammate?' (and one of them is '+W.teammate+'\'s)':'')+', so a difference can be the day, the setup or the driver as well as the car.'));
   if(W.rough)sec.append(h('p','rcsay','Fewer than 5 clean laps in a car: a rough look. Only the biggest differences are shown (at most 3), as possible ones.'));
   else sec.append(h('p','note','Shown only when a shuffle test says the difference is unlikely to be chance, counting every corner and measure at once.'));
-  const ul=h('ul','ccwlist');(W.rows||[]).forEach(r=>ul.append(h('li','rcsay',r.text)));
-  if((W.rows||[]).length)sec.append(ul);else sec.append(h('p','rcsay',W.note||'No clear difference.'));
+  const ul=h('ul','ccwlist');(W.rows||[]).forEach(r=>ul.append(h('li','rcsay',mphText(r.text))));   // 2.18: mph
+  if((W.rows||[]).length)sec.append(ul);else sec.append(h('p','rcsay',mphText(W.note||'No clear difference.')));
   host.replaceChildren(sec)}
 })();

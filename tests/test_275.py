@@ -206,7 +206,9 @@ def test_rival_lap_goes_through_the_real_analysis_and_page_data():
 
 def test_digest_post_button_can_show_on_season():
     js = (ROOT / "debrief/desktop/ui/app.js").read_text(encoding="utf-8")
-    assert "(v==='season'&&discordSaved)" in js and "(v!=='review'&&v!=='season')||!discordSaved" in js
+    assert "(v==='season'&&discordSaved)" in js
+    # 2.18: on a review it shows even without a webhook (it then explains how to set one up)
+    assert "$('fbDiscord').hidden=v!=='review'&&!(v==='season'&&discordSaved);" in js
 
 
 def test_markers_exact_and_approximate():

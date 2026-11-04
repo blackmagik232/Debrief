@@ -158,6 +158,8 @@ def load_reference(path, car_path: str | None = None, track_code: str | None = N
             if ref is not None:
                 ref.source = dict(ref.source, kind="teammate", driver=out["driver"], label=short)
             cc = cornercoach.lap_from_raw(_cc_raw(ib, best), best["time"], L, label=short)
+            if cc is not None and name:
+                cc["driver"] = name                  # 2.18: the cards say "Alex brakes...", never "you"
             if ref is None and cc is None:
                 out["reason"] = "The best lap doesn't cover the whole track, so it can't be used as a reference."
                 return _done(out)
@@ -167,6 +169,71 @@ def load_reference(path, car_path: str | None = None, track_code: str | None = N
     except Exception as e:  # noqa: BLE001
         out["reason"] = f"This file could not be read ({str(e)[:120]})."
         return _done(out)
+
+
+def first_name(name) -> str:
+    """"Alex" for "Alex O'Neil" (cornercoach.first_name)."""
+    return cornercoach.first_name(name)
+
+
+# 2.18: how to get a teammate's file, said wherever he can pick one
+HOW_TO_GET = ("Ask your teammate to send you a telemetry file (.ibt) from Documents\\iRacing\\telemetry on their PC: "
+              "one from this car at this track (the file name starts with the car and track). Discord, e-mail or a "
+              "USB stick all work. Debrief checks it is a real iRacing telemetry file and never a program, reads "
+              "their best clean lap and keeps no copy of the file.")
+
+
+def _fmt_gap(x: float) -> str:
+    return f"{abs(x):.2f} s"
+
+
+def headline(driver, ref_time, my_best, cards=None) -> str:
+    """One line: who is quicker overall (their best lap against yours) and where (the corners where their lap
+    gains most on your typical laps). "" without both lap times. Never raises."""
+    try:
+        rt, mb = float(ref_time), float(my_best)
+    except (TypeError, ValueError):
+        return ""
+    if not (rt > 0 and mb > 0):
+        return ""
+    who = first_name(driver) or "Your teammate"
+    corners = [str(c.get("corner")) for c in sorted((c for c in cards or [] if isinstance(c, dict)
+                                                     and isinstance(c.get("lost_s"), (int, float))),
+                                                    key=lambda c: -c["lost_s"])[:2] if c.get("corner")]
+    where = " and ".join(corners)
+    gap = rt - mb
+    lt = livecoach.fmt_lap
+    if abs(gap) < 0.005:
+        s = f"Dead level: {who}'s best lap and yours are both {lt(mb)}."
+        return s + (f" {who} gains most on your typical laps in {where}." if where else "")
+    if gap < 0:
+        s = f"{who} is quicker overall: their best lap is {_fmt_gap(gap)} faster than yours ({lt(rt)} vs {lt(mb)})."
+        return s + (f" Most of it is in {where}." if where else "")
+    theirs = possessive(who if who != "Your teammate" else "your teammate")
+    s = f"You are quicker overall: your best lap is {_fmt_gap(gap)} faster than {theirs} ({lt(mb)} vs {lt(rt)})."
+    return s + (f" {who} is still quicker than your typical laps in {where}." if where else "")
+
+
+def laps_on_hand(entry, board_rows=None) -> list:
+    """The teammate laps Debrief already has for one car + track, for the "Compare with a teammate's lap" list:
+    the telemetry lap in use (loaded or kept) and the teammates' best lap times on the team page (Garage 61, lap
+    time only). Each: {"driver", "lap_text", "kind": "telemetry"|"garage61", "usable", "in_use", "note"}."""
+    out = []
+    s = (entry or {}).get("summary") or {}
+    if entry and s.get("lap_time"):
+        out.append({"driver": str(s.get("driver") or "Your teammate"), "lap_text": str(s.get("lap_text") or ""),
+                    "kind": "telemetry", "usable": True, "in_use": True,
+                    "note": "From their telemetry file: compared corner by corner below." +
+                            (" Kept for this car and track." if entry.get("kept") else "")})
+    rows = sorted((r for r in board_rows or [] if isinstance(r, dict) and not r.get("is_me")
+                   and isinstance(r.get("t"), (int, float)) and r["t"] > 0), key=lambda r: r["t"])
+    for r in rows[:8]:
+        nm = str(r.get("name") or "A teammate").strip()[:80]
+        out.append({"driver": nm, "lap_text": livecoach.fmt_lap(r["t"]), "kind": "garage61", "usable": False,
+                    "in_use": False,
+                    "note": "Best lap on Garage 61 (lap time only). For a corner-by-corner comparison, ask "
+                            f"{first_name(nm) or 'them'} for the telemetry file."})
+    return out
 
 
 def possessive(name: str) -> str:

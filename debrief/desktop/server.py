@@ -1321,6 +1321,59 @@ def png_size(data: bytes):
     return w, h
 
 
+# 2.18: Share card saves the picture itself and says where (the window's Edge download was silent)
+SHARE_DIR = None                  # tests point this at a temp folder
+SHARE_NAME_OK = re.compile(r"[^a-z0-9_-]+")
+
+
+def downloads_dir() -> Path:
+    """The real Downloads folder (FOLDERID_Downloads on Windows, so a moved one is found), else ~/Downloads."""
+    if SHARE_DIR is not None:
+        return Path(SHARE_DIR)
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            from uuid import UUID
+
+            class GUID(ctypes.Structure):
+                _fields_ = [("Data1", wintypes.DWORD), ("Data2", wintypes.WORD),
+                            ("Data3", wintypes.WORD), ("Data4", wintypes.BYTE * 8)]
+            u = UUID("{374DE290-123F-4565-9164-39C4925E467B}")  # FOLDERID_Downloads
+            gid = GUID(u.fields[0], u.fields[1], u.fields[2], (wintypes.BYTE * 8).from_buffer_copy(u.bytes[8:]))
+            ptr = ctypes.c_wchar_p()
+            if ctypes.windll.shell32.SHGetKnownFolderPath(ctypes.byref(gid), 0, None, ctypes.byref(ptr)) == 0:
+                path = Path(ptr.value)
+                ctypes.windll.ole32.CoTaskMemFree(ptr)
+                return path
+        except Exception:  # noqa: BLE001
+            pass
+    return Path.home() / "Downloads"
+
+
+def share_file_name(name) -> str:
+    """A safe file name for a share card: lower-case letters, digits, - and _ only, ending _share.png."""
+    base = SHARE_NAME_OK.sub("-", str(name or "").lower().removesuffix(".png").removesuffix("_share")).strip("-_")
+    return (base[:80].strip("-_") or "debrief") + "_share.png"
+
+
+def save_share_png(png: bytes, name) -> Path:
+    """Write a checked PNG into the Downloads folder under a new name (never over an existing file)."""
+    d = downloads_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    fn = share_file_name(name)
+    stem = fn[:-len(".png")]
+    for i in range(1, 1000):
+        p = d / (fn if i == 1 else f"{stem}-{i}.png")
+        try:
+            with open(p, "xb") as f:        # x: fails if the file is there, so nothing is ever overwritten
+                f.write(png)
+            return p
+        except FileExistsError:
+            continue
+    raise OSError("too many share cards with this name")
+
+
 class DiscordStage:
     """Share cards waiting for the Post click: in memory only (never a file), under a single-use random nonce.
     At most MAX at a time (the oldest goes first); each one is forgotten after TTL seconds. Staging never
@@ -3082,6 +3135,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._post_result_csv()
         if r == "api/discord-stage":
             return self._post_discord_stage()
+        if r == "api/share-save":
+            return self._post_share_save()
         if r == "api/setuplab/check-file":
             return self._post_setuplab_check_file()
         if r == coach2.UPLOAD_ROUTE:        # Coach 2.0: a voice pack .zip
@@ -3184,6 +3239,13 @@ class Handler(BaseHTTPRequestHandler):
             # never the values themselves: only which secrets changed
             app.say("Settings saved from the desktop app" + (f" ({', '.join(what)})." if what else "."))
             return self._json({"ok": True, "settings": view})
+        if r == "api/share-open":         # 2.18: the Downloads folder a share card was saved in (that folder only)
+            d = downloads_dir()
+            try:
+                os.startfile(str(d))  # type: ignore[attr-defined]  (Windows only)
+            except (AttributeError, OSError):
+                return self._json({"ok": False, "error": f"The picture is in {d}"})
+            return self._json({"ok": True})
         if r == "api/open-folder":
             lib = self._library_folder()
             if lib is None:
@@ -3480,6 +3542,41 @@ class Handler(BaseHTTPRequestHandler):
         target = {"saved": bool(hook), "hint": hint,
                   "name": info.get("name") if hint and info.get("hint") == hint else None}
         return self._json({"ok": True, "nonce": nonce, "width": size[0], "height": size[1], "target": target})
+
+    def _post_share_save(self):
+        """2.18 Share card: the picture (raw image/png, the discord-stage size rules) saved into the Downloads folder
+        under ?name= (made safe, never over an existing file). Replies with where it went. No network."""
+        cl = (self.headers.get("Content-Length") or "").strip()
+        if not cl.isdigit() or self.headers.get("Transfer-Encoding"):
+            self.close_connection = True
+            return self._json({"ok": False, "error": "Bad request."}, 400)
+        n = int(cl)
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if n > self.MAX_STAGE or n < self.MIN_STAGE or ctype != "image/png":
+            self.close_connection = True
+            return self._json({"ok": False, "error": "That picture can't be saved. Press Share card again."}, 400)
+        buf = bytearray()
+        while len(buf) < n:
+            chunk = self.rfile.read(min(65536, n - len(buf)))
+            if not chunk:
+                break
+            buf += chunk
+        if len(buf) != n:
+            self.close_connection = True
+            return self._json({"ok": False, "error": "The picture didn't arrive in full. Try again."}, 400)
+        self._consumed = True
+        png = bytes(buf)
+        if png_size(png) is None:
+            return self._json({"ok": False, "error": "That picture can't be saved. Press Share card again."}, 400)
+        name = (parse_qs(urlsplit(self.path).query).get("name") or [""])[0][:200]
+        try:
+            p = save_share_png(png, name)
+        except OSError as e:
+            app.say(f"Couldn't save a share card ({type(e).__name__}: {e}).")
+            return self._json({"ok": False, "error": "Debrief couldn't save the picture in your Downloads folder. "
+                                                     "Details were saved to debrief.log."}, 500)
+        app.say(f"Share card saved as {p.name} in the Downloads folder.")
+        return self._json({"ok": True, "path": str(p), "file": p.name, "folder": str(p.parent)})
 
     def _post_discord_post(self, body):
         """Post a staged share card to the saved Discord webhook: 1 Discord request. Runs only from the Post

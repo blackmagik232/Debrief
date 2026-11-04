@@ -11,6 +11,8 @@ post() and upload(); the coach asks coach_reference() and coach_extra()).
     POST api/teamref/upload?name=&car=&track=[&keep=1]   a teammate's .ibt as the raw body
     GET  api/teamref?car=&track=                  the teammate lap kept for this car + track
     GET  api/teamref/cards?car=&track=            corner coach cards against that lap
+    GET  api/teamref/laps?car=&track=             2.18: the teammate laps Debrief already has here (and how to get one)
+    GET  api/teamref/for-review?dir=              2.18: the Practice session of this race's car and track, if any
     POST api/teamref/keep {car, track, keep}       tick or untick "Keep for this car and track" for the lap in use
     POST api/teamref/forget {car, track}
     POST api/teamref/coach {car, track, on}       coach against that lap (off by default)
@@ -50,7 +52,8 @@ BALANCE_FILES = 20                # the balance map reads at most this many rece
 NAME_OK = re.compile(r"^[^\x00-\x1f/\\<>:\"|?*]{1,160}$")
 SETUP_ID_OK = re.compile(r"^(all|[A-Z]{1,3})$")
 
-GET_ROUTES = ("api/balance", "api/pressure", "api/setuplab/share", "api/teamref", "api/teamref/cards")
+GET_ROUTES = ("api/balance", "api/pressure", "api/setuplab/share", "api/teamref", "api/teamref/cards",
+              "api/teamref/laps", "api/teamref/for-review")
 POST_ROUTES = ("api/pressure/predict", "api/teamref/forget", "api/teamref/coach", "api/teamref/keep")
 UPLOAD_ROUTE = "api/teamref/upload"
 
@@ -661,15 +664,87 @@ def get_teamref_cards(h, q):
     if rep is None:
         from .. import cornercoach
         rep = cornercoach.analyze_files([str(p) for p in paths], reference=e["cornercoach"])
+        times = [x.get("time") for x in rep.get("laps_used") or [] if isinstance(x.get("time"), (int, float))]
         rep = S._jsonable({key: rep.get(key) for key in ("ok", "message", "reference", "reference_cards", "laps",
                                                          "corners")})
+        rep["my_best"] = min(times) if times else None
         with st.lock:
             st.team_cards[k] = rep           # memory only: the teammate's name is never written to disk unasked
     cards = rep.get("reference_cards") or []
     msg = (f"Your typical laps against {_short_label(e['summary'])}, from your last {rep.get('laps') or 0} clean laps "
            f"here." if rep.get("ok") else rep.get("message") or "Not enough clean laps here yet.")
+    from .. import teamref
+    head = teamref.headline(e["summary"].get("driver"), e["summary"].get("lap_time"), rep.get("my_best"), cards)
     return h._json({"ok": True, "teammate": _team_public(e, h.server, car, track), "cards": cards, "message": msg,
-                    "laps": rep.get("laps") or 0, "files": len(paths)})
+                    "laps": rep.get("laps") or 0, "files": len(paths), "headline": head,
+                    "my_best": rep.get("my_best")})
+
+
+def _same_names(car_a, track_a, car_b, track_b) -> bool:
+    """The same car and the same track layout, by name (a race review's Garage 61 names against a telemetry
+    file's iRacing names)."""
+    from .. import carcompare, schedule
+    if not (car_a and track_a and car_b and track_b):
+        return False
+    return carcompare.car_key(car_a) == carcompare.car_key(car_b) and schedule.same_track(track_a, track_b)
+
+
+def team_board(cfg, car_name, track_name) -> list:
+    """The team page's best laps (team.json, made by Refresh team data) for this car and track, or []."""
+    try:
+        data = json.loads((Path(cfg["library_folder"]) / "team" / "team.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    for c in (data.get("combos") if isinstance(data, dict) else None) or []:
+        if isinstance(c, dict) and _same_names(c.get("car"), c.get("track"), car_name, track_name):
+            return [r for r in c.get("board") or [] if isinstance(r, dict)]
+    return []
+
+
+def get_teamref_laps(h, q):
+    """The teammate laps Debrief already has for this car + track: the telemetry lap in use (loaded or kept) and
+    the team page's Garage 61 lap times, plus how to get a teammate's file. No requests."""
+    from .. import teamref
+    cfg = h._cfg()
+    car, track = _combo(q)
+    e = _team_get(h.server, cfg, car, track)
+    names = {}
+    try:
+        recs = _records(_index(h.server, cfg), car, track)
+        if recs:
+            c, t = recs[-1].get("car") or {}, recs[-1].get("track") or {}
+            names = {"car": c.get("name") or "",
+                     "track": " ".join(x for x in (t.get("name"), f"({t['config']})" if t.get("config") else "") if x)}
+    except ValueError:
+        names = {}
+    board = team_board(cfg, names.get("car"), names.get("track")) if names else []
+    return h._json({"ok": True, "laps": teamref.laps_on_hand(e, board), "how": teamref.HOW_TO_GET,
+                    "team_page": bool(board)})
+
+
+def get_teamref_for_review(h, q):
+    """The newest Practice session (telemetry on this PC) in this race review's car and track, so the review's
+    "Compare with a teammate's lap" opens it. {"session": id|None, "car", "track", "message"}."""
+    cfg = h._cfg()
+    d = h._review_dir(cfg, q.get("dir"))
+    try:
+        meta = (json.loads((d / "review.json").read_text(encoding="utf-8")) or {}).get("meta") or {}
+    except (OSError, ValueError, AttributeError):
+        meta = {}
+    car, track = str(meta.get("car") or ""), str(meta.get("track") or "")
+    ss, idx = h.server.practice_sessions(cfg)
+    hits = [s for s in ss if _same_names(s.get("car"), s.get("track"), car, track)] if idx else []
+    hits.sort(key=lambda s: -float(s.get("sort") or 0))
+    if hits:
+        return h._json({"ok": True, "session": hits[0].get("id"), "car": car, "track": track, "message": ""})
+    if not idx:
+        msg = ("Debrief hasn't read your telemetry yet. Open Practice and press Read my telemetry, then try again: "
+               "a teammate's lap is lined up with your own telemetry from this car and track.")
+    else:
+        msg = (f"There's no telemetry of yours from the {car or 'this car'} at {track or 'this track'} on this PC, so "
+               f"there's nothing to line a teammate's lap up with yet. Drive it once (iRacing saves the telemetry), "
+               f"press Read my telemetry on Practice, then open the session.")
+    return h._json({"ok": True, "session": None, "car": car, "track": track, "message": msg})
 
 
 def post_teamref_forget(h, body):
@@ -741,7 +816,8 @@ def coach_extra(server, status: dict) -> dict:
 # ---------------------------------------------------------------- dispatch (called from server.Handler)
 def get(h, r, q):
     fn = {"api/balance": get_balance, "api/pressure": get_pressure, "api/setuplab/share": get_setuplab_share,
-          "api/teamref": get_teamref, "api/teamref/cards": get_teamref_cards}[r]
+          "api/teamref": get_teamref, "api/teamref/cards": get_teamref_cards, "api/teamref/laps": get_teamref_laps,
+          "api/teamref/for-review": get_teamref_for_review}[r]
     return fn(h, q)
 
 

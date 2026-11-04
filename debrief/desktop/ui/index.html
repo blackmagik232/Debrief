@@ -77,8 +77,10 @@
         <button type="button" class="btn" id="fbScan" hidden title="Add the race log by scanning this race's replay in iRacing">Scan this race</button>
         <button type="button" class="btn" id="fbRival" hidden title="Add a nearby driver's lap to Compare by reading it from this race's replay">Read a rival's lap</button>
         <button type="button" class="btn" id="fbRaceCap" hidden title="Add the race log from RaceCap's replay scan">Link RaceCap</button>
+        <button type="button" class="btn" id="fbTeamLap" hidden title="Line your laps up with a teammate's lap in this car at this track">Compare with a teammate's lap</button>
         <button type="button" class="btn" id="fbDiscord" hidden>Post to Discord</button>
         <button type="button" class="btn" id="fbPrep" hidden>Pick another track</button>
+        <span class="note fbwhy" id="fbWeeklyWhy" hidden><span id="fbWeeklyWhyText"></span> <button type="button" class="linkbtn" id="fbWeeklyWhyGo"></button></span>
         <button type="button" class="btn" id="fbWeekly" hidden>Refresh this week</button>
         <button type="button" class="btn primary" id="fbTeam" hidden>Refresh team data</button>
         <span class="minibar fbbar" id="fbBar" hidden aria-hidden="true"><i></i></span>
@@ -613,6 +615,7 @@
         <p class="note" id="weeklyNote">Checking...</p>
         <ul class="warnlist" id="weeklySkipped" hidden></ul>
         <div class="row"><button type="button" class="btn" id="btnWeekly">Refresh this week</button><span class="msg" id="weeklyMsg" role="status"></span></div>
+        <p class="note whyoff" id="weeklyWhy" hidden><span id="weeklyWhyText"></span> <button type="button" class="linkbtn" id="weeklyWhyGo"></button></p>
       </div>
     </div>
   </section>
@@ -717,7 +720,7 @@
       <form class="panel" id="fDiscord" autocomplete="off">
         <div class="phead"><h3>Discord</h3><span class="pill" id="discordPill">Off</span></div>
         <p class="note msg bad" id="discordUnread" role="alert" hidden>Your saved Discord webhook can't be opened on this Windows account. Paste it again.</p>
-        <p class="note">Post a review's share card to the <span class="brandName">Midfield Menace</span> Discord channel. In Discord: channel settings &gt; Integrations &gt; Webhooks &gt; Copy Webhook URL, then paste it here. It's saved on this PC and Debrief never shows it again.</p>
+        <p class="note">Post a review's share card to the <span class="brandName">Midfield Menace</span> Discord channel. In Discord: channel settings &gt; Integrations &gt; Webhooks &gt; Copy Webhook URL, then paste it here. It's saved on this PC and Debrief never shows it again. Making a webhook needs the Manage Webhooks permission: if you don't have it, ask your team's Discord admin to make one and send you the link.</p>
         <p class="note"><b>Debrief only posts when you press Post and confirm. It never posts on its own.</b></p>
         <label class="field wide" for="discordHook"><span>Webhook address</span>
           <input id="discordHook" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste here">
@@ -874,6 +877,18 @@
     <label class="field wide" for="discordText"><span>Message</span><textarea id="discordText" maxlength="2000" rows="3" spellcheck="true"></textarea></label>
     <div class="row between"><span class="note" id="discordTarget"></span><span class="note num" id="discordCount">0 / 2000</span></div>
     <div class="row"><button type="button" class="btn primary" id="discordPost">Post</button><button type="button" class="btn" id="discordCancel">Cancel</button><span class="msg" id="discordDlgMsg" role="status"></span></div>
+  </div>
+</dialog>
+<dialog id="dlgDiscordHow" aria-labelledby="discordHowTitle">
+  <div class="dlgbody">
+    <div class="phead"><h3 id="discordHowTitle">Post to Discord: set it up once</h3><button type="button" class="btn ghost" id="discordHowClose" aria-label="Close">Close</button></div>
+    <p>Debrief posts a review's share card to your team's Discord channel through a webhook link. You paste that link once in Settings.</p>
+    <ol class="howlist">
+      <li>In Discord, open the channel's settings, then Integrations, then Webhooks, then New Webhook, then Copy Webhook URL.</li>
+      <li>Paste it in Settings, under Team and extras, Discord, and press Save.</li>
+    </ol>
+    <p class="note">Making a webhook needs the Manage Webhooks permission on that channel. If you don't have it, ask your team's Discord admin to make one and send you the link. Nothing is ever posted until you press Post.</p>
+    <div class="row"><button type="button" class="btn primary" id="discordHowGo">Open Discord settings in Debrief</button><button type="button" class="btn" id="discordHowCancel">Not now</button></div>
   </div>
 </dialog>
 <script src="static/app.js"></script>

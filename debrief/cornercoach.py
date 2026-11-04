@@ -686,10 +686,40 @@ VOICE = {"brake_later": "brake later", "brake_earlier": "brake earlier", "lighte
 VOICE_ALONE: dict = {}       # (2.13 review: every phrase is one idea on its own now)
 
 
-def _phrase(rule, D, P, label=None):
-    """(what's different, how to try it, why) for one rule, from the numbers."""
+# 2.18: a teammate's card says what THEY do ("Alex brakes at 85% where your typical lap brakes at 100%"), never
+# "you", so the verbs are said in the third person for them
+_THIRD = {"start": "starts", "brake": "brakes", "spend": "spends", "let": "lets", "pick": "picks", "arrive": "arrives",
+          "carry": "carries", "keep": "keeps"}
+
+
+def first_name(name) -> str:
+    """"Alex" for "Alex O'Neil"; "" when there's no name."""
+    parts = str(name or "").strip().split()
+    return parts[0].rstrip(":,;") if parts else ""
+
+
+def ref_driver(ref_lap) -> str:
+    """The teammate's name for a reference lap: its "driver", else worked out from its label
+    ("Alex Smith's best lap" -> "Alex Smith"), else ""."""
+    if not isinstance(ref_lap, dict):
+        return ""
+    d = str(ref_lap.get("driver") or "").strip()
+    if d and d != "Your teammate":
+        return d
+    lab = str(ref_lap.get("label") or "")
+    for tail in ("'s best lap", "' best lap"):
+        if lab.endswith(tail) and lab[:-len(tail)].strip() and not lab.lower().startswith(("your ", "the ")):
+            return lab[:-len(tail)].strip()
+    return ""
+
+
+def _phrase(rule, D, P, label=None, driver=None):
+    """(what's different, how to try it, why) for one rule, from the numbers. With driver (a teammate's reference
+    lap) the sentence is about them: "Alex brakes at 85% where your typical lap has 100%"."""
     def g(k, w="best"):
         return D[k][w] if D.get(k) else None
+    if driver is not None:
+        return _phrase_ref(rule, D, P, label, driver)
     who = "on your best laps" if not label else f"on {label}"
     if rule in ("brake_later", "brake_earlier"):
         n = _five(D["brake_m"]["diff"])
@@ -799,6 +829,28 @@ def _phrase(rule, D, P, label=None):
     return "", "", ""
 
 
+def _phrase_ref(rule, D, P, label, driver):
+    """_phrase for a teammate's reference lap: the same numbers, said about them (their first name, the verb in
+    the third person) against your typical laps. "how" stays addressed to you: it is what you can try."""
+    diff, how, why = _phrase(rule, D, P)
+    who = first_name(driver) or "your teammate"
+    own = "your teammate's lap" if who == "your teammate" else f"{who}'s lap"
+    if diff.startswith("on your best laps you "):
+        rest = diff[len("on your best laps you "):]
+        verb, _sp, tail = rest.partition(" ")
+        diff = f"{who} {_THIRD.get(verb, verb)} {tail}".rstrip()
+    elif diff.startswith("on your best laps "):
+        diff = f"on {own} " + diff[len("on your best laps "):]
+    diff = (diff.replace(" instead of ", " where your typical lap has ")
+                .replace("but carry ", "but carries ").replace(", and let go of", ", and lets go of")
+                .replace(", and brake at about", ", and brakes at about")
+                .replace("as you turn in", "as they turn in").replace("on typical laps", "on your typical laps")
+                .replace("on your best)", f"on {own})"))
+    if rule == "carry":
+        diff = diff.replace(" at the same speed (", " at the same speed as your typical lap (", 1)
+    return diff, how, why
+
+
 def _passes(x):
     return x is not None and x.get("z", 0) >= Z_LIKELY
 
@@ -851,14 +903,20 @@ METRICS = ("brake_m", "peak_pct", "full_s", "abs_share", "release_s", "release_e
            "pickup_m", "full_thr_s", "min_kmh", "entry_kmh", "exit_kmh", "spin_share", "lock_share", "t")
 
 
-def _card(c, name, lost, D, fired, rows_all, nb, nt, P, label=None, ref=False, group=None, p=None, p_all=None):
+def _card(c, name, lost, D, fired, rows_all, nb, nt, P, label=None, ref=False, group=None, p=None, p_all=None,
+          driver=None):
     strength = {r: (_rank_strength(rows_all, k) if rows_all else 0.0, D[k]["z"]) for r, k in fired}
     order = sorted(fired, key=lambda rk: (strength[rk[0]][0], strength[rk[0]][1]), reverse=True)
     primary = order[0]
     second = next((rk for rk in order[1:] if FAMILY[rk[0]] != FAMILY[primary[0]]), None)
     used = [primary] + ([second] if second else [])
-    parts = [_phrase(r, D, P, label) for r, _k in used]
-    diff = parts[0][0] + (", and " + parts[1][0].split(" you ", 1)[-1] if len(parts) > 1 else "")
+    who = (first_name(driver) or "your teammate") if ref and driver is not None else None
+    parts = [_phrase(r, D, P, label, driver if ref else None) for r, _k in used]
+    if len(parts) > 1 and who:
+        second_part = parts[1][0][len(who) + 1:] if parts[1][0].startswith(who + " ") else parts[1][0]
+        diff = parts[0][0] + ", and " + second_part
+    else:
+        diff = parts[0][0] + (", and " + parts[1][0].split(" you ", 1)[-1] if len(parts) > 1 else "")
     how = parts[0][1][0].upper() + parts[0][1][1:]
     if len(parts) > 1:
         how += " " + parts[1][1][0].upper() + parts[1][1][1:]
@@ -866,9 +924,11 @@ def _card(c, name, lost, D, fired, rows_all, nb, nt, P, label=None, ref=False, g
     z = D[primary[1]]["z"]
     pp = (p or {}).get(primary[0]) if isinstance(p, dict) else p
     conf = _confidence(z, nb + nt, ref, p=pp, p_all=p_all)
+    gap_text = f"best laps {lost:.2f} s quicker"
     if ref:
         evidence = f"{label} (1 lap) vs your {nt} typical laps."
         head = f"{name}: {label} was about {lost:.2f} s quicker here than your typical lap."
+        gap_text = f"{who or 'Teammate'} {lost:.2f} s quicker than your typical lap"
     else:
         evidence = f"{nb} best laps vs {nt} typical laps" + (f" ({group})" if group else "") + "."
         head = f"{name}: your best laps were about {lost:.2f} s quicker here than your typical ones."
@@ -884,7 +944,8 @@ def _card(c, name, lost, D, fired, rows_all, nb, nt, P, label=None, ref=False, g
             "confidence": conf, "confidence_rule": CONFIDENCE_RULE if not ref else
             "a single reference lap: its own lap-to-lap noise can't be measured, so this is always thin",
             "p_value": _r(pp, 4), "p_all": _r(p_all, 4), "group": group,
-            "voice": voice, "numbers": nums, "text": text, "reference": label if ref else None}
+            "voice": voice, "numbers": nums, "text": text, "reference": label if ref else None,
+            "driver": (driver or None) if ref else None, "gap_text": gap_text}
 
 
 # ---------------------------------------------------------------- the permutation test (2.13 review)
@@ -1065,6 +1126,7 @@ def compare_reference(laps, ref_lap, corners, flags=None, prefix: str = "T") -> 
     """Cards against ONE reference lap (e.g. a teammate's), clearly labelled and always 'thin'. Your typical laps =
     all your clean laps. Rules use their thresholds only (one lap has no measurable noise)."""
     label = str(ref_lap.get("label") or "the reference lap")
+    driver = ref_driver(ref_lap)
     out = []
     for k, c in enumerate(corners):
         name = f"{prefix}{k + 1}"
@@ -1087,7 +1149,7 @@ def compare_reference(laps, ref_lap, corners, flags=None, prefix: str = "T") -> 
         f2["abs"] = f2.get("abs") and ref_lap["R"].get("_abs")
         fired = _rules(D, f2)
         if fired:
-            out.append(_card(c, name, lost, D, fired, None, 1, len(rows), f2, label=label, ref=True))
+            out.append(_card(c, name, lost, D, fired, None, 1, len(rows), f2, label=label, ref=True, driver=driver))
     out.sort(key=lambda x: -(x["lost_s"] or 0))
     return out
 

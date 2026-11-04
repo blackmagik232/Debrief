@@ -593,7 +593,7 @@ function drawBoard(box,sr,w){box.replaceChildren();
 safe('this week',()=>{if(!W)return;show('weekly',true);
   if(W.season)$('wkSeason').textContent='This week · '+str(W.season);
   const host=$('wkList');const series=(Array.isArray(W.series)?W.series:[]).filter(s=>isObj(s));
-  if(!series.length){empty(host,'No weekly leaderboards yet.','In Debrief, open Team and click Refresh this week.');return}
+  if(!series.length){empty(host,'No weekly leaderboards yet.','In Debrief, pick your series on the Prepare page, then open Team and click Refresh this week.');return}
   series.forEach(sr=>{const p=h('div','panel');const hd=h('div','wkhead');hd.append(h('h3',null,str(sr.name||sr.id||'Series')));p.append(hd);
     const weeks=(Array.isArray(sr.weeks)?sr.weeks:[]).filter(w=>isObj(w)&&num(w.week)).sort((a,b)=>b.week-a.week);
     if(!weeks.length){p.append(h('p','note','No weeks saved for this series yet.'));host.append(p);return}

@@ -1,6 +1,11 @@
-Kumo (Japanese accent, male) (kumo): 500 clips, 16.74 MB, 16000 Hz, speed 0.95, comma pause 40 ms
-Coach phrases covered: 3808 of 3808 (100.0%)
+Kumo (Japanese accent, male) (kumo): 560 clips, 19.81 MB, 16000 Hz, speed 0.95, comma pause 40 ms
+Coach phrases covered: 5308 of 5308 (100.0%)
 Left to Windows speech by design: Good, 0 .. Good, 19 (20 phrases)
+Takes to listen to: 2 (new lines only)
+  line 463 'Turn three, off track.': spoken as 'Turn three... off track.' to get a pause at the comma (listen to the join)
+  line 504 'Turn five, on your best.': spoken as 'Turn five... on your best.' to get a pause at the comma (listen to the join)
+
+Earlier lines:
 Takes to listen to: 50 (new lines only)
   line 357 'Down a tenth, most in turn one.': spoken as 'Down a tenth. Most in turn one.' to get a pause at the comma (listen to the join)
   line 364 'Down eight tenths, most in turn eight.': spoken as 'Down eight tenths. Most in turn eight.' to get a pause at the comma (listen to the join)

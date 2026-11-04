@@ -572,7 +572,7 @@ def test_practice_plan_in_the_window():
             prog = pg.text_content("#coFocusProg")
             assert "Turn" in pg.text_content("#coFocusText"), pg.text_content("#coFocusText")
             # not started, or (this plan was driven with the coach earlier in these tests) the last drive's count
-            assert prog == "Not started" or (prog.startswith("Hit ") and pg.text_content("#coFocusPill") == "Last drive"), prog
+            assert prog.startswith("Not started") or (prog.startswith("Hit ") and pg.text_content("#coFocusPill") == "Last drive"), prog
             # Pick another
             pg.keyboard.press("Control+5")
             pg.wait_for_selector("#prPlan .ptmain")
@@ -616,7 +616,7 @@ def test_coach_page_with_focus_and_wheel():
         pg.wait_for_function("() => document.getElementById('coWheelText').textContent.includes('Button 7 on Simucube wheel')")
         pg.click("#coStart")
         pg.wait_for_function("() => document.getElementById('coText').textContent.startsWith('Coaching')", timeout=30000)
-        pg.wait_for_function("() => { const m = /^Hit \\d+ of (\\d+) so far$/.exec(document.getElementById('coFocusProg').textContent);"
+        pg.wait_for_function("() => { const m = /^Hit \\d+ of (\\d+) so far( · Done when .*)?$/.exec(document.getElementById('coFocusProg').textContent);"
                              " return !!m && +m[1] >= 3 && document.getElementById('coFocusPill').textContent === 'Watching' }",
                              timeout=60000)
         assert pg.text_content("#coFocusPill") == "Watching"

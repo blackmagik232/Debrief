@@ -100,7 +100,7 @@ def test_one_sureness_scale():
     for old in ("'Clear pattern'", "'Few laps'", "'Experiment'", "'From a reading'", "'Worth a try','ok'", "'Low to medium'"):
         assert old not in js, old
     assert "clear:['Sure','ok'" in js and "thin:['A hint','no'" in js and "unclear:['A guess','no'" in js
-    assert "reading:['Sure','ok'" in js and "'worth a try':['Likely',''" in js and "return['Likely',' ok']" in js
+    assert "reading:['Sure','ok'" in js and "'worth a try':['A hint','no'" in js and "return['Likely',' ok']" in js
 
 
 def test_setup_done_rule():

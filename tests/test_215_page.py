@@ -595,7 +595,7 @@ def test_setuplab_in_the_window():
             assert t5.startswith("Rotates"), t5
             words = {pg.text_content(f"#slBalance .baltbl td:nth-child({k}) .bal").split(" likely")[0] for k in (2, 3, 4)}
             assert words <= {"Pushes", "Rotates", "Neutral", "Not clear yet", "Not measured"}, words
-            assert "Setup ideas" in sec and ("Likely" in sec or "A guess" in sec) and "compare again" in sec, sec
+            assert "Setup ideas" in sec and ("A hint" in sec or "A guess" in sec) and "compare again" in sec, sec
             assert "Front anti-roll bar 2 → 1" in sec, sec
             assert pg.is_visible("#slBalance .ballegend") and pg.is_visible("#slBalance .balsmall")
             ps = pg.text_content("#slPress")

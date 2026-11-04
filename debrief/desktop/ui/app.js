@@ -1466,7 +1466,7 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
   ['Median','The middle value: half your laps were quicker, half slower. Debrief calls the median lap your typical lap.'],
   ['Pace drift','How much your clean laps slowed (+) or sped up (\u2212) from the start of the race to the end, from a line drawn through them.'],
   ['Consistency score','Out of 100: how close together your clean lap times were. 100 means every lap the same; under 45 means they were spread out. 60% comes from the spread, 40% from how many laps were close to your best.'],['Stint','A run of laps between pit stops.'],
-  ['Possibly traffic','A lap lost time in one short stretch your other laps didn\'t. It could be another car or a mistake.'],['Race log','Passes, fights, incidents and pit stops from a replay scan. Press Scan this race on a review, or link a scan from RaceCap.'],
+  ['Possibly traffic','A lap lost time in one short stretch your other laps didn\'t. It could be another car or a mistake.'],['Race log','Passes, fights, incidents and pit stops from a replay scan. Open one of your race reviews and press Scan this race.'],
   ['On the road','The order the cars crossed the line in the replay. The iRacing results are the official order.'],['Rolling or standing start','Whether the field was moving at the green flag.'],
   ['Resolve markers','For making a video of your race: a file the DaVinci Resolve video editor imports to mark the race\'s moments on its timeline.'],
   ['Setup','The car settings you drive with (pressures, camber, springs, wing...). Setup Lab reads them from your telemetry files, because iRacing\'s .sto setup files are locked.'],

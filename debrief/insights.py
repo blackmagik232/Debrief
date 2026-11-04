@@ -32,6 +32,9 @@ VARY_GOOD = 0.06         # s: spread that counts as "locked in"
 FADE_BAD = 0.3           # s: clean laps slower by this much from first to last
 COAST_BAD = 0.5          # s/lap: extra coasting on typical laps vs your best lap
 OVERLAP_BAD = 0.3        # s/lap: both pedals at once, more on a typical lap than on your best lap (2.18)
+LUCK_MIN_LAPS = 8        # clean laps with pedal readings before coasting / overlap can be called a habit (2.19)
+LUCK_ALPHA = 0.05        # ... and the quick laps must beat 95% of random shuffles of the laps (2.19)
+LUCK_SHUFFLES = 2000
 LAP1_GOOD = 0.05         # s: lap 1 at most this much slower than typical is "strong" (2.18: never praise a slower lap 1)
 LAP1_BAD = 1.0           # s: lap 1 slower than the median
 REF_LAP = 90.0           # the lap time the seconds above are written for
@@ -51,6 +54,28 @@ def _scale(median) -> float:
     """Threshold multiplier for this track: median lap / 90 s (clamped to 0.25..6, as analysis_plus.time_scale)."""
     m = _f(median)
     return min(6.0, max(0.25, m / REF_LAP)) if m else 1.0
+
+
+def luck_p(times, values):
+    """2.19 luck check: how often would the quickest laps look this much better on a pedal habit by pure chance?
+    times / values: one clean lap each (lap time, seconds of coasting or of both-pedals). The quick group is the
+    fastest quarter of the laps (at least 3); the measure is how much lower its average is than the median of all the
+    laps. The values are shuffled between laps LUCK_SHUFFLES times (fixed seed, so the same laps always give the same
+    answer); p is the share of shuffles that look at least this good, counting the real one.
+    Returns None when there are fewer than LUCK_MIN_LAPS laps."""
+    import numpy as np
+    pairs = [(float(t), float(v)) for t, v in zip(times, values) if t is not None and v is not None]
+    if len(pairs) < LUCK_MIN_LAPS:
+        return None
+    pairs.sort(key=lambda tv: tv[0])
+    v = np.array([x[1] for x in pairs])
+    q = max(3, int(round(len(v) / 4)))
+    overall = float(np.median(v))
+    obs = overall - float(np.mean(v[:q]))
+    rng = np.random.default_rng(219)
+    order = rng.random((LUCK_SHUFFLES, len(v))).argsort(axis=1)[:, :q]       # the q laps a shuffle gives the quick group
+    hits = int(np.sum(overall - np.mean(v[order], axis=1) >= obs - 1e-12))
+    return (1 + hits) / (1 + LUCK_SHUFFLES)
 
 
 def _f(v):
@@ -585,22 +610,32 @@ def build(data: dict) -> dict:
             vals = [v for v in vals if v is not None]
             return st.median(vals) if vals else None
         b_st = style[str(bn)]
+        def luck(key):
+            ts = [_f(l.get("t")) for l in laps if l.get("clean") and isinstance(style.get(str(l.get("n"))), dict)]
+            vs = [_f(style[str(l.get("n"))].get(key)) for l in laps if l.get("clean") and isinstance(style.get(str(l.get("n"))), dict)]
+            ok = [(t, v) for t, v in zip(ts, vs) if t is not None and v is not None]
+            return luck_p([t for t, _v in ok], [v for _t, v in ok])
         mc, bc = med("coast_s"), _f(b_st.get("coast_s"))
-        if mc is not None and bc is not None and mc - bc >= COAST_BAD * k:
+        pc = luck("coast_s") if mc is not None and bc is not None and mc - bc >= COAST_BAD * k else None
+        if pc is not None and pc <= LUCK_ALPHA:
             bad("coast", "Coasting", f"On a typical lap you spend {mc - bc:.1f} s more off both pedals than on your best "
                 "lap. On your quicker laps you tended to go from brake to throttle with less of a gap.",
                 round(mc - bc, 1), detail=f"Off both pedals (both under 5%, anywhere on the lap, lifts included): {mc:.1f} s "
                 f"on a typical clean lap, {bc:.1f} s on lap {bn}. Trail braking is a different thing: brake still on as "
-                "you turn in. Coasting starts once the brake is fully off.",
+                "you turn in. Coasting starts once the brake is fully off. Luck check: your quickest laps coasted less "
+                f"than random laps would in all but {pc * 100:.1f}% of shuffles of your {len(clean_ns)} clean laps.",
                 laps=[bn])
         # 2.18: both pedals at once can be deliberate (balancing the car, a left-foot braker's overlap): it is only a
         # habit when your typical laps do more of it than your best lap, i.e. the laps show it costing time
         mo, bo = med("overlap_s"), _f(b_st.get("overlap_s"))
-        if mo is not None and bo is not None and mo - bo >= OVERLAP_BAD * k:
+        po = luck("overlap_s") if mo is not None and bo is not None and mo - bo >= OVERLAP_BAD * k else None
+        if po is not None and po <= LUCK_ALPHA:
             bad("overlap", "Brake and throttle together", f"On a typical lap you have both pedals pressed for "
                 f"{mo - bo:.1f} s more than on your best lap. Some overlap can be deliberate, but your quicker lap "
                 "did less of it.", round(mo - bo, 1),
-                detail=f"Both pedals above 10%: {mo:.1f} s on a typical clean lap, {bo:.1f} s on lap {bn}.", laps=[bn])
+                detail=f"Both pedals above 10%: {mo:.1f} s on a typical clean lap, {bo:.1f} s on lap {bn}. Luck check: your quickest "
+                f"laps overlapped less than random laps would in all but {po * 100:.1f}% of shuffles of your {len(clean_ns)} clean laps.",
+                laps=[bn])
 
     # ---------- verdict: one sentence in words (the numbers are on the tiles right above it)
     out["verdict"].append(_verdict_sentence(out["fix"], con, data.get("skills")))

@@ -88,17 +88,63 @@ for t1, want in ((90.1, "as quick as"), (89.7, "0.4 s quicker"), (90.5, None), (
         check(g is not None and want in g["text"] and "within" not in g["text"], f"lap 1 {t1}: {g and g['text']}")
 
 # ---------------------------------------------------------------- 3. brake and throttle together: only when it costs
+# (2.19: and only when the quick laps beat random shuffles of the laps: the best lap alone could be luck)
+def quick_laps(n=12):
+    """Lap 3, 6, 9, 12 are the quick ones (90.0 s); the rest are 0.1 and 0.2 s slower."""
+    return [{"n": i, "t": 90.0 + (0.1 * (i % 3)), "clean": True} for i in range(1, n + 1)]
+
+
+QUICK = {3, 6, 9, 12}
 style = {str(n): {"coast_s": 2.0, "overlap_s": 0.8} for n in range(1, 13)}
 out = insights.build(base(style=style))
 check(keyed(out, "bad", "overlap") is None, "0.8 s a lap of overlap on every lap, best lap too: not a bad habit")
-style2 = dict(style, **{"2": {"coast_s": 2.0, "overlap_s": 0.2}})
-b = keyed(insights.build(base(style=style2)), "bad", "overlap")
-check(b is not None and "0.6 s more than on your best lap" in b["text"] and b["cost"] == 0.6,
-      f"typical laps overlap 0.6 s more than the best lap: a habit with its cost ({b and b['text']})")
-style3 = dict(style, **{"2": {"coast_s": 1.0, "overlap_s": 0.8}})
-c = keyed(insights.build(base(style=style3)), "bad", "coast")
-check(c and "Trail braking is a different thing" in c["detail"] and "lifts included" in c["detail"],
+style2 = {str(n): {"coast_s": 2.0, "overlap_s": 0.2 if n in QUICK else 0.8} for n in range(1, 13)}
+b = keyed(insights.build(base(style=style2, best={"n": 3, "t": 90.0, "clean": True})), "bad", "overlap")
+check(b is not None and "0.6 s more than on your best lap" in b["text"] and b["cost"] == 0.6 and "Luck check" in b["detail"],
+      f"typical laps overlap 0.6 s more than the quick laps: a habit with its cost ({b and b['text']})")
+only_best = dict(style, **{"2": {"coast_s": 2.0, "overlap_s": 0.2}})
+check(keyed(insights.build(base(style=only_best)), "bad", "overlap") is None,
+      "one lap with less overlap and the rest the same: could be luck, so no habit")
+style3 = {str(n): {"coast_s": 1.0 if n in QUICK else 2.0, "overlap_s": 0.8} for n in range(1, 13)}
+c = keyed(insights.build(base(style=style3, best={"n": 3, "t": 90.0, "clean": True})), "bad", "coast")
+check(c and "Trail braking is a different thing" in c["detail"] and "lifts included" in c["detail"] and "Luck check" in c["detail"],
       f"coasting says what it counts: {c and c['detail']}")
+check(keyed(insights.build(base(style=dict(style, **{"2": {"coast_s": 1.0, "overlap_s": 0.8}}))), "bad", "coast") is None,
+      "coasting less on one lap only: could be luck, so no habit")
+
+# the luck check on its own, and the null: pedal habits unrelated to lap time must almost never be called habits
+check(insights.luck_p([90 + i * 0.1 for i in range(6)], [1.0] * 6) is None, "under 8 laps: no luck check possible, no claim")
+check(insights.luck_p([90 + i * 0.1 for i in range(12)], [0.2] * 3 + [0.8] * 9) <= 0.01, "quick laps clearly lower: rare by chance")
+check(insights.luck_p([90 + i * 0.1 for i in range(12)], [0.8] * 11 + [0.2]) > 0.3, "the slowest lap lower: nothing")
+import numpy as _np  # noqa: E402
+
+
+def _null_rate(runs, check_luck, n_laps=14, seed=19):
+    rng = _np.random.default_rng(seed)
+    hits = 0
+    for _ in range(runs):
+        ts = 90 + rng.normal(0, 0.3, n_laps)
+        laps = [{"n": i + 1, "t": float(ts[i]), "clean": True} for i in range(n_laps)]
+        sty = {str(i + 1): {"coast_s": float(rng.normal(2.0, 0.8)), "overlap_s": float(rng.normal(1.0, 0.5))}
+               for i in range(n_laps)}
+        bn = int(_np.argmin(ts)) + 1
+        d = base(laps=laps, style=sty, best={"n": bn, "t": float(ts.min()), "clean": True})
+        if not check_luck:
+            old = insights.LUCK_ALPHA
+            insights.LUCK_ALPHA = 2.0                     # the effect-size gate alone (how 2.18 behaved)
+            try:
+                o = insights.build(d)
+            finally:
+                insights.LUCK_ALPHA = old
+        else:
+            o = insights.build(d)
+        hits += keyed(o, "bad", "coast") is not None or keyed(o, "bad", "overlap") is not None
+    return hits / runs
+
+
+_with, _without = _null_rate(300, True), _null_rate(300, False)
+check(_with <= 0.08, f"habits unrelated to lap time: coasting or overlap called a habit in {_with:.1%} of 300 runs with the luck check (<= 8%)")
+check(_without > 0.2, f"... and in {_without:.1%} without it (2.18: best lap vs typical lap only)")
 
 # ---------------------------------------------------------------- 4. fix first: a measured cause first, never empty
 d = base(corners=[corner("C1", 0.5), corner("C2", 0.21), corner("C3", 0.09)],

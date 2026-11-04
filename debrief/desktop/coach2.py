@@ -44,7 +44,7 @@ POST_ROUTES = ("api/coach/voice-settings", "api/coach/preview", "api/coach/measu
                "api/coach/repeat", "api/coach/quiet", "api/coach/rehearse", "api/coach/wheel-repeat-learn",
                "api/coach/wheel-repeat-clear", "api/coach/pace", "api/coach/wheel-pace-learn",
                "api/coach/wheel-pace-clear", "api/coach/mute-set", "api/coach/rehearse-speed",
-               "api/coach/rehearse-skip")
+               "api/coach/rehearse-skip", "api/overlay/set")
 UPLOAD_ROUTE = "api/coach/import-pack-zip"
 QUIET_S = 60.0
 REPEAT_NOTE_S = 12.0             # 2.18: "Repeat that: not said, the coach is muted" stays on the page this long
@@ -346,6 +346,12 @@ def on_coach_stop(server):
 
 def on_shutdown(server):
     stop_wheel(server)
+    ov = getattr(server, "_overlay", None)
+    if ov is not None:
+        try:
+            ov.stop()
+        except Exception:  # noqa: BLE001
+            pass
     close_side(server)
 
 
@@ -382,9 +388,93 @@ def extra(server, st: dict):
         st["voice_note"] = voice_note_for(server, st.get("voice") if st.get("running") else None)
     except Exception:  # noqa: BLE001
         st["voice_note"] = {"ok": True, "text": "", "using": ""}
+    st["overlay"] = overlay_status(server)       # 2.19: the coach overlay (off unless he turned it on)
     rn = st.get("repeat_note")
     if isinstance(rn, dict) and time.time() - float(rn.get("wall") or 0) > REPEAT_NOTE_S:
         st["repeat_note"] = None            # shown for a few seconds after the press, then gone
+
+
+# ---------------------------------------------------------------- 2.19 the coach overlay
+_OVERLAY_LOCK = threading.Lock()
+
+
+def overlay_of(server):
+    """The server's one overlay controller. Creating it makes no window and imports no Tk."""
+    from .. import overlay
+    with _OVERLAY_LOCK:
+        ov = getattr(server, "_overlay", None)
+        if ov is None:
+            store = overlay.Store(lambda: settings_io.load_extra("overlay"), lambda d: settings_io.save_extra("overlay", d))
+            ov = overlay.Overlay(store, lambda: _overlay_status_source(server), settings_io.units, log=app.say)
+            server._overlay = ov
+            server._overlay_autostarted = False
+        return ov
+
+
+def _overlay_status_source(server):
+    """The overlay reads the same status the Coach page polls (LiveRunner.status), or None when no coach runs."""
+    r = runner_of(server)
+    return r.status() if r is not None else None
+
+
+def overlay_autostart(server):
+    """Once per run of Debrief, shows the overlay if he left it turned on. Never raises."""
+    try:
+        ov = overlay_of(server)
+        if not server._overlay_autostarted:
+            server._overlay_autostarted = True
+            if ov.store.enabled() and not server.stopping.is_set():
+                ov.start(wait_s=0.0)
+    except Exception:  # noqa: BLE001  (the overlay never gets in the coach's way)
+        app.say("ERROR starting the coach overlay:\n" + traceback.format_exc())
+
+
+def overlay_status(server) -> dict:
+    overlay_autostart(server)
+    return overlay_of(server).status()
+
+
+def post_overlay(h, body):
+    """2.19: Show overlay on/off, Edit position on/off, opacity and size. Off by default; one choice per call."""
+    from .. import overlay
+    ov = overlay_of(h.server)
+    allowed = {"enabled", "edit", "opacity", "size"}
+    if not body or not set(body) <= allowed:
+        raise ValueError("Bad request.")
+    for k in ("enabled", "edit"):
+        if k in body and not isinstance(body[k], bool):
+            raise ValueError("Bad request.")
+    try:
+        if "enabled" in body:
+            if body["enabled"]:
+                st = ov.start()
+                if st["available"] and st["why"] == "":
+                    ov.store.set_enabled(True)
+            else:
+                ov.store.set_enabled(False)
+                ov.command(edit=False)
+                ov.stop()
+        if "edit" in body:
+            if body["edit"] and not ov.running():
+                raise ValueError("Show the overlay first.")
+            ov.command(edit=body["edit"])
+        if "opacity" in body:
+            op = body["opacity"]
+            if isinstance(op, bool) or not isinstance(op, (int, float)) or not overlay.MIN_OPACITY <= op <= overlay.MAX_OPACITY:
+                raise ValueError("Opacity is 30% to 100%.")
+            if not ov.running():
+                raise ValueError("Show the overlay first.")
+            ov.command(opacity=float(op))
+        if "size" in body:
+            if body["size"] not in overlay.SIZES:
+                raise ValueError("Pick Small, Medium or Large.")
+            if not ov.running():
+                raise ValueError("Show the overlay first.")
+            ov.command(size=body["size"])
+    except OSError as e:
+        app.say(f"ERROR saving the overlay settings: {type(e).__name__}: {e}")
+        raise ValueError("The overlay setting couldn't be saved. Details were saved to debrief.log.")
+    return h._json({"ok": True, "overlay": ov.status()})
 
 
 def voice_note_for(server, voice_status=None) -> dict:
@@ -476,7 +566,7 @@ def post(h, r, body):
           "api/coach/pace": post_pace, "api/coach/wheel-pace-learn": lambda h, b: post_wheel_learn(h, b, "pace"),
           "api/coach/wheel-pace-clear": lambda h, b: post_wheel_clear(h, b, "pace"),
           "api/coach/mute-set": post_mute_set, "api/coach/rehearse-speed": post_rehearse_speed,
-          "api/coach/rehearse-skip": post_rehearse_skip}[r]
+          "api/coach/rehearse-skip": post_rehearse_skip, "api/overlay/set": post_overlay}[r]
     return fn(h, body if isinstance(body, dict) else {})
 
 

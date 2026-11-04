@@ -1492,6 +1492,7 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
   ['A guess (an experiment)','"Try this and see": a plan for a corner where your best laps are quicker but the Corner coach found no clear reason. Drive it the same way every lap and see whether it helps. It is not a known fix.'],
   ['Hit it','A lap where your number for the plan\'s corner met the check. 7 laps out of 10 means it is a habit, and the next session moves on.'],
   ['Quicker, No clear difference','Whether your laps that hit the plan were quicker through that corner than the ones that missed, from the same part of the session. Debrief shuffles which laps count as hits 400 times. It only says Quicker when fewer than 1 shuffle in 20 shows a gap as big (and at least 0.03 s), with at least 3 laps of each. It describes those laps and does not promise lap time.'],
+  ['Coach overlay','A small see-through box on top of iRacing while the coach runs: the state in large type (Coaching, Muted, Rehearsing, Off), your one thing and its count, the last cue and your delta to the reference. Turn it on under Coach > Overlay > Show overlay (it is off until you do). Clicks go through it, so it never takes the mouse or keys from iRacing. Edit position lets you drag it (and its corner) where you want it; its place, size and opacity are remembered for each monitor. iRacing must run in borderless windowed mode: in exclusive fullscreen mode Windows hides every overlay, this one too.'],
   ['Wheel button mute','Coach page > Settings > Mute from a wheel button: press Learn, then press the button on your wheel. That button then mutes and unmutes the coach.'],
   ['Sure, Likely, A hint, A guess','How sure something is, the same four words on every page. Sure: read straight from your laps, or a tip that beat chance in fewer than 1 in 100 shuffles of 12 or more laps (and still does when every corner is counted at once). Likely: beat chance in fewer than 1 in 20. A hint: only a few laps show it, or it could still be chance. A guess: no clear pattern, so try it and see.']],
  keys:[['Ctrl+Shift+M','Mute or unmute the coach']]};   // 2.18: the page keys come first, from keyList()
@@ -1754,7 +1755,7 @@ function renderCoach(st){co.st=st;const run=!!st.running,state=CO_STATE[st.state
   coPlanShow(!(run&&W.length));
   renderCoFocus(st);renderWheel(st.wheel);
   if(!co.filled||!co.dirty){fillCoachSettings(st.settings||{});co.filled=true}
-  coLevelShow(st);coTestResult(st.test_voice);csCoach(st);co2Render(st);cdRender(st)}
+  coLevelShow(st);coTestResult(st.test_voice);csCoach(st);co2Render(st);cdRender(st);ovRender(st.overlay)}
 // 2.17.2 Coaching level (Quiet / Normal / Busy / Only when I ask): saved as soon as it is picked; the coach uses it at once
 function coLevelShow(st){const lv=(st.settings||{}).level||st.level||'normal';
   if(!co.levelBusy)document.querySelectorAll('input[name=coLevel]').forEach(r=>{r.checked=r.value===lv});
@@ -1851,6 +1852,24 @@ function cdRender(st){if(current.view!=='coach'||$('coDrive').hidden)return;cons
   const m=$('cdMute');m.disabled=!run;m.setAttribute('aria-pressed',String(!!st.muted));m.textContent=st.muted?'Unmute':'Mute';
   $('cdRepeat').disabled=$('cdPace').disabled=!run;
   $('cdRh').hidden=!(run&&reh);$('cdSkipLap').disabled=$('cdSkipCue').disabled=!!st.skipping}
+
+/* ---------- 2.19: the coach overlay (a see-through box on top of iRacing; the window itself is drawn by Debrief, not this page) */
+const ov={busy:false};
+function ovRender(o){if(current.view!=='coach'||!o||ov.busy)return;const on=!!o.running;
+  $('ovShow').checked=on;$('ovShow').disabled=!o.available&&!on;
+  const e=$('ovEdit');e.disabled=!on;e.setAttribute('aria-pressed',String(!!o.edit));e.textContent=o.edit?'Done':'Edit position';
+  $('ovSize').disabled=!on;$('ovSize').value=o.size||'medium';
+  const op=$('ovOpacity');op.disabled=!on;if(document.activeElement!==op){op.value=Math.round(100*(o.opacity||0.85))}$('ovOpacityV').textContent=op.value+'%';
+  const p=$('ovPill');p.className='pill'+(on?' ok':'');p.textContent=on?(o.edit?'Editing':'On'):'Off';
+  const w=$('ovWhy');w.hidden=!o.why;w.textContent=o.why||''}
+async function ovSet(body){ov.busy=true;const r=await co2Post('overlay/set',body,'ovMsg');ov.busy=false;
+  if(r&&r.ok){setMsg('ovMsg','');if(r.overlay){ovRender(r.overlay);if(body.enabled&&!r.overlay.running&&r.overlay.why)setMsg('ovMsg','Not shown.','bad')}}
+  else if(co.st)ovRender(co.st.overlay)}
+$('ovShow').addEventListener('change',()=>ovSet({enabled:$('ovShow').checked}));
+$('ovEdit').addEventListener('click',()=>ovSet({edit:$('ovEdit').getAttribute('aria-pressed')!=='true'}));
+$('ovSize').addEventListener('change',()=>{if($('ovSize').value!=='custom')ovSet({size:$('ovSize').value})});
+$('ovOpacity').addEventListener('input',()=>{$('ovOpacityV').textContent=$('ovOpacity').value+'%'});
+$('ovOpacity').addEventListener('change',()=>ovSet({opacity:+$('ovOpacity').value/100}));
 
 /* ---------- Coach 2.0: Repeat that, Mute for 1 minute, rehearsal, voice and sound, coach log, credits */
 let co2={voices:null,sessions:null,vdirty:false,previewing:false,measuring:false,logName:null};

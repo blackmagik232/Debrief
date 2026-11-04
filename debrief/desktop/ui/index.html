@@ -493,6 +493,18 @@
         <p class="note" id="coVoiceLine"></p>
         <p class="note warn">Keep Debrief open while you drive.</p>
       </div>
+      <div class="panel" id="ovPanel">
+        <div class="phead"><h3>Overlay</h3><span class="pill" id="ovPill">Off</span></div>
+        <p class="note">A small see-through box on top of iRacing while the coach runs: the state, your one thing and its count, the last cue and your delta to the reference. Clicks go through it. iRacing must run in <b>borderless windowed</b> mode: in exclusive fullscreen no overlay can show.</p>
+        <div class="row">
+          <label class="check" for="ovShow"><input id="ovShow" type="checkbox"><span>Show overlay</span></label>
+          <button type="button" class="btn" id="ovEdit" aria-pressed="false" disabled title="Drag the overlay where you want it, then press Done">Edit position</button>
+          <label class="field" for="ovSize"><span>Size</span><select id="ovSize" disabled><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="custom" hidden>Custom</option></select></label>
+          <label class="field" for="ovOpacity"><span>Opacity <b class="num" id="ovOpacityV"></b></span><input id="ovOpacity" type="range" min="30" max="100" step="5" disabled></label>
+          <span class="msg" id="ovMsg" role="status"></span>
+        </div>
+        <p class="note" id="ovWhy" hidden></p>
+      </div>
       <div class="cogrid">
         <div class="panel">
           <div class="phead"><h3>Your reference lap</h3></div>

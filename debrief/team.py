@@ -49,6 +49,13 @@ def _num(x):
     return x if np.isfinite(x) else None
 
 
+# 2.18: the skipped note says what to do next
+NO_MATCH_NOTE = ("Couldn't match this track or car to Garage 61, so it was skipped. Garage 61 may name it differently "
+                 "or not list it yet. Next step: review your next race here with Review last race (a new review "
+                 "usually keeps Garage 61's own track and car numbers), then press Refresh team data again. "
+                 "Your own reviews of this track still work.")
+
+
 def library_combos(folder) -> list[dict]:
     """Track/car combos from the review library, newest race first, with your best lap at each."""
     out = {}
@@ -320,7 +327,7 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
                  "board": [], "kings": None, "note": None}
         out_combos.append(entry)
         if tid is None or cid is None:
-            entry["note"] = "Couldn't match this track or car to Garage 61, so it was skipped."
+            entry["note"] = NO_MATCH_NOTE
             continue
         # not on the team: zero team-lap requests, only your own laps (your board row and telemetry)
         team_laps = [] if not_member else api.find_laps(tracks=[tid], cars=[cid], teams=[team_slug],

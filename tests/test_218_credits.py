@@ -98,7 +98,7 @@ for n in ("pyirsdk", "PyYAML", "urllib3", "charset-normalizer", "idna", "pypdf",
 check("Mihail Latyshov" in lic and "SIL OPEN FONT LICENSE Version 1.1" in lic and "IETF Trust" in lic,
       "pyirsdk, the fonts and RFC 8032 keep their copyright lines")
 spec = read(ROOT / "packaging" / "debrief.spec")
-check('for _f in ("CREDITS.md", "THIRD_PARTY_LICENSES.txt"):' in spec and 'datas.append((str(ROOT / _f), "."))' in spec,
+check('for _f in ("CREDITS.md", "THIRD_PARTY_LICENSES.txt", "LICENSE"):' in spec and 'datas.append((str(ROOT / _f), "."))' in spec,
       "the build bundles CREDITS.md and THIRD_PARTY_LICENSES.txt (and stops if one is missing)")
 check("copy_metadata(_dist)" in spec and '"pyirsdk"' in spec, "and each package's own licence metadata")
 check("StringStruct('LegalCopyright', 'Copyright (C) 2026 Black Magik Studios')" in spec, "Debrief.exe's copyright")

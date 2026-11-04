@@ -82,8 +82,12 @@ def test_comparison_gap_used_when_bigger():
     refs = [{"key": "ref0", "name": "Ann Smith", "t": 89.5, "main": True}]
     d = base(refs=refs, corners=[corner("C1", 0.02, ref_gap=0.4), corner("C2", 0.21)])
     out = insights.build(d)
-    assert out["fix"][0]["corner"] == "C1" and out["fix"][0]["basis"] == "ref" and "Ann" in out["fix"][0]["why"]
-    assert len(out["verdict"]) == 1 and "finding the time in C1 and C2." in out["verdict"][0]
+    # 2.18: C2 has a measured cause (tips), so it comes first; C1 (Ann 0.4 s quicker, no tip) follows with what to watch
+    assert [f["corner"] for f in out["fix"]] == ["C2", "C1"], out["fix"]
+    c1 = out["fix"][1]
+    assert c1["basis"] == "ref" and "Ann" in c1["why"] and not c1["tips"] and "comparison lap" in c1["watch"], c1
+    assert "watch" not in out["fix"][0]
+    assert len(out["verdict"]) == 1 and "C2 and C1." in out["verdict"][0], out["verdict"]
 
 
 def test_refresh_saved_reviews():

@@ -857,13 +857,13 @@ const TTF=(()=>{const IN=isObj(D.insights)?D.insights:null;if(IN&&typeof IN.time
 safe('summary tiles',()=>{
   const host=$('stats');const add=(lab,v,ctx,small)=>{const d=h('div','stat');d.append(h('span','lab',lab));d.append(rich(h('span','v'+(small?' small':'')),v));d.append(rich(h('span','ctx'),ctx));host.append(d);return d};
   const ct=cleanLaps.map(l=>l.t);const within=ct.filter(t=>Math.abs(t-D.median)<=0.5).length;
-  add('Best lap',[fmt(D.best.t)],['Lap '+D.best.n+' · ',{b:ab(D.median-D.best.t)+' s'},' quicker than your median '+fmt(D.median)]);
+  add('Best lap',[fmt(D.best.t)],['Lap '+D.best.n+' · ',{b:ab(D.median-D.best.t)+' s'},' quicker than your typical lap (the median: half your laps were quicker, half slower) '+fmt(D.median)]);
   const C0=isObj(D.consistency)?D.consistency:{};
-  if(typeof C0.score==='number')add('Consistency',[String(C0.score),{u:'/100'}],[C0.label?{b:String(C0.label)}:'',C0.label?' · ':'',typeof C0.std==='number'?'clean laps ±'+C0.std.toFixed(2)+' s. ':(D.std_clean!=null?'clean laps ±'+D.std_clean.toFixed(2)+' s. ':''),{a:'How it’s scored',href:'#consistency'}]);
+  if(typeof C0.score==='number')add('Consistency',[String(C0.score),{u:'/100'}],[C0.label?{b:String(C0.label)}:'',C0.label?' · ':'','Out of 100: higher means your clean laps were closer together. ',typeof C0.std==='number'?'clean laps ±'+C0.std.toFixed(2)+' s. ':(D.std_clean!=null?'clean laps ±'+D.std_clean.toFixed(2)+' s. ':''),{a:'How it’s scored',href:'#consistency'}]);
   else add('Consistency',D.std_clean!=null?['±'+D.std_clean.toFixed(2),{u:'s'}]:['–'],ct.length?['Spread of clean laps. ',{b:within+' of '+ct.length},' were within half a second of your median lap']:['Not enough clean laps']);
-  const top=FIXES.slice(0,2).map(f=>String(f.corner));
+  const top=FIXES.slice().sort((a,b)=>b.gain-a.gain).slice(0,2).map(f=>String(f.corner));
   add('Time to find',TTF>0?[TTF.toFixed(2),{u:'s/lap'}]:['–'],top.length?['Mostly in ',{b:andList(top)},'. See ',{a:'What to work on',href:'#coach'}]:['No corner stands out']);
-  if(cleanLaps.length>=5&&typeof D.trend_total==='number')add('Pace drift',[sg(D.trend_total,2),{u:'s'}],[Math.abs(D.trend_total)<0.15?'Held steady over clean laps, first to last':'Trend over clean laps, first to last. '+(D.trend_total>0?'Positive means slower':'Negative means quicker')]);
+  if(cleanLaps.length>=5&&typeof D.trend_total==='number')add('Pace drift',[sg(D.trend_total,2),{u:'s'}],[Math.abs(D.trend_total)<0.15?'How much your clean laps slowed or sped up from first to last: they held steady':'How much your clean laps slowed or sped up from first to last. '+(D.trend_total>0?'Plus means they got slower':'Minus means they got quicker')]);
   if(mainRef&&typeof mainRef.t==='number'){const g=D.best.t-mainRef.t;add('Gap to comparison',[sg(g,2),{u:'s'}],[String(mainRef.name||'Comparison')+' · '+fmt(mainRef.t)+(g>0?' · quicker than you':' · slower than you')])}
 },'summary');
 safe('race summary',()=>{
@@ -1574,7 +1574,7 @@ function fixCard(f,i){const d=h('div','fix');d.append(h('span','rk',String(i+1))
   mid.append(h('p','why',f.why?String(f.why):(f.basis==='ref'?firstName(refName)+' is '+f.gain.toFixed(2)+' s quicker here on a good lap.':'Your typical lap loses '+f.gain.toFixed(2)+' s here compared with your better laps.')));
   const tips=Array.isArray(f.tips)?f.tips:((isObj(D.insights)&&isObj(D.insights.tips)&&D.insights.tips[f.corner])||[]);
   if(tips.length){const ul=h('ul');tips.forEach(t=>{t=String(t);ul.append(h('li',null,t.charAt(0).toUpperCase()+t.slice(1).replace(/\.+$/,'')+'.'))});mid.append(ul)}
-  else mid.append(h('p','why','No single measure stands out between your good and typical laps here: watch it in Compare laps.'));
+  else mid.append(h('p','why',f.watch?String(f.watch):'Your brake point, slowest speed, throttle and gear here look about the same on quicker and slower laps, so the time is spread thin. Next time watch your line and where you turn in: compare your best lap with a typical one in Compare laps.'));
   const lf=learnFor(f.corner);if(lf)mid.append(learnLine(lf,f.corner));
   const ftop=h('div','ftop');const ftx=h('div');ftx.append(...mid.childNodes);ftop.append(ftx);const fm=safe('corner map '+f.corner,()=>cornerMap(f,nums,c));if(fm)ftop.append(fm);mid.append(ftop);
   const body=h('div','fbody');
@@ -1593,7 +1593,7 @@ function fixCard(f,i){const d=h('div','fix');d.append(h('span','rk',String(i+1))
       const dv=tgt&&num(nums.typical[k])&&num(tgt[k])?nums.typical[k]-tgt[k]:null;const differs=dv!=null&&Math.abs(dv)>=SAME[k];if(dv!=null&&Math.abs(dv)>=STAND[k])stands=true;
       cols.forEach(([ck])=>{const v=nums[ck][k];const td=h('td',differs&&(ck==='typical'||ck===tgtKey)?'hl':null,num(v)?techFmt[k](v):'–');tr.append(td)});
       if(tgt){const td=h('td','dd');const w=techDelta(k,dv);if(differs)td.append(h('b',null,w));else td.textContent=w;tr.append(td)}tb.append(tr)});
-    t.append(tb);wrap.append(t);if(stands)left.append(wrap);else{const fold=h('details','fnumbers');fold.append(h('summary',null,'See the numbers (nothing big stands out)'),wrap);left.append(fold)}}
+    t.append(tb);wrap.append(t);if(stands)left.append(wrap);else{const fold=h('details','fnumbers');fold.append(h('summary',null,tips.length?'See the numbers':'See the numbers (nothing big stands out)'),wrap);left.append(fold)}}
   body.append(left);
   const sp=h('div','fspark');sp.append(h('p','note','Time through '+f.corner+', lap by lap'));const sh=h('div','spark');sp.append(sh);
   if(c&&isObj(c.per_lap)){body.append(sp);sparkFns.push(()=>safe('sparkline',()=>renderSpark(sh,c)))}

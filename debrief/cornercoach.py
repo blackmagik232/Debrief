@@ -92,6 +92,7 @@ R_PICKUP_M = 15.0           # throttle picked up >= 15 m earlier
 R_MIN_KMH = 3.0             # >= 3 km/h more at the slowest point ...
 R_ENTRY_KMH = 3.0           # ... with entry speed within 3 km/h
 R_SLIP_SHARE = 0.10         # wheelspin / lock-up share lower by >= 0.10
+LOCK_EVIDENCE = 0.05        # 2.18: without ABS, "press less hard" needs typical laps locking a front this share of the stop
 
 Z_LIKELY = 2.0              # difference of medians > 2 standard errors = beyond the lap-to-lap noise (first gate)
 Z_CLEAR = 3.0               # (kept for callers; "clear" now comes from the permutation test below)
@@ -593,6 +594,19 @@ RULE_METRICS = ("brake_m", "peak_pct", "abs_share", "coast_s", "trail_pct", "rel
                 "entry_kmh", "spin_share", "lock_share")
 
 
+def _abs_on(P) -> bool:
+    """True unless the flags say this car's ABS never worked in these laps (or the channel is missing).
+    Flags without an "abs" key (older callers) count as ABS known."""
+    return bool((P or {}).get("abs", True))
+
+
+def lock_evidence(D) -> bool:
+    """2.18: the typical laps lock a front wheel (wheel speeds) for at least LOCK_EVIDENCE of the stop, and the best
+    laps less: the only case where a car without ABS is told to press less hard."""
+    lk = (D or {}).get("lock_share")
+    return bool(lk and lk.get("typical") is not None and lk["typical"] >= LOCK_EVIDENCE and lk.get("diff", 0) < 0)
+
+
 def _rule_masks(D, P):
     """The rules on arrays: D[metric] = {"has", "ok", "diff", "typical"} (numpy arrays, one entry per split of the
     laps). Returns [(rule, metric, mask)] in the order the rules are checked; one rule may appear twice with two
@@ -617,6 +631,11 @@ def _rule_masks(D, P):
         out += [("brake_later", "brake_m", later), ("brake_earlier", "brake_m", earlier)]
         pk_has, pk_t, pk_d = g("peak_pct", "has"), g("peak_pct", "typical"), g("peak_pct", "diff")
         lighter_peak = ok("peak_pct") & (pk_t >= R_PEAK_TYP) & (pk_d <= -R_PEAK_PCT)
+        # 2.18: a car without ABS (or telemetry without the channel) gets brake-pressure advice only when the laps
+        # show the typical stop overloading the tyres: a front wheel locking (wheel speeds), less so on the best laps
+        if not _abs_on(P):
+            lk_t, lk_d = g("lock_share", "typical"), g("lock_share", "diff")
+            lighter_peak = lighter_peak & g("lock_share", "has") & (lk_t >= LOCK_EVIDENCE) & (lk_d < 0)
         lighter_abs = (ok("abs_share") & (g("abs_share", "typical") >= ABS_ZONE_SHARE)
                        & (g("abs_share", "diff") <= -R_ABS_SHARE) & pk_has & (pk_t >= R_PEAK_TYP) & (pk_d < 0))
         out += [("lighter", "peak_pct", lighter_peak), ("lighter", "abs_share", lighter_abs & ~lighter_peak)]
@@ -703,7 +722,10 @@ def _phrase(rule, D, P, label=None):
         elif P.get("abs"):
             why = "Past the point where the ABS steps in, more pedal stops you no faster."
         else:
-            why = "Past a certain point more pedal only overloads the tyres, and that stops you no faster."
+            lk = D.get("lock_share") or {}
+            why = (f"On your typical laps a front wheel locks for about "
+                   f"{int(round(100 * (lk.get('typical') or 0)))}% of the stop: a locked tyre slides instead of "
+                   f"gripping, so it stops you slower.")
         return diff, how, why
     if rule == "trail":
         y = _five(g("trail_pct")) if g("trail_pct") is not None else 5
@@ -752,7 +774,7 @@ def _phrase(rule, D, P, label=None):
         if re_ and re_["z"] >= Z_LIKELY and re_["diff"] <= -5:
             diff += f", and let go of the brake about {_five(re_['diff'])} m earlier"
             how = "same braking marker, but come off the brake a little earlier so the car rolls faster through the middle."
-        elif pk and pk["z"] >= Z_LIKELY and pk["diff"] <= -R_PEAK_PCT:
+        elif pk and pk["z"] >= Z_LIKELY and pk["diff"] <= -R_PEAK_PCT and (_abs_on(P) or lock_evidence(D)):
             diff += f", and brake at about {_round_to(pk['best'], 5)}% instead of {_round_to(pk['typical'], 5)}%"
             how = (f"same braking marker, but press less hard (about {_round_to(pk['best'], 5)}%) so you don't "
                    f"slow down more than the corner needs.")
@@ -1099,12 +1121,12 @@ def abs_onset_pct(laps) -> float | None:
 def braking_summary(laps, corners) -> dict:
     """ABS reliance, lock-ups, trail braking, coasting and full-pedal habit over every lap and corner, in plain words."""
     zones, abs_heavy, full, trail, lock_ev, lock_m = 0, 0, 0, [], 0, None
-    coast_per_lap = []
+    coast_per_lap, coast_brake, coast_lift = [], [], []
     laps = [x for x in laps or [] if isinstance(x, dict) and isinstance(x.get("R"), dict)]
     abs_known = abs_active(laps)                         # the ABS worked somewhere: this car has it
     abs_channel = bool(laps) and all(x["R"].get("_abs") for x in laps)
     for x in laps:
-        cl = 0.0
+        cl = cb = 0.0
         for c in corners:
             p = phases(x["R"], c)
             if p is None:
@@ -1112,6 +1134,7 @@ def braking_summary(laps, corners) -> dict:
             cl += p.get("coast_s") or 0.0
             if p.get("brake_m") is None:
                 continue
+            cb += p.get("coast_s") or 0.0
             zones += 1
             if abs_known and p.get("abs_share") is not None:
                 abs_heavy += p["abs_share"] > ABS_ZONE_SHARE
@@ -1122,6 +1145,8 @@ def braking_summary(laps, corners) -> dict:
                 lock_m = p["lock_method"]
             lock_ev += int(p.get("lock_events") or 0)
         coast_per_lap.append(cl)
+        coast_brake.append(cb)
+        coast_lift.append(cl - cb)
     out = {"laps": len(laps), "braking_zones": zones, "abs_method": "BrakeABSactive" if abs_known else None,
            "lock_method": lock_m, "lines": []}
     if not laps or not zones:
@@ -1133,6 +1158,8 @@ def braking_summary(laps, corners) -> dict:
     out["trail_share"] = round(sum(t >= BRAKE_ON_PCT for t in trail) / len(trail), 3) if trail else None
     out["trail_median_pct"] = _r(_med([t for t in trail if t >= BRAKE_ON_PCT]), 1) if trail else None
     out["coast_s_per_lap"] = _r(_med(coast_per_lap), 2)
+    out["coast_after_brake_s"] = _r(_med(coast_brake), 2)     # 2.18: after the brake is fully off, braking corners
+    out["coast_lift_s"] = _r(_med(coast_lift), 2)             # ... and in corners taken with a lift, no brake
     out["lockups"] = lock_ev if lock_m == "wheel speeds" else None
     out["lockups_per_lap"] = _r(lock_ev / len(laps), 2) if lock_m == "wheel speeds" else None
     L = out["lines"]
@@ -1159,12 +1186,31 @@ def braking_summary(laps, corners) -> dict:
         ts = out["trail_share"]
         L.append(f"You still have some brake on as you turn in at {int(round(100 * ts))}% of corners"
                  + (f" (about {out['trail_median_pct']:.0f}% pedal)" if out["trail_median_pct"] else "")
-                 + (": you trail brake as a habit." if ts >= 0.6 else
+                 + (": you trail brake as a habit (a little brake kept on into the turn)." if ts >= 0.6 else
                     ": sometimes." if ts >= 0.3 else ". You mostly finish braking before turning."))
     else:
         L.append("No steering channel, so trail braking can't be measured.")
-    L.append(f"Coasting (both feet off between braking and throttle): about {out['coast_s_per_lap']:.1f} s per lap.")
+    L.append(coast_line(out))
     return out
+
+
+COAST_WORDS = ("Coasting means both pedals under 5% above 30 km/h: it starts once the brake is fully off (often near "
+               "the apex) and ends when you pick up the throttle, so it can sit beside trail braking, which is about "
+               "the brake still being on as you turn in.")
+
+
+def coast_line(out) -> str:
+    """2.18: coasting in plain words, split into after braking and lifting without braking, with what it means, so it
+    never reads as the opposite of "brake still on at turn-in"."""
+    tot = out.get("coast_s_per_lap") or 0.0
+    ab, lf = out.get("coast_after_brake_s"), out.get("coast_lift_s")
+    s = f"Coasting (both feet off the pedals, through the corners): about {tot:.1f} s per lap"
+    if ab is not None and lf is not None and tot >= 0.05:
+        bits = [f"{ab:.1f} s between letting go of the brake and picking up the throttle"]
+        if lf >= 0.05:
+            bits.append(f"{lf:.1f} s in corners you take with a lift and no brake")
+        s += " (" + "; ".join(bits) + ")"
+    return s + ". " + COAST_WORDS
 
 
 # ---------------------------------------------------------------- whole analysis

@@ -154,6 +154,12 @@ bys = bl.setup_ideas({"findings": [F("entry", "push")]}, {"Chassis": {"InCarDial
                      series_setup="fixed")
 check(bys[0]["dial"] and bys[0]["dial"]["target"] == "bias", "a brake bias in the setup's in-car dials counts as a dial")
 check(bl.setup_ideas({"findings": []}, {}, series_setup="fixed") == [], "fixed, nothing found: no ideas")
+# review 2.18: two findings never move one dial opposite ways; the stronger keeps it, the other gets driving advice
+cl = bl.setup_ideas({"findings": [F("entry", "push", corner="T1", p=0.004), F("entry", "rotate", corner="T5", p=0.002)]},
+                    {}, series_setup="fixed", dials=["bias"])
+ways = [i["dial"]["way"] for i in cl if i["dial"]]
+check(ways == [1] and any(i["dial"] is None and "would undo the idea for T5" in i["text"] and i["driving"] for i in cl),
+      f"fixed: opposite brake bias ideas don't both stand ({ways})")
 blob = json.dumps(fx + I + U, ensure_ascii=False)
 check("–" not in blob and "—" not in blob, "no long dashes in the ideas")
 

@@ -1204,11 +1204,17 @@ def _fixed_ideas(report: dict, setup: dict | None, dials) -> list:
         if _find_key(flat, leaves)[0] is not None:
             have.add(target)
     out = []
-    for g in _groups(report):
+    taken = {}                       # dial target -> (way, place): the stronger finding keeps the dial (review 2.18)
+    for g in sorted(_groups(report), key=lambda g: g["strength"], reverse=True):
         f = g["f"]
         dial = FIXED_DIAL.get((f["phase"], f["label"]))
         text = f"The car {g['verb']} {g['where']}."
+        if dial and dial[0] in have and dial[0] in taken and taken[dial[0]][0] != dial[1]:
+            text += (f" Moving the {DIAL_LABEL[dial[0]].split(' (')[0].lower()} for this would undo the idea for "
+                     f"{taken[dial[0]][1]}, which has evidence at least as strong, so leave the dial there.")
+            dial = None
         if dial and dial[0] in have:
+            taken.setdefault(dial[0], (dial[1], g["place"]))
             target, way = dial
             text += (f" The setup is locked, but this car has a {DIAL_LABEL[target].split(' (')[0].lower()} dial: "
                      f"{DIAL_WORDS[dial]}. Why: {WHY_WAY[(target, way)]}. "

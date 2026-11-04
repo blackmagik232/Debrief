@@ -1,6 +1,23 @@
-Fenrir (American male) (fenrir): 500 clips, 16.32 MB, 16000 Hz, speed 0.85, comma pause 40 ms
-Coach phrases covered: 3808 of 3808 (100.0%)
+Fenrir (American male) (fenrir): 560 clips, 19.32 MB, 16000 Hz, speed 0.85, comma pause 40 ms
+Coach phrases covered: 5308 of 5308 (100.0%)
 Left to Windows speech by design: Good, 0 .. Good, 19 (20 phrases)
+Takes to listen to: 14 (new lines only)
+  line 445 'Turn four, three down on your best.': spoken as 'Turn four. Three down on your best.' to get a pause at the comma (listen to the join)
+  line 446 'Turn five, four down on your best.': spoken as 'Turn five. Four down on your best.' to get a pause at the comma (listen to the join)
+  line 447 'Turn six, five down on your best.': spoken as 'Turn six. Five down on your best.' to get a pause at the comma (listen to the join)
+  line 448 'Turn seven, six down on your best.': spoken as 'Turn seven. Six down on your best.' to get a pause at the comma (listen to the join)
+  line 451 'Turn ten, nine down on your best.': spoken as 'Turn ten. Nine down on your best.' to get a pause at the comma (listen to the join)
+  line 453 'Turn twelve, eleven down on your best.': spoken as 'Turn twelve. Eleven down on your best.' to get a pause at the comma (listen to the join)
+  line 457 'Turn sixteen, fifteen down on your best.': spoken as 'Turn sixteen... fifteen down on your best.' to get a pause at the comma (listen to the join)
+  line 461 'Turn twenty, nineteen down on your best.': spoken as 'Turn twenty. Nineteen down on your best.' to get a pause at the comma (listen to the join)
+  line 463 'Turn three, off track.': spoken as 'Turn three... off track.' to get a pause at the comma (listen to the join)
+  line 464 'Turn four, off track and three faster in.': spoken as 'Turn four. Off track and three faster in.' to get a pause at the comma (listen to the join)
+  line 465 'Turn five, off track and four faster in.': spoken as 'Turn five. Off track and four faster in.' to get a pause at the comma (listen to the join)
+  line 466 'Turn six, off track and five faster in.': spoken as 'Turn six. Off track and five faster in.' to get a pause at the comma (listen to the join)
+  line 467 'Turn seven, off track and six faster in.': spoken as 'Turn seven. Off track and six faster in.' to get a pause at the comma (listen to the join)
+  line 504 'Turn five, on your best.': spoken as 'Turn five... on your best.' to get a pause at the comma (listen to the join)
+
+Earlier lines:
 Takes to listen to: 61 (new lines only)
   line 358 'Down two tenths, most in turn two.': spoken as 'Down two tenths. Most in turn two.' to get a pause at the comma (listen to the join)
   line 359 'Down three tenths, most in turn three.': spoken as 'Down three tenths. Most in turn three.' to get a pause at the comma (listen to the join)

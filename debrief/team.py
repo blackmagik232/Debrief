@@ -98,10 +98,98 @@ def anchor_for(times, my_best=None):
     return float(np.median(xs)) if xs else None
 
 
-def plausible(t, anchor) -> bool:
+def plausible(t, anchor, slow=1.5) -> bool:
     """Drop laps that can't be a real full lap compared with the anchor time (e.g. a 11 s partial lap).
-    0.6 x anchor still keeps a teammate 30%+ quicker than the typical lap."""
-    return anchor is None or 0.6 * anchor <= t <= 1.5 * anchor
+    0.6 x anchor still keeps a teammate 30%+ quicker than the typical lap. 2.20.1: the teammate lists pass slow=2.5 so a
+    teammate who is simply slower is never dropped for pace; only clearly broken laps go."""
+    return anchor is None or 0.6 * anchor <= t <= slow * anchor
+
+
+# ---------------------------------------------------------------- 2.20.1: no teammate vanishes silently
+def team_roster(teams, slug) -> dict:
+    """{driver slug: display name} of the team's members when Garage 61's team list names them, else {}.
+    No extra request: it only reads the list Debrief already has."""
+    out = {}
+    for t in teams or []:
+        if not isinstance(t, dict) or str(g(t, "slug", "id")) != str(slug):
+            continue
+        for m in t.get("members") or []:
+            if not isinstance(m, dict):
+                continue
+            d = m.get("user") if isinstance(m.get("user"), dict) else m
+            d = d.get("driver") if isinstance(d.get("driver"), dict) else d
+            sl = g(d, "slug")
+            if sl:
+                out[str(sl)] = driver_of({"driver": d})["name"]
+    return out
+
+
+def _lt(t) -> str:
+    t = float(t)
+    return f"{int(t // 60)}:{t % 60:06.3f}"
+
+
+def gather_mates(first, fetch_more, my_slug, my_best, roster=None):
+    """Best usable lap per teammate. first = the group=driver answer (one best lap per driver); fetch_more() = ONE
+    request for all their laps, made only when someone's best was rejected or a roster member has no row. Returns
+    (mates {slug: {"slug","name","t","lap"}}, reasons [{"name","text"}]): every teammate who is left out or
+    shown with a substitute lap gets a reason by name."""
+    roster = {k: v for k, v in (roster or {}).items() if k and k != my_slug}
+    laps = list(first or [])
+    firsts = {}
+    for l in laps:
+        d = driver_of(l)
+        if d["slug"] and d["slug"] != my_slug:
+            firsts.setdefault(d["slug"], l)
+    failed = False
+    if fetch_more is not None and (any(not usable(l) for l in firsts.values()) or any(k not in firsts for k in roster)):
+        try:
+            laps += list(fetch_more() or [])
+        except Exception:  # noqa: BLE001
+            failed = True
+    by, names, unnamed = {}, dict(roster), 0
+    for l in laps:
+        d = driver_of(l)
+        if not d["slug"]:
+            unnamed += 1
+            continue
+        if d["slug"] == my_slug:
+            continue
+        by.setdefault(d["slug"], []).append(l)
+        names[d["slug"]] = d["name"]
+    bests = [min(app.lap_time(l) for l in ls if usable(l)) for ls in by.values() if any(usable(l) for l in ls)]
+    anchor = anchor_for(bests, my_best)
+    mates, reasons = {}, []
+    for sl, ls in by.items():
+        nm = names[sl]
+        good = sorted((l for l in ls if usable(l)), key=app.lap_time)
+        fit = [l for l in good if plausible(app.lap_time(l), anchor, 2.5)]
+        if not good:
+            reasons.append({"name": nm, "text": "best lap was partial or unclean, and none of their laps here were clean"})
+            continue
+        if not fit:
+            reasons.append({"name": nm, "text": f"quickest lap ({_lt(app.lap_time(good[0]))}) looked broken "
+                            "(far from a normal lap), so it was left out"})
+            continue
+        pick = fit[0]
+        mates[sl] = {"slug": sl, "name": nm, "t": app.lap_time(pick), "lap": pick}
+        f = firsts.get(sl)
+        if f is not None and f is not pick and (not usable(f) or not plausible(app.lap_time(f), anchor, 2.5)):
+            reasons.append({"name": nm, "text": "best lap was partial or unclean, used their best clean lap instead"})
+    for sl, nm in roster.items():
+        if sl not in by:
+            reasons.append({"name": nm, "text": "is on your team but Garage 61 returned no laps for them. Ask them to "
+                            "share laps and telemetry with the team in Garage 61." if not failed else
+                            "laps couldn't be loaded this time. Try again."})
+    if unnamed:
+        reasons.append({"name": "A teammate", "text": f"Garage 61 sent {unnamed} lap(s) with no driver name, so "
+                        "they couldn't be matched to anyone and were left out"})
+    return mates, reasons
+
+
+def reason_text(r) -> str:
+    n, t = str(r.get("name") or "A teammate"), str(r.get("text") or "")
+    return f"{n} {t}" if t.startswith("is on your team") else f"{n}: {t}"
 
 
 def lap_day(lap):
@@ -337,22 +425,17 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
         my_ok = sorted((l for l in my_laps if usable(l) and plausible(app.lap_time(l), anchor)), key=app.lap_time)
         my_api = my_ok[0] if my_ok else None
         my_best = c["best"] or (app.lap_time(my_api) if my_api else None)
-        if any(not usable(l) for l in team_laps if driver_of(l)["slug"] not in ("", my_slug)):
-            # someone's "best" was a partial or unclean lap: ask once for all their laps instead (1 request)
-            team_laps = team_laps + api.find_laps(tracks=[tid], cars=[cid], teams=[team_slug], group="none",
-                                                  age=-2, limit=1000)
-        anchor = anchor_for([app.lap_time(l) for l in team_laps
-                             if usable(l) and driver_of(l)["slug"] not in ("", my_slug)], my_best)
-        mates = {}
-        for l in team_laps:
-            d = driver_of(l)
-            if not d["slug"] or d["slug"] == my_slug or not usable(l):
-                continue
-            t = app.lap_time(l)
-            if not plausible(t, anchor) or (d["slug"] in mates and mates[d["slug"]]["t"] <= t):
-                continue
-            mates[d["slug"]] = {"key": d["slug"], "name": d["name"], "t": t, "is_me": False,
-                                "date": lap_day(l), "irating": g(l, "driverRating"), "_lap": g(l, "id")}
+        mates, reasons = {}, []
+        if not not_member:
+            # 2.20.1: one extra request at most (all their laps) when a best lap was rejected or a member has no row
+            found, reasons = gather_mates(
+                team_laps, lambda: api.find_laps(tracks=[tid], cars=[cid], teams=[team_slug], group="none",
+                                                 age=-2, limit=1000),
+                my_slug, my_best, team_roster(teams_list, team_slug))
+            for sl, m in found.items():
+                l = m["lap"]
+                mates[sl] = {"key": sl, "name": m["name"], "t": m["t"], "is_me": False,
+                             "date": lap_day(l), "irating": g(l, "driverRating"), "_lap": g(l, "id")}
         # your best: the quicker of your reviewed races and anything on Garage 61 (practice counts too)
         mine = None
         cands = []
@@ -369,8 +452,10 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
         for pos, r in enumerate(board, 1):
             r["pos"] = pos
             r["gap"] = round(r["t"] - p1, 3)  # always >= 0
+        entry["mate_notes"] = [reason_text(r) for r in reasons]
         if not mates:
-            entry["note"] = brand.JOIN_TITLE + "." if not_member else "No teammate laps here yet."
+            entry["note"] = brand.JOIN_TITLE + "." if not_member else (
+                "No teammate laps here yet." if not reasons else "No teammate lap could be used here. Reasons are below.")
         # corner kings: one lap of yours + the fastest teammates, MAX_TEL_DRIVERS in all
         entries = []
         mates_sorted = [r for r in board if not r["is_me"]][:MAX_TEL_DRIVERS - (1 if my_ok else 0)]
@@ -395,6 +480,9 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS) -> dict:
                 csv = api.lap_csv(r["_lap"])
                 if csv:
                     entries.append({"key": r["key"], "name": r["name"], "t": r["t"], "csv": csv, "is_me": False})
+                else:
+                    entry["mate_notes"].append(reason_text({"name": r["name"], "text": "lap time only, they aren't "
+                                                            "sharing telemetry with the team"}))
         tl = next((g(it, "lap_length", "lapLength", "length") for it in track_items if g(it, "id") == tid), None)
         try:
             entry["kings"] = corner_kings(entries, tl)

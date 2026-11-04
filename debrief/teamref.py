@@ -214,7 +214,7 @@ def headline(driver, ref_time, my_best, cards=None) -> str:
     return s + (f" {who} is still quicker than your typical laps in {where}." if where else "")
 
 
-def laps_on_hand(entry, board_rows=None) -> list:
+def laps_on_hand(entry, board_rows=None, notes=None) -> list:
     """The teammate laps Debrief already has for one car + track, for the "Compare with a teammate's lap" list:
     the telemetry lap in use (loaded or kept) and the teammates' best lap times on the team page (Garage 61, lap
     time only). Each: {"driver", "lap_text", "kind": "telemetry"|"garage61", "usable", "in_use", "note"}."""
@@ -233,6 +233,11 @@ def laps_on_hand(entry, board_rows=None) -> list:
                     "in_use": False,
                     "note": "Best lap on Garage 61 (lap time only). For a corner-by-corner comparison, ask "
                             f"{first_name(nm) or 'them'} for the telemetry file."})
+    for n in notes or []:   # 2.20.1: a teammate who has no usable lap is named with the reason
+        if isinstance(n, str) and n.strip():
+            who, _, why = n.partition(": ")
+            out.append({"driver": who.strip()[:80], "lap_text": "", "kind": "none", "usable": False, "in_use": False,
+                        "note": why.strip() if why else n.strip()})
     return out
 
 

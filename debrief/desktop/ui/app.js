@@ -1747,7 +1747,7 @@ function renderCoach(st){co.st=st;const run=!!st.running,state=CO_STATE[st.state
   m.title=run&&!hk.on?'This key works while the Debrief window is in front.':'Works from the car too, while Debrief is open.';
   const q=$('coQuiet');q.hidden=!(run&&st.quiet_reason);q.textContent=st.quiet_reason?'Quiet now: '+st.quiet_reason+'.':'';
   if(st.state==='error'&&st.error)setMsg('coMsg',st.error,'bad');
-  const R=st.reference;$('coRef').textContent=R?R.text||R.lap_text:'None yet';
+  const R=st.reference;$('coRef').textContent=R?R.text||R.lap_text:'None yet';{const L=$('coLearnNote');if(L)L.hidden=!!R}
   $('coRefNote').textContent=R?(R.source&&R.source.kind==='live'?(st.reference_why?cap(st.reference_why)+'.':'A lap you drove just now.'):'Your best clean lap in your telemetry files'+(st.car?' for the '+st.car+(st.track?' at '+st.track:''):'')+'.'):
     'Debrief uses your best clean lap for the car and track iRacing shows, from your telemetry files. No lap yet? '+TEL_HOW+' Your best clean lap becomes the reference.';
   const L=st.last_lap,ll=$('coLast');ll.hidden=!(L&&ok(L.time));
@@ -3105,7 +3105,7 @@ if(typeof HELP==='object'){
     ['Reference lap','The lap the coach compares you with. While you are learning a track it is your best clean lap of the session.'])}
 const cn={data:null,busy:false,poll:null,micPoll:null};
 function cnCoachRender(st){const M=st.mic||{},run=!!st.running;
-  $('coRec').hidden=!M.recording;
+  coRecShow(M.recording);
   const L=st.learning;const ll=$('coLearning');ll.hidden=!(L&&L.active&&run);ll.textContent=L&&L.text?L.text:'';
   const nh=st.notes_here,N=st.note||null;
   $('cnPill').className='pill'+(run&&(st.settings||{}).notes!==false&&(st.settings||{}).level!=='ask'?' ok':'');$('cnPill').textContent=!run?'Coach off':(st.settings||{}).level==='ask'?'Not played':((st.settings||{}).notes===false?'Off':'On');
@@ -3113,11 +3113,12 @@ function cnCoachRender(st){const M=st.mic||{},run=!!st.running;
   if(N&&N.last&&N.last.wall!==cn.lastWall){cn.lastWall=N.last.wall;setMsg('cnLast',N.last.text,N.last.ok?'ok':'bad')}
   const U=st.use_lap_note;if(U&&U.wall!==cn.useWall){cn.useWall=U.wall;setMsg('coUseLapMsg',U.text,U.ok?'ok':'bad')}
   $('coUseLap').disabled=!run||st.mode==='rehearsal';
-  if(M.available===false){$('coMicTest').disabled=true;$('coMicNote').textContent='The microphone can only be used on Windows.'}}
+  if(M.available===false){$('coMicTest').disabled=true;setMsg('coMicMsg','Needs Windows with a microphone; you\'ll hear your 3-second test played back.');$('coMicNote').textContent='Needs Windows with a microphone; you\'ll hear your 3-second test played back.'}}
+function coRecShow(on){const e=$('coRec');if(!e)return;e.classList.toggle('off',!on);$('coRecWord').textContent=on?'Recording: on':'Recording: off'}
 $('coUseLap').addEventListener('click',async()=>{const r=await co2Post('coach/uselap',{},'coUseLapMsg');if(r&&r.ok){setMsg('coUseLapMsg','Asked. The coach uses your last lap if it was clean.','ok');coachPoll()}});
 function cnMeter(l){const v=Math.round(100*Math.max(0,Math.min(1,l||0)));$('coMeterBar').style.width=v+'%';$('coMeter').setAttribute('aria-valuenow',String(v))}
 async function cnMicLoop(){clearTimeout(cn.micPoll);let j;try{j=await api('coach/mic')}catch(e){return}if(!j||!j.ok)return;const M=j.mic||{},T=M.test||{};
-  cnMeter(M.level);$('coRec').hidden=!M.recording;
+  cnMeter(M.level);coRecShow(M.recording);
   if(T.state==='recording'||T.state==='playing'){setMsg('coMicMsg',T.text||'');cn.micPoll=setTimeout(cnMicLoop,200);return}
   cn.micBusy=false;$('coMicTest').disabled=false;cnMeter(0);setMsg('coMicMsg',T.text||'',T.state==='error'?'bad':T.heard?'ok':'')}
 $('coMicTest').addEventListener('click',async()=>{cn.micBusy=true;$('coMicTest').disabled=true;setMsg('coMicMsg','Starting the microphone...');

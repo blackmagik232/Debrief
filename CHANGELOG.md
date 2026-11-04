@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.20.1
+
+A teammate no longer disappears from the Team page, Prepare or the teammate list without saying why.
+
+- **The bug.** Debrief asks Garage 61 for each driver's single best lap. If that one lap was partial or unclean, the driver was dropped with no word, so a teammate could show nothing at all.
+- **Now it tries once more.** When a teammate's best lap can't be used, or a team member has no lap at all, Debrief makes one extra request for everyone's laps (one per page, not one per driver) and uses that teammate's best clean lap instead.
+- **Every missing teammate is named.** The Team page (under each track and car), Prepare (under the teammates heading) and "Compare with a teammate's lap" now say things like "Josh: best lap was partial or unclean, used their best clean lap instead", "Josh: lap time only, they aren't sharing telemetry with the team", or "Josh is on your team but Garage 61 returned no laps for them. Ask them to share laps and telemetry with the team in Garage 61." The old "partial lap(s) left out" line is replaced by these.
+- **A slower teammate is kept.** Laps are only left out when they are clearly broken (far shorter than a normal lap) or unclean, no longer for being much slower, and the reason is shown by name.
+- **Coach page wording (from 2.20).** Under "Your reference lap: None yet" a line explains that your first clean lap becomes the reference. "Use my last lap" is two short lines. The hold-to-record hint is one line: press and hold Ctrl+Shift+V (or your wheel button), say your note, let go; the confusing "Coach page's keys" is gone. When the Mic test can't be used, the reason sits beside it. A "Recording: on/off" light now always shows next to the coach status (red when on). The Driving view keeps its own Start coaching button, which is a different screen.
+- What can only be proven with real Garage 61 data: whether Garage 61 lists team members in the team list Debrief already reads (when it does, a member with no laps is named; when it doesn't, only drivers who sent some laps are).
+
 ## 2.20.0
 
 Corner notes, and a coach that helps you learn a track before you have a reference lap.

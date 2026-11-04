@@ -753,6 +753,8 @@ body.codriving #vCoach.pad{padding:18px clamp(14px,2.5vw,32px) 24px}
 /* 2.20 corner notes, the Recording light, the Mic test meter */
 .reclight{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--on-a);background:var(--bad);border-radius:999px;padding:3px 12px 3px 9px;font-size:13px;letter-spacing:.02em}
 .reclight[hidden]{display:none}
+.reclight.off{background:transparent;color:var(--muted);border:1px solid var(--line,currentColor);font-weight:500}
+.reclight.off i{animation:none;opacity:.4}
 .reclight i{width:10px;height:10px;border-radius:50%;background:currentColor;animation:recpulse 1s ease-in-out infinite}
 @keyframes recpulse{50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){.reclight i{animation:none}}

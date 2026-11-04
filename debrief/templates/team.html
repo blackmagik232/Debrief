@@ -423,6 +423,7 @@ let p1s=0;combos.forEach(c=>{if(c.board[0]&&c.board[0].key===meKey&&c.board.leng
   combos.forEach(c=>{const p=h('div','panel');const hd=h('div','phead');const t=h('h3',null,c.track_short||c.track);t.title=c.track;t.append(h('span','u',c.car));hd.append(t);
     hd.append(h('p','note',(c.races?plural(c.races,'reviewed race'):'')+(c.last_date?' · last '+fmtDate(c.last_date):'')));p.append(hd);
     if(c.note)p.append(h('p','note',c.note));
+    if(Array.isArray(c.mate_notes)&&c.mate_notes.length){const ul=h('ul','note');c.mate_notes.forEach(n=>{if(typeof n==='string')ul.append(h('li',null,n))});p.append(ul)}
     if(c.board.length){const maxGap=Math.max(0.5,...c.board.map(r=>r.gap||0));
       const tw=h('div','tablewrap');const tb=h('table');tb.innerHTML='<thead><tr><th>Pos</th><th>Driver</th><th class="n">Best lap</th><th class="n">Gap</th><th>Set on</th></tr></thead>';
       const body=h('tbody');c.board.forEach(r=>{const tr=h('tr',r.key===meKey?'me':null);

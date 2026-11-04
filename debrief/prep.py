@@ -222,32 +222,28 @@ def _teammates(api, track_id, car_id, team_slug, my_best, log):
     except Garage61Error as e:
         log(f"  Couldn't load teammates' laps: {e}")
         return {"laps": [], "team": team_slug, "error": str(e)}
-    out, skipped = [], 0
-    mine = lambda l: bool(my_slug) and g(g(l, "driver", default={}) or {}, "slug") == my_slug
-    times = [_num(g(l, "lap_time", "lapTime")) or 0 for l in laps or [] if not mine(l) and g(l, "incomplete") is not True]
-    cands = [t for t in times if t > 0] + ([my_best] if my_best else [])
-    ref_t = st.median(cands) if cands else None   # typical lap: candidates' median plus your best
-    for l in laps or []:
-        drv = g(l, "driver", default={}) or {}
-        if mine(l):
-            continue
-        t = _num(g(l, "lap_time", "lapTime"))
-        # a driver's "best" can be a partial lap (e.g. 6 s at the line): skip laps Garage 61 marks
-        # incomplete and anything under 60% of the typical lap (so a much quicker teammate still shows)
-        if not t or g(l, "incomplete") is True or (ref_t and t < 0.6 * ref_t):
-            skipped += 1
-            continue
-        name = " ".join(filter(None, [g(drv, "firstName", "firstname"), g(drv, "lastName", "lastname")])) \
-            or g(drv, "slug", default="Teammate")
+    from . import team
+    try:
+        roster = team.team_roster(api.teams(), team_slug)
+    except Exception:  # noqa: BLE001
+        roster = {}
+    # 2.20.1: one extra request at most (all their laps) when a best lap was rejected or a member has no row
+    found, reasons = team.gather_mates(
+        laps, lambda: api.find_laps(teams=teams, tracks=[track_id], cars=[car_id], group="none", limit=1000),
+        my_slug, my_best, roster)
+    out = []
+    for m in found.values():
+        l, t = m["lap"], m["t"]
         season = g(l, "season", default=None)
-        out.append({"name": name, "slug": g(drv, "slug"), "t": round(t, 3),
+        out.append({"name": m["name"], "slug": m["slug"], "t": round(t, 3),
                     "date": library.local_day(g(l, "startTime", "start_time")),
-                    "irating": g(l, "driverRating", "driver_rating"), "clean": bool(g(l, "clean", default=True)),
+                    "irating": g(l, "driverRating", "driver_rating"), "clean": True,
                     "season": g(season, "name") if isinstance(season, dict) else None,
                     # gap = their lap - your best (negative = they were quicker)
                     "gap": round(t - my_best, 3) if my_best else None})
     out.sort(key=lambda x: x["t"])
-    return {"laps": out[:MAX_TEAMMATES], "team": ",".join(teams), "error": None, "skipped": skipped}
+    return {"laps": out[:MAX_TEAMMATES], "team": ",".join(teams), "error": None, "skipped": len([r for r in reasons if r["name"] not in {m["name"] for m in found.values()}]),
+            "notes": [team.reason_text(r) for r in reasons]}
 
 
 # ---------------------------------------------------------------- practice plan

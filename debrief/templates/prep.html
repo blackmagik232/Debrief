@@ -525,7 +525,8 @@ if(NOT_MEMBER){$('prepJoin').hidden=false;$('prepJoinTitle').textContent=BRAND.j
   if(/^https:\/\//.test(BRAND.team_url||''))$('prepJoinLink').href=BRAND.team_url;
   const tw=$('mates').closest('.panel');if(tw)tw.hidden=true;$('matelede').textContent=''}
 (function(){if(NOT_MEMBER)return;const T=D.teammates||{};const t=$('mates');
-  $('matelede').textContent=T.error?T.error:(mates.length?'Each teammate’s best lap here on Garage 61'+(raced?', against your best reviewed lap ('+fmt(H.best)+').':'.'):'No teammate laps at this track in this car on Garage 61 yet.')+(T.skipped?' '+plural(T.skipped,'partial lap')+' left out.':'');
+  $('matelede').textContent=T.error?T.error:(mates.length?'Each teammate’s best lap here on Garage 61'+(raced?', against your best reviewed lap ('+fmt(H.best)+').':'.'):'No teammate laps at this track in this car on Garage 61 yet.');
+  if(Array.isArray(T.notes)&&T.notes.length){const ul=h('ul','note');T.notes.forEach(n=>{if(typeof n==='string')ul.append(h('li',null,n))});$('matelede').after(ul)}
   if(!mates.length){t.parentNode.parentNode.classList.add('hidden');return}
   t.style.minWidth='560px';t.innerHTML='<thead><tr><th>Driver</th><th class="n">Best lap</th>'+(raced?'<th class="n">vs your best</th>':'')+'<th>Set on</th><th class="n">iRating</th></tr></thead>';
   const body=h('tbody');const mx=Math.max(0.5,...mates.map(m=>Math.abs(m.gap||0)));

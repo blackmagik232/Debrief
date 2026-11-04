@@ -845,17 +845,17 @@ if browser is not None:
             pg.keyboard.press("Control+3")
             pg.wait_for_selector("#vCoach", state="visible")
             check(pg.locator("#coLvNotes").count() == 1 and "Notes only" in pg.text_content("#coLevel"), "Coach: the Notes only level")
-            check(pg.locator("#coRec").is_hidden(), "Coach: no Recording light while the microphone is off")
+            check(pg.locator("#coRec").is_visible() and "Recording: off" in pg.text_content("#coRec") and pg.locator("#coRec.off").count() == 1, "Coach: the Recording light shows \"off\" while the microphone is off")
             check(pg.locator("#coMicTest").is_enabled() and "Ctrl+Shift+L" in pg.text_content("#coUseLap"),
                   "Coach: Mic test and Use my last lap")
             pg.click("#coMicTest")
-            pg.wait_for_function("() => !document.getElementById('coRec').hidden", timeout=8000)
+            pg.wait_for_function("() => !document.getElementById('coRec').classList.contains('off')", timeout=8000)
             seen = []
             for _ in range(20):
                 seen.append(int(pg.get_attribute("#coMeter", "aria-valuenow") or 0))
                 time.sleep(0.1)
             check(max(seen) > 10, f"the Recording light is on and the meter moves ({max(seen)}%)")
-            pg.wait_for_function("() => document.getElementById('coRec').hidden && /Played back|Heard you/.test(document.getElementById('coMicMsg').textContent)",
+            pg.wait_for_function("() => document.getElementById('coRec').classList.contains('off') && /Played back|Heard you/.test(document.getElementById('coMicMsg').textContent)",
                                  timeout=15000)
             check(True, "Mic test: records, plays back, light off")
             pg.evaluate("() => { document.getElementById('coSet').open = true }")

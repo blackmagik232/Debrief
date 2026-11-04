@@ -701,6 +701,18 @@ def team_board(cfg, car_name, track_name) -> list:
     return []
 
 
+def team_notes(cfg, car_name, track_name) -> list:
+    """2.20.1: the team page's per-teammate reasons ("Josh: no laps ...") for this car and track, or []."""
+    try:
+        data = json.loads((Path(cfg["library_folder"]) / "team" / "team.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    for c in (data.get("combos") if isinstance(data, dict) else None) or []:
+        if isinstance(c, dict) and _same_names(c.get("car"), c.get("track"), car_name, track_name):
+            return [n for n in c.get("mate_notes") or [] if isinstance(n, str)]
+    return []
+
+
 def get_teamref_laps(h, q):
     """The teammate laps Debrief already has for this car + track: the telemetry lap in use (loaded or kept) and
     the team page's Garage 61 lap times, plus how to get a teammate's file. No requests."""
@@ -718,7 +730,8 @@ def get_teamref_laps(h, q):
     except ValueError:
         names = {}
     board = team_board(cfg, names.get("car"), names.get("track")) if names else []
-    return h._json({"ok": True, "laps": teamref.laps_on_hand(e, board), "how": teamref.HOW_TO_GET,
+    notes = team_notes(cfg, names.get("car"), names.get("track")) if names else []
+    return h._json({"ok": True, "laps": teamref.laps_on_hand(e, board, notes), "how": teamref.HOW_TO_GET,
                     "team_page": bool(board)})
 
 

@@ -390,12 +390,34 @@
   </section>
 
   <section id="vCoach" class="view pad" hidden>
-    <div class="col">
+    <div class="codrive" id="coDrive" hidden aria-label="Coach, driving view">
+      <div class="dtop"><span class="eyebrow">Coach · driving view</span><button type="button" class="btn" id="cdExit">Full Coach page</button></div>
+      <div class="dstate off" id="cdState" role="status" aria-live="polite"><b id="cdWord">OFF</b><span id="cdSub">Press Start coaching, then drive.</span></div>
+      <div class="dgrid">
+        <div class="dpanel"><span class="dlab">Your one thing</span><p class="dthing" id="cdThing">No plan for this car and track yet.</p><p class="dcount num" id="cdCount"></p><p class="dnote" id="cdDone"></p></div>
+        <div class="dpanel"><span class="dlab">Against your reference</span><p class="dbig num" id="cdDelta">--</p><p class="dnote" id="cdRef">No reference lap yet.</p></div>
+      </div>
+      <div class="dpanel"><span class="dlab">Last cues</span><ol class="dcues" id="cdCues"><li class="dnone">Nothing said yet.</li></ol></div>
+      <div class="drow">
+        <button type="button" class="btn primary dbtn" id="cdStart">Start coaching</button>
+        <button type="button" class="btn dbtn dmute" id="cdMute" aria-pressed="false" disabled>Mute</button>
+        <button type="button" class="btn dbtn" id="cdRepeat" disabled>Repeat that</button>
+        <button type="button" class="btn dbtn" id="cdPace" disabled>How's my pace?</button>
+      </div>
+      <div class="drow" id="cdRh" hidden>
+        <label class="field dspeedf" for="cdSpeed"><span>Rehearsal speed</span><select id="cdSpeed"><option value="1">1x</option><option value="2">2x</option><option value="4">4x</option></select></label>
+        <button type="button" class="btn dbtn" id="cdSkipLap">Next lap</button>
+        <button type="button" class="btn dbtn" id="cdSkipCue">Next cue</button>
+      </div>
+      <p class="dmsg" id="cdMsg" role="status"></p>
+    </div>
+    <div class="col" id="coFull">
       <span class="eyebrow">While you drive</span>
       <h1>Coach</h1>
       <p class="lede">Short spoken cues while you drive: a word after corners where you lost or gained time, sector times, your lap against your best, and a brake marker before the corners that cost you most. Only from your own laps.</p>
       <div class="panel comain">
-        <div class="phead"><h3>Status</h3><span class="pill" id="coPill">Off</span></div>
+        <div class="phead"><h3>Status</h3><span class="pill" id="coPill">Off</span><button type="button" class="btn codrivebtn" id="coDriveBtn" title="A big view to glance at from the car, on a second monitor">Driving view</button></div>
+        <p class="comuted" id="coMuted" hidden></p>
         <p class="costatus" id="coText" role="status">Coach off</p>
         <div class="row">
           <button type="button" class="btn primary cobig" id="coStart">Start coaching</button>
@@ -445,12 +467,16 @@
       </div>
       <div class="panel" id="coRehearse">
         <div class="phead"><h3>Rehearse with a session</h3></div>
-        <p class="note">Plays one of your Practice sessions through the coach at real speed, as if you were driving it: the same voice, sound device and rules. Hear what it would say before you go on track. Not while you coach live.</p>
+        <p class="note">Plays one of your Practice sessions through the coach as if you were driving it: the same voice, sound device and rules. Hear what it would say before you go on track. Not while you coach live.</p>
         <div class="row corh">
           <label class="field" for="coRhPick"><span>Session</span><select id="coRhPick"><option value="">Loading...</option></select></label>
+          <label class="field corhspeed" for="coRhSpeed"><span>Speed</span><select id="coRhSpeed"><option value="1">1x</option><option value="2">2x</option><option value="4">4x</option></select></label>
           <button type="button" class="btn" id="coRhGo">Rehearse</button>
+          <button type="button" class="btn" id="coRhSkipLap" disabled>Next lap</button>
+          <button type="button" class="btn" id="coRhSkipCue" disabled>Next cue</button>
           <span class="msg" id="coRhMsg" role="status"></span>
         </div>
+        <p class="note">At 2x and 4x the words still play at their own speed, so the car covers 2 or 4 times as much track while a cue is said. The coach allows for that (every cue still ends before its brake point), so fewer cues fit than at 1x. Next lap and Next cue skip ahead with nothing said; Next cue looks 3 laps ahead at most. Use 1x to hear exactly what you would hear in the car.</p>
       </div>
       <details class="panel prepmore" id="coVoice">
         <summary><h3>Voice and sound</h3><span class="note">Which voice, which headset, audio delay</span></summary>

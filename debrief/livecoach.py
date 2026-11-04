@@ -279,13 +279,7 @@ class Reference:
 
     def describe(self) -> str:
         """'1:38.874 from Nov 2'"""
-        when = ""
-        try:
-            d = datetime.strptime(str(self.source.get("date") or "")[:10], "%Y-%m-%d")
-            when = f" from {d.strftime('%b')} {d.day}"
-        except ValueError:
-            pass
-        return fmt_lap(self.lap_time) + when
+        return fmt_lap(self.lap_time) + day_words(self.source.get("date"))
 
     def summary(self) -> dict:
         """JSON-friendly description for the window (no arrays)."""
@@ -392,11 +386,20 @@ def _ibt_lap_raw(ib, lap: dict) -> dict:
     return _raw_from(cols, b - a)
 
 
-def _date_of(ib) -> str:
+def file_when(name, start=None) -> str:
+    """2.18: when a telemetry file was driven, 'YYYY-MM-DD HH:MM', exactly as Practice lists it (setuplab._when: the
+    time in the file name his PC wrote, else the header's). '' when neither is known."""
     try:
-        return datetime.fromtimestamp(ib.start_date).strftime("%Y-%m-%d") if ib.start_date > 0 else ""
-    except (OverflowError, OSError, ValueError):
+        from . import setuplab
+        return setuplab._when(Path(str(name or "")).name, start if start and start > 0 else None)[0]
+    except Exception:  # noqa: BLE001
         return ""
+
+
+def _date_of(ib) -> str:
+    """The day of the file's lap. 2.18: from the file name first, as Practice shows it. The header's start date can
+    be another day (Maya's lap of Nov 3 was called "from Sep 21"), so it is only used when the name has no date."""
+    return file_when(getattr(ib, "path", ""), getattr(ib, "start_date", 0))[:10]
 
 
 def best_lap_in(ib) -> dict | None:
@@ -446,7 +449,8 @@ def _ref_from_ibt(ib, lap: int | None, prefix: str) -> Reference | None:
                               track={"name": tr.get("name"), "code": tr.get("code"), "config": tr.get("config"),
                                      "id": tr.get("id")},
                               source={"kind": "ibt", "file": ib.path.name, "lap": x["lap"], "date": _date_of(ib),
-                                      "session": x["session"]}, prefix=prefix)
+                                      "when": file_when(ib.path, ib.start_date), "session": x["session"]},
+                              prefix=prefix)
 
 
 def reference_from_samples(samples: list, length_m: float | None = None, lap_time: float | None = None,
@@ -476,6 +480,46 @@ def _index_files(index) -> list:
     return list(index or [])
 
 
+def reference_candidates(index, car_path: str, track_code: str) -> list:
+    """[(best clean lap s, file name, index record)] of Setup Lab's index for this car + track, fastest first: the
+    order find_reference opens files in (2.18: shared with reference_choice, so the Practice page names the same lap)."""
+    cp, tc = str(car_path or "").lower(), str(track_code or "").lower()
+    cand = []
+    for r in _index_files(index):
+        if not isinstance(r, dict) or not r.get("ok", True) or not isinstance(r.get("best"), (int, float)):
+            continue
+        if str((r.get("car") or {}).get("path") or "").lower() != cp:
+            continue
+        if tc and str((r.get("track") or {}).get("code") or "").lower() != tc:
+            continue
+        cand.append((float(r["best"]), str(r.get("file") or ""), r))
+    cand.sort(key=lambda x: (x[0], x[1]))
+    return cand
+
+
+def reference_choice(index, car_path: str, track_code: str) -> dict | None:
+    """2.18: the lap the coach starts from for this car + track, worked out from Setup Lab's index alone (no file is
+    opened): {"file", "lap_time", "lap_text", "date", "when", "text"} with the date as Practice lists it, or None.
+    find_reference opens the same file first (it moves to the next only when that file is still being written or
+    gives no lap)."""
+    cand = reference_candidates(index, car_path, track_code)
+    if not cand:
+        return None
+    best, name, r = cand[0]
+    when = file_when(name, r.get("start"))
+    return {"file": name, "lap_time": round(best, 3), "lap_text": fmt_lap(best), "date": when[:10], "when": when,
+            "text": fmt_lap(best) + day_words(when[:10])}
+
+
+def day_words(date: str) -> str:
+    """' from Nov 3' for '2026-11-03' ('' when there is no date): the coach's way of naming a lap's day."""
+    try:
+        d = datetime.strptime(str(date or "")[:10], "%Y-%m-%d")
+    except ValueError:
+        return ""
+    return f" from {d.strftime('%b')} {d.day}"
+
+
 def find_reference(folder, car_path: str, track_code: str, prefix: str = "T", limit: int = SCAN_LIMIT, index=None,
                    stop=None, fresh_s: float | None = None, now: float | None = None) -> Reference | None:
     """Your best clean lap for this car and track from the .ibt files in folder (Documents\\iRacing\\telemetry).
@@ -502,16 +546,7 @@ def find_reference(folder, car_path: str, track_code: str, prefix: str = "T", li
             return False                                   # changed since Setup Lab read it
         return now - st.st_mtime >= fresh
 
-    cand = []
-    for r in _index_files(index):
-        if not isinstance(r, dict) or not r.get("ok", True) or not isinstance(r.get("best"), (int, float)):
-            continue
-        if str((r.get("car") or {}).get("path") or "").lower() != cp:
-            continue
-        if tc and str((r.get("track") or {}).get("code") or "").lower() != tc:
-            continue
-        cand.append((float(r["best"]), str(r.get("file") or ""), r))
-    cand.sort(key=lambda x: (x[0], x[1]))
+    cand = reference_candidates(index, cp, tc)
     for _best, name, r in cand[:max(1, limit)]:
         if stop is not None and stop():
             return None
@@ -816,6 +851,10 @@ class Coach:
         self._speaking_until = -1e9      # ... session time the last cue said ends
         self.asks = 0
         self.invalid_drops = 0           # ... cues dropped because they were no longer valid when they would play
+        self.time_scale = 1.0            # 2.18 rehearsal at 2x / 4x: session seconds per second of real sound
+        self.date_hint = None            # 2.18 rehearsal: the day the played file was driven (a lap adopted from it)
+        self.live_delta = None           # 2.18 driving view: seconds against the reference so far this lap
+        self.skipping = False            # 2.18 rehearsal: skipping to the next lap (cues are made, not said)
         self._last_along_t = -1e9
         self._last_off_t = -1e9
         self._last_inc_t = -1e9
@@ -843,7 +882,7 @@ class Coach:
         if ref is not None:
             src = ref.source or {}
             self._emit("reference", lap_time=round(ref.lap_time, 3), source=src.get("kind"), ref_lap=src.get("lap"),
-                       ref_date=src.get("date"), corners=len(ref.corners),
+                       ref_date=src.get("date"), ref_text=ref.describe(), corners=len(ref.corners),
                        focus=[{"name": w.name, "id": w.corner.id, "lost_s": w.lost_s, "phrase": w.phrase,
                                "brake_m": round(w.corner.brake_m) if w.corner.brake_m is not None else None}
                               for w in self.weak])
@@ -1125,7 +1164,7 @@ class Coach:
             inside, ahead = self._hard_at(pct)
             if inside:
                 return "in a hard zone"
-            if (self.duration(cue.text) + st.audio_latency_s) * vv > ahead:
+            if (self.duration(cue.text) + self._lat()) * vv > ahead:
                 return "would run into a hard zone"
         return None
 
@@ -1161,6 +1200,11 @@ class Coach:
         return {n: "fixed" for n in sorted(self._fixed)}
 
     def duration(self, text: str) -> float:
+        """Seconds of session time the cue takes to say. 2.18: a rehearsal played at 2x or 4x (time_scale) moves the
+        car 2 or 4 times as far while the words play at their own speed, so the length is scaled to match."""
+        return self._real_duration(text) * max(1.0, float(self.time_scale or 1.0))
+
+    def _real_duration(self, text: str) -> float:
         if self.duration_fn is not None:
             try:
                 d = self.duration_fn(text)
@@ -1221,9 +1265,14 @@ class Coach:
 
     def _focus_status(self):
         try:
-            return self.focus.status() if self.focus is not None else None
+            fs = self.focus.status() if self.focus is not None else None
         except Exception:  # noqa: BLE001
             return None
+        if isinstance(fs, dict):
+            fs = dict(fs, **focus_count(getattr(self.focus, "passes", None) or [],
+                                        self._lap.num if self._lap is not None else None, fs.get("progress")))
+            fs["progress"] = fs["count_text"]
+        return fs
 
     def feed(self, s: dict) -> list:
         try:
@@ -1252,7 +1301,11 @@ class Coach:
 
     def _need_s(self, text: str) -> float:
         st = self.settings
-        return self.duration(text) + st.end_before_brake_s + st.audio_latency_s
+        return self.duration(text) + st.end_before_brake_s + self._lat()
+
+    def _lat(self) -> float:
+        """The audio delay in session seconds (2.18: scaled like duration in a faster rehearsal)."""
+        return self.settings.audio_latency_s * max(1.0, float(self.time_scale or 1.0))
 
     def _feed(self, s: dict) -> list:
         st = self.settings
@@ -1336,6 +1389,9 @@ class Coach:
         # ---- corners ----
         ref = self.reference
         L = ref.length_m if ref else 0.0
+        self.live_delta = None                            # 2.18 driving view: this lap so far against the reference
+        if ref is not None and lap.valid and not lap.pit and lap.t0 is not None and len(ref.time):
+            self.live_delta = round((t - lap.t0) - float(np.interp(pct, ref.pct, ref.time)), 2)
         dists = {}                                        # corner num -> metres to its brake point (ahead only)
         busy = False                                      # inside a corner's braking or apex zone
         beep = None
@@ -1422,7 +1478,7 @@ class Coach:
                 need = self._need_s(c.text)
                 if any(dist / vv < need for dist in dists.values()):
                     return "no room before a brake point"
-                if HARD_GATING and (hard_in or (self.duration(c.text) + st.audio_latency_s) * vv > hard_m):
+                if HARD_GATING and (hard_in or (self.duration(c.text) + self._lat()) * vv > hard_m):
                     return "in a hard zone" if hard_in else "no room before a hard zone"
                 return None
             if c.kind == KIND_INFO and ref is None:
@@ -1443,7 +1499,7 @@ class Coach:
             if HARD_GATING and self._hard and self._nonurgent(c):    # 2.17.2: not in or into a hard zone
                 if hard_in:
                     return "in a hard zone"
-                if (self.duration(c.text) + st.audio_latency_s) * vv > hard_m:
+                if (self.duration(c.text) + self._lat()) * vv > hard_m:
                     return "no room before a hard zone"
             if st.quiet:
                 if c.kind in (KIND_MARKER, KIND_FEEDBACK):
@@ -1485,12 +1541,15 @@ class Coach:
             self.queue._dropped(cue, "no longer valid: " + why)
             return []
         self._last_spoken_t = t
-        self._speaking_until = t + self.duration(cue.text) + st.audio_latency_s
+        self._speaking_until = t + self.duration(cue.text) + self._lat()
         cue.spoken_t = t
         nxt = min((d / vv for d in dists.values()), default=None)
-        self._emit("spoken", cue, dur_s=round(self.duration(cue.text), 2),
-                   next_brake_s=round(nxt, 2) if nxt is not None else None,
-                   waited_s=round(t - cue.t, 2))
+        if self.skipping:                                 # 2.18 rehearsal skipping ahead: made, never said
+            self._emit("dropped", cue, dropped="skipped ahead (rehearsal)")
+        else:
+            self._emit("spoken", cue, dur_s=round(self._real_duration(cue.text), 2),
+                       next_brake_s=round(nxt, 2) if nxt is not None else None,
+                       waited_s=round(t - cue.t, 2))
         if cue.kind in (KIND_MARKER, KIND_FEEDBACK):
             num = int(cue.corner[1:])
             lap.cues += 1
@@ -1881,7 +1940,10 @@ class Coach:
         try:
             new = reference_from_raw(_raw_from(cols, len(a)), lt, L, car=ref.car if ref else self._car_hint,
                                      track=ref.track if ref else self._track_hint,
-                                     source={"kind": "live", "lap": lap.num, "date": datetime.now().strftime("%Y-%m-%d")},
+                                     source=({"kind": "live", "lap": lap.num, "date": self.date_hint[:10],
+                                              "when": self.date_hint, "played": True} if self.date_hint else
+                                             {"kind": "live", "lap": lap.num,
+                                              "date": datetime.now().strftime("%Y-%m-%d")}),
                                      prefix=self.settings.corner_prefix)
         except ValueError as e:
             self.events.append({"t": lap.t0, "text": f"new best lap not used as reference ({e})"})
@@ -1912,6 +1974,41 @@ class Coach:
     def hint(self, length_m=None, car=None, track=None):
         """Track length / car / track for a reference made from a live lap when there was none before."""
         self._length_hint, self._car_hint, self._track_hint = length_m, car, track
+
+
+DONE_OF = 10                # 2.18: "done when you hit it on 7 of 10 laps" (practiceplan.KEEP_BELOW, 70%)
+
+
+def done_rule() -> tuple:
+    """(hits, out of) that make the practice plan's one thing done: the session score's own rule (KEEP_BELOW)."""
+    try:
+        from . import practiceplan
+        share = float(practiceplan.KEEP_BELOW)
+    except Exception:  # noqa: BLE001
+        share = 0.7
+    return int(math.ceil(share * DONE_OF - 1e-9)), DONE_OF
+
+
+def focus_count(passes, current_lap, before: str | None = None) -> dict:
+    """2.18: the one thing's live count, from laps that are finished only (a pass on the lap he is still driving
+    waits for the line, so "Hit 3 of 7" never shows before a lap is done). before: the focus's own words for when
+    nothing is measured yet ("No clean pass through the corner yet", or that telemetry is read too slowly).
+    {"count_hits", "count_of", "count_text", "done_text", "done"}."""
+    done = [p for p in passes or [] if isinstance(p, dict) and isinstance(p.get("lap"), int)
+            and current_lap is not None and p["lap"] < current_lap]
+    n, h = len(done), sum(1 for p in done if p.get("hit"))
+    need, of = done_rule()
+    waiting = len(passes or []) > n
+    if n:
+        text = f"Hit {h} of {n} so far"
+    elif waiting:
+        text = "Counted when this lap is done"
+    else:
+        text = before or "No clean pass through the corner yet"
+    last = done[-of:]
+    reached = len(last) >= of and sum(1 for p in last if p.get("hit")) >= need
+    return {"count_hits": h, "count_of": n, "count_text": text, "done": reached,
+            "done_text": f"Done when you hit it on {need} of {of} laps"}
 
 
 def marker_text(name: str) -> str:
@@ -2032,11 +2129,18 @@ class IbtPlaybackSource:
             tr = ib.track()
             self._info = {"car": ib.car(), "track": {"name": tr.get("name"), "code": tr.get("code"),
                                                      "config": tr.get("config"), "id": tr.get("id")},
-                          "length_m": _ibt_length_m(ib), "driver": (ib.player() or {}).get("UserName")}
+                          "length_m": _ibt_length_m(ib), "driver": (ib.player() or {}).get("UserName"),
+                          "when": file_when(self.path, ib.start_date)}       # 2.18: the day it was driven
         self.step = max(1, int(round(self.tick / max(1.0, rate_hz))))
         self.interval = (self.step / self.tick) / self.speed if self.speed > 0 else 0.0
         self.realtime = self.speed > 0
         self._i = max(0, int(start_s * self.tick))
+
+    def set_speed(self, speed: float):
+        """2.18 rehearsal: play at this many times real speed from now on (the samples are the same ones)."""
+        self.speed = float(speed)
+        self.interval = (self.step / self.tick) / self.speed if self.speed > 0 else 0.0
+        self.realtime = self.speed > 0
 
     def info(self) -> dict:
         return self._info
@@ -2178,11 +2282,27 @@ def reference_why(ref, given=None) -> str:
     kind = (ref.source or {}).get("kind")
     if kind == "ibt":
         return "your best lap in your telemetry files"
+    if kind == "live" and (ref.source or {}).get("played"):
+        return "a clean lap from the session being rehearsed"     # 2.18: not "just now"
     if kind == "live":
         return "your best clean lap this session"
     if kind == "g61":
         return "a Garage 61 lap"
     return ""
+
+
+def show_state(state: str, running: bool, mode: str, muted: bool) -> str:
+    """2.18: the one word the driving view shows in large type: "coaching", "muted", "rehearsing" or "off" (and,
+    while it gets going, "starting" or "waiting" for iRacing). Muted wins over everything while it runs."""
+    if not running:
+        return "off"
+    if muted:
+        return "muted"
+    if mode == "rehearsal":
+        return "rehearsing"
+    if state in ("coaching", "no_reference"):
+        return "coaching"
+    return state if state in ("starting", "waiting") else "coaching"
 
 
 def short_track(name: str) -> str:
@@ -2250,6 +2370,13 @@ class LiveRunner:
         self._focus_lap = None
         self._latest = None             # 2.17.2: the newest telemetry sample (cues are checked against it before playing)
         self._takes_check = None        # ... does the voice's say() take check= (PackVoice does)
+        self._mute_by = self._mute_at = None    # 2.18: who muted and when (the window says so on reopening)
+        self.repeat_note = None         # 2.18: {"said": False, "text", "wall"} when "Repeat that" was not said
+        self.speed = 1.0                # 2.18 rehearsal speed (1x, 2x or 4x)
+        self._skip = None               # 2.18 rehearsal: {"what": "lap" | "cue", "lap", "laps"} while skipping
+        self.skip_note = ""
+        self.skipped = 0                # cues made while skipping (never said)
+        self._focus_saved = None        # 2.18: the last focus count written to focus-results.json
         self.coach.on_event = self._on_event
 
     def _voice_duration(self, text):
@@ -2285,22 +2412,37 @@ class LiveRunner:
         focus_for again before its next sample and switches when the plan_id differs. Also done once a lap."""
         self._focus_dirty.set()
 
-    def mute(self):
-        self.coach.mute()
-        _call(self.voice, "cancel")
-        self._event({"ev": "muted", "why": "mute"})
+    def mute(self, by: str = ""):
+        self.set_muted(True, by)
 
     def unmute(self):
-        self._quiet_until = None
-        self.coach.unmute()
+        self.set_muted(False)
 
-    def toggle(self) -> bool:
-        m = self.coach.toggle()
-        self._quiet_until = None
-        if m:
+    def set_muted(self, on: bool, by: str = "") -> bool:
+        """2.18: mute or unmute, said outright (the window's Mute button sends the state it shows, so its first press
+        always mutes, whatever a key or the wheel did a moment before). Muting during "Mute for 1 minute" makes it
+        stay muted until Unmute. Mute lasts while the coach runs; every start begins unmuted. Returns muted."""
+        if on:
+            was = self.coach.settings.muted and self._quiet_until is None
+            self._quiet_until = None
+            self.coach.mute()
             _call(self.voice, "cancel")
-            self._event({"ev": "muted", "why": "mute"})
-        return m
+            if not was:
+                self._mute_by, self._mute_at = by or "", time.time()
+                self._event({"ev": "muted", "why": "mute" + (f" ({by})" if by else "")})
+        else:
+            was = self.coach.settings.muted
+            self._quiet_until = None
+            self.coach.unmute()
+            self._mute_by = self._mute_at = None
+            self.repeat_note = None             # "not said, the coach is muted" is old news once it talks again
+            if was:
+                self._event({"ev": "muted", "why": "unmuted" + (f" ({by})" if by else ""), "seconds": 0.0})
+        return self.coach.settings.muted
+
+    def toggle(self, by: str = "") -> bool:
+        """The mute key and the wheel button: one press mutes, the next unmutes."""
+        return self.set_muted(not self.coach.settings.muted, by)
 
     def mute_for(self, seconds: float = 60.0) -> float:
         """Coach 2.0 "Mute for 1 minute": quiet now, talking again by itself after `seconds` (pressing it again
@@ -2308,15 +2450,85 @@ class LiveRunner:
         self.coach.mute()
         _call(self.voice, "cancel")
         self._quiet_until = self._clock() + max(1.0, float(seconds))
+        self._mute_by, self._mute_at = "for 1 minute", time.time()
         self._event({"ev": "muted", "why": f"for {int(seconds)} s", "seconds": float(seconds)})
         return float(seconds)
+
+    def mute_state(self) -> dict:
+        """2.18: the mute as the window shows it: {"on", "by", "since" (wall-clock seconds), "quiet_left"}."""
+        on = bool(self.coach.settings.muted)
+        ql = self.quiet_left()
+        return {"on": on, "by": self._mute_by if on else None, "since": round(self._mute_at, 1) if on and
+                self._mute_at else None, "quiet_left": round(ql, 1) if on and ql is not None else None}
+
+    # ---- 2.18 rehearsal: faster, and skipping ahead ----
+    SPEEDS = (1.0, 2.0, 4.0)
+    SKIP_LAPS = 3               # "next cue" looks this many laps ahead at most
+
+    def set_speed(self, speed: float) -> bool:
+        """A rehearsal played at 1x, 2x or 4x. The words still take their own time, so the coach counts each cue as
+        2 or 4 times as long in the file's time (Coach.time_scale): every cue still ends before its brake point, and
+        fewer cues fit than at 1x. False in live coaching or for another speed."""
+        try:
+            x = float(speed)
+        except (TypeError, ValueError):
+            return False
+        fn = getattr(self.source, "set_speed", None)
+        if self.mode != "rehearsal" or x not in self.SPEEDS or fn is None:
+            return False
+        fn(x)
+        self.speed = x
+        self.coach.time_scale = x
+        self._event({"ev": "asked", "why": f"rehearsal speed {x:g}x"})
+        return True
+
+    def skip(self, what: str = "lap") -> bool:
+        """Rehearsal only: jump ahead to the next lap ("lap") or to the next cue ("cue"). The samples in between still
+        go through the coach as fast as they can (so its laps, reference and focus stay right), with nothing said;
+        cues made on the way are logged as skipped. "cue" gives up after SKIP_LAPS laps."""
+        if self.mode != "rehearsal" or what not in ("lap", "cue") or not self.running():
+            return False
+        self.skip_note = ""
+        self._skip = {"what": what, "lap": None, "laps": 0}
+        _call(self.voice, "cancel")
+        self._event({"ev": "asked", "why": f"skip to the next {what}"})
+        return True
+
+    def _skip_step(self, s: dict) -> bool:
+        """True while this sample is skipped (on the coach's thread)."""
+        sk = self._skip
+        if sk is None:
+            return False
+        lap = s.get("Lap")
+        if sk["lap"] is None:
+            sk["lap"] = lap
+        elif lap != sk["lap"]:
+            sk["laps"] += 1
+            sk["lap"] = lap
+            if sk["what"] == "lap":
+                self._skip = None
+                self.skip_note = f"Skipped to lap {lap}."
+                return False
+            if sk["laps"] >= self.SKIP_LAPS:
+                self._skip = None
+                self.skip_note = f"No cue in the next {self.SKIP_LAPS} laps: playing on from lap {lap}."
+                return False
+        return True
 
     def quiet_left(self) -> float | None:
         q = self._quiet_until
         return max(0.0, q - self._clock()) if q is not None else None
 
     def repeat(self) -> str | None:
-        """Coach 2.0 "Repeat that": the last spoken cue again, now (also while muted: he asked for it)."""
+        """Coach 2.0 "Repeat that": the last spoken cue again, now. 2.18: never while muted (muted means silent; only
+        the answer to "How's my pace?" comes through, because he asked for that one): nothing is said, and
+        repeat_note says why for the window."""
+        if self.coach.settings.muted:
+            self.repeat_note = {"said": False, "wall": round(time.time(), 1),
+                                "text": "Repeat that: not said, because the coach is muted. Unmute to hear it."}
+            self._event({"ev": "repeated", "dropped": "muted"})
+            return None
+        self.repeat_note = None
         fn = getattr(self.voice, "repeat", None)
         text = None
         if fn is not None:
@@ -2427,7 +2639,8 @@ class LiveRunner:
                     f"first clean lap becomes the reference and every lap after it is compared with it.")
         elif st == "coaching":
             ref = self.coach.reference
-            text = f"Coaching: {car} at {track}, reference {ref.describe()}" if ref else f"Coaching: {car} at {track}"
+            word = "Rehearsing" if self.mode == "rehearsal" else "Coaching"     # 2.18: never "Coaching" in a rehearsal
+            text = f"{word}: {car} at {track}, reference {ref.describe()}" if ref else f"{word}: {car} at {track}"
             why = reference_why(ref, self.coach.keep_reference)
             if why and not self.settings.quiet:
                 text += f" ({why})"
@@ -2447,7 +2660,7 @@ class LiveRunner:
             vs = {"backend": "?", "available": False, "reason": ""}
         if self.mode == "rehearsal":
             text = ("Rehearsal finished" if st == "finished" else
-                    "Rehearsal: " + text if st in ("coaching", "no_reference", "starting") else
+                    "Rehearsal: " + text if st in ("no_reference", "starting") else
                     "Rehearsal: reading the file" if st == "waiting" else text)
         ql = self.quiet_left()
         if ql is not None and cs["muted"] and st == "coaching":
@@ -2470,7 +2683,11 @@ class LiveRunner:
                 "voice": vs, "error": self._error, "errors": self._errors, "settings": self.settings.to_dict(),
                 "focus": cs.get("focus"), "level": cs.get("level"), "focus_info": cs.get("focus_info"),
                 "asks": self.coach.asks, "invalid_drops": self.coach.invalid_drops,
-                "reference_why": reference_why(self.coach.reference, self.coach.keep_reference)}
+                "reference_why": reference_why(self.coach.reference, self.coach.keep_reference),
+                # 2.18 the driving view
+                "show": show_state(st, self.running(), self.mode, cs["muted"]), "mute": self.mute_state(),
+                "repeat_note": self.repeat_note, "live_delta": self.coach.live_delta, "speed": self.speed,
+                "skipping": (self._skip or {}).get("what"), "skip_note": self.skip_note, "skipped": self.skipped}
 
     def _fixed_names(self) -> list:
         ref = self.coach.reference
@@ -2491,6 +2708,7 @@ class LiveRunner:
                 if q is not None and t0 >= q:            # the minute is up: talking again
                     self._quiet_until = None
                     self.coach.unmute()
+                    self._mute_by = self._mute_at = self.repeat_note = None
                     self._event({"ev": "muted", "why": "minute over, talking again", "seconds": 0.0})
                 try:
                     s = self.source.read()
@@ -2509,16 +2727,31 @@ class LiveRunner:
                     self._stop.wait(1.0)
                     continue
                 try:
+                    skipping = self._skip_step(s)    # 2.18 rehearsal: skipping ahead (nothing said)
                     self._ensure_reference()
                     lap = s.get("Lap")
-                    if lap != self._focus_lap:           # once a lap: has the practice plan changed?
+                    newlap = lap != self._focus_lap
+                    if newlap:                       # once a lap: has the practice plan changed?
                         self._focus_lap = lap
                         self._focus_dirty.set()
                     if self._focus_dirty.is_set():
                         self._focus_dirty.clear()
                         self._check_focus()
                     self._prepare()                  # a new best may have changed the reference
+                    self.coach.skipping = skipping and (self._skip or {}).get("what") == "lap"
                     cues = self.coach.feed(s)
+                    self.coach.skipping = False
+                    if newlap:
+                        self._save_focus()
+                    if skipping and (self._skip or {}).get("what") == "cue" and \
+                            any(c.kind != KIND_BEEP for c in cues):
+                        self._skip, skipping = None, False
+                        self.skip_note = f"Skipped to the next cue, on lap {lap}."
+                    if skipping:
+                        for cue in cues:
+                            self.skipped += 1
+                            self.coach.spoken = [c for c in self.coach.spoken if c is not cue]
+                        cues = []
                     if self.coach.take_cancel():
                         _call(self.voice, "cancel")
                     for cue in cues:
@@ -2534,6 +2767,8 @@ class LiveRunner:
                 except Exception as e:  # noqa: BLE001
                     self._problem(f"coach step failed ({e.__class__.__name__}: {str(e)[:120]})")
                 iv = getattr(self.source, "interval", 0.0) or 0.0
+                if self._skip is not None:
+                    iv = 0.0                             # skipping ahead: as fast as it goes
                 if iv > 0:
                     self._stop.wait(max(0.0, iv - (self._clock() - t0)))
         except BaseException as e:  # noqa: BLE001  (never out of the thread)
@@ -2565,6 +2800,8 @@ class LiveRunner:
         except Exception:  # noqa: BLE001
             pass
         info = info or {}
+        # 2.18: a lap adopted in a rehearsal is from the day the played file was driven, not today
+        self.coach.date_hint = (info.get("when") or None) if self.mode == "rehearsal" else None
         car, track = info.get("car") or {}, info.get("track") or {}
         key = ((car.get("path") or "").lower(), (track.get("code") or "").lower())
         if key == self._key:
@@ -2616,6 +2853,28 @@ class LiveRunner:
         self._state = "coaching" if ref is not None else "no_reference"
         self._prepared = None
         self._prepare()
+
+    def _save_focus(self):
+        """2.18: once a lap, the one thing's count over finished laps goes to focus-results.json beside the cue logs,
+        so the Practice page can show what the coach counted (live coaching only; a rehearsal isn't a drive)."""
+        if self.mode != "live" or not self._log_dir:
+            return
+        fs = self.coach._focus_status()
+        if not fs or not fs.get("plan_id") or not fs.get("count_of"):
+            return
+        key = (fs["plan_id"], fs["count_hits"], fs["count_of"])
+        if key == self._focus_saved:
+            return
+        self._focus_saved = key
+        info = self._info or {}
+        try:
+            from . import cuelog
+            cuelog.save_focus_result(self._log_dir, fs["plan_id"], {
+                "hits": fs["count_hits"], "of": fs["count_of"], "corner": fs.get("corner"), "done": fs.get("done"),
+                "done_text": fs.get("done_text"), "car": (info.get("car") or {}).get("path"),
+                "track": (info.get("track") or {}).get("code"), "when": datetime.now().strftime("%Y-%m-%d %H:%M")})
+        except Exception as e:  # noqa: BLE001
+            self._problem(f"the coach's count could not be saved ({e.__class__.__name__})")
 
     def _check_focus(self):
         """Ask focus_for again for the current car + track; switch the coach's focus only when the plan changed (same

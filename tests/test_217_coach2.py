@@ -505,7 +505,7 @@ rr = lc.LiveRunner(ch, fr, settings=lc.Settings(top_n=1), reference=ref, weak_co
 rr.start()
 time.sleep(1.0)
 pr = rr.status()["progress"]
-check(rr.status()["mode"] == "rehearsal" and rr.status()["text"].startswith("Rehearsal"), rr.status()["text"])
+check(rr.status()["mode"] == "rehearsal" and rr.status()["text"].startswith("Rehears"), rr.status()["text"])
 check(pr and 0 < pr["at_s"] <= 1.6, f"plays at real speed ({pr})")
 check(rr.stop(2) and not rr.running(), "Stop ends a rehearsal")
 check(rr.cuelog is not None and rr.cuelog.path.name.endswith(" rehearsal.jsonl"), "a rehearsal has its own log")
@@ -714,7 +714,7 @@ if ss:
     code, r = call("api/coach/rehearse", {"id": ss[0]["id"]})
     check(code == 200 and r["ok"], f"rehearse a session ({r.get('error')})")
     st = wait_for(lambda: (lambda x: x if (x.get("progress") or {}).get("at_s") else None)(coach_status()), 15)
-    check(st and st["mode"] == "rehearsal" and st["rehearsal"]["state"] == "playing" and st["text"].startswith("Rehearsal"),
+    check(st and st["mode"] == "rehearsal" and st["rehearsal"]["state"] == "playing" and st["text"].startswith("Rehears"),
           f"rehearsal status: {st and st['text']}")
     code, r2 = call("api/coach/start", {})
     check(code == 200 and r2.get("already"), "Start while rehearsing: the one runner is already on")

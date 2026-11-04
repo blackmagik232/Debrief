@@ -19,6 +19,11 @@ extra() for coach/status, and get()/post()/upload() for the routes below).
     POST api/coach/wheel-repeat-learn / wheel-repeat-clear   a wheel button for "Repeat that"
     POST api/coach/pace                       2.17.2 "How's my pace?": the coach answers when it is safe to talk
     POST api/coach/wheel-pace-learn / wheel-pace-clear       a wheel button for "How's my pace?"
+    POST api/coach/mute-set {muted}            2.18: mute or unmute outright (the window's Mute button)
+    POST api/coach/rehearse-speed {speed}      2.18: a rehearsal at 1x, 2x or 4x
+    POST api/coach/rehearse-skip {what}        2.18: a rehearsal skips to the next "lap" or "cue"
+    GET  api/coach/result?car=&track=[&plan=]  2.18: for Practice: the coach's reference lap there, and what the
+                                               coach counted for a plan's one thing
 """
 from __future__ import annotations
 
@@ -34,13 +39,15 @@ from urllib.parse import parse_qs, urlsplit
 from .. import app
 from . import settings_io
 
-GET_ROUTES = ("api/coach/voices", "api/coach/logs", "api/coach/log")
+GET_ROUTES = ("api/coach/voices", "api/coach/logs", "api/coach/log", "api/coach/result")
 POST_ROUTES = ("api/coach/voice-settings", "api/coach/preview", "api/coach/measure", "api/coach/import-pack",
                "api/coach/repeat", "api/coach/quiet", "api/coach/rehearse", "api/coach/wheel-repeat-learn",
                "api/coach/wheel-repeat-clear", "api/coach/pace", "api/coach/wheel-pace-learn",
-               "api/coach/wheel-pace-clear")
+               "api/coach/wheel-pace-clear", "api/coach/mute-set", "api/coach/rehearse-speed",
+               "api/coach/rehearse-skip")
 UPLOAD_ROUTE = "api/coach/import-pack-zip"
 QUIET_S = 60.0
+REPEAT_NOTE_S = 12.0             # 2.18: "Repeat that: not said, the coach is muted" stays on the page this long
 SIDE_IDLE_S = 30.0               # a voice made for Preview / Measure (coach off) is closed after this long unused
 PACK_ID_OK = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,39}$")
 ZIP_NAME_OK = re.compile(r"^[^\x00-\x1f/\\<>:\"|?*]{1,160}\.zip$", re.I)
@@ -99,6 +106,7 @@ class State:
         self.preview = None           # {"state": playing | done | error, "text", "until"}
         self.import_note = None
         self.rehearsal = None         # {"id", "title"} while a rehearsal runs or after it
+        self.speed = 1.0              # 2.18: the rehearsal speed picked (1x, 2x or 4x)
         self.wheels = {}              # role -> wheelmute.WheelMute ("repeat": Repeat that, "pace": How's my pace?)
         self.wheel_notes = {}         # role -> a note for the window ("Saved: ...")
 
@@ -163,7 +171,8 @@ class HotkeyGroup:
 
 def hotkeys(server, settings, runner):
     from .. import livecoach
-    return HotkeyGroup({"mute": livecoach.Hotkey(settings.hotkey, runner.toggle, log=app.say),
+    return HotkeyGroup({"mute": livecoach.Hotkey(settings.hotkey, lambda: runner.toggle(by="Ctrl+Shift+M"),
+                                                 log=app.say),
                         "repeat": livecoach.Hotkey(settings.repeat_hotkey, runner.repeat, log=app.say),
                         "quiet": livecoach.Hotkey(settings.quiet_hotkey, lambda: runner.mute_for(QUIET_S),
                                                   log=app.say),
@@ -366,15 +375,59 @@ def extra(server, st: dict):
         with s2.lock:
             if s2.rehearsal and s2.rehearsal.get("state") == "playing":
                 s2.rehearsal["state"] = "stopped"
+    with s2.lock:
+        st["rehearse_speed"] = s2.speed
+    # 2.18: the voice he chose, and if it isn't the one playing, why and what plays instead
+    try:
+        st["voice_note"] = voice_note_for(server, st.get("voice") if st.get("running") else None)
+    except Exception:  # noqa: BLE001
+        st["voice_note"] = {"ok": True, "text": "", "using": ""}
+    rn = st.get("repeat_note")
+    if isinstance(rn, dict) and time.time() - float(rn.get("wall") or 0) > REPEAT_NOTE_S:
+        st["repeat_note"] = None            # shown for a few seconds after the press, then gone
+
+
+def voice_note_for(server, voice_status=None) -> dict:
+    """coachvoice.voice_note for the saved voice: the running voice's status, or (coach off) the installed packs."""
+    from .. import coachvoice, voicepack
+    pack = server.coach_settings().voice_pack
+    return coachvoice.voice_note(pack, voice_status, voicepack.list_packs(packs_dir()))
 
 
 # ---------------------------------------------------------------- GET
 def get(h, r, q):
-    return {"api/coach/voices": get_voices, "api/coach/logs": get_logs, "api/coach/log": get_log}[r](h, q)
+    return {"api/coach/voices": get_voices, "api/coach/logs": get_logs, "api/coach/log": get_log,
+            "api/coach/result": get_result}[r](h, q)
+
+
+def get_result(h, q):
+    """2.18 for the Practice session page: the lap the coach starts from for this car + track (named as the Practice
+    list names it: livecoach.reference_choice over Setup Lab's index, no file opened), and what the live coach counted
+    for the plan's one thing (cuelog.focus_results), with what counts as done."""
+    from .. import cuelog, livecoach
+    from .server import setuplab_cache_path
+    car, track, plan = (q.get("car") or "")[:200], (q.get("track") or "")[:200], (q.get("plan") or "")[:120]
+    if not car or not track:
+        raise ValueError("Bad request.")
+    ref = None
+    try:
+        idx, _k = h.server.setuplab.load(setuplab_cache_path(h._cfg()))
+        ref = livecoach.reference_choice(idx, car, track) if idx else None
+    except (OSError, SystemExit, KeyError, ValueError):
+        ref = None
+    res = cuelog.focus_results(logs_dir()).get(plan) if plan else None
+    need, of = livecoach.done_rule()
+    out = {"ok": True, "reference": ref, "done_text": f"Done when you hit it on {need} of {of} laps", "result": None}
+    if isinstance(res, dict) and str(res.get("car") or "").lower() == car.lower() and \
+            str(res.get("track") or "").lower() == track.lower():
+        hits, n = int(res.get("hits") or 0), int(res.get("of") or 0)
+        out["result"] = {"hits": hits, "of": n, "when": res.get("when"), "corner": res.get("corner"),
+                         "text": f"While coaching, you hit it on {hits} of {n} lap{'s' if n != 1 else ''}."}
+    return h._json(out)
 
 
 def get_voices(h, q):
-    from .. import audioout, voicepack
+    from .. import audioout, coachvoice, voicepack
     from .server import _jsonable, saved_coach_settings
     from .. import livecoach
     s = livecoach.Settings.from_dict(saved_coach_settings())
@@ -389,6 +442,7 @@ def get_voices(h, q):
         "settings": {"voice_pack": s.voice_pack, "device": s.device,
                      "audio_latency_s": s.audio_latency_s, "rate": s.rate, "volume": s.volume},
         "user_dir": str(packs_dir()), "can_choose_device": bool(devs) or _test_backend(h.server) is not None,
+        "chosen_note": coachvoice.voice_note(s.voice_pack, None, voicepack.list_packs(packs_dir())),
         "import_note": state(h.server).import_note}))
 
 
@@ -420,7 +474,9 @@ def post(h, r, body):
           "api/coach/repeat": post_repeat, "api/coach/quiet": post_quiet, "api/coach/rehearse": post_rehearse,
           "api/coach/wheel-repeat-learn": post_wheel_learn, "api/coach/wheel-repeat-clear": post_wheel_clear,
           "api/coach/pace": post_pace, "api/coach/wheel-pace-learn": lambda h, b: post_wheel_learn(h, b, "pace"),
-          "api/coach/wheel-pace-clear": lambda h, b: post_wheel_clear(h, b, "pace")}[r]
+          "api/coach/wheel-pace-clear": lambda h, b: post_wheel_clear(h, b, "pace"),
+          "api/coach/mute-set": post_mute_set, "api/coach/rehearse-speed": post_rehearse_speed,
+          "api/coach/rehearse-skip": post_rehearse_skip}[r]
     return fn(h, body if isinstance(body, dict) else {})
 
 
@@ -482,7 +538,13 @@ def post_preview(h, body):
                         reason = (v.status() or {}).get("reason") or ""
                     except Exception:  # noqa: BLE001
                         pass
-                    st.preview = {"state": "error", "text": "No sample to play" + (f": {reason}" if reason else ".")}
+                    note = ""
+                    try:
+                        note = voice_note_for(h.server, v.status() or {}).get("text") or ""
+                    except Exception:  # noqa: BLE001
+                        pass
+                    st.preview = {"state": "error", "text": note or ("No sample to play" +
+                                                                     (f": {reason}" if reason else "."))}
         except Exception:  # noqa: BLE001
             app.say("ERROR playing the voice sample:\n" + traceback.format_exc())
             with st.lock:
@@ -598,7 +660,48 @@ def post_repeat(h, body):
     if r is None:
         raise ValueError("Start the coach first.")
     text = r.repeat()
-    return h._json({"ok": True, "text": text, "said": bool(text)})
+    note = getattr(r, "repeat_note", None) if not text else None
+    return h._json({"ok": True, "text": text, "said": bool(text), "muted": bool(note),
+                    "note": (note or {}).get("text") or ""})
+
+
+def post_mute_set(h, body):
+    """2.18: Mute / Unmute as the button says it (never a toggle, so its first press always mutes)."""
+    on = body.get("muted")
+    if not isinstance(on, bool):
+        raise ValueError("Bad request.")
+    r = runner_of(h.server)
+    if r is None:
+        raise ValueError("Start the coach first.")
+    muted = bool(r.set_muted(on, by="the Mute button" if on else "the Unmute button"))
+    return h._json({"ok": True, "muted": muted, "mute": r.mute_state()})
+
+
+def post_rehearse_speed(h, body):
+    """2.18: 1x, 2x or 4x, for the rehearsal playing now and the next one."""
+    sp = body.get("speed")
+    if isinstance(sp, bool) or not isinstance(sp, (int, float)) or float(sp) not in (1.0, 2.0, 4.0):
+        raise ValueError("Pick 1x, 2x or 4x.")
+    st = state(h.server)
+    with st.lock:
+        st.speed = float(sp)
+    r = runner_of(h.server)
+    if r is not None and getattr(r, "mode", "") == "rehearsal":
+        r.set_speed(float(sp))
+    return h._json({"ok": True, "speed": float(sp)})
+
+
+def post_rehearse_skip(h, body):
+    """2.18: the rehearsal skips to the next lap or the next cue (nothing is said on the way)."""
+    what = body.get("what")
+    if what not in ("lap", "cue"):
+        raise ValueError("Bad request.")
+    r = runner_of(h.server)
+    if r is None or getattr(r, "mode", "") != "rehearsal":
+        raise ValueError("Start a rehearsal first.")
+    if not r.skip(what):
+        raise ValueError("The rehearsal can't skip right now.")
+    return h._json({"ok": True, "what": what})
 
 
 def post_pace(h, body):
@@ -618,7 +721,8 @@ def post_quiet(h, body):
 
 
 def post_rehearse(h, body):
-    """Play one of his Practice sessions through the whole coach (voice, device) at real speed."""
+    """Play one of his Practice sessions through the whole coach (voice, device), at the speed picked (2.18: 1x,
+    2x or 4x)."""
     from .server import SESSION_ID_OK
     sid = body.get("id")
     if not isinstance(sid, str) or not SESSION_ID_OK.match(sid):
@@ -642,12 +746,17 @@ def post_rehearse(h, body):
     with st.lock:
         st.rehearsal = {"id": sid, "title": title, "state": "playing"}
     close_side(srv)
-    res = srv.start_coach(source_factory=lambda: ChainPlayback(paths), mode="rehearsal",
+    with st.lock:
+        speed = st.speed
+    res = srv.start_coach(source_factory=lambda: ChainPlayback(paths, speed=speed), mode="rehearsal",
                           log_header={"source": "rehearsal"})
     if not res.get("ok"):
         with st.lock:
             st.rehearsal = None
         return h._json(res, 400)
+    r = runner_of(srv)
+    if r is not None and speed != 1.0:
+        r.set_speed(speed)                   # the coach times its cues for this speed
     app.say(f"Coach rehearsal started ({len(paths)} file(s)).")
     return h._json({**res, "status": srv.coach_status()})
 
@@ -697,13 +806,22 @@ class ChainPlayback:
         self.done = False
         self.state = "playing"
         self.realtime = True
-        self.interval = 1.0 / rate_hz
+        self.interval = (1.0 / rate_hz) / speed if speed > 0 else 0.0
         self._sizes = []
         for p in self.paths:
             try:
                 self._sizes.append(max(1, p.stat().st_size))
             except OSError:
                 self._sizes.append(1)
+
+    def set_speed(self, speed: float):
+        """2.18: 1x, 2x or 4x from now on (this file and the ones after it)."""
+        self.speed = float(speed)
+        if self.cur is not None:
+            self.cur.set_speed(self.speed)
+            self.interval = self.cur.interval
+        else:
+            self.interval = (1.0 / self.rate_hz) / self.speed if self.speed > 0 else 0.0
 
     def _next(self) -> bool:
         from .. import livecoach

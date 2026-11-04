@@ -259,7 +259,7 @@ def test_setup_gate_and_sample_review():
         pg.click(".navbtn[data-nav=team]", force=True)
         pg.wait_for_function("() => document.getElementById('bannerText').textContent.startsWith('Finish the setup steps')")
         assert pg.is_visible("#vWelcome") and not pg.is_visible("#vTeam")
-        pg.keyboard.press("Control+3")
+        pg.keyboard.press("Control+4")
         assert pg.is_visible("#vWelcome")
         # Settings stays open
         pg.click(".navbtn[data-nav=settings]")

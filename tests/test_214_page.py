@@ -654,9 +654,12 @@ def test_firstrun_in_the_window():
         line = pg.text_content("#tdSetupLine")
         assert "1 step left" in line and "Test the coach's voice" in line, line
         no_dash_text(pg, "#tdSetupLine")
-        pg.click("#tdSetupLine >> text=Open the Coach")
+        pg.click("#tdSetupLine >> text=Test voice")
         pg.wait_for_selector("#vCoach", state="visible")
         assert pg.evaluate("() => document.getElementById('coSet').open")
+        pg.wait_for_function("() => document.getElementById('coSetMsg').textContent !== ''")   # it pressed Test voice
+        time.sleep(1)
+        st.write_text("{}", encoding="utf-8")              # the voice was heard: forget it, for the rest of the test
         # Help > Setup checklist shows the whole list on Today
         pg.click("#btnHelp")
         pg.click("#helpFirstRun")

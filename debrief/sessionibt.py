@@ -186,7 +186,7 @@ def sessions(src, cache_path=None, gap_hours: float = GAP_HOURS, progress=None, 
         folder = src.get("folder")
         records = src.get("files") or []
     else:
-        records = list(src or [])
+        records = sl.merge_track_codes(list(src or []))
     ids = {r["file"]: _subsession(Path(folder) / r["file"]) for r in records if folder and r.get("file")}
     groups = group_records(records, gap_hours=gap_hours, ids=ids)
     out = [_session_info(g, folder, ids) for g in groups]

@@ -428,6 +428,37 @@ def index(folder, cache_path=None, progress=None, stop=None) -> dict:
                 new_cache.setdefault(key, rec)
         _save_json(Path(cache_path), {"version": CACHE_VERSION, "files": new_cache})
     out["files"].sort(key=lambda r: (r.get("sort") or 0, r["file"]))
+    out["files"] = merge_track_codes(out["files"])
+    return out
+
+
+def merge_track_codes(records: list) -> list:
+    """2.19: iRacing sometimes gives one track two codes (the same venue and the same layout). The records of such a
+    track all take the code of its newest file, and keep the others in track["aliases"], so Practice and Setup Lab show
+    it once. Only the same display name (names.track_key: venue + layout) merges; a different layout never does.
+    Returns the records (copies of those changed); the cached originals stay as they were read."""
+    by_key = {}
+    for r in records:
+        t = r.get("track") or {}
+        k = _names.track_key(t.get("name"), t.get("config"))
+        if k and t.get("code"):
+            by_key.setdefault(k, []).append(r)
+    canon = {}
+    for k, rs in by_key.items():
+        if len({(r["track"]["code"] or "").lower() for r in rs}) > 1:
+            newest = max(rs, key=lambda r: (r.get("sort") or 0, r.get("file") or ""))
+            canon[k] = (newest["track"]["code"], sorted({r["track"]["code"] for r in rs}, key=str.lower))
+    if not canon:
+        return records
+    out = []
+    for r in records:
+        t = r.get("track") or {}
+        k = _names.track_key(t.get("name"), t.get("config"))
+        if k in canon and t.get("code"):
+            code, allc = canon[k]
+            r = dict(r)
+            r["track"] = dict(t, code=code, aliases=[c for c in allc if c.lower() != code.lower()])
+        out.append(r)
     return out
 
 
@@ -472,8 +503,10 @@ def _letters(i: int) -> str:
 
 def _match(rec, car_path, track_code) -> bool:
     c = (rec.get("car") or {}).get("path") or ""
-    t = (rec.get("track") or {}).get("code") or ""
-    return c.lower() == str(car_path).lower() and t.lower() == str(track_code).lower()
+    tr = rec.get("track") or {}
+    t = tr.get("code") or ""
+    codes = {t.lower()} | {str(a).lower() for a in tr.get("aliases") or []}
+    return c.lower() == str(car_path).lower() and str(track_code).lower() in codes
 
 
 def combos(idx: dict) -> list:

@@ -106,6 +106,7 @@
       <div class="frline" id="tdSetupLine" hidden></div>
       <div class="panel onething tdone" id="tdOne" aria-live="polite">
         <div class="phead"><h3>Your #1 thing right now</h3><span class="pill" id="tdSure" hidden></span></div>
+        <p class="note tdlegend" id="tdLegend" hidden><b>Sure</b>: read straight from your laps. <b>Likely</b>: unlikely to be chance. <b>A hint</b>: a few laps point that way. <b>A guess</b>: try it and see.</p>
         <p class="note ptwhere" id="tdWhere"></p>
         <p class="ptmain" id="tdTitle">Loading...</p>
         <div id="tdLines"></div>
@@ -706,7 +707,7 @@
       <form class="panel" id="fUpdate">
         <div class="phead"><h3>Updates</h3><span class="pill" id="updPill">–</span></div>
         <p class="note" id="updNote">Debrief checks GitHub for a newer version once a day. Updating downloads the installer, checks it arrived intact, installs it and reopens Debrief. Your settings, reviews and history are kept.</p>
-        <p class="note" id="updVerify">Updates are checked by SHA-256 checksum. Signed updates switch on once a signing key is published.</p>
+        <p class="note" id="updVerify">Updates are checked by <abbr title="A fingerprint that proves the update file wasn't changed.">SHA-256 checksum</abbr>: a fingerprint that proves the update file wasn't changed. Signed updates switch on once a signing key is published.</p>
         <label class="check" for="updAuto"><input id="updAuto" type="checkbox"><span>Check for updates when Debrief opens</span></label>
         <div class="row"><button type="button" class="btn" id="btnUpdCheck">Check now</button><button type="button" class="btn primary" id="btnUpdNow" hidden>Update now</button><button type="submit" class="btn ghost">Save</button><span class="msg" id="updMsg" role="status"></span></div>
       </form>
@@ -746,9 +747,9 @@
       <form class="panel" id="fDiscord" autocomplete="off">
         <div class="phead"><h3>Discord</h3><span class="pill" id="discordPill">Off</span></div>
         <p class="note msg bad" id="discordUnread" role="alert" hidden>Your saved Discord webhook can't be opened on this Windows account. Paste it again.</p>
-        <p class="note">Post a review's share card to the <span class="brandName">Midfield Menace</span> Discord channel. In Discord: channel settings &gt; Integrations &gt; Webhooks &gt; Copy Webhook URL, then paste it here. It's saved on this PC and Debrief never shows it again. Making a webhook needs the Manage Webhooks permission: if you don't have it, ask your team's Discord admin to make one and send you the link.</p>
+        <p class="note">A Discord webhook is a link that lets Debrief post into one Discord channel. Post a review's share card to the <span class="brandName">Midfield Menace</span> Discord channel. In Discord: channel settings &gt; Integrations &gt; Webhooks &gt; Copy Webhook URL, then paste it here. It's saved on this PC and Debrief never shows it again. Making a webhook needs the Manage Webhooks permission: if you don't have it, ask your team's Discord admin to make one and send you the link.</p>
         <p class="note"><b>Debrief only posts when you press Post and confirm. It never posts on its own.</b></p>
-        <label class="field wide" for="discordHook"><span>Webhook address</span>
+        <label class="field wide" for="discordHook" title="A link that lets Debrief post into one Discord channel."><span>Webhook address</span>
           <input id="discordHook" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste here">
         </label>
         <div class="row"><button type="submit" class="btn">Save</button><button type="button" class="btn" id="discordCheck" hidden>Check</button><button type="button" class="btn" id="discordClear" hidden>Remove</button><span class="msg" id="discordMsg" role="status"></span></div>

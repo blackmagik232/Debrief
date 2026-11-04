@@ -220,6 +220,8 @@ function openJob(){current={view:'job',dir:null};show('vJob');markNav()}
    other pages already worked out (the practice plan, a review's Fix first, a Racing habit, the setup steps), then the
    last race and the last practice, then links to the rest. Before any data it shows the setup steps. */
 // one sureness scale for every page's badges (today.SURE_WORDS): Sure, Likely, A hint, A guess
+// 2.19: a term gets one plain sentence the first time it shows (or as hover text)
+const sessWord=t=>/^lone qualif/i.test(String(t||''))?String(t)+' (qualifying alone on track)':String(t||'');
 const SURE={sure:['Sure','ok'],likely:['Likely',''],hint:['A hint','no'],guess:['A guess','no']};
 function sureBadge(level,why){const x=SURE[level];if(!x)return null;const b=h('span','pill sure'+(x[1]?' '+x[1]:''),x[0]);b.title=why||'How sure this is';return b}
 let td={j:null,seq:0};
@@ -243,6 +245,7 @@ function renderToday(){const j=td.j;if(!j)return;
   $('tdLines').replaceChildren(...(O.lines||[]).map(([k,v])=>{const q=h('p');if(k)q.append(h('b',null,k+': '));q.append(document.createTextNode(v||''));return q}));
   $('tdWhy').textContent=O.why||'';$('tdWhy').hidden=!O.why;
   const pill=$('tdSure'),x=SURE[O.sureness];pill.hidden=!x;if(x){pill.className='pill sure'+(x[1]?' '+x[1]:'');pill.textContent=x[0];pill.title='How sure this is: '+x[0]}
+  $('tdLegend').hidden=!x;
   const acts=[];if(O.action)acts.push(tdBtn(O.action,true));if(O.more)acts.push(tdBtn(O.more,false));$('tdActs').replaceChildren(...acts);
   // last race
   const R=j.last_race,rb=$('tdRaceBody');$('tdRaceWhen').textContent=R?[R.session,fmtDate(R.date)].filter(Boolean).join(' · '):'';
@@ -1459,38 +1462,38 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
   ['Practice','Every time you drove, from your telemetry files: your best and typical lap, the best possible lap, your laps, fuel and setups, and the Corner coach: one thing to try in each corner. Coach these corners hands those corners to the live coach.'],
   ['One thing this session','The top of Practice picks one thing to work on next time at that track, with a number you can check. Coach this has the live coach watch it. After you drive, open the session: Debrief counts the laps where you did it and says whether to keep it or move on.'],
   ['Getting set up','The setup checklist on the start page shows what is done and the next step. Hide it when you like; Help > Setup checklist brings it back.']],
- words:[['Clean lap','A full lap Garage 61 didn\'t flag: no incident and not a pit lap.'],['Typical lap','The middle of your clean laps. Half were quicker, half slower.'],
-  ['Comparison lap','A lap by a teammate, a followed driver or a rival, that yours are measured against.'],['Best sectors added up','Your best time through each part of the track, added together. A guide, not a lap you must be able to drive.'],
-  ['Brake point','Where on the track you first brake.'],['Apex','The slowest point of a corner, near the inside.'],['Coasting','Time with both pedals under 5%: after the brake is fully off and before you pick up the throttle, or a lift with no brake. It can sit beside trail braking, which happens earlier, while you turn in.'],
+ words:[['Clean lap','A full lap with no incident and no pit stop, so it shows your real pace.'],['Typical lap','The middle one of your clean laps: half were quicker and half slower.'],
+  ['Comparison lap','A lap by a teammate, a driver you follow or a rival, that your laps are measured against.'],['Best sectors added up','Your best time through each part of the track, added together. It is a guide, not a lap you must be able to drive.'],
+  ['Brake point','The spot on the track where you first press the brake.'],['Apex','The slowest point of a corner, near the inside edge.'],['Coasting','Time when both pedals are almost off (under 5%): after the brake is fully off and before you pick up the throttle, or a lift with no brake. Trail braking is different: that is brake still on as you turn in.'],
   ['Trail braking','Keeping a little brake on as you turn in, then easing off towards the apex. It keeps weight on the front tyres so the car turns.'],
-  ['Median','The middle value: half your laps were quicker, half slower. Debrief calls the median lap your typical lap.'],
-  ['Pace drift','How much your clean laps slowed (+) or sped up (\u2212) from the start of the race to the end, from a line drawn through them.'],
-  ['Consistency score','Out of 100: how close together your clean lap times were. 100 means every lap the same; under 45 means they were spread out. 60% comes from the spread, 40% from how many laps were close to your best.'],['Stint','A run of laps between pit stops.'],
-  ['Possibly traffic','A lap lost time in one short stretch your other laps didn\'t. It could be another car or a mistake.'],['Race log','Passes, fights, incidents and pit stops from a replay scan. Open one of your race reviews and press Scan this race.'],
-  ['On the road','The order the cars crossed the line in the replay. The iRacing results are the official order.'],['Rolling or standing start','Whether the field was moving at the green flag.'],
-  ['Resolve markers','For making a video of your race: a file the DaVinci Resolve video editor imports to mark the race\'s moments on its timeline.'],
-  ['Setup','The car settings you drive with (pressures, camber, springs, wing...). Setup Lab reads them from your telemetry files, because iRacing\'s .sto setup files are locked.'],
-  ['Open or fixed setup','In an open setup series you can change the setup; in a fixed one it is locked, so Setup Lab has nothing to suggest.'],
-  ['Laps counted','The clean laps Setup Lab compares setups on: not out laps, first flying laps, laps in traffic or laps far off the pace.'],
-  ['Reference lap','Your best clean lap for this car and track, from your telemetry files. With none there, the coach says "Building your reference", and your first clean lap becomes it ("Reference set, one thirty-eight nine"). The coach measures you against it.'],
-  ['Focus corner','One of the corners your race reviews or the Corner coach say keep costing you time. With none of those, the coach learns them from this session: the corners where your last clean laps lost the most against your reference. The coach talks about one to three at a time.'],
-  ['Coaching level','How much the coach says. Quiet: your focus corners and your lap time only, at most 2 tips a lap. Normal (the default): up to 4 cues a lap, 3 seconds apart. Busy: up to 6, 2.5 seconds apart. Only when I ask: nothing until you ask for your pace. Every level stays quiet under braking, in corners, with a car alongside and on lap 1 of a race.'],
-  ['How\'s my pace?','Press Ctrl+Shift+P, the button on the Coach page or a wheel button you chose: the coach says your last clean lap against your reference and the corner that cost the most there ("Down three tenths, most in T4"). It answers as soon as it is safe to talk, never under braking or in a corner.'],
-  ['Hard zones','From your reference lap, the stretch from hard braking until you are back on full throttle. Sector and lap times and other cues that are not about a corner wait until you are out of one, and only start when they finish before the next one.'],
-  ['Checked before it plays','Every cue is checked again against the car just before it plays. A brake marker that could no longer finish a second before the brake point, a word about a corner once you are braking for the next one, or a sector time once a newer one is done is dropped, never said late. The coach log says "no longer valid" for those.'],
-  ['Say lap times','How the coach reads a lap time. Short, the default, as race engineers do: "thirty-eight nine". Full: "one thirty-eight nine".'],
-  ['Sector time','The lap split in three by your reference lap\'s time. On Normal and Busy the coach says each of the first two sectors against your reference ("Sector one, up two tenths"); the lap time covers the rest.'],
-  ['Brake marker','The cue the coach says on the straight before a focus corner, so you think about that braking point.'],
-  ['Session (Practice)','The telemetry files of one go in the car: the same car and track, with no more than 3 hours between files.'],
-  ['Best possible lap','Your best time through each part of the lap, added up. Counted from clean laps once there are 5 of them. A guide, not a lap you can count on.'],
-  ['Corner coach','Your best laps through a corner against your typical ones: what you do differently on the good ones, how to try it and what it changes. A tip is only given when it passes a fair test: Debrief shuffles which laps count as your best 400 times, and if shuffled laps show a pattern as clear in 1 shuffle in 20 or more, it says "no clear pattern yet" instead. Race laps and practice or qualifying laps are compared separately, and so are setups.'],
-  ['Corner time','"Your best laps were about 0.12 s quicker here": each corner\'s share of the gap between your quickest third of laps and the rest, so the corners never add up to more than that gap. It describes your own laps; it is not a promise of lap time, because part of any best lap is luck.'],
-  ['One thing this session','One change for your next session at a track, picked from the Corner coach: the corner, what to do, and the check (for example, peak brake at or below 88%). It is never surer than the Corner coach tip it comes from.'],
-  ['A guess (an experiment)','"Try this and see": a plan for a corner where your best laps are quicker but the Corner coach found no clear reason. Drive it the same way every lap and see whether it helps. Not a known fix.'],
+  ['Median','The middle value: half your laps were quicker and half slower. Debrief calls the median lap your typical lap.'],
+  ['Pace drift','How much your clean laps got slower (+) or quicker (\u2212) from the start of the race to the end, from a straight line drawn through them.'],
+  ['Consistency score','A number out of 100 for how close together your clean lap times were. 100 means every lap the same; under 45 means they were spread out.'],['Stint','A run of laps between pit stops.'],
+  ['Possibly traffic','A lap that lost time in one short stretch where your other laps did not. It could be another car or a mistake.'],['Race log','The passes, fights, incidents and pit stops found in a replay scan. Open one of your race reviews and press Scan this race.'],
+  ['On the road','The order the cars crossed the line in the replay. The iRacing results are the official order.'],['Rolling or standing start','Whether the cars were already moving when the green flag came out.'],
+  ['Resolve markers','For making a video of your race: a file that the DaVinci Resolve video editor reads to mark the race\'s big moments on its timeline.'],
+  ['Setup','The settings you drive the car with (pressures, camber, springs, wing and so on). Setup Lab reads them from your telemetry files, because iRacing\'s .sto setup files are locked.'],
+  ['Open or fixed setup','In an open setup series you can change the car\'s settings; in a fixed one they are locked, so Setup Lab has nothing to suggest.'],
+  ['Laps counted','The clean laps Setup Lab compares setups on. It leaves out out-laps, first flying laps, laps in traffic and laps far off the pace.'],
+  ['Reference lap','Your best clean lap for this car and track, from your telemetry files. The coach measures you against it. Until there is one, the coach says "Building your reference".'],
+  ['Focus corner','A corner that keeps costing you time, picked from your race reviews or the Corner coach. If there are none, the coach picks the corners where your last clean laps lost the most against your reference. It talks about one to three at a time.'],
+  ['Coaching level','How much the coach talks. Quiet: only your focus corners and your lap time. Normal (the default): up to 4 cues a lap. Busy: up to 6. Only when I ask: nothing until you ask for your pace. At every level it stays quiet under braking, in corners, with a car alongside and on lap 1 of a race.'],
+  ['How\'s my pace?','Press Ctrl+Shift+P, the button on the Coach page or a wheel button you chose. The coach tells you your last clean lap against your reference and the corner that cost the most ("Down three tenths, most in T4"). It waits until it is safe to talk.'],
+  ['Hard zones','The stretch of your reference lap from hard braking until you are back on full throttle. The coach keeps quiet about anything else while you are in one.'],
+  ['Checked before it plays','Every cue is checked again just before it plays. If it is too late to be useful (you have passed the brake point, or a newer sector time is in), it is dropped instead of said late. The coach log says "no longer valid" for those.'],
+  ['Say lap times','How the coach reads a lap time. Short (the default) is how race engineers say it: "thirty-eight nine". Full is "one thirty-eight nine".'],
+  ['Sector time','Your reference lap cut into three parts. On Normal and Busy the coach tells you the first two against your reference ("Sector one, up two tenths").'],
+  ['Brake marker','A cue the coach says on the straight before a focus corner, so you think about where you will brake.'],
+  ['Session (Practice)','The telemetry files from one go in the car: the same car and track, with no more than 3 hours between files.'],
+  ['Best possible lap','Your best time through each part of the lap, added up, counted from your clean laps once you have 5. It is a guide, not a lap you can count on.'],
+  ['Corner coach','Your best laps through a corner against your typical ones: what you do differently on the good ones and how to try it. A tip only appears when it beats chance: Debrief shuffles which laps count as your best 400 times, and if shuffled laps show a pattern as clear in 1 shuffle in 20 or more, it says "no clear pattern yet". Race laps and practice or qualifying laps are compared separately, and so are setups.'],
+  ['Corner time','"Your best laps were about 0.12 s quicker here": each corner\'s share of the gap between your quickest third of laps and the rest, so the corners never add up to more than that gap. It describes your own laps and does not promise lap time, because part of any best lap is luck.'],
+  ['One thing this session','One change for your next session at a track, taken from the Corner coach: the corner, what to do and how to check it (for example, peak brake at or below 88%). It is never surer than the Corner coach tip it comes from.'],
+  ['A guess (an experiment)','"Try this and see": a plan for a corner where your best laps are quicker but the Corner coach found no clear reason. Drive it the same way every lap and see whether it helps. It is not a known fix.'],
   ['Hit it','A lap where your number for the plan\'s corner met the check. 7 laps out of 10 means it is a habit, and the next session moves on.'],
-  ['Quicker, No clear difference','Whether your laps that hit the plan were quicker through that corner than the ones that missed from the same part of the session (runs of 5 or 6 laps in a row, so a session that simply gets quicker doesn\'t count). Debrief shuffles which laps count as hits 400 times; it says Quicker only when fewer than 1 shuffle in 20 shows a gap as big as the real one (and at least 0.03 s), with at least 3 laps of each. It describes those laps; it is not a promise of lap time.'],
-  ['Wheel button mute','Coach page > Settings > Mute from a wheel button: press Learn, then the button on your wheel. That button then mutes and unmutes the coach while it is on.'],
-  ['Sure, Likely, A hint, A guess','How sure something is, the same four words on every page. Sure: a direct reading, or a Corner coach tip that passed the shuffle test in fewer than 1 in 100 shuffles from 12 or more laps (and still passes when every corner is counted at once). Likely: passed in fewer than 1 in 20. A hint: only a few laps show it, or it could still be chance. A guess: no clear pattern, so try it and see.']],
+  ['Quicker, No clear difference','Whether your laps that hit the plan were quicker through that corner than the ones that missed, from the same part of the session. Debrief shuffles which laps count as hits 400 times. It only says Quicker when fewer than 1 shuffle in 20 shows a gap as big (and at least 0.03 s), with at least 3 laps of each. It describes those laps and does not promise lap time.'],
+  ['Wheel button mute','Coach page > Settings > Mute from a wheel button: press Learn, then press the button on your wheel. That button then mutes and unmutes the coach.'],
+  ['Sure, Likely, A hint, A guess','How sure something is, the same four words on every page. Sure: read straight from your laps, or a tip that beat chance in fewer than 1 in 100 shuffles of 12 or more laps (and still does when every corner is counted at once). Likely: beat chance in fewer than 1 in 20. A hint: only a few laps show it, or it could still be chance. A guess: no clear pattern, so try it and see.']],
  keys:[['Ctrl+Shift+M','Mute or unmute the coach']]};   // 2.18: the page keys come first, from keyList()
 function showHelp(k){const b=$('helpBody');const L=k==='keys'?keyList().concat(HELP.keys):HELP[k];b.classList.toggle('keygrid',k==='keys');
   b.replaceChildren(...(k==='tour'?[h('p','note','A quick look at how Debrief works.')]:k==='keys'?[h('p','note','Ctrl+1 to Ctrl+9 and Ctrl+0 open the pages in the sidebar\'s order.')]:[]),...L.map(([t,d])=>{const p=h('p');p.append(h('b',null,t+': '),document.createTextNode(d));return p}));
@@ -2024,7 +2027,7 @@ function renderPrList(){const j=pr.data,host=$('prSessions'),ss=(j&&j.sessions)|
   const ul=h('ul','prlist');ul.setAttribute('aria-label','Your sessions, newest first');
   (pr.more?ss:ss.slice(0,40)).forEach(x=>{const li=h('li'),b=h('button','prrow');b.type='button';b.dataset.id=x.id;
     const what=h('span','prwhat');what.append(h('b',null,x.track||x.track_code),h('span','sub2',x.car||x.car_path));
-    const types=(x.session_types||[]).join(', ')||'Session';
+    const types=(x.session_types||[]).map(sessWord).join(', ')||'Session';
     b.append(h('span','prwhen num',slWhen(x.date)),what,h('span','prtypes',types),h('span','prlaps num',(x.clean_laps||0)+' clean of '+plural(x.laps||0,'lap')),
       h('span','prbest num',ok(x.best)?fmtT(x.best):'No valid lap'));
     b.setAttribute('aria-label',types+' at '+(x.track||'')+' in the '+(x.car||'')+', '+slWhen(x.date)+', best '+(ok(x.best)?fmtT(x.best):'none'));
@@ -2070,7 +2073,7 @@ function ccCard(c){const card=h('article','cccard'),top=h('div','cchead');
   return card}
 function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{},out=document.createDocumentFragment();
   const head=h('div','panel slhead'),tt=h('div','pvtt');
-  tt.append(h('h2','pvtrack',R.track||R.track_code||''),h('p','pvby',(R.car||R.car_path||'')+' · '+slWhen(R.date)+' · '+((R.session_types||[]).join(', ')||'Session')));head.append(tt);
+  tt.append(h('h2','pvtrack',R.track||R.track_code||''),h('p','pvby',(R.car||R.car_path||'')+' · '+slWhen(R.date)+' · '+((R.session_types||[]).map(sessWord).join(', ')||'Session')));head.append(tt);
   const files=R.files||[];head.append(h('span','pill',plural(files.length,'file')));out.append(head);
   // 1. how it went
   const hw=slSec('How it went','prHead');const bl=S.best_lap||{};
@@ -2467,7 +2470,7 @@ function fmtBytes(n){if(!ok(n))return 'unknown';if(n<1024*1024)return Math.round
 function diagText(d){const L=[];
   L.push('Debrief '+(d.version||'?')+' ('+(d.frozen?'installed':'from source')+')');
   L.push('Platform: '+(d.platform||'?')+'; Python '+(d.python||'?'));
-  L.push('Updates checked by: '+(d.verification_level==='signature'?'Ed25519 signature':d.verification_level==='checksum'?'SHA-256 checksum':String(d.verification_level||'?')));
+  L.push('Updates checked by: '+(d.verification_level==='signature'?'Ed25519 signature':d.verification_level==='checksum'?'SHA-256 checksum (a fingerprint that proves the update file wasn\'t changed)':String(d.verification_level||'?')));
   L.push('Reviews: '+(ok(d.reviews)?d.reviews:'unknown')+'; synced sessions: '+(ok(d.sessions)?d.sessions:'unknown')+'; cache: '+fmtBytes(d.cache_bytes));
   L.push('Settings folder: '+(d.settings_folder||'?'));
   if(d.library_folder)L.push('Library folder: '+d.library_folder);
@@ -2528,7 +2531,7 @@ $('fUpdate').addEventListener('submit',async e=>{e.preventDefault();setMsg('updM
    share what changed (copy only, never posted), and a teammate's lap to compare with and coach against. Called
    from loadSlReport (csSetupLab), renderPrSession (csSession), renderCoach (csCoach) and loadCoPlan (csCoachCombo). */
 let cs={seq:0,balSetup:null,combo:null,coachCombo:null,coachTeam:null,coachSeq:0};
-const BAL_WORD={push:['Pushes','push'],rotate:['Rotates','rot'],neutral:['Neutral','neu'],unclear:['Not clear yet','unc']};
+const BAL_WORD={push:['Pushes','push'],rotate:['Rotates','rot'],neutral:['Neutral','neu'],unclear:['Not clear yet','The laps do not say either way. Debrief shuffles your laps (every possible way with up to 11 laps, otherwise 4,000 ways) and only says Pushes or Rotates when the real pattern beats 95 in 100 of the shuffles and is big enough to feel.']};
 const BAL_PHASE=[['entry','On the way in'],['mid','In the middle'],['exit','On the way out']];
 // 2.18 shared scale: an idea comes from a balance finding and is never tested on the laps, so it is only A hint (or A guess)
 const IDEA_CONF={'worth a try':['A hint','no','A hint: worth a try, from a clear finding in your laps, but the idea itself is untested'],'a guess':['A guess','no','A guess: from a likely finding']};
@@ -2578,7 +2581,7 @@ function csRenderBalance(body,j){const R=j.report;body.replaceChildren();
       'From '+plural(R.laps||0,'clean lap')+' in '+plural(j.files||R.files||0,'file')+'. "Pushes" and "Rotates" are only shown when they pass a luck check: Debrief flips your laps\' readings at random thousands of times, and a result that often turns up that way is not shown.';
     body.append(small);if(j.laps_note)body.append(h('p','balsmall','Lap counts: '+j.laps_note));
     if(R.car_fit&&R.car_fit.text){const d=h('details','balhow');d.append(h('summary',null,'How this is measured'));
-      d.append(h('p','note','Debrief learns how much steering this car normally needs in gentle bends, then looks at how much you used near the limit. More than normal: the car pushes (the front slides first). Less: it rotates (the rear slides first). So it is always compared with how this car steers. How much the car turns comes from its yaw rate: how fast it rotates, which iRacing records.'));
+      d.append(h('p','note','Debrief learns how much steering this car normally needs in gentle bends, then looks at how much you used near the limit. More than normal: the car pushes (the front slides first). Less: it rotates (the rear slides first). So it is always compared with how this car steers. How much the car turns comes from its yaw rate (how fast the car is turning), which iRacing records.'));
       d.append(h('p','note',R.car_fit.text));body.append(d)}}
   body.append(csIdeas(R,j))}
 
@@ -2626,7 +2629,7 @@ async function csLoadPressure(){const sec=$('slPress'),c=cs.combo;if(!sec||!c)re
   if(!$('slPress')||cs.combo!==c)return;
   if(!j.ok){body.replaceChildren(h('p','note warn',j.error||'This didn\'t load.'));return}
   const R=j.report||{};body.replaceChildren();
-  body.append(h('p','note','Your runs grouped by track temperature (5 °C bands): the cold pressure you set, the hot pressure it came up to, and your typical lap. A run is a stint with at least 3 counted laps. Pressures are in kPa (kilopascals), the unit iRacing\'s garage uses: 100 kPa is about 14.5 psi.'));
+  body.append(h('p','note','Your runs grouped by track temperature (5 °C bands): the cold pressure you set, the hot pressure it came up to, and your typical lap. A run is a stint with at least 3 counted laps. Pressures are in kPa, the unit for tyre pressure: 100 kPa is about 14.5 psi.'));
   const B=R.bands||[];
   if(B.length){const wrap=h('div','tblwrap'),t=h('table','pacetbl presstbl'),hr=h('tr');['Track','Cold pressure','Runs','Typical lap','Hot (front / rear)'].forEach(x=>hr.append(h('th',null,x)));
     const thd=h('thead');thd.append(hr);const tb=h('tbody');
@@ -2643,7 +2646,7 @@ async function csLoadPressure(){const sec=$('slPress'),c=cs.combo;if(!sec||!c)re
 
 function csPredictForm(){const f=document.createElement('form');f.className='pressform';f.id='pressForm';f.autocomplete='off';
   const fld=(id,label,ph)=>{const l=h('label','field');l.htmlFor=id;l.append(h('span',null,label));const i=document.createElement('input');i.id=id;i.type='number';i.step='0.5';i.inputMode='decimal';i.placeholder=ph;l.append(i);return l};
-  const g=h('div','grid3');g.append(fld('prCF','Cold front (kPa)','e.g. 172'),fld('prCR','Cold rear (kPa)','e.g. 168'),fld('prTT','Track temperature (°C)','optional'));
+  const g=h('div','grid3');g.append(fld('prCF','Cold front (kPa, tyre pressure)','e.g. 172'),fld('prCR','Cold rear (kPa, tyre pressure)','e.g. 168'),fld('prTT','Track temperature (°C)','optional'));
   const row=h('div','row'),b=h('button','btn','Predict');b.type='submit';const m=h('span','msg');m.id='prPredMsg';m.setAttribute('role','status');row.append(b,m);
   const out=h('p','pressout');out.id='prPredOut';out.hidden=true;
   f.append(g,row,out);
@@ -2788,15 +2791,19 @@ function csCoach(st){if(!st||current.view!=='coach')return;const T=st.teammate||
 if(typeof HELP==='object'){
   HELP.tour.push(['How the car handles','Setup Lab shows, corner by corner, where the car pushes (understeer) or rotates (oversteer), with one setup change to try at a time.'],
     ['Teammate\'s lap','On a Practice session or the Coach page, pick a teammate\'s telemetry file to compare your corners with their best lap, or to be coached against it.']);
-  HELP.words.push(['Pushes, Rotates','Pushes (understeer): you needed more steering than this car normally does, so the front was sliding first. Rotates (oversteer): less steering, so the rear was sliding first. Always compared with how this car steers in gentle bends, learned from your own laps; on the way in, with your own typical corner entry (braking always turns a car in more).'],
-    ['Not clear yet','The laps don\'t say for sure either way. Debrief shuffles your laps (every possible way with up to 11 laps, otherwise 4,000 ways) and only says Pushes or Rotates when the real pattern beats 95 in 100 of the shuffles and is big enough to feel.'],
-    ['Countersteer','Steering the other way to catch the rear. Each one is a moment of oversteer you had to save.'],
-    ['Setup ideas: A hint, A guess','How sure a setup idea is. A hint (worth a try) comes from a clear finding but the idea itself is untested; A guess from a likely finding. Change one thing, drive at least 6 clean laps, then compare again.'],
-    ['Hot pressure','The tyre pressure once the tyres are warm, read from your laps. The prediction says what a cold pressure comes up to at a track temperature, with how far off it typically is.'],
-    ['Share what changed','Setup Lab writes a short text of what you changed and what the laps said, with the same numbers as the page, and copies it for you to paste in Discord. Debrief never posts it.'],
-    ['kPa','Kilopascals, the unit iRacing\'s garage uses for tyre pressure. 100 kPa is about 14.5 psi, so 172 kPa is about 25 psi.'],
-    ['Yaw rate','How fast the car rotates, which iRacing records many times a second. Setup Lab compares it with your steering to tell a push from a rotation.'],
-    ['Fixed setup','A series where the garage setup is locked, tyre pressures included. Fuel and the in-car dials (brake bias, traction control and ABS on cars that have them) are still yours, so Setup Lab points there or to the driving.'],
+  HELP.words.push(['Pushes, Rotates','Pushes (understeer): you needed more steering than this car normally does, so the front slid first. Rotates (oversteer): you needed less steering, so the rear slid first. Debrief compares you with how this car steers in gentle bends, learned from your own laps.'],
+    ['Not clear yet','The laps do not say either way. Debrief shuffles your laps (every possible way with up to 11 laps, otherwise 4,000 ways) and only says Pushes or Rotates when the real pattern beats 95 in 100 of the shuffles and is big enough to feel.'],
+    ['Countersteer','Steering the other way to catch the rear of the car. Each one is a moment of oversteer you had to save.'],
+    ['Setup ideas: A hint, A guess','How sure a setup idea is. A hint (worth a try) comes from a clear finding, but the idea itself is untested. A guess comes from a finding that is only likely. Change one thing, drive at least 6 clean laps, then compare again.'],
+    ['Hot pressure','The tyre pressure once the tyres are warm, read from your laps. The prediction says what a cold pressure comes up to at a track temperature, and how far off it usually is.'],
+    ['Share what changed','Setup Lab writes a short text of what you changed and what the laps said, with the same numbers as the page, and copies it for you to paste into Discord. Debrief never posts it.'],
+    ['kPa','The unit for tyre pressure. 100 kPa is about 14.5 psi, so 172 kPa is about 25 psi.'],
+    ['Lone Qualify','Qualifying alone on track: you set your lap with no other cars on the circuit.'],
+    ['SHA-256 checksum','A fingerprint that proves the update file wasn\'t changed. Debrief checks it before it installs an update.'],
+    ['Discord webhook','A link that lets Debrief post into one Discord channel. You make it in Discord and paste it once in Settings.'],
+    ['Places gained or lost on lap 1','On the Racing page: how many places you gained (+) or lost (\u2212) between the start and the end of lap 1, on average across your races.'],
+    ['Yaw rate','How fast the car is turning. iRacing records it many times a second, and Setup Lab compares it with your steering to tell a push from a rotation.'],
+    ['Fixed setup','A series where the car\'s settings, tyre pressures included, are locked. Fuel and the in-car dials (brake bias, traction control and ABS on cars that have them) are still yours, so Setup Lab points you there or to your driving.'],
     ['Teammate\'s lap','Their best clean lap from their telemetry file, checked for anything harmful first. The file is read once and never copied; only the worked-out lap is kept if you tick Keep.'])}
 /* ---------- 2.16 Racing: your starts (green flag to the end of lap 1) and your incidents, across your races, from
    the replay scans, telemetry files and saved reviews on this PC (api/racing, read only) */
@@ -2805,6 +2812,7 @@ const RC_KIND={own:'Your own',contact:'Contact',caught_up:'Caught up',unknown:'N
 const RC_KIND_LONG={own:'Your own mistake',contact:'Contact',caught_up:'Caught up in someone else\'s',unknown:'Kind not known'};
 const RC_SESS={race:'Race',qualifying:'Qualifying',practice:'Practice'};
 const RC_CONTACT={contact_4x:['Contact (4x)','badc'],possibly:['Possibly',''],no_4x:['No hard contact','okc']};
+const rcAvgPlaces=a=>{const r=Math.round(a*10)/10;return r>0?'+'+r+' (gained '+plural(r,'place')+')':r<0?'\u2212'+Math.abs(r)+' (lost '+plural(Math.abs(r),'place')+')':'0 (held your place)'};
 const rcSigned=n=>ok(n)?(n>0?'+'+n:n<0?'−'+Math.abs(n):'0'):'';
 const rcPts=n=>ok(n)?n+'x':'';
 async function openRacing(){current={view:'racing',dir:null};show('vRacing');markNav();await loadRacing()}
@@ -2848,7 +2856,7 @@ function rcStarts(j){const host=$('rcStarts'),S=j.starts||{},W=j.where||{};
   const rows=(S.list||[]).filter(r=>!rc.track||r.track===rc.track);
   if(g){const f=g.lap1||{};
     sec.append(prFacts([['Races',String(g.races)]].concat(ok(f.n)&&f.n<g.races?[['Lap 1 known in',f.n+' of '+plural(g.races,'race')]]:[]).concat([['Gained places in',plural(f.gained||0,'race')],['Lost places in',plural(f.lost||0,'race')],['Kept your place in',plural(f.same||0,'race')],
-      ['Average on lap 1',ok(f.avg)?rcSigned(Math.round(f.avg*10)/10):'Not known']])));
+      ['Places gained or lost on lap 1, on average',ok(f.avg)?rcAvgPlaces(f.avg):'Not known']])));
     if(rc.track||(S.tracks||[]).length!==1)rcSentences(sec,g.sentences)}
   // per track: what happened there and the corner bars (with one track, its words stand for all races)
   const groups=rc.track?(g?[g]:[]):(S.tracks||[]);
@@ -2935,7 +2943,7 @@ function rcIncList(t){const d=h('details','rcincs');d.append(h('summary',null,'E
   const wrap=h('div','tblwrap'),tb=h('table','pacetbl rclist'),hr=h('tr');
   ['When','Session','Lap','Where','Points','What','Kind','How sure','Closest car','Why'].forEach(x=>hr.append(h('th',null,x)));const hd=h('thead');hd.append(hr);tb.append(hd);
   const body=h('tbody');(t.list||[]).slice().reverse().forEach(r=>{const tr=h('tr');
-    tr.append(rcWhenCell(r),h('td',null,RC_SESS[r.kind_of_session]||cap(r.session_type||'')),
+    tr.append(rcWhenCell(r),h('td',null,RC_SESS[r.kind_of_session]||sessWord(cap(r.session_type||''))),
       h('td','num',r.before_green?'Pace lap':(r.lap===0?'Before lap 1':(r.lap!=null?String(r.lap):''))),h('td',null,cap(r.where||'')),
       h('td','num',r.points!=null?rcPts(r.points)+(r.at_once?' at once':''):'Not known'),h('td',null,cap(r.what||'')),
       h('td',null,RC_KIND_LONG[r.type]||''),h('td',null,cap(r.sure||'')),h('td',null,r.closest||''),h('td','rcwhy',r.why||''));

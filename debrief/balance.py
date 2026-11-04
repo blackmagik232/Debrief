@@ -707,7 +707,7 @@ def analyze_laps(laps, info=None, setup=None, series_setup=None, prefix: str = "
         if len(laps) < MIN_LAPS or not L:
             base["laps"] = len(laps)
             base["message"] = (f"{'Only ' + _plural(len(laps), 'clean lap') if laps else 'No clean laps'}"
-                               f" with steering and yaw rate (how fast the car turns). The balance map needs at "
+                               f" with steering and yaw rate (how fast the car is turning). The balance map needs at "
                                f"least {MIN_LAPS}.")
             base["summary"] = base["message"]
             return base

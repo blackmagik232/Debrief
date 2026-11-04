@@ -70,6 +70,12 @@ def track(name, config=None) -> str:
     return f"{base} ({cfg})" if cfg else base
 
 
+def track_key(name, config=None) -> str:
+    """Same venue + same layout, whatever code iRacing gave it: the display name (track()) in lower-case words.
+    '' when there is no name, so a track known only by its code is never merged with another."""
+    return _key(track(name, config))
+
+
 def car(name) -> str:
     """The display name of a car: iRacing's lower-case words written the official way ('Mclaren 570s GT4' ->
     'McLaren 570S GT4'). Anything else is left as it is."""

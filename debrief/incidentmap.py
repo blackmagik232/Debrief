@@ -1274,7 +1274,8 @@ def early_signs(m) -> list:
         where = ("Lap 1, " if lap1 else "") + label
         if known and tot_pts:
             most = pts * 2 > tot_pts
-            said = (f"{where} is where {'most' if most else 'a lot'} of your race incident points came from "
+            share = "most" if most else f"{round(100 * pts / tot_pts)}%"          # the real share; "most" only above 50%
+            said = (f"{where} is where {share} of your race incident points came from "
                     f"({pts} of {tot_pts}, {len(evs)} incidents in {races} races)")
         else:
             said = f"{where} is where {len(evs)} of your {len(rows)} race incidents happened, in {races} races"

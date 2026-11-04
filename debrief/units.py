@@ -77,6 +77,10 @@ def convert_text(text, unit):
         if frm == to:
             return m.group(0) if m.group(3).lower() in ("mph", "km/h") else m.group(1) + m.group(2) + LABEL[to]
         nums = _ONE.sub(lambda n: _conv_num(n.group(0), frm, to), m.group(1))
+        # a range like "1-2 km/h" can land on one number ("1-1 mph"): say "about 1 mph" instead
+        rng = re.fullmatch(rf"({_NUM})\s*(?:[-\u2013]|to)\s*({_NUM})", nums.strip())
+        if rng and rng.group(1) == rng.group(2):
+            return "about " + rng.group(1) + m.group(2) + LABEL[to]
         return nums + m.group(2) + LABEL[to]
     return _RX.sub(one, text)
 

@@ -184,6 +184,8 @@ def test_units_text_and_numbers():
     assert units.convert_text("Carry 2 mph more at the slowest point (63.1 mph)", "kmh") == \
         "Carry 3 km/h more at the slowest point (101.5 km/h)"
     assert units.convert_text("4-20 km/h", "mph") == "2-12 mph"
+    assert units.convert_text("slower by 1-2 km/h", "mph") == "slower by about 1 mph"
+    assert units.convert_text("1 to 2 km/h", "mph") == "about 1 mph"
     assert units.convert_text("Turn 6 - 101 km/h", "mph") == "Turn 6 - 63 mph"   # a corner number is not a speed
     assert units.convert_text("63 mph", "mph") == "63 mph" and units.convert_text("40 km/h", "kmh") == "40 km/h"
     assert units.convert({"a": ["8 km/h"], "b": 3}, "mph") == {"a": ["5 mph"], "b": 3}

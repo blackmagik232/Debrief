@@ -414,7 +414,8 @@ def build(data: dict) -> dict:
                      round(d, 1), detail=l1_detail, laps=[1], corners=l1_corners)
         elif d <= LAP1_GOOD * k and len(laps) >= 5:
             # 2.18: praise only a lap 1 that was really as quick as a typical lap or quicker, and say which
-            said = (f"Lap 1 was {-d:.1f} s quicker than your typical lap, start included." if d <= -0.05 else
+            said = (f"Lap 1 was {-d:.1f} s quicker than your typical lap, start included." if d <= -0.095 else
+            f"Lap 1 was {-d:.2f} s quicker than your typical lap, start included." if d <= -0.05 else
                     "Lap 1 was as quick as your typical lap, start included.")
             good("lap1", "Strong first lap", said,
                  detail=f"Lap 1 {fmt_t(lap1['t'])} against a typical {fmt_t(median)}.", laps=[1])

@@ -78,7 +78,7 @@ v = keyed(insights.build(base(brake_spread={"corners": []})), "bad", "vary")
 check(v and "Pick one braking marker and one turn-in point" in v["text"], "no brake-point data: pick a braking marker")
 
 # ---------------------------------------------------------------- 2. lap 1 praise only when it was really as quick
-for t1, want in ((90.1, "as quick as"), (89.7, "0.4 s quicker"), (90.5, None), (90.14, "as quick as")):
+for t1, want in ((90.1, "as quick as"), (89.7, "0.4 s quicker"), (90.5, None), (90.14, "as quick as"), (90.04, "0.06 s quicker")):
     laps = [{"n": 1, "t": t1, "clean": True}] + [{"n": i, "t": 90.1, "clean": True} for i in range(2, 13)]
     out = insights.build(base(laps=laps))
     g = keyed(out, "good", "lap1")
@@ -149,6 +149,13 @@ own = [row("r1", "C2", pts=2, lap1=False, typ="own"), row("r2", "C2", pts=2, lap
 E = im.early_signs(m_of(own))
 check(E and not E[0]["lap1"] and E[0]["kind"] == "own" and "mostly your own mistake" in E[0]["text"]
       and E[0]["tries"] == im.EARLY_TRIES["own"], f"own mistakes: driving tips, not lap 1 tips ({E and E[0]['text']})")
+
+minor = [row("r1", "C1", pts=1, lap1=False, typ="own"), row("r2", "C1", pts=1, lap1=False, typ="own"),
+         row("r3", "C1", pts=1, lap1=False, typ="own"), row("r1", "C5", pts=8, lap1=False, typ="own")]
+E = [e for e in im.early_signs(m_of(minor)) if e["zone"] == "C1"]
+check(E and "a lot" not in E[0]["text"] and "where most" not in E[0]["text"]
+      and "27% of your race incident points" in E[0]["text"],
+      f"a minority share is said as the real share, never 'a lot' or 'most' ({E and E[0]['text']})")
 
 # the statistics are untouched: the same track gives the same sentences and patterns with the early sign beside them
 o = [{"id": f"r{k}", "kind": "race", "track": "Zolder", "type": "Race", "_zones": zs,

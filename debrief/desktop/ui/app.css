@@ -647,3 +647,13 @@ fieldset.colevel{margin:12px 0 4px}
 fieldset.colevel .check{align-items:flex-start}
 fieldset.colevel .check input{margin-top:2px;flex:none}
 fieldset.colevel .check b{margin-right:6px}
+/* 2.18 team and sharing that explain themselves */
+.teamheadline{font-weight:600;margin:0}
+.teamhave h4{margin:0 0 4px}
+.teamlaps li .sub2{display:block}
+.teamhow summary{cursor:pointer;font-size:13px}
+.whyoff,.fbwhy{margin:0}
+.fbwhy{font-size:12.5px;align-self:center}
+.howlist{margin:0;padding-left:20px;display:grid;gap:4px}
+.bannerbtn{flex:none;padding:2px 8px;font-size:12.5px}
+#banner{word-break:break-word}

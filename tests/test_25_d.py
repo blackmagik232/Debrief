@@ -973,13 +973,23 @@ def test_window_post_to_discord_dialog():
             # the page never learnt the webhook address
             html = pg.content()
             assert TOKEN not in html and WEBHOOK_ID not in html
-            # 6. without a saved webhook the button isn't there
+            # 6. without a saved webhook the button is still there (2.18) and explains how to set it up; nothing
+            # is staged or posted
             write_settings()
             pg.click(".navbtn[data-nav=settings]")
             pg.wait_for_function("() => document.getElementById('discordPill').textContent === 'Off'", timeout=5000)
             pg.click(f".rev[data-dir='{SHARE_DIR}']")
             pg.wait_for_function("() => !document.getElementById('vFrame').hidden", timeout=10000)
-            assert pg.evaluate("() => document.getElementById('fbDiscord').hidden")
+            assert not pg.evaluate("() => document.getElementById('fbDiscord').hidden")
+            stages = len([u for m, u in seen if u.startswith("discord-stage")])
+            pg.click("#fbDiscord")
+            pg.wait_for_function("() => document.getElementById('dlgDiscordHow').open", timeout=5000)
+            how = pg.text_content("#dlgDiscordHow")
+            assert "webhook" in how and "ask your team's Discord admin" in how, how
+            assert not pg.evaluate("() => document.getElementById('dlgDiscord').open")
+            pg.click("#discordHowGo")
+            pg.wait_for_function("() => !document.getElementById('vSettings').hidden", timeout=5000)
+            assert len([u for m, u in seen if u.startswith("discord-stage")]) == stages
             assert rec.count("discord.post") == 1
             assert not errs, errs
         finally:

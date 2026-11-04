@@ -144,7 +144,7 @@ def test_team_build_member_unchanged_and_keys():
 
 
 def test_team_build_not_member_makes_no_team_requests():
-    lib = _newdir()
+    api = CountingApi(teams=[{"slug": "other-team", "name": "Other"}, {"slug": "third", "name": "Third"}])   # 2.21: a single team would be used
     _lib_review(lib)
     api = CountingApi(teams=[{"slug": "other-team", "name": "Other"}])
     d = team.build(api, lib, "overdriver-academy", log=QUIET)

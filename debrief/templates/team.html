@@ -400,7 +400,7 @@ if(!D||!Array.isArray(D.combos)){
 (function freshness(){
   const when=v=>{const d=new Date(v);return isFinite(d)?MON[d.getMonth()]+' '+d.getDate()+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):null};
   const g=when(D.generated_at),c=when(D.checked_at);
-  $('refreshed').textContent=(g?'Last refreshed '+g+'.':'Not refreshed yet.')+(D.cache_reused&&c?' Up to date, checked '+c+': Garage 61 had nothing newer.':'');
+  $('refreshed').textContent=(typeof D.laps_from==='string'?D.laps_from+' ':'')+(g?'Last refreshed '+g+'.':'Not refreshed yet.')+(D.cache_reused&&c?' Up to date, checked '+c+': Garage 61 had nothing newer.':'');
   if(typeof D.stale==='string'&&D.stale){$('stale').hidden=false;$('stale').textContent=D.stale}
   const sn=Array.isArray(D.section_notes)?D.section_notes.filter(x=>typeof x==='string'):[];
   if(sn.length){$('secNotes').hidden=false;sn.forEach(x=>$('secNotes').append(h('li',null,x)))}})();

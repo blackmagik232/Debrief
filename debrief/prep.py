@@ -196,13 +196,16 @@ def _technique(latest: dict | None) -> list | None:
     return out or None
 
 
-def _membership(api, slug):
+def _membership(api, slug, log=print):
     """(membership, team {"slug", "name"}) from api.teams() (cached a day). UNKNOWN when it can't be read."""
     from . import team
     if api is None or not callable(getattr(api, "teams", None)):
         return brand.UNKNOWN, team.team_info(slug, None)
     mem, teams = team.membership_for(api, slug, log=lambda m: None)
-    return mem, team.team_info(slug, teams)
+    g = team.resolve_group(teams, slug, log)
+    if teams is not None:
+        mem = brand.membership(teams, g["slug"]) if g["ok"] else brand.NOT_MEMBER
+    return mem, team.team_info(g["slug"], teams)
 
 
 def _teammates(api, track_id, car_id, team_slug, my_best, log, members=None):
@@ -622,7 +625,8 @@ def build(api, folder, track_id: int, car_id: int, team_slug: str | None, log=pr
         ids = next(((r["track_id"], r["car_id"]) for r in mine if r.get("track_id") is not None), (None, None))
         track_id, car_id = track_id if track_id is not None else ids[0], car_id if car_id is not None else ids[1]
     team_slug = team_slug or brand.GROUP_SLUG
-    mem, team_d = _membership(api, team_slug)
+    mem, team_d = _membership(api, team_slug, log)
+    team_slug = team_d["slug"]      # 2.21: the team the laps really come from (self-correcting)
     if mem == brand.NOT_MEMBER:
         log(f"You're not on the {team_d['name']} team on Garage 61, so teammates' laps weren't loaded.")
         mates = {"laps": [], "team": team_slug, "error": None, "skipped": 0}

@@ -411,6 +411,46 @@ def membership_for(api, slug=None, log=print) -> tuple[str, list | None]:
     return status, teams
 
 
+def resolve_group(teams, slug=None, log=None) -> dict:
+    """Which Garage 61 team the laps come from, self-correcting (2.21). Only ever a team you are in:
+    1 the slug asked for (Settings), 2 the team named like "Overdriver Academy", 3 the earlier default
+    (midfield-menace), 4 your only team. teams None = couldn't be read: the slug is kept, nothing is claimed.
+    Returns {"slug","name","why","ok","teams":[names]}."""
+    slug = slug or brand.GROUP_SLUG
+    mine = [t for t in (teams or []) if isinstance(t, dict) and (t.get("slug") or t.get("id"))]
+    names = [str(t.get("name") or t.get("slug") or t.get("id")) for t in mine]
+
+    def pick(t, why):
+        sl = str(t.get("slug") or t.get("id"))
+        out = {"slug": sl, "name": brand.team_name_for(mine, sl), "why": why, "ok": True, "teams": names}
+        if log:
+            log(f"  Garage 61 team used for laps: {sl} ({why})")
+        return out
+    if teams is None:
+        return {"slug": slug, "name": brand.team_name_for(None, slug), "why": "your teams couldn't be read, so the saved one is kept",
+                "ok": True, "teams": []}
+    want = norm_name(slug)
+    t = next((t for t in mine if norm_name(t.get("slug") or t.get("id")) == want), None)
+    if t:
+        return pick(t, "the group set in Settings")
+    t = next((t for t in mine if norm_name(brand.GROUP_NAME) in (norm_name(t.get("name")), norm_name(t.get("slug") or t.get("id")))), None)
+    if t:
+        return pick(t, f"you are in a team named {brand.GROUP_NAME}")
+    t = next((t for t in mine if norm_name(t.get("slug") or t.get("id")) == norm_name(brand.TEAM_SLUG)), None)
+    if t:
+        return pick(t, "the earlier default team you are in")
+    if len(mine) == 1:
+        return pick(mine[0], "the only team you are in")
+    if log:
+        log(f"  No Garage 61 team fits {slug}. You are in: {', '.join(names) or 'no teams'}")
+    return {"slug": slug, "name": brand.team_name_for(None, slug), "why": "none of your teams fits", "ok": False, "teams": names}
+
+
+def no_group_note(g) -> str:
+    return (f"None of your Garage 61 teams matches {g['slug']}. " + (f"You are in: {', '.join(g['teams'])}. " if g["teams"] else
+            "You are not in any Garage 61 team. ") + "Pick the right one in Settings > Team.")
+
+
 def team_info(slug=None, teams=None) -> dict:
     """{"slug", "name"} for a data dict: the display name, never the bare slug."""
     slug = slug or brand.GROUP_SLUG
@@ -459,7 +499,13 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
     my_name = " ".join(filter(None, [g(me, "firstName", "firstname"), g(me, "lastName", "lastname")])) or my_slug or "You"
     team_slug = team_slug or st["slug"] or brand.GROUP_SLUG
     mem, teams_list = membership_for(api, team_slug, log)
-    group_name = brand.team_name_for(teams_list, team_slug)
+    grp = resolve_group(teams_list, team_slug, log)
+    team_slug = grp["slug"]
+    if teams_list is not None:
+        mem = brand.membership(teams_list, team_slug) if grp["ok"] else brand.NOT_MEMBER
+    group_name = brand.team_name_for(teams_list, team_slug) if grp["ok"] else grp["name"]
+    if not grp["ok"]:
+        notes.append(no_group_note(grp))
     not_member = mem == brand.NOT_MEMBER
     if not_member:
         log(f"You're not in the {group_name} group on Garage 61, so no team laps were loaded.")
@@ -525,7 +571,8 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
     data = {
         "version": 2,
         "team": {"slug": team_slug, "name": group_name},          # the Garage 61 group (kept for older readers)
-        "group": {"slug": team_slug, "name": group_name},
+        "group": {"slug": team_slug, "name": group_name, "why": grp["why"], "ok": grp["ok"]},
+        "laps_from": f"Laps come from {group_name} on Garage 61." if grp["ok"] else no_group_note(grp),
         "team_name": st["name"],
         "members": member_rows,
         "membership": mem,

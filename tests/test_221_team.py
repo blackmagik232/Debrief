@@ -274,6 +274,35 @@ def test_carcompare_bands():
     assert carcompare.MIN_DRIVERS == 15            # the evidence bar is not lowered
 
 
+def test_group_self_corrects():
+    T = lambda *a: [{"slug": x, "name": n} for x, n in a]
+    logs = []
+    r = team.resolve_group(T(("overdriver-academy", "Overdriver Academy"), ("other", "O")), "overdriver-academy", logs.append)
+    assert r["slug"] == "overdriver-academy" and r["why"] == "the group set in Settings" and logs, r
+    r = team.resolve_group(T(("od-acad", "Overdriver  Academy"), ("x", "X")), "wrong-guess")           # name match
+    assert r["slug"] == "od-acad" and r["ok"], r
+    r = team.resolve_group(T(("midfield-menace", "Midfield Menace"), ("x", "X")), "wrong-guess")       # earlier default
+    assert r["slug"] == "midfield-menace" and r["why"].startswith("the earlier default"), r
+    r = team.resolve_group(T(("solo", "Solo Team")), "wrong-guess")                                    # only team
+    assert r["slug"] == "solo" and r["why"] == "the only team you are in", r
+    r = team.resolve_group(T(("a", "A"), ("b", "B")), "wrong-guess")                                   # none fits: never guess
+    assert not r["ok"] and r["teams"] == ["A", "B"] and "You are in: A, B." in team.no_group_note(r), r
+    assert team.resolve_group(None, "keep-me")["slug"] == "keep-me"                                    # unreadable: keep
+    # build uses it: a wrong saved slug does not blank the page
+    rows = [lap("swazi", "Swazi Williams", 140.0), lap("kenta", "Kenta Young", 141.0)]
+    api = Api({1: rows}, group="midfield-menace")
+    folder = Path(tempfile.mkdtemp())
+    team.library_combos = lambda f: combos((TRACK, 1))
+    d = team.build(api, folder, "overdriver-academy", log=lambda m: None, cfg={"team_members": list(brand.MEMBERS)})
+    assert d["group"]["slug"] == "midfield-menace" and d["combos"][0]["board"] and "Laps come from" in d["laps_from"], d["group"]
+    api = Api({1: rows}, group="zzz")
+    api.teams = lambda refresh=False: [{"slug": "a", "name": "A"}, {"slug": "b", "name": "B"}]
+    d = team.build(api, folder, "overdriver-academy", log=lambda m: None, cfg={})
+    assert not d["group"]["ok"] and "You are in: A, B." in d["laps_from"] and all(r["is_me"] for r in d["combos"][0]["board"])
+    m, t = prep._membership(Api({}, group="midfield-menace"), "overdriver-academy", lambda m: None)
+    assert m == brand.MEMBER and t["slug"] == "midfield-menace"
+
+
 def test_settings_names():
     from debrief.desktop import settings_io
     assert "team_name" in settings_io.public_view() and settings_io.public_view()["team_members"] == list(brand.MEMBERS)

@@ -4,7 +4,7 @@
 
 **Debrief · by Black Magik Studios**
 
-© 2026 Black Magik Studios.
+© 2026 Black Magik Studios. Free to use; see LICENSE.
 
 Reviews your iRacing races from Garage 61 and keeps a library of every review, in its own window.
 

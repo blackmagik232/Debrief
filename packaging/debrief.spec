@@ -40,7 +40,7 @@ datas += [(str(PKG / "desktop" / "icon.png"), "debrief/desktop"),
           (str(ROOT / "settings.example.toml"), ".")]
 # 2.18: the credits and the licence texts of everything Debrief bundles (Help > Credits shows the same list).
 # They go to the bundle root (next to Debrief.exe's _internal files), and the build stops if one is missing.
-for _f in ("CREDITS.md", "THIRD_PARTY_LICENSES.txt"):
+for _f in ("CREDITS.md", "THIRD_PARTY_LICENSES.txt", "LICENSE"):
     if not (ROOT / _f).is_file():
         raise SystemExit(f"{_f} is missing: the build would ship without its credits and licence notices")
     datas.append((str(ROOT / _f), "."))

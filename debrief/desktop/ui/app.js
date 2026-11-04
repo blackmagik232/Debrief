@@ -1833,7 +1833,7 @@ function cdRender(st){if(current.view!=='coach'||$('coDrive').hidden)return;cons
   const F=st.focus,P=co.focusPlan,T=F&&(run||F.measured)?F:P;
   $('cdThing').textContent=T?mphText(turnWords(T.text||'')):'No one thing for this car and track yet. The coach uses your focus corners.';
   $('cdCount').textContent=F&&run?(F.count_text||F.progress||''):F&&F.count_of?'Last drive: '+F.count_text:'';
-  $('cdDone').textContent=T?(F&&F.done?'Done: you hit it on 7 of your last 10 laps.':(F&&F.done_text)||'Done when you hit it on 7 of 10 laps')+'.':'';
+  $('cdDone').textContent=T?coDoneLine(F)+'.':'';
   // against the reference: this lap so far, else the last lap
   const D=$('cdDelta'),L=st.last_lap;let dt='--',dc='dbig num',dn='';
   if(run&&ok(st.live_delta)){dt=cdSigned(st.live_delta)+' s';dc+=st.live_delta>0.005?' down':st.live_delta<-0.005?' up':'';dn='This lap so far'+(st.live_delta>0.005?', down on':st.live_delta<-0.005?', up on':', level with')+' your reference.'}
@@ -2228,12 +2228,15 @@ async function prCoachResult(box,S,P){if(!S||!S.car_path||!S.track_code)return;l
 // 2.17.2 speeds on the Coach page are in mph (the owner's choice): km/h numbers from the coach and older logs are shown in mph
 const KM_MI=1.609344;const mphOf=k=>spdOf(k,'kmh');   // 2.18: follows Settings > Units (the name is from 2.17.2)
 function mphText(s){return String(s==null?'':s).replace(/(-?\d+(?:\.\d+)?) km\/h/g,(m,n)=>spdOf(+n,'kmh')+' '+spdLabel())}
+// 2.18: the target, worded once for the driving view and the Coach page's rehearsal/focus box (the numbers come from the server's rule)
+function coDoneLine(F){const t=(F&&F.done_text)||'Done when you hit it on 7 of 10 laps';
+  return F&&F.done?t.replace(/^Done when you hit it on (\d+) of (\d+) laps$/,'Done: you hit it on $1 of your last $2 laps'):t}
 function renderCoFocus(st){const box=$('coFocus');if(!box)return;const F=st&&st.focus,P=co.focusPlan,run=!!(st&&st.running);
   const pill=$('coFocusPill');pill.className='pill';
-  if(F&&(run||(F.measured&&(!P||!F.plan_id||F.plan_id===P.plan_id)))){box.hidden=false;$('coFocusText').textContent=mphText(turnWords(F.text||''));$('coFocusProg').textContent=F.progress||'';
+  if(F&&(run||(F.measured&&(!P||!F.plan_id||F.plan_id===P.plan_id)))){box.hidden=false;$('coFocusText').textContent=mphText(turnWords(F.text||''));$('coFocusProg').textContent=[F.count_text||F.progress||'',coDoneLine(F)].filter(Boolean).join(' · ');
     pill.textContent=run?'Watching':'Last drive';if(run)pill.className='pill ok';
     $('coFocusNote').textContent=run?'After each clean pass through '+turnWords(F.corner||'the corner')+' the coach checks it and now and then says how it went.':'From your last drive with the coach.';return}
-  if(P){box.hidden=false;$('coFocusText').textContent=mphText(turnWords(P.text||''));$('coFocusProg').textContent=run?'Watching for this car and track.':'Not started';pill.textContent='';
+  if(P){box.hidden=false;$('coFocusText').textContent=mphText(turnWords(P.text||''));$('coFocusProg').textContent=(run?'Watching for this car and track.':'Not started')+' · '+coDoneLine(P);pill.textContent='';
     $('coFocusNote').textContent='Start coaching and drive: the coach measures '+turnWords(P.corner||'the corner')+' each clean lap and keeps count. '+mphText(turnWords(P.check||''));return}
   box.hidden=true}
 // wheel button mute

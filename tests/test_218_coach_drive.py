@@ -552,6 +552,21 @@ check(all(x in html for x in ('id="coDrive"', 'id="coDriveBtn"', 'id="cdWord"', 
 check("debrief-coach-drive" in js_ and "body.codriving .side" in css and "coach/mute-set" in js_ and
       "coach/result?" in js_, "remembered, folds the sidebar, mute said outright, Practice asks for the coach's count")
 
+# the target is worded once (coDoneLine) for the driving view and the Coach page's focus box, and the session page
+# shows the coached count with the same words from the server's rule
+check("function coDoneLine" in js_ and js_.count("coDoneLine(") >= 4 and "7 of your last 10" not in js_,
+      "one target wording for the driving view and the Coach page (no hard-coded 7 of 10 in the done line)")
+check("(r?r.text+' ':'')+(j.done_text||'')" in js_, "the Practice session page shows the coached count with the target")
+import subprocess as _sp
+_fn = js_[js_.index("function coDoneLine"):js_.index("function renderCoFocus(")]
+try:
+    _o = _sp.run(["node", "-e", _fn + "console.log(coDoneLine({done_text:'Done when you hit it on 7 of 10 laps'}));"
+                  "console.log(coDoneLine({done:true,done_text:'Done when you hit it on 7 of 10 laps'}));"], capture_output=True,
+                 text=True, timeout=20).stdout.splitlines()
+    check(_o == ["Done when you hit it on 7 of 10 laps", "Done: you hit it on 7 of your last 10 laps"], f"target wording: {_o}")
+except (OSError, _sp.SubprocessError):
+    print("skip node not available")
+
 s.shutdown()
 print(f"\n{'FAILED ' + str(fails) if fails else 'ALL OK'}")
 sys.exit(1 if fails else 0)

@@ -713,7 +713,7 @@ def ref_driver(ref_lap) -> str:
     return ""
 
 
-def _phrase(rule, D, P, label=None, driver=None):
+def _phrase(rule, D, P, label=None, driver=None, name=None):
     """(what's different, how to try it, why) for one rule, from the numbers. With driver (a teammate's reference
     lap) the sentence is about them: "Alex brakes at 85% where your typical lap has 100%"."""
     def g(k, w="best"):
@@ -803,7 +803,9 @@ def _phrase(rule, D, P, label=None, driver=None):
         re_, pk = D.get("release_end_m"), D.get("peak_pct")
         if re_ and re_["z"] >= Z_LIKELY and re_["diff"] <= -5:
             diff += f", and let go of the brake about {_five(re_['diff'])} m earlier"
-            how = "same braking marker, but come off the brake a little earlier so the car rolls faster through the middle."
+            # 2.19.1: the card knows the distance, so the How line says it (and never a number it doesn't have)
+            how = (f"keep your usual {name + ' ' if name else ''}brake point; release the brake about {_five(re_['diff'])} m earlier "
+                   f"so the car rolls faster through the middle.")
         elif pk and pk["z"] >= Z_LIKELY and pk["diff"] <= -R_PEAK_PCT and (_abs_on(P) or lock_evidence(D)):
             diff += f", and brake at about {_round_to(pk['best'], 5)}% instead of {_round_to(pk['typical'], 5)}%"
             how = (f"same braking marker, but press less hard (about {_round_to(pk['best'], 5)}%) so you don't "
@@ -861,18 +863,20 @@ def _gets(D, lost=None, label=None):
     mn, ex = D.get("min_kmh"), D.get("exit_kmh")
     bits = []
     if _passes(mn):
+        rb, rt = _round_to(mn["best"], 1), _round_to(mn["typical"], 1)
         dv = mn["best"] - mn["typical"]
+        gap = _round_to(abs(rb - rt), 1)   # 2.19.1: the gap is the difference of the two numbers shown
         if dv >= 1:
-            bits.append(f"about {_round_to(dv, 1)} km/h more through the middle "
-                        f"({_round_to(mn['best'], 1)} vs {_round_to(mn['typical'], 1)} km/h)")
+            bits.append(f"{'about ' + str(gap) if gap else 'less than 1'} km/h more through the middle ({rb} vs {rt} km/h)")
         elif dv <= -1:
-            bits.append(f"about {_round_to(-dv, 1)} km/h less at the slowest point "
-                        f"({_round_to(mn['best'], 1)} vs {_round_to(mn['typical'], 1)} km/h)")
+            bits.append(f"{'about ' + str(gap) if gap else 'less than 1'} km/h less at the slowest point ({rb} vs {rt} km/h)")
     if _passes(ex):
+        rb, rt = _round_to(ex["best"], 1), _round_to(ex["typical"], 1)
         dv = ex["best"] - ex["typical"]
+        gap = _round_to(abs(rb - rt), 1)
         if abs(dv) >= 1:
-            bits.append(f"{'about ' if not bits else ''}{_round_to(abs(dv), 1)} km/h {'more' if dv > 0 else 'less'} "
-                        f"on the way out ({_round_to(ex['best'], 1)} vs {_round_to(ex['typical'], 1)} km/h)")
+            bits.append(f"{('about ' if not bits else '') + str(gap) if gap else 'less than 1'} km/h {'more' if dv > 0 else 'less'} "
+                        f"on the way out ({rb} vs {rt} km/h)")
     return " and ".join(bits)
 
 
@@ -911,7 +915,7 @@ def _card(c, name, lost, D, fired, rows_all, nb, nt, P, label=None, ref=False, g
     second = next((rk for rk in order[1:] if FAMILY[rk[0]] != FAMILY[primary[0]]), None)
     used = [primary] + ([second] if second else [])
     who = (first_name(driver) or "your teammate") if ref and driver is not None else None
-    parts = [_phrase(r, D, P, label, driver if ref else None) for r, _k in used]
+    parts = [_phrase(r, D, P, label, driver if ref else None, name) for r, _k in used]
     if len(parts) > 1 and who:
         second_part = parts[1][0][len(who) + 1:] if parts[1][0].startswith(who + " ") else parts[1][0]
         diff = parts[0][0] + ", and " + second_part

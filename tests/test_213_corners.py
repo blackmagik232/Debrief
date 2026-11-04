@@ -6,6 +6,7 @@ pick-up; brake, throttle, steering, ABS and wheel speeds to match), so each rule
 from __future__ import annotations
 
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -286,7 +287,7 @@ check(c is not None and c["rule"] == "carry", f"carry-speed rule fires ({c and c
 if c:
     check("arrive at the same speed" in c["different"] and "km/h more at the slowest point" in c["different"],
           f"different: {c['different']}")
-    check("come off the brake a little earlier" in c["how"], f"how: {c['how']}")
+    check("release the brake about" in c["how"] and re.search(r"about \d+ m earlier", c["how"]), f"how says the distance: {c['how']}")
     check("more through the middle" in c["gets"], f"gets: {c['gets']}")
 
 # ---------------------------------------------------------------- 6. wheelspin and lock-up

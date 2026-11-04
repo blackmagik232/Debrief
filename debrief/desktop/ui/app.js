@@ -309,7 +309,7 @@ function frameBar(){
   if(v==='goalCharts'){$('fbText').textContent='How close your reviewed races get to your goals';return}
   if(v==='skills'){const p=profileInfo,rf=p&&p.refreshing;
     $('fbText').textContent=!p?'Driver profile':
-      (p.n_races?'Driver profile · '+p.n_races+' race'+(p.n_races===1?'':'s')+' with skill scores'+(p.weakest&&PHASE[p.weakest.phase]?' · most time to find lately: '+PHASE[p.weakest.phase]:''):
+      (p.n_races?'Driver profile · '+(ok(p.n_rows)&&p.n_rows>p.n_races?p.n_races+' of your '+plural(p.n_rows,'race review')+' have':plural(p.n_races,'race')+' with')+' skill scores'+(p.weakest&&PHASE[p.weakest.phase]?' · most time to find lately: '+PHASE[p.weakest.phase]:''):
        p.n_rows?'Driver profile · none of your '+p.n_rows+' race review'+(p.n_rows===1?'':'s')+' has skill scores yet; the page below says why':'Driver profile · skill scores appear after a race with at least 6 clean laps with telemetry');
     if(rf&&rf.total){pill.hidden=false;pill.className='pill';pill.textContent='Adding scores to older reviews: '+rf.done+' of '+rf.total;
       $('fbBar').hidden=false;$('fbBar').firstElementChild.style.width=Math.round(100*rf.done/rf.total)+'%'}
@@ -489,7 +489,7 @@ function render(s){
       $('jobEyebrow').textContent='Done';$('jobBar').parentElement.className='progress done';
       const stay=current.view==='job';  // only jump to the result if the person is still watching
       if(s.kind==='scan'){loadReviews().then(()=>{if(s.result&&s.result.review){if(stay)openReview(s.result.review);reloadFrame();banner('Race log added from the replay'+(s.result.confirmed?'.':'. Garage 61 couldn\'t confirm it\'s the same race, so check the names look right.'),false,9000)}})}
-      else if(s.kind==='rival'){if(s.result&&s.result.review){if(stay)openReview(s.result.review);reloadFrame();banner((s.result.name||'The rival')+'\'s lap '+s.result.lap+' is in Compare, as a rival with no pedal data.',false,9000)}}
+      else if(s.kind==='rival'){if(s.result&&s.result.review){if(stay)openReview(s.result.review);reloadFrame();banner((s.result.name||'The rival')+'\'s lap'+(ok(s.result.lap)?' '+s.result.lap:'')+' is in Compare, as a rival with no pedal data.',false,9000)}}
       else if(s.kind==='review')loadReviews().then(()=>{const R=s.result||{};if(!R.review)return;
         if(R.saved){openReview(R.review);bannerAction('You\'ve already reviewed this race, so here is the saved review. Nothing was downloaded.','Rebuild',()=>rebuildReview(R.review))}
         else if(Array.isArray(R.changes)){if(stay||current.dir===R.review)openReview(R.review);if(current.dir===R.review)reloadFrame();banner('Review rebuilt. '+R.changes.filter(x=>typeof x==='string').join(' '),false,12000)}
@@ -1438,7 +1438,7 @@ $('fbRival').addEventListener('click',async()=>{const dir=current.dir;if(!dir)re
   let r;try{r=await post('rival-choices',{review:dir})}catch(e){connectionLost();return}
   if(!r.ok){setMsg('rivalMsg',r.error||'Could not read the saved scan.','bad');return}
   const cars=r.cars||[];cars.forEach(c=>{const m=Math.floor(c.lap_time/60),sec=(c.lap_time-m*60).toFixed(3).padStart(6,'0');const why=c.seconds>=60?', fought '+Math.round(c.seconds/60)+' min':c.seconds>0?', fought '+c.seconds+' s':'';
-    const o=h('option',null,'#'+c.car+' '+c.name+why+', lap '+c.lap+' in '+m+':'+sec+(c.read?' (already read)':''));o.value=c.car;sel.append(o)});
+    const o=h('option',null,'#'+c.car+' '+c.name+why+(ok(c.lap)?', lap '+c.lap:'')+' in '+m+':'+sec+(c.read?' (already read)':''));o.value=c.car;sel.append(o)});
   $('rivalGo').disabled=!cars.length;setMsg('rivalMsg',cars.length?'':'No nearby driver has a clean lap to read in this race.')});
 $('rivalClose').addEventListener('click',()=>closeDlg($('dlgRival')));
 $('fRival').addEventListener('submit',e=>{e.preventDefault();const dir=current.dir,car=$('rivalCar').value;if(!dir||!car)return;closeDlg($('dlgRival'));startJob('rival',{review:dir,car})});
@@ -1662,6 +1662,10 @@ function renderSlReport(R){const out=document.createDocumentFragment();
   if(S.next){const n=S.next,card=h('div','slnextcard');const top=h('div','phead');top.append(h('span','eyebrow','One change to try next'),confBadge(n.confidence));card.append(top);
     card.append(h('p','slaction',n.action||n.text));if(n.why)card.append(h('p',null,n.why));
     if(n.check)card.append(h('p','note','Then check: '+n.check));if(n.data)card.append(h('p','note','From: '+n.data));tn.append(card)}
+  else if((R.setups||[]).length<=1&&R.suggestions){   // 2.19.1: one setup so far: one concrete test, from the ideas below, no new statistics
+    tn.append(h('p','note','No tyre pressure, ride height or fuel change to try from the telemetry so far.'));
+    tn.append(h('p','slaction',slOneSetupNext(items)));
+    tn.append(h('p','note','Debrief only names a faster setup after 3 separate runs on each, so change one thing at a time.'))}
   else tn.append(h('p','note',R.suggestions?'No tyre pressure, ride height or fuel change to try from the telemetry so far. Ideas for how the car handles are under How the car handles, below.':'Nothing to suggest until a setup is recorded.'));
   const others=items.filter(i=>i!==S.next&&!i.next&&i.kind!=='note');
   const slList=(title,list)=>{if(!list.length)return;tn.append(h('h4',null,title));const u=h('ul','pvlist slideas');
@@ -1676,6 +1680,9 @@ function renderSlReport(R){const out=document.createDocumentFragment();
       bad.slice(0,50).forEach(b=>bu.append(h('li',null,b.file+': '+(plainText(b.error)||b.error))));d.append(bu);ns.append(d)}
     out.append(ns)}
   $('slReport').replaceChildren(out)}
+// 2.19.1: Try next with only one setup: the first idea that has an action, else the general step; always 3 runs a setup (setuplab.MIN_STINTS)
+function slOneSetupNext(items){const first=(items||[]).find(i=>i&&i.kind==='change'&&typeof i.action==='string'&&i.action.trim());
+  return 'Next run: '+(first?first.action.trim().replace(/[.\s]+$/,'')+', then drive':'make one change from the ideas below, then drive')+' at least 3 separate runs on each setup.'}
 function slIdeaLi(i){const li=h('li'),top=h('div','slidea');top.append(h('b',null,i.setting||'Note'),confBadge(i.confidence));li.append(top);
   const lines=Array.isArray(i.lines)&&i.lines.length?i.lines:[(i.kind==='change'&&i.action?i.action+' ':'')+(i.why||i.text||'')];
   lines.forEach(x=>li.append(h('span','sub2',x)));if(i.check)li.append(h('span','sub2','Check: '+i.check));return li}
@@ -2104,7 +2111,7 @@ function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{}
   // 1. how it went
   const hw=slSec('How it went','prHead');const bl=S.best_lap||{};
   hw.append(prFacts([['Best lap',ok(S.best)?fmtT(S.best):'–'],['Typical lap',ok(S.median)?fmtT(S.median):'–'],['Clean laps',(S.clean_laps||0)+' of '+(S.laps||0)]]));
-  if(ok(S.best))hw.append(h('p','note','Best on lap '+bl.lap+(bl.session?' ('+bl.session+')':'')+'. Typical lap: the middle of your clean laps.'));
+  if(ok(S.best))hw.append(h('p','note',(ok(bl.lap)?'Best on lap '+bl.lap:'Best lap')+(bl.session?' ('+bl.session+')':'')+'. Typical lap: the middle of your clean laps.'));
   const cons=R.consistency||{};if(cons.text)hw.append(h('p',null,cons.text));
   if(R.history&&R.history.text)hw.append(h('p','prvs',R.history.text));
   out.append(hw);
@@ -2116,8 +2123,8 @@ function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{}
     bp.append(h('p','note',T.text));
     const G=(T.gains||[]).filter(g=>ok(g.gain_s));if(G.length){bp.append(h('h4',null,'Where the time is'));const mx=Math.max(...G.map(g=>g.gain_s));
       const ul=h('ul','prbars');G.forEach(g=>{const li=h('li'),bar=h('span','prbar'),i=h('i');i.style.width=Math.max(3,Math.round(100*g.gain_s/mx))+'%';bar.append(i);
-        li.append(turnEl('span','prseg',g.segment),bar,h('span','num',g.gain_s.toFixed(2)+' s'),h('span','sub2','best on lap '+g.from_lap));
-        li.setAttribute('aria-label',turnName(g.segment)+': '+g.gain_s.toFixed(2)+' seconds, best on lap '+g.from_lap);ul.append(li)});bp.append(ul)}}
+        li.append(turnEl('span','prseg',g.segment),bar,h('span','num',g.gain_s.toFixed(2)+' s'),h('span','sub2',ok(g.from_lap)?'best on lap '+g.from_lap:'best lap'));
+        li.setAttribute('aria-label',turnName(g.segment)+': '+g.gain_s.toFixed(2)+' seconds, '+(ok(g.from_lap)?'best on lap '+g.from_lap:'best lap'));ul.append(li)});bp.append(ul)}}
   else bp.append(h('p','note',T.text||'Not enough laps yet.'));
   const SP=R.segment_spread||{};if(SP.text)bp.append(h('p','note',SP.text));
   out.append(bp);
@@ -2142,7 +2149,7 @@ function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{}
     const thd=h('thead');thd.append(hr);const tb=h('tbody');let st=null;
     L.forEach(r=>{const tr=h('tr');if(st!==null&&r.stint!==st)tr.className='newrun';st=r.stint;
       if(ok(S.best)&&r.valid&&Math.abs(r.time-S.best)<1e-6&&bl.lap===r.lap&&bl.file===r.file)tr.classList.add('best');
-      const c0=h('th','num',String(r.lap));c0.scope='row';
+      const c0=h('th','num',ok(r.lap)?String(r.lap):'');c0.scope='row';
       tr.append(c0,h('td','num',ok(r.time)?fmtT(r.time):'–'),h('td',null,r.session||''),
         h('td','prwhy'+(r.clean?' okc':''),r.clean?'Yes':cap(r.reason||'no')),h('td','num',ok(r.fuel_used)?r.fuel_used.toFixed(2)+' L':'–'),h('td',null,setupLetter(r.setup)));tb.append(tr)});
     t.append(thd,tb);wrap.append(t);ls.append(wrap);
@@ -2256,7 +2263,11 @@ async function prCoachResult(box,S,P){if(!S||!S.car_path||!S.track_code)return;l
 // the Coach page's "This session's one thing": live progress while coaching, else the plan it will watch
 // 2.17.2 speeds on the Coach page are in mph (the owner's choice): km/h numbers from the coach and older logs are shown in mph
 const KM_MI=1.609344;const mphOf=k=>spdOf(k,'kmh');   // 2.18: follows Settings > Units (the name is from 2.17.2)
-function mphText(s){return String(s==null?'':s).replace(/(-?\d+(?:\.\d+)?) km\/h/g,(m,n)=>spdOf(+n,'kmh')+' '+spdLabel())}
+// 2.19.1: a gap written beside "(A vs B km/h)" is the difference of the two speeds as shown (after converting and rounding)
+function gapFix(t){return t.replace(/(about\s+)?(\d+(?:\.\d+)?)\s*km\/h([^()\d]{0,80}?)\((-?\d+(?:\.\d+)?) vs (-?\d+(?:\.\d+)?)\s*km\/h\)/gi,(m,ab,g,mid,a,b)=>{
+  if(Math.abs(Math.abs(+a-+b)-(+g))>1.0001)return m;const ca=spdOf(+a,'kmh'),cb=spdOf(+b,'kmh'),d=Math.abs(ca-cb),L=' '+spdLabel();
+  return (d===0?'less than 1':(ab||'')+d)+L+mid+'('+ca+' vs '+cb+L+')'})}
+function mphText(s){return gapFix(String(s==null?'':s)).replace(/(-?\d+(?:\.\d+)?) km\/h/g,(m,n)=>spdOf(+n,'kmh')+' '+spdLabel())}
 // 2.18: the target, worded once for the driving view and the Coach page's rehearsal/focus box (the numbers come from the server's rule)
 function coDoneLine(F){const t=(F&&F.done_text)||'Done when you hit it on 7 of 10 laps';
   return F&&F.done?t.replace(/^Done when you hit it on (\d+) of (\d+) laps$/,'Done: you hit it on $1 of your last $2 laps'):t}
@@ -2857,9 +2868,10 @@ function renderRacing(){const j=rc.data;if(!j)return;const W=j.where||{},C=j.cou
   const tracks=rcTracks(j);if(rc.track&&!tracks.includes(rc.track))rc.track='';
   const sel=$('rcTrack');sel.replaceChildren(new Option('All tracks',''),...tracks.map(t=>new Option(t,t)));sel.value=rc.track;$('rcTrackWrap').hidden=tracks.length<2;
   const races=((j.starts||{}).races)||0,sess=((j.incidents||{}).sessions)||0;
-  const pill=$('rcPill');pill.className='pill'+(races||sess?' ok':' no');pill.textContent=races||sess?plural(races,'race')+', '+plural(sess,'session'):'Nothing yet';
+  const pill=$('rcPill');pill.className='pill'+(races||sess?' ok':' no');pill.textContent=races||sess?plural(races,'race')+' with starts, '+plural(sess,'session')+' with incidents':'Nothing yet';
   const bits=[plural(F.reviews||0,'saved review'),plural(F.scans||0,'replay scan'),plural(F.telemetry||0,'telemetry file')];
   let note='Found '+bits.join(', ')+'.';
+  if(races||sess)note+=' Of these: '+plural(races,'race')+' with a start to look at and '+plural(sess,'session')+' with incident data. Practice counts every telemetry session, so its number can be bigger.';   // 2.19.1
   if(!W.library)note+=' Your library folder wasn\'t found, so saved reviews and replay scans can\'t be read.';
   if(!W.telemetry)note+=' Your telemetry folder wasn\'t found. If iRacing saves telemetry somewhere else, set the folder in Settings.';
   else note+=' Telemetry comes from the folder "'+(W.telemetry_name||'telemetry')+'".';

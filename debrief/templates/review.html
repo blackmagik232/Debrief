@@ -749,6 +749,7 @@ if(typeof D.trend_total!=='number')D.trend_total=0;
 D.sector_names=Array.isArray(D.sector_names)?D.sector_names:[];
 const BRAND=(D.brand&&typeof D.brand==='object')?D.brand:{};const TEAM_NAME=(typeof BRAND.team_name==='string'&&BRAND.team_name.trim())||'Midfield Menace';
 const M=D.meta,L=typeof D.L==='number'&&D.L>0?D.L:1000,STEP=typeof D.step==='number'&&D.step>0?D.step:10,bestKey='me'+D.best.n;
+const NO_LAPS=typeof D.best.n!=='number'||typeof D.best.t!=='number'||!isFinite(D.best.t),NO_LAPS_TXT='No usable laps in this race, so there is nothing to compare.';   // 2.19.1: never print null / NaN for a missing best lap
 const trOk=t=>isObj(t)&&Array.isArray(t.tt)&&t.tt.length>1&&Array.isArray(t.v);
 // drop traces that can't be drawn, so every key left in TR is safe to use
 const TR={};Object.keys(D.traces).forEach(k=>{if(trOk(D.traces[k]))TR[k]=D.traces[k]});
@@ -857,6 +858,7 @@ function num0(v){return typeof v==='number'&&isFinite(v)?v:0}
 const TTF=(()=>{const IN=isObj(D.insights)?D.insights:null;if(IN&&typeof IN.time_to_find==='number')return IN.time_to_find;return FIXES.reduce((s,f)=>s+f.gain,0)})();
 safe('summary tiles',()=>{
   const host=$('stats');const add=(lab,v,ctx,small)=>{const d=h('div','stat');d.append(h('span','lab',lab));d.append(rich(h('span','v'+(small?' small':'')),v));d.append(rich(h('span','ctx'),ctx));host.append(d);return d};
+  if(NO_LAPS){add('Best lap',['–'],[NO_LAPS_TXT]);return}
   const ct=cleanLaps.map(l=>l.t);const within=ct.filter(t=>Math.abs(t-D.median)<=0.5).length;
   add('Best lap',[fmt(D.best.t)],['Lap '+D.best.n+' · ',{b:ab(D.median-D.best.t)+' s'},' quicker than your typical lap (the median: half your laps were quicker, half slower) '+fmt(D.median)]);
   const C0=isObj(D.consistency)?D.consistency:{};
@@ -868,6 +870,7 @@ safe('summary tiles',()=>{
   if(mainRef&&typeof mainRef.t==='number'){const g=D.best.t-mainRef.t;add('Gap to comparison',[sg(g,2),{u:'s'}],[String(mainRef.name||'Comparison')+' · '+fmt(mainRef.t)+(g>0?' · quicker than you':' · slower than you')])}
 },'summary');
 safe('race summary',()=>{
+  if(NO_LAPS){rich($('story'),[NO_LAPS_TXT]);return}
   const c=D.counts;const parts=[];const P=(...x)=>{parts.push(...x,' ')};
   const _sal=String((D.meta&&D.meta.salutation)||'').trim();
   const exl=Array.isArray(c.excluded_laps)?c.excluded_laps.filter(n=>typeof n==='number'):[];const pit=Array.isArray(c.pit)?c.pit.filter(n=>typeof n==='number'):[];
@@ -1618,7 +1621,7 @@ safe('what to work on',()=>{const IN=isObj(D.insights)?D.insights:null;
   $('coach').hidden=false;
   const v=$('verdict');(IN&&Array.isArray(IN.verdict)?IN.verdict:[]).forEach(t=>v.append(h('p',null,String(t))));
   const fl=$('fixList');const fx=FIXES;
-  if(!fx.length)fl.append(h('p','note','Nothing big to fix: your typical laps are already close to your best in every corner.'));
+  if(!fx.length)fl.append(h('p','note',NO_LAPS?NO_LAPS_TXT:'Nothing big to fix: your typical laps are already close to your best in every corner.'));
   // 2.8: the top three up front; the rest one click away, with nothing dropped
   let moreBox=null;if(fx.length>FIX_SHOWN){const m=h('details','fixmore');m.id='fixMore';const n=fx.length-FIX_SHOWN;m.append(h('summary',null,'Show '+n+' more '+(n===1?'corner':'corners')+' to work on'));moreBox=h('div','fixes');m.append(moreBox);m.addEventListener('toggle',()=>{if(m.open)sparkFns.forEach(sf=>sf())});fl.append(m)}
   fx.forEach((f,i)=>{const card=safe('fix card '+f.corner,()=>fixCard(f,i));if(!card)return;if(moreBox&&i>=FIX_SHOWN)moreBox.append(card);else if(moreBox)fl.insertBefore(card,moreBox.parentNode);else fl.append(card)});

@@ -66,10 +66,47 @@ def _conv_num(tok: str, frm: str, to: str) -> str:
     return _fmt(v, dec, sign)
 
 
+# 2.19.1: "about 4 mph more through the middle (63 vs 58 mph)": a gap written next to the two speeds it comes from
+# must be the difference of the speeds as shown (63 - 58 = 5), not of the unrounded ones. The gap is checked against
+# its two speeds in the unit it was written in (it must be their difference to within rounding), then written again
+# from the converted, rounded speeds.
+_GAP = re.compile(rf"(?<![\w.])(?P<pre>about\s+)?(?P<g>\d+(?:\.\d+)?)(?P<sp>\s*)(?P<u>km/h|mph)(?P<mid>[^()\d\x00]{{0,80}}?)"
+                  rf"\((?P<a>{_NUM})\s+vs\.?\s+(?P<b>{_NUM})\s*(?P=u)\)", re.I)
+_FILL = re.compile(rf"\x00(?P<i>\d+)\x00(?P<mid>[^()\x00]{{0,80}}?)\((?P<a>{_NUM})\s+vs\.?\s+(?P<b>{_NUM})\s*(?P<u>km/h|mph)\)", re.I)
+
+
+def _dec(tok: str) -> int:
+    return len(tok.lstrip("+-\u2212").split(".")[1]) if "." in tok else 0
+
+
 def convert_text(text, unit):
     """text with every speed written in unit. Non-strings come back unchanged."""
     if not isinstance(text, str) or ("mph" not in text and "km" not in text and "kph" not in text):
         return text
+    held: list = []
+
+    def mark(m):
+        if abs(abs(float(m.group("a")) - float(m.group("b"))) - float(m.group("g"))) > 1.0001:
+            return m.group(0)                       # not a gap between these two speeds: leave it be
+        held.append((bool(m.group("pre")), m.group("sp"), (m.group("pre") or "") + m.group("g") + m.group("sp") + m.group("u")))
+        return f"\x00{len(held) - 1}\x00" + m.group("mid") + m.group(0)[m.group(0).index("("):]
+
+    out = _convert_text(_GAP.sub(mark, text) if " vs" in text else text, unit)
+    if not held:
+        return out
+
+    def fill(m):
+        about, sp, _orig = held[int(m.group("i"))]
+        dec = max(_dec(m.group("a")), _dec(m.group("b")))
+        diff = abs(float(m.group("a")) - float(m.group("b")))
+        label = m.group("u")
+        shown = ("about " if about else "") + f"{diff:.{dec}f}" if round(diff, dec) else "less than 1"
+        return shown + sp + label + m.group("mid") + m.group(0)[m.group(0).index("("):]
+    out = _FILL.sub(fill, out)
+    return re.sub(r"\x00(\d+)\x00", lambda m: held[int(m.group(1))][2], out)     # never leave a marker behind
+
+
+def _convert_text(text, unit):
     to = norm(unit)
 
     def one(m):

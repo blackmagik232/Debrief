@@ -180,7 +180,7 @@ def test_skill_scores_for_reviews_saved_without_them():
 
 # ================================================================ units
 def test_units_text_and_numbers():
-    assert units.convert_text("Carry 3 km/h more (101 vs 99 km/h)", "mph") == "Carry 2 mph more (63 vs 62 mph)"
+    assert units.convert_text("Carry 3 km/h more (101 vs 99 km/h)", "mph") == "Carry 1 mph more (63 vs 62 mph)"   # 2.19.1: the gap is the difference of the shown speeds
     assert units.convert_text("Carry 2 mph more at the slowest point (63.1 mph)", "kmh") == \
         "Carry 3 km/h more at the slowest point (101.5 km/h)"
     assert units.convert_text("4-20 km/h", "mph") == "2-12 mph"

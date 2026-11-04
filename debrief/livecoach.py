@@ -279,7 +279,10 @@ class Reference:
         return next((c for c in self.corners if c.num == num), None)
 
     def describe(self) -> str:
-        """'1:38.874 from Nov 2'"""
+        """'1:38.874 from Nov 2'. 2.19.1: a lap the coach adopted while you drive is 'from this session': a calendar
+        day beside it could disagree with the Practice list (which dates laps by their telemetry file)."""
+        if (self.source or {}).get("kind") == "live" and not (self.source or {}).get("played"):
+            return fmt_lap(self.lap_time) + " from this session"
         return fmt_lap(self.lap_time) + day_words(self.source.get("date"))
 
     def summary(self) -> dict:
@@ -2305,6 +2308,18 @@ def reference_why(ref, given=None) -> str:
     return ""
 
 
+def quicker_known(index, car_path: str, track_code: str, lap_time: float) -> dict | None:
+    """2.19.1: Practice's reference lap (reference_choice) when it is quicker than lap_time, else None. The Coach page
+    says so when the lap it is using is slower than the one Practice names, so the two pages never disagree silently."""
+    try:
+        ch = reference_choice(index, car_path, track_code)
+    except Exception:  # noqa: BLE001
+        return None
+    if ch and ch["lap_time"] < float(lap_time) - 0.0005:
+        return ch
+    return None
+
+
 def show_state(state: str, running: bool, mode: str, muted: bool) -> str:
     """2.18: the one word the driving view shows in large type: "coaching", "muted", "rehearsing" or "off" (and,
     while it gets going, "starting" or "waiting" for iRacing). Muted wins over everything while it runs."""
@@ -2633,6 +2648,30 @@ class LiveRunner:
         if self.coach.reference is not None:
             self.coach.set_reference(self.coach.reference)    # top_n / prefix may have changed
 
+    def _quicker_known(self, ref):
+        """quicker_known() for the lap in use, asked of Setup Lab's index once per lap and car + track (never raises)."""
+        if ref is None or self.coach.keep_reference is ref or not self._key or not self._key[0]:
+            return None
+        ck = (self._key, round(ref.lap_time, 3))
+        if getattr(self, "_qk_key", None) != ck:
+            val = None
+            try:
+                idx = self._reference_index
+                if callable(idx):
+                    idx = idx()
+                if idx:
+                    val = quicker_known(idx, self._key[0], self._key[1], ref.lap_time)
+            except Exception:  # noqa: BLE001
+                val = None
+            self._qk_key, self._qk_val = ck, val
+        return self._qk_val
+
+    def _why_with_quicker(self):
+        ref = self.coach.reference
+        why = reference_why(ref, self.coach.keep_reference)
+        qk = self._quicker_known(ref)
+        return f"{why}; Practice lists a quicker clean lap, {qk['text']}, that the coach is not using yet" if qk and why else why
+
     def status(self) -> dict:
         """What the window can show. state: stopped | starting | waiting | no_reference | coaching | finished | error.
         text: one plain line, e.g. 'Waiting for iRacing to start.' or
@@ -2656,7 +2695,7 @@ class LiveRunner:
             ref = self.coach.reference
             word = "Rehearsing" if self.mode == "rehearsal" else "Coaching"     # 2.18: never "Coaching" in a rehearsal
             text = f"{word}: {car} at {track}, reference {ref.describe()}" if ref else f"{word}: {car} at {track}"
-            why = reference_why(ref, self.coach.keep_reference)
+            why = self._why_with_quicker()
             if why and not self.settings.quiet:
                 text += f" ({why})"
             if cs["muted"]:
@@ -2698,7 +2737,7 @@ class LiveRunner:
                 "voice": vs, "error": self._error, "errors": self._errors, "settings": self.settings.to_dict(),
                 "focus": cs.get("focus"), "level": cs.get("level"), "focus_info": cs.get("focus_info"),
                 "asks": self.coach.asks, "invalid_drops": self.coach.invalid_drops,
-                "reference_why": reference_why(self.coach.reference, self.coach.keep_reference),
+                "reference_why": self._why_with_quicker(),
                 # 2.18 the driving view
                 "show": show_state(st, self.running(), self.mode, cs["muted"]), "mute": self.mute_state(),
                 "repeat_note": self.repeat_note, "live_delta": self.coach.live_delta, "speed": self.speed,

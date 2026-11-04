@@ -341,7 +341,9 @@ def test_coach_watches_the_plan():
         assert s.coach_focus_info["plan_id"] == cur["plan_id"]
         st = coach_until(lambda st: (st.get("focus") or {}).get("measured", 0) >= 3)
         F = st["focus"]
-        assert F["progress"] == f"Hit {F['hits']} of {F['measured']} so far", F
+        # 2.18: counted over finished laps only (a pass on the lap still being driven waits for the line)
+        assert F["progress"] == f"Hit {F['count_hits']} of {F['count_of']} so far", F
+        assert F["count_of"] <= F["measured"] and F["done_text"] == "Done when you hit it on 7 of 10 laps", F
         voc = pp.cue_vocabulary(cur)
         assert voc and voices and any(v in ph for ph in voices[0].prepared for v in voc), "the plan's cues are made ready"
     finally:

@@ -333,6 +333,62 @@ class PackVoice:
                     pass
 
 
+def _pack_name(pack_id, packs) -> str:
+    row = next((r for r in packs or [] if r.get("id") == pack_id), None)
+    return (row or {}).get("name") or (str(pack_id) if pack_id else "The default voice")
+
+
+def voice_note(chosen, status: dict | None = None, packs=None) -> dict:
+    """2.18: whether the voice he chose is the one that plays, and if not why and what plays instead, in plain words
+    for the Coach page: {"ok", "text", "using"}. chosen: the voice_pack id saved in the settings ("" = the default).
+    status: the running voice's status() (None while the coach is off: then only the installed packs are looked at).
+    packs: voicepack.list_packs rows. Never raises."""
+    try:
+        packs = list(packs or [])
+        good = [r for r in packs if r.get("ok")]
+        default = next((r for r in good if r.get("default")), good[0] if good else None)
+        row = next((r for r in packs if r.get("id") == chosen), None) if chosen else default
+        name = _pack_name(chosen, packs) if chosen else ((default or {}).get("name") or "The default voice")
+        why = ""
+        if chosen and row is None:
+            why = "its voice pack isn't installed"
+        elif row is not None and not row.get("ok"):
+            why = "its voice pack is damaged (" + str((row.get("problems") or ["it can't be read"])[0]) + ")"
+        st = status or {}
+        if status is None:
+            if not why:
+                return {"ok": True, "text": "", "using": name}
+            if default is not None and (row is None or default.get("id") != row.get("id")):
+                return {"ok": False, "using": default.get("name"),
+                        "text": f"{name} can't play: {why}. The coach uses {default.get('name')} instead."}
+            return {"ok": False, "using": "Windows speech",
+                    "text": f"{name} can't play: {why}, and no other voice pack is installed. Windows speech says "
+                            f"the cues instead."}
+        pk = st.get("pack")
+        if pk:
+            if not chosen or pk.get("id") == chosen:
+                return {"ok": True, "text": "", "using": pk.get("name") or name}
+            return {"ok": False, "using": pk.get("name"),
+                    "text": f"{name} can't play: {why or 'its voice pack could not be loaded'}. The coach uses "
+                            f"{pk.get('name')} instead."}
+        backend = str(st.get("backend") or "")
+        reason = str(st.get("pack_error") or st.get("reason") or "").strip()
+        if backend == "fake":
+            return {"ok": True, "text": "", "using": name}
+        if backend == "windows speech":
+            return {"ok": False, "using": "Windows speech",
+                    "text": f"{name} can't play: {why or reason or 'no voice pack could be loaded'}. Windows speech "
+                            f"says every cue instead."}
+        if backend in ("none", "silent") or (not st.get("available", True) and backend != "starting"):
+            return {"ok": False, "using": "nothing",
+                    "text": f"{name} can't play and the coach is silent: {reason or 'no sound device could be opened'}."}
+        return {"ok": False, "using": "Windows speech",
+                "text": f"{name} can't play: Debrief couldn't open a sound device for voice packs"
+                        f"{' (' + reason + ')' if reason else ''}. Windows speech says the cues instead."}
+    except Exception:  # noqa: BLE001
+        return {"ok": True, "text": "", "using": ""}
+
+
 def make_coach_voice(settings, user_dir=None, state_dir=None, log=None, backend=None, renderer=None):
     """The coach's voice for these livecoach.Settings: a PackVoice through the chosen device on Windows. Off
     Windows (or when no sound device can be opened at all) the older voice (voice.make_voice: Windows speech or

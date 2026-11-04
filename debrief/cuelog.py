@@ -31,7 +31,8 @@ NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2} [A-Za-z0-9 .\-]{1,90}\.jsonl$")
 # the only keys a line may carry (anything else is dropped before writing: nothing personal slips in)
 KEYS = ("ev", "t", "lap", "dist_m", "kmh", "kind", "text", "corner", "why", "dropped", "measured", "made_t", "dur_s",
         "next_brake_s", "waited_s", "lap_time", "clean", "cues", "source", "ref_lap", "ref_date", "corners", "focus",
-        "car", "track", "mode", "version", "started", "settings", "voice", "seconds", "latency_s", "wall")
+        "car", "track", "mode", "version", "started", "settings", "voice", "seconds", "latency_s", "wall",
+        "ref_text", "ref_why")
 MEASURED_KEYS = ("min_kmh", "ref_min_kmh", "down_kmh", "brake_point_m", "ref_brake_point_m", "early_m", "to_brake_m",
                  "lost_s", "value", "hit", "near", "lap", "lap_time", "ref_time", "delta_s", "timed_by", "sector",
                  "down_mph")
@@ -242,8 +243,9 @@ def summary(rows, name: str = "", version: str = "", limit: int = 6000) -> str:
         if r.get("ev") == "reference":
             foc = ", ".join(f"{f.get('name')}" + (f" ({f['lost_s']:.2f} s)" if isinstance(f.get('lost_s'), (int, float)) else "")
                             + (f" '{f['phrase']}'" if f.get("phrase") else "") for f in r.get("focus") or [])
-            L.append(f"Reference at t={r.get('t', '?')}: {r.get('lap_time')} s ({r.get('source')} lap {r.get('ref_lap')}, "
-                     f"{r.get('ref_date')}), {r.get('corners')} corners; focus: {foc or 'none'}")
+            named = f"{r['ref_text']}, " if r.get("ref_text") else ""      # 2.18: as the Coach page names it
+            L.append(f"Reference at t={r.get('t', '?')}: {named}{r.get('lap_time')} s ({r.get('source')} lap "
+                     f"{r.get('ref_lap')}, {r.get('ref_date')}), {r.get('corners')} corners; focus: {foc or 'none'}")
     spoken = [r for r in rows if r.get("ev") == "spoken"]
     per_lap = Counter(r.get("lap") for r in spoken)
     kinds = Counter(r.get("kind") for r in spoken)
@@ -279,6 +281,41 @@ def summary(rows, name: str = "", version: str = "", limit: int = 6000) -> str:
     if len(out) > limit:
         out = out[:limit - 40].rsplit("\n", 1)[0] + "\n(cut short; the full log is in coach-logs)"
     return out
+
+
+# ---------------------------------------------------------------- 2.18: the one thing's count, for Practice
+RESULTS = "focus-results.json"
+RESULTS_KEEP = 60
+RESULT_KEYS = ("hits", "of", "corner", "done", "done_text", "car", "track", "when")
+
+
+def save_focus_result(folder, plan_id, row: dict) -> bool:
+    """Keep what the live coach counted for one practice plan (its one thing): {plan_id: {"hits", "of", ...}} in
+    <folder>/focus-results.json, the newest RESULTS_KEEP plans. Only the car and track codes and the count. Never
+    raises."""
+    if not plan_id or not isinstance(row, dict):
+        return False
+    from . import fsutil
+    p = Path(folder) / RESULTS
+    data = focus_results(folder)
+    data.pop(str(plan_id), None)
+    data[str(plan_id)] = {k: row[k] for k in RESULT_KEYS if k in row and row[k] is not None}
+    keep = dict(list(data.items())[-RESULTS_KEEP:])
+    try:
+        fsutil.atomic_write_text(p, json.dumps(keep, ensure_ascii=False), mkdir=True)
+        return True
+    except OSError:
+        return False
+
+
+def focus_results(folder) -> dict:
+    """{plan_id: {"hits", "of", "corner", "done", "done_text", "car", "track", "when"}}; {} when there are none."""
+    p = Path(folder) / RESULTS
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {str(k): v for k, v in d.items() if isinstance(v, dict)} if isinstance(d, dict) else {}
 
 
 def folder_for(settings_dir) -> Path:

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.22.0
+
+Every team member now has a page, and the Team page opens with a Members strip.
+
+- **Click a name to open that person's page.** On the Team page, a name in a leaderboard, a head-to-head or the new Members strip opens their page. It shows their iRating and last lap date, their best lap at every track and car, your best there and the gap in words ("Josh is 0.42 s quicker", "You're 0.3 s quicker", "You haven't driven this"), the corners where they beat you ("Turn 5: Josh carries 4 mph more"; speeds follow Settings > Units), and their latest laps. Your own page shows your best laps without the "vs you" columns.
+- **Nothing is fetched when you open a page.** It only reads what the Team page already saved, so it costs no Garage 61 requests. Every empty part says why, for example "Not loaded yet: open the track on the Team page", and a track that isn't loaded has a Load this track button. How steady a driver is lap to lap isn't shown, because the Team page keeps only each driver's best lap, and the page says so.
+- **Members strip** at the top of the Team page: one card per member with name, iRating, number of tracks and last lap date. The Team page header and cards are a little cleaner.
+
 ## 2.21.0
 
 The Team page now works end to end, and it knows who your team is.

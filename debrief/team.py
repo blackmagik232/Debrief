@@ -1007,6 +1007,11 @@ def write(folder, data, unit=None) -> Path:
         data["roster"] = roster(data)       # 2.19.2: teammates by name, with what's missing, even with no series
     except Exception:  # noqa: BLE001  (a list of names is never worth breaking the hub)
         data["roster"] = []
+    try:
+        from . import members
+        data["cards"] = members.cards(data)     # 2.22: the Members strip (saved data only)
+    except Exception:  # noqa: BLE001
+        data["cards"] = []
     tmpj.write_text(json.dumps(data), encoding="utf-8")
     fsutil.replace(tmpj, tj)
     html = report.fill(TPL.read_text(encoding="utf-8"), {"/*TEAM*/null": _embed(data)})

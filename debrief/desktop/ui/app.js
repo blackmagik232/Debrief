@@ -343,6 +343,7 @@ async function loadPages(){try{const j=await api('pages');if(j.ok)pages=j}catch(
 // (check e.source, not e.origin: a sandboxed page's origin is "null")
 addEventListener('message',e=>{const f=$('frame');if(!f||e.source!==f.contentWindow)return;const m=e.data;
   if(m&&typeof m==='object'&&m.type==='debrief-key'&&KEY_MSG.test(String(m.key))){shortcut(m.key);return}
+  if(m&&typeof m==='object'&&m.type==='debrief-team-load'&&typeof m.track==='string'&&typeof m.car==='string'){startJob('teamload',{track:m.track.slice(0,200),car:m.car.slice(0,200)});return}
   if(!m||typeof m!=='object'||m.type!=='debrief-frame'||typeof m.href!=='string')return;
   frameHref=m.href;themeFrame(getTheme());framePlace(noQuery(m.href),typeof m.title==='string'?m.title:'')});
 $('frame').addEventListener('load',()=>themeFrame(getTheme()));

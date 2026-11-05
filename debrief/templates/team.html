@@ -252,6 +252,15 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 .team .clsrow{display:flex;flex-wrap:wrap;gap:var(--s2)}
 .team .clsrow button{white-space:normal;max-width:100%;text-align:left;font-family:var(--mono);font-size:var(--t-xs);letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:2px 10px}
 .team .cls{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--axis);color:var(--ink2);border-radius:3px;padding:0 5px;margin-left:6px;vertical-align:1px;white-space:nowrap}
+/* 2.22: Members strip and a cleaner header (Team page only) */
+.team header{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:var(--s5);gap:var(--s3)}
+.team .mcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:var(--s4)}
+.team .mcard{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:var(--s4);display:grid;gap:var(--s1);min-width:0}
+.team .mcard a.mname{font-size:var(--t-lg);font-weight:600;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
+.team .mcard a.mname:hover{color:var(--a);text-decoration:underline}
+.team .mcard .mline{font-size:var(--t-sm);color:var(--ink2)}
+.team a.mlink{color:inherit;text-decoration:underline dotted;text-underline-offset:3px}
+.team a.mlink:hover{color:var(--a)}
 .team .state{font-family:var(--mono);font-size:var(--t-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .team .state.live{color:var(--good)}
 .team td .car{display:block;font-size:12px;color:var(--muted)}
@@ -282,6 +291,11 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
   <ul class="note" id="secNotes" hidden></ul>
   <div class="stats" id="totals"></div>
 </header>
+
+<section id="members" hidden>
+  <div class="sechead"><span class="eyebrow">Members</span><h2>Who is on the team</h2></div>
+  <div class="mcards" id="mcards"></div>
+</section>
 
 <nav class="jump" id="jump" aria-label="Sections">
   <a href="#weekly" hidden>This week</a><a href="#season" hidden>Season</a><a href="#boards">Leaderboards</a><a href="#kings">Corner kings</a><a href="#learn" hidden>Who to learn from</a><a href="#h2h">Head-to-heads</a>
@@ -417,6 +431,16 @@ if(!D||!Array.isArray(D.combos)){
   if(!R.length||!noSeries)return;$('roster').hidden=false;const ul=$('rosterList');
   R.forEach(t=>{const li=h('li');li.append(h('b',null,String(t.name)));const m=Array.isArray(t.missing)?t.missing.filter(x=>typeof x==='string'):[];
     li.append(document.createTextNode(m.length?': '+m.join('; ')+'.':': nothing missing.'));ul.append(li)})})();
+const MURL='../../api/team/member?name=';
+function mlink(name,cls){const a=document.createElement('a');a.className=cls||'mlink';a.href=MURL+encodeURIComponent(String(name));a.textContent=String(name);a.title='Open '+name+'\'s page';return a}
+(function membersStrip(){const C=Array.isArray(D.cards)?D.cards.filter(x=>x&&typeof x==='object'&&x.name):[];if(!C.length)return;
+  $('members').hidden=false;const host=$('mcards');
+  C.forEach(m=>{const k=h('div','mcard');k.append(mlink(m.name+(m.is_me?' (you)':''),'mname'));
+    k.firstChild.href=MURL+encodeURIComponent(String(m.name));
+    k.append(h('span','mline',ok(m.irating)?'iRating '+Math.round(m.irating):'iRating not known'),
+      h('span','mline',plural(+m.tracks||0,'track','tracks')+' with laps'),
+      h('span','mline',m.last_lap?'Last lap '+String(m.last_lap):'No lap date saved'));
+    if(m.problem)k.append(h('span','mline',String(m.problem)));host.append(k)})})();
 const combos=D.combos.filter(c=>c&&Array.isArray(c.board));
 const meKey=(D.me&&D.me.key)||'me';
 // colours: you are always blue; teammates get orange, purple, then greys, in order of who appears first
@@ -448,7 +472,7 @@ let p1s=0;combos.forEach(c=>{if(c.board[0]&&c.board[0].key===meKey&&c.board.leng
     if(c.board.length){const maxGap=Math.max(0.5,...c.board.map(r=>r.gap||0));
       const tw=h('div','tablewrap');const tb=h('table');tb.innerHTML='<thead><tr><th>Pos</th><th>Driver</th><th class="n">Best lap</th><th class="n">Gap</th><th class="n">iRating</th><th>Set on</th></tr></thead>';
       const body=h('tbody');c.board.forEach(r=>{const tr=h('tr',r.key===meKey?'me':null);
-        const nm=h('td');nm.append(document.createTextNode(r.name));if(r.key===meKey)nm.append(h('span','you','You'));
+        const nm=h('td');nm.append(mlink(r.name));if(r.key===meKey)nm.append(h('span','you','You'));
         if(r.key===meKey&&r.source)nm.append(h('span','src','From '+r.source));
         const g=h('td','n');g.append(document.createTextNode(r.pos===1?'P1':fmtD(r.gap)));const b=h('span','gapbar');b.style.width=Math.round(4+56*(r.gap||0)/maxGap)+'px';b.setAttribute('aria-hidden','true');g.append(b);
         tr.append(h('td','pos',String(r.pos)),nm,h('td','n',fmt(r.t)),g,h('td','n',ok(r.irating)?String(Math.round(r.irating)):'–'),h('td','mono nw',fmtDate(r.date)));body.append(tr)});
@@ -514,7 +538,7 @@ else{sel.addEventListener('change',()=>kings(+sel.value));kings(0)}
 // ---------- head-to-heads
 (function h2h(){const host=$('h2hList');const list=Array.isArray(D.h2h)?D.h2h:[];
   if(!list.length){const e=h('div','empty');e.append(h('b',null,'No head-to-heads yet.'),h('span',null,'They appear when a teammate has a lap at a track and car you have raced.'));host.append(e);return}
-  list.forEach(p=>{const pn=h('div','panel');const hd=h('div','phead');hd.append(h('h3',null,'You vs '+p.name));pn.append(hd);
+  list.forEach(p=>{const pn=h('div','panel');const hd=h('div','phead');{const t3=h('h3',null,'You vs ');t3.append(mlink(p.name));hd.append(t3)}pn.append(hd);
     const rec=h('div','rec');const add=(lab,val,cls)=>{const d=h('div');d.append(h('span',null,lab),h('b',cls||null,val));rec.append(d)};
     add('Quicker at',p.ahead+' of '+p.shared,p.ahead>p.behind?'better':(p.behind>p.ahead?'worse':null));
     add('Average gap',fmtD(p.avg_gap),ok(p.avg_gap)?(p.avg_gap<0?'better':(p.avg_gap>0?'worse':null)):null);

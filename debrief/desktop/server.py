@@ -2509,6 +2509,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"groups": self.server.reviews.list(lib), "folder": str(lib)})
         if r.startswith("lib/"):
             return self._lib(r[len("lib/"):])
+        if r == "api/team/member":      # 2.22: a team member's page, from the saved team data only (no Garage 61 request)
+            return self._team_member(parse_qs(urlsplit(self.path).query).get("name", [""])[0])
         if r == "sample/index.html":
             return self._sample()
         if r in ("api/combos", "api/teams", "api/goals", "api/result", "api/markers", "api/pages", "api/sessions", "api/prepare", "api/prepfocus",
@@ -3097,6 +3099,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._missing_review_page(root / "reviews" / m.group(1))
             return self._nf()
         self._file(p, lib=True)
+
+    def _team_member(self, name):
+        from .. import members
+        lib = self._library_folder()
+        try:
+            page = members.page_for(lib, name[:80], settings_io.units()) if lib is not None else members.html(
+                {"ok": False, "message": "Choose a library folder in Settings first."})
+        except Exception:  # noqa: BLE001
+            app.say("ERROR in the team member page:\n" + traceback.format_exc())
+            page = members.html({"ok": False, "message": "This page couldn't be made. Details were saved to debrief.log."})
+        body = with_bridge(with_fonts(page.encode("utf-8"), self.server.secret))
+        return self._send(200, body, MIME[".html"], {"Content-Security-Policy": LIB_CSP})
 
     def _missing_review_page(self, d: Path):
         """2.18: a saved review whose page is missing. From its review.json the page is made again on the spot

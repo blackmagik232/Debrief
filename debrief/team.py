@@ -196,7 +196,10 @@ def gather_mates(first, fetch_more, my_slug, my_best, roster=None, members=None,
             log(f"  Garage 61 rows for {names[sl]}: {len(ls)} returned, {sum(1 for l in ls if usable(l))} usable"
                 + (f", flags seen: {', '.join(flags)}" if flags else ""))
         for m in missing:
-            log(f"  Garage 61 rows for {m}: 0 returned (no driver in this group matched that name)")
+            if _DISCOVERED and norm_name(m) not in _DISCOVERED:
+                log(f"  Garage 61 rows for {m}: 0 returned (name not matched to any Garage 61 driver)")
+            else:
+                log(f"  Garage 61 rows for {m}: 0 laps at this track and car")
     bests = [min(app.lap_time(l) for l in ls if usable(l)) for ls in by.values() if any(usable(l) for l in ls)]
     anchor = anchor_for(bests, my_best)
     mates, reasons = {}, []
@@ -530,32 +533,123 @@ def stored_combos(folder, cars=None) -> list[dict]:
     return out
 
 
+_DISCOVERED: set = set()      # normalised names of every driver seen in the last discovery (for the 0-rows log text)
+DISCOVER_CHUNK = 40
+DISCOVER_MAX_REQUESTS = 6
+
+
+def _ids(items) -> list:
+    out = []
+    for t in items or []:
+        i = g(t, "id") if isinstance(t, dict) else None
+        if i is not None and i not in out:
+            out.append(i)
+    return out
+
+
 def discover_combos(api, slug, members, my_slug="", my_name="", log=print):
-    """ONE request for the group's laps with no track or car (2.21 self-test: Garage 61's docs aren't checked from
-    here). Returns ([combos with "who", source "garage61"], status line). Never raises: a refusal or an empty answer is
+    """The group's laps across every track (2.22.1: Garage 61's /laps requires `tracks`, so all track ids from the
+    cached track list are sent; `cars` too if Garage 61 asks; split into chunks if one request is refused as too long).
+    Returns ([combos with "who", source "garage61"], status line). Never raises: a refusal or an empty answer is
     logged exactly and the caller falls back to stored_combos. Cached 10 minutes like find_laps."""
     fetch = getattr(api, "laps_page", None)
+    fallback = "Garage 61 couldn't list the team's tracks; showing tracks Debrief already knows."
     if not callable(fetch):
-        return [], "Garage 61 couldn't list the team's tracks; showing tracks Debrief already knows."
-    params = dict(teams=[slug], group="none", limit=1000, age=-2)
-
-    def go():
-        return list(fetch(**params)[0])
+        return [], fallback
+    cached = getattr(api, "_cached", None)
     try:
-        cached = getattr(api, "_cached", None)
-        items = cached("discover?" + json.dumps(params, sort_keys=True), go, max_age_s=600) if callable(cached) else go()
+        track_ids = _ids(api.tracks())
     except Exception as e:  # noqa: BLE001
-        body = str(e).replace("\n", " ")[:120]
-        log(f"  Garage 61 needs a track for team lap search: {getattr(e, 'status', None) or type(e).__name__} {body}")
-        return [], "Garage 61 couldn't list the team's tracks; showing tracks Debrief already knows."
+        log(f"  Garage 61 team discovery: couldn't load the track list: {type(e).__name__}")
+        return [], fallback
+    if not track_ids:
+        log("  Garage 61 team discovery: the track list was empty")
+        return [], fallback
+    state = {"cars": None, "sent": 0}
+
+    def one(tids, age):
+        params = dict(teams=[slug], group="none", limit=1000, tracks=list(tids))
+        if age is not None:
+            params["age"] = age
+        if state["cars"]:
+            params["cars"] = state["cars"]
+
+        def go():
+            state["sent"] += 1
+            return list(fetch(**params)[0])
+        key = "discover?" + json.dumps(params, sort_keys=True, default=str)
+        return cached(key, go, max_age_s=600) if callable(cached) else go()
+
+    def err_text(e):
+        return ((getattr(e, "detail", "") or "") + " " + (str(e) or type(e).__name__)).replace("\n", " ").strip()[:200]
+
+    def call(tids, age):
+        """One request; on 'cars not set' adds every car id and retries once."""
+        log(f"  Garage 61 team discovery: asking for {len(tids)} tracks, {len(state['cars'] or [])} cars, "
+            f"age {age if age is not None else 'any'}")
+        try:
+            r = one(tids, age)
+        except Exception as e:  # noqa: BLE001
+            msg = err_text(e).lower()
+            if state["cars"] is None and "cars" in msg and ("not set" in msg or "required" in msg):
+                log(f"  Garage 61 asked for cars too ({getattr(e, 'status', None)}); adding all car ids and retrying")
+                try:
+                    state["cars"] = _ids(api.cars())
+                except Exception as e2:  # noqa: BLE001
+                    log(f"  Garage 61 team discovery: couldn't load the car list: {type(e2).__name__}")
+                    raise e
+                if not state["cars"]:
+                    raise
+                log(f"  Garage 61 team discovery: asking for {len(tids)} tracks, {len(state['cars'])} cars, "
+                    f"age {age if age is not None else 'any'}")
+                r = one(tids, age)
+            else:
+                raise
+        log(f"  Garage 61 team discovery: {len(r)} laps came back")
+        return r
+
+    def run(age):
+        try:
+            return call(track_ids, age)
+        except Exception as e:  # noqa: BLE001
+            st = getattr(e, "status", None)
+            msg = err_text(e).lower()
+            if st not in (400, 413, 414) or "not set" in msg:
+                raise
+            if not any(w in msg for w in ("long", "large", "many", "limit", "size", "exceed")):
+                raise
+            log(f"  Garage 61 refused the whole track list ({st} {msg[:80]}); splitting it into chunks of {DISCOVER_CHUNK}")
+            chunks = [track_ids[i:i + DISCOVER_CHUNK] for i in range(0, len(track_ids), DISCOVER_CHUNK)]
+            if len(chunks) > DISCOVER_MAX_REQUESTS:
+                log(f"  Garage 61 team discovery: {len(chunks)} chunks needed, only the first {DISCOVER_MAX_REQUESTS} asked")
+            rows, seen_ids = [], set()
+            for ch in chunks[:DISCOVER_MAX_REQUESTS]:
+                for l in call(ch, age):
+                    i = g(l, "id") if isinstance(l, dict) else None
+                    if i is not None and i in seen_ids:
+                        continue
+                    seen_ids.add(i)
+                    rows.append(l)
+            return rows
+    try:
+        items = run(-2)
+        if not items:
+            log("  Garage 61 team discovery: nothing with age -2; asking once more without age")
+            items = run(None)
+    except Exception as e:  # noqa: BLE001
+        log(f"  Garage 61 team discovery failed: {getattr(e, 'status', None) or type(e).__name__} {err_text(e)}")
+        return [], fallback
+    log(f"  Garage 61 team discovery: {state['sent']} requests sent, {len(items or [])} laps in total")
     items = [l for l in items or [] if isinstance(l, dict)]
     if not items:
-        log("  Garage 61 needs a track for team lap search: 200 (no laps came back)")
-        return [], "Garage 61 couldn't list the team's tracks; showing tracks Debrief already knows."
+        log("  Garage 61 team discovery: 200 (no laps came back)")
+        return [], fallback
     found, per = {}, {}
     names = {}
+    _DISCOVERED.clear()
     for l in items:
         d = driver_of(l)
+        _DISCOVERED.update(x for x in (norm_name(d["name"]), norm_name(d["slug"])) if x)
         tr, car = g(l, "track"), g(l, "car")
         if not (isinstance(tr, dict) and isinstance(car, dict) and g(tr, "name") and g(car, "name")):
             continue

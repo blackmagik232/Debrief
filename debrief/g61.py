@@ -30,9 +30,10 @@ BASE = "https://garage61.net/api/v1/"
 class Garage61Error(RuntimeError):
     """A request to Garage 61 failed. status: the HTTP status (None when Garage 61 couldn't be reached)."""
 
-    def __init__(self, msg="", status=None):
+    def __init__(self, msg="", status=None, detail=""):
         super().__init__(msg)
         self.status = status
+        self.detail = detail      # Garage 61's own words for a refusal (2.22.1), for code that reacts to them
 
     @property
     def fatal(self) -> bool:
@@ -311,7 +312,7 @@ class Garage61:
             if not (200 <= r.status_code < 300):
                 detail = (r.text or "").strip().replace("\n", " ")[:300]
                 self.log(f"  Garage 61 returned {r.status_code} for {where}: {detail}")
-                raise Garage61Error(MSG_OTHER.format(code=r.status_code), status=r.status_code)
+                raise Garage61Error(MSG_OTHER.format(code=r.status_code), status=r.status_code, detail=detail)
             self._went_ok(r)
             if raw:
                 return r.content.decode("utf-8-sig", errors="replace")

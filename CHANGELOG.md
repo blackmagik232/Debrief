@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.22.1
+
+Teammates who drive different tracks or cars from you now show up.
+
+- **Finding the team's tracks works again.** Garage 61 refuses a team lap search that names no track, so Debrief was never learning about tracks you haven't driven and teammates like Josh were never found. It now asks about every track (and every car, if Garage 61 wants them), splitting the list into smaller requests if Garage 61 says it is too long. About one request, cached for ten minutes.
+- **Clearer log wording.** "0 laps at this track and car" is now told apart from "name not matched to any Garage 61 driver".
+
 ## 2.22.0
 
 Every team member now has a page, and the Team page opens with a Members strip.

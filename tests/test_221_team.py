@@ -154,7 +154,7 @@ def test_missing_member_named_and_logged():
     d, logs, _ = run_build(Api({1: rows}), combos((TRACK, 1)))
     c = d["combos"][0]
     assert any(n.startswith("Kenta Young: no laps came back from Garage 61 in Overdriver Academy") for n in c["mate_notes"]), c["mate_notes"]
-    assert any("Garage 61 rows for Kenta Young: 0 returned" in l for l in logs), logs     # raw counts in the log
+    assert any("Garage 61 rows for Kenta Young: 0 laps at this track and car" in l for l in logs), logs     # raw counts in the log
     assert any("Garage 61 rows for Josh Spence: 1 returned, 1 usable" in l for l in logs), logs
     kenta = next(m for m in d["members"] if m["name"] == "Kenta Young")
     assert not kenta["matched"] and "Kenta Young" in kenta["problem"] and "Settings > Team" in kenta["problem"]
@@ -359,7 +359,7 @@ class DiscApi(Api):
 
     def laps_page(self, **kw):
         self.pages.append(kw)
-        assert "tracks" not in kw and "cars" not in kw
+        assert kw.get("tracks"), kw
         if self.mode == "400":
             from debrief.g61 import Garage61Error
             raise Garage61Error("track is required", status=400)
@@ -380,7 +380,7 @@ def test_discovery_merges_and_falls_back():
     d = team.build(api, Path(tempfile.mkdtemp()), "overdriver-academy", log=logs.append, cfg=cfg)
     tr = {c["track"] for c in d["combos"]}
     assert {"Far Track 7", "Far Track 8", "Far Track 9", TRACK} <= tr, tr           # tracks he never drove
-    assert len(api.pages) == 1 and api.pages[0]["teams"] == ["overdriver-academy"]   # ONE request, no track
+    assert len(api.pages) == 1 and api.pages[0]["teams"] == ["overdriver-academy"]   # ONE request, all tracks
     assert d["discovery"] == "Found 3 tracks where the team has laps on Garage 61.", d["discovery"]
     assert any("Discovery: Josh Spence: 1 laps, 1 track and car combinations" in l for l in logs), logs
     assert any("Discovery: Kenta Young: 1 laps" in l for l in logs) and any("Discovery: Swazi Williams: 1 laps" in l for l in logs)
@@ -389,7 +389,7 @@ def test_discovery_merges_and_falls_back():
     # a 400 falls back and never fails the refresh
     logs = []
     d = team.build(DiscApi(_laps_for(9), mode="400"), Path(tempfile.mkdtemp()), "overdriver-academy", log=logs.append, cfg=cfg)
-    assert any(l.startswith("  Garage 61 needs a track for team lap search: 400 track is required") for l in logs), logs
+    assert any(l.startswith("  Garage 61 team discovery failed: 400") and "track is required" in l for l in logs), logs
     assert d["discovery"].startswith("Garage 61 couldn't list the team's tracks") and d["combos"][0]["board"]
 
 

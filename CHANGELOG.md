@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.23.0
+
+Set-Up Lab now gives setup advice on its own, for any car and track. There is no button: open Set-Up Lab (or a Practice session) and it has already read your laps.
+
+- **Car balance: what to try next** is a new section at the top of Set-Up Lab. Debrief reads your clean laps corner by corner (way in, middle, way out) for understeer, oversteer, a car that is unsettled on the way in, and poor traction on the way out. It works out how this car normally steers from your own laps, so nothing is set per car.
+- **Setup or driving?** A problem is called the setup only when it shows on most of your clean laps and in several corners of the same kind. If it comes and goes from lap to lap, or shows in one corner only, it says it looks like driving and points you to the corner coach. Every item says how sure it is: Sure, Likely, A hint or A guess, the same words as everywhere else.
+- **One change at a time, ranked.** Each setup problem gets one change with a plain reason, what to expect and what to watch for, for example "Mid-corner understeer in slow corners on 9 of 11 laps: soften the front anti-roll bar one step." It draws on anti-roll bars, springs, ride height and rake, wing, differential, brake bias, traction control, tyre pressures and dampers, only for settings your car has. It never pulls the same part two ways and never simply undoes your last change unless the laps showed that change slower. In a fixed-setup series it only offers brake bias, traction control and ABS where the car has the dial, otherwise driving advice. You make the change by hand in the iRacing garage.
+- **A short card on the Practice session page**: "Car balance: mid-corner understeer in slow corners (Likely). Try: ...". Every empty state says why, for example "Not enough clean laps yet: 4 of 6".
+- **How did the car feel?** Under each item: Agree or Not what I felt. Your answer is kept on this PC and moves how sure Debrief is by one step next time.
+- **Setup history.** What was suggested is kept for each car and track. After your next stints Set-Up Lab says whether you did it and what its own comparison showed (faster, slower or no clear difference), and whether the problem still shows. Nothing new is measured for this.
+- Needs the steering, speed, throttle, brake, yaw rate and sideways g channels iRacing already saves. Wheelspin is also read from the four wheel-speed channels when the file has them; without them it is judged from how the car turns and speeds up instead.
+
+**Not proven yet:** every number here (how big a wobble or a slide must be before it counts, how much sooner it is called setup than driving) was tuned on made-up laps, not on real telemetry. Real McLaren, Porsche and Mustang files may need the limits nudged. Lap traffic is only left out if the file marks it. The advice rules are conventional ideas and are untested on your laps, so the next stints are the test. Nothing has been checked on Windows.
+
 ## 2.22.1
 
 Teammates who drive different tracks or cars from you now show up.

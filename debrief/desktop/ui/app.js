@@ -2614,7 +2614,7 @@ const csTurn=t=>turnWords(String(t||''));
 
 /* ---------- Setup Lab: new sections under the report */
 function csSetupLab(R){
-  ['slBalance','slPress'].forEach(id=>{const e=$(id);if(e)e.remove()});
+  ['slHandling','slBalance','slPress'].forEach(id=>{const e=$(id);if(e)e.remove()});
   if(!R||!R.files||!R.car_path)return;
   const combo={car:R.car_path,track:R.track_code};
   if(!cs.combo||cs.combo.car!==combo.car||cs.combo.track!==combo.track)cs.balSetup=null;
@@ -2622,6 +2622,7 @@ function csSetupLab(R){
   const host=$('slReport'),before=$('slNotes');
   const put=el=>{if(before&&before.parentNode===host)host.insertBefore(el,before);else host.append(el)};
   csShareButton(R);
+  const hdl=slSec('Car balance: what to try next','slHandling');hdl.classList.add('hdlsec');put(hdl);csLoadHandling(hdl,combo,'full');
   const bal=slSec('How the car handles','slBalance');bal.classList.add('balsec');put(bal);csLoadBalance();
   if(R.series_setup!=='fixed'){const pr=slSec('Tyre pressures over time','slPress');pr.classList.add('presssec');put(pr);csLoadPressure()}}
 
@@ -2640,7 +2641,7 @@ function csRenderBalance(body,j){const R=j.report;body.replaceChildren();
     const sel=document.createElement('select');sel.id='balSetup';
     setups.forEach((s,i)=>{const o=h('option',null,s.label+(i===0?' (newest)':'')+', '+plural(s.files,'file'));o.value=s.id;sel.append(o)});
     const all=h('option',null,'All setups together');all.value='all';sel.append(all);sel.value=j.setup||(setups[0]&&setups[0].id)||'all';
-    sel.addEventListener('change',()=>{cs.balSetup=sel.value;csLoadBalance()});lab.append(sel);body.append(lab)}
+    sel.addEventListener('change',()=>{cs.balSetup=sel.value;csLoadBalance();const hs=$('slHandling');if(hs&&cs.combo)csLoadHandling(hs,cs.combo,'full')});lab.append(sel);body.append(lab)}
   if(!R){body.append(h('p','note',j.message||'No telemetry with a setup for this car and track yet.'));return}
   body.append(h('p','balsum',csTurn(R.summary||R.message)));
   if(R.ok&&(R.corners||[]).length){body.append(csBalanceGrid(R));body.append(csLegend())}
@@ -2695,6 +2696,50 @@ function csIdeas(R,j){const fixedSeries=R.series_setup==='fixed',box=h('div','ba
     li.append(h('span',null,csTurn(t)));if(cav)li.append(h('span','sub2',cav));if(then)li.append(h('span','sub2 balthen',then));
     ul.append(li)});
   box.append(ul);return box}
+
+/* ---------- 2.23 Car balance: the automatic handling read and setup advice (no button: the page asks for it) */
+const HDL_VERDICT={setup:['The setup','Looks like the setup: it shows on most laps and in several corners of the same kind.'],driving:['Driving','Looks like driving: it comes and goes, or shows in only one or a few corners. The corner coach has the detail.']};
+async function csLoadHandling(sec,c,mode){if(!sec||!c)return;const seq=(sec._seq=(sec._seq||0)+1);
+  const body=h('div','hdlbody');sec.replaceChildren(h('h3',null,mode==='card'?'Car balance':'Car balance: what to try next'),body);
+  body.append(h('p','note','Reading your laps to see how the car behaves. A few seconds the first time.'));
+  const extra=(mode==='full'&&cs.balSetup)?{setup:cs.balSetup}:{};let j;
+  try{j=await api('handling?'+csQ(c.car,c.track,extra))}catch(e){connectionLost();return}
+  if(sec._seq!==seq||!sec.isConnected)return;
+  if(!j.ok){body.replaceChildren(h('p','note warn',j.error||'This didn\'t load.'));return}
+  csRenderHandling(sec,body,j,c,mode)}
+function csRenderHandling(sec,body,j,c,mode){body.replaceChildren();const A=j.advice||{},R=j.report||{};
+  const reload=()=>csLoadHandling(sec,c,mode);
+  if(mode==='card'){body.append(h('p','hdlcardtxt',csTurn(A.card||j.message||'')));
+    if(A.top&&A.top.verdict==='setup')body.append(csFeelPicker(A.top,c,reload));
+    body.append(h('p','balsmall','Worked out automatically from your laps. Setup Lab has the full list.'));return}
+  body.append(h('p','balsum',csTurn(A.card||R.message||j.message||'')));
+  const lo=R.left_out||{},lk=Object.keys(lo);
+  if(R.ok&&lk.length)body.append(h('p','balsmall','Left out of this read: '+lk.map(k=>lo[k]+' '+k).join(', ')+'. Only clean laps count.'));
+  const I=A.items||[];
+  if(!I.length){body.append(h('p','note',A.empty||R.message||'Nothing to show yet.'))}
+  else{if(A.series_setup==='fixed'||j.series_setup==='fixed')body.append(h('p','note warn','This series uses a fixed setup, so only the in-car dials (brake bias, traction control, ABS) are offered, otherwise the driving.'));
+    else body.append(h('p','note','One change at a time, so you know what did it. Make it in the iRacing garage, drive at least 6 clean laps, then open this page again.'));
+    const ul=h('ul','pvlist');
+    I.forEach(i=>{const li=h('li','balidea hdlitem'+(i.first?' first':'')),top=h('div','slidea');
+      const lab=i.rank===1?'Do this first':i.rank?('Then, after that: '+i.rank):HDL_VERDICT[i.verdict][0];
+      top.append(h('b',null,i.title));const sv=SURE[i.sureness]||[i.sure_words||'',''];const pill=h('span','pill sure'+(sv[1]?' '+sv[1]:''),sv[0]);
+      pill.title='How sure this is, on the same scale as everywhere else in Debrief';top.append(pill);
+      const tag=h('span','pill',lab);tag.title=HDL_VERDICT[i.verdict][1];top.append(tag);li.append(top);
+      let t=String(i.text||''),then=String(i.then||'');if(then&&t.endsWith(then))t=t.slice(0,-then.length).trim();
+      const k=t.indexOf('On most cars in iRacing');let cav='';if(k>0){cav=t.slice(k);t=t.slice(0,k).trim()}
+      li.append(h('span',null,csTurn(t)));if(cav)li.append(h('span','sub2',cav));if(then)li.append(h('span','sub2 balthen',then));
+      if(i.coach)li.append(h('span','sub2',i.coach));if(i.feel_note)li.append(h('span','sub2',i.feel_note));
+      li.append(csFeelPicker(i,c,reload));ul.append(li)});body.append(ul)}
+  if((j.history||[]).length){const d=h('details','balhow');d.append(h('summary',null,'What was suggested before, and what happened'));
+    j.history.forEach(e=>d.append(h('p','note',(e.at||'')+': '+csTurn(e.title||'')+' ('+(e.suggested||'')+'). '+(e.result||'Not driven on another setup yet.'))));body.append(d)}
+  const how=h('details','balhow');how.append(h('summary',null,'How this is worked out'));
+  how.append(h('p','note','Debrief reads your clean laps corner by corner (way in, middle, way out). Understeer and oversteer come from the steering you used against how fast the car turned, compared with how this car steers in gentle bends. Instability is the wheel being corrected on the way in while the car wobbles. Poor traction is the car sliding, or not speeding up, as you pick up the throttle (and the rear wheels spinning, when the file has the wheel-speed channels). It is called the setup only when it shows on most laps and in several corners of the same kind; otherwise it looks like driving.'));
+  const ch=R.channels||{};if(ch.used)how.append(h('p','note','Channels used: '+ch.used.join(', ')+'.'+(ch.note?' '+ch.note:'')));
+  how.append(h('p','note','Sure, Likely, A hint, A guess, as everywhere in Debrief. These ideas are not tested on your laps: that is what the next stints are for.'));body.append(how)}
+function csFeelPicker(i,c,reload){const w=h('div','hdlfeel');w.append(h('span','balsmall','How did the car feel?'));
+  [['agree','Agree'],['disagree','Not what I felt']].forEach(([a,t])=>{const b=h('button','btn small',t);b.type='button';b.setAttribute('aria-pressed',i.feel===a?'true':'false');if(i.feel===a)b.classList.add('on');
+    b.addEventListener('click',async()=>{b.disabled=true;let r;try{r=await post('handling/feel',{car:c.car,track:c.track,issue:i.issue_id,answer:i.feel===a?'clear':a})}catch(e){connectionLost();return}
+      if(r&&r.ok!==false)reload();else{b.disabled=false;banner((r&&r.error)||'That didn\'t save.',true)}});w.append(b)});return w}
 
 /* ---------- tyre pressures over time */
 async function csLoadPressure(){const sec=$('slPress'),c=cs.combo;if(!sec||!c)return;
@@ -2836,9 +2881,10 @@ function csTeamCards(car,track,T){const box=h('div','teamcards');box.append(h('p
   return box}
 
 /* the session page: after the Corner coach, with a one-click way there from the top (2.18) */
-function csSession(R){const old=$('prTeam');if(old)old.remove();if(!R||!R.car_path||!R.track_code)return;
+function csSession(R){['prTeam','prHandling'].forEach(id=>{const e=$(id);if(e)e.remove()});if(!R||!R.car_path||!R.track_code)return;
   const sec=csTeamPanel(R.car_path,R.track_code,'session');const after=$('prCorners'),host=$('prReport');
   if(after&&after.parentNode===host)after.after(sec);else host.append(sec);
+  const hc=h('section','slsec hdlsec hdlcardsec');hc.id='prHandling';const hd0=host.querySelector('.slhead');if(hd0)hd0.after(hc);else host.prepend(hc);csLoadHandling(hc,{car:R.car_path,track:R.track_code},'card');
   const head=host.querySelector('.slhead');
   if(head&&!$('prTeamJump')){const b=h('button','btn','Compare with a teammate\'s lap');b.type='button';b.id='prTeamJump';
     b.addEventListener('click',csTeamFocus);head.append(b)}
@@ -2863,7 +2909,8 @@ function csCoach(st){if(!st||current.view!=='coach')return;const T=st.teammate||
 
 /* ---------- Help */
 if(typeof HELP==='object'){
-  HELP.tour.push(['How the car handles','Setup Lab shows, corner by corner, where the car pushes (understeer) or rotates (oversteer), with one setup change to try at a time.'],
+  HELP.tour.push(['Car balance: what to try next','Set-Up Lab and every Practice session read your clean laps on their own (no button) for understeer, oversteer, a car that is unsettled on the way in and poor traction on the way out. Each problem is called the setup only when it shows on most laps and in several corners of the same kind; otherwise it looks like driving and points to the Corner coach. You get one ranked change at a time, with why, what to expect and how sure it is. Make it in the iRacing garage. Say how the car felt (Agree or Not what I felt) and Debrief adjusts how sure it is next time.'],
+    ['How the car handles','Setup Lab shows, corner by corner, where the car pushes (understeer) or rotates (oversteer), with one setup change to try at a time.'],
     ['Teammate\'s lap','On a Practice session or the Coach page, pick a teammate\'s telemetry file to compare your corners with their best lap, or to be coached against it.']);
   HELP.words.push(['Pushes, Rotates','Pushes (understeer): you needed more steering than this car normally does, so the front slid first. Rotates (oversteer): you needed less steering, so the rear slid first. Debrief compares you with how this car steers in gentle bends, learned from your own laps.'],
     ['Not clear yet','The laps do not say either way. Debrief shuffles your laps (every possible way with up to 11 laps, otherwise 4,000 ways) and only says Pushes or Rotates when the real pattern beats 95 in 100 of the shuffles and is big enough to feel.'],

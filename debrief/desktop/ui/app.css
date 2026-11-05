@@ -771,3 +771,9 @@ body.codriving #vCoach.pad{padding:18px clamp(14px,2.5vw,32px) 24px}
 .cnnote select{width:auto}
 .cnnote .check{margin:0}
 .cnrec{color:var(--bad);font-weight:700}
+
+/* 2.23 car balance advice */
+.hdlitem{display:grid;gap:3px}
+.hdlfeel{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.hdlfeel .btn.on{outline:2px solid var(--me)}
+.hdlcardtxt{font-weight:600;margin:0 0 6px}

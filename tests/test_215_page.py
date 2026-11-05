@@ -235,6 +235,16 @@ def test_balance_endpoint_and_cache():
     code, jall = call("api/balance" + q(car=CAR, track=LR, setup="all"))
     assert jall["setup"] == "all" and jall["files"] == 8
     assert any("more than one setup" in n for n in jall["report"]["notes"]), jall["report"]["notes"]
+    # 2.23: the handling read and its advice come with no button, from the same files; feel answers are kept
+    code, hj = call("api/handling" + q(car=CAR, track=LR))
+    assert code == 200 and hj["ok"] and hj["report"] and hj["advice"]["card"].startswith("Car balance: "), hj
+    assert hj["report"]["laps"] >= 6 and "history" in hj and hj["setup"] == "C", hj["report"]["message"]
+    code, fj = call("api/handling/feel", {"car": CAR, "track": LR, "issue": "understeer:mid:slow", "answer": "agree"})
+    assert code == 200 and fj["feel"]["understeer:mid:slow"]["answer"] == "agree", fj
+    code, hj2 = call("api/handling" + q(car=CAR, track=LR))
+    assert hj2["feel"]["understeer:mid:slow"]["answer"] == "agree", hj2["feel"]
+    code, bad = call("api/handling/feel", {"car": CAR, "track": LR, "issue": "../x", "answer": "agree"})
+    assert code == 400, (code, bad)
 
 
 def test_balance_fixed_series():

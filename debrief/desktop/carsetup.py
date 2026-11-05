@@ -52,9 +52,9 @@ BALANCE_FILES = 20                # the balance map reads at most this many rece
 NAME_OK = re.compile(r"^[^\x00-\x1f/\\<>:\"|?*]{1,160}$")
 SETUP_ID_OK = re.compile(r"^(all|[A-Z]{1,3})$")
 
-GET_ROUTES = ("api/balance", "api/pressure", "api/setuplab/share", "api/teamref", "api/teamref/cards",
+GET_ROUTES = ("api/balance", "api/handling", "api/pressure", "api/setuplab/share", "api/teamref", "api/teamref/cards",
               "api/teamref/laps", "api/teamref/for-review")
-POST_ROUTES = ("api/pressure/predict", "api/teamref/forget", "api/teamref/coach", "api/teamref/keep")
+POST_ROUTES = ("api/pressure/predict", "api/handling/feel", "api/teamref/forget", "api/teamref/coach", "api/teamref/keep")
 UPLOAD_ROUTE = "api/teamref/upload"
 
 
@@ -86,7 +86,7 @@ def state(server) -> State:
 def _versions() -> list:
     from .. import __version__
     out = [__version__, VERSION]
-    for name in ("balance", "pressurelearn", "setuplab", "ibt"):
+    for name in ("balance", "pressurelearn", "setuplab", "ibt", "handling", "setupadvice"):
         mod = app.optional_module(name)
         out.append([name, getattr(mod, "VERSION", None), getattr(mod, "CACHE_VERSION", None)])
     return out
@@ -250,7 +250,9 @@ def balance_laps_note(bal_laps, table_laps, label: str, files_used: int, files_a
     return f"The balance map uses {bal_laps} of the {table_laps} laps Which was faster counts for {label}: {why}."
 
 
-def get_balance(h, q):
+def _selection(h, q):
+    """Which setup's telemetry to read for this car and track (the newest setup, or the one picked, or all), shared by
+    the balance map and the handling read (2.23). None when there is no telemetry with a setup yet."""
     server = h.server
     cfg = h._cfg()
     h._module("balance")
@@ -265,8 +267,7 @@ def get_balance(h, q):
     pub = [{k: s[k] for k in ("id", "label", "last")} | {"files": len(s["files"])} for s in setups]
     from .. import setuplab
     if not setups:
-        return h._json({"ok": True, "report": None, "setups": [], "setup": None,
-                        "message": "No telemetry with a setup for this car and track yet."})
+        return {"none": True, "setups": []}
     pick = next((s for s in setups if s["id"] == want), None) if want and want != "all" else None
     if want == "all":
         names = [r["file"] for r in sorted(recs, key=lambda r: -(r.get("sort") or 0))]
@@ -282,18 +283,132 @@ def get_balance(h, q):
         key = cache_key("balance", paths)
     except OSError:
         raise ValueError("Some telemetry files have gone. Press Read my telemetry again.")
-    rep, hit = cached(server, cfg["cache_dir"], key, lambda: balance_report(paths))
     kind = _series_kind(car, track, idx)
     newest = max(recs, key=lambda r: r.get("sort") or 0)
     setup = newest.get("setup") if chosen == "all" else pick["_setup"]
     last = setuplab.change_into(recs, chosen) if chosen != "all" and kind != "fixed" else None
     mine = recs if chosen == "all" else [r for r in recs if r["file"] in set(pick["files"])]
+    return {"none": False, "car": car, "track": track, "idx": idx, "recs": recs, "setups": setups, "pub": pub,
+            "pick": pick, "chosen": chosen, "paths": paths, "key": key, "kind": kind, "setup": setup, "last": last,
+            "mine": mine}
+
+
+def get_balance(h, q):
+    server = h.server
+    cfg = h._cfg()
+    S = _selection(h, q)
+    if S["none"]:
+        return h._json({"ok": True, "report": None, "setups": [], "setup": None,
+                        "message": "No telemetry with a setup for this car and track yet."})
+    from .. import setuplab
+    paths, pick, chosen, recs, mine = S["paths"], S["pick"], S["chosen"], S["recs"], S["mine"]
+    rep, hit = cached(server, cfg["cache_dir"], S["key"], lambda: balance_report(paths))
+    last, kind, setup = S["last"], S["kind"], S["setup"]
     table, _d = setuplab.pace_laps(mine)
     note = balance_laps_note(rep.get("laps") if rep.get("ok") else None, len(table),
                              "all setups" if chosen == "all" else pick["label"], len(paths), len(mine))
-    return h._json({"ok": True, "report": _apply_series(rep, kind, setup or {}, last), "setups": pub,
+    return h._json({"ok": True, "report": _apply_series(rep, kind, setup or {}, last), "setups": S["pub"],
                     "setup": chosen, "cached": hit, "files": len(paths), "laps_note": note,
                     "last_change": ({k: last[k] for k in ("from", "to", "verdict", "slower")} if last else None)})
+
+
+# ---------------------------------------------------------------- 2.23 automatic handling read and setup advice
+HANDLING_STORE = "handling"          # settings_io extra: {"feel": {car|track: {issue id: {answer, at}}}, "history": {...}}
+
+
+def handling_report(paths: list, kind) -> dict:
+    """The handling read over these files (cached by file; the advice is worked out again on it, which is cheap)."""
+    from .. import balance, handling
+    laps, info = balance.load_laps([str(p) for p in paths])
+    rep = handling.analyze(laps, info=info, series_setup=kind)
+    rep["files"] = len(paths)
+    rep["dials"] = list(info.get("dials") or [])
+    return rep
+
+
+def _store() -> dict:
+    d = settings_io.load_extra(HANDLING_STORE)
+    d.setdefault("feel", {})
+    d.setdefault("history", {})
+    return d
+
+
+def _save_store(d: dict) -> None:
+    try:
+        settings_io.save_extra(HANDLING_STORE, d)
+    except OSError:
+        pass                                  # the advice still shows; only the memory of it is lost
+
+
+def _prev_fp(S) -> str | None:
+    """Fingerprint of the setup he drove just before the chosen one (None when there is no earlier one)."""
+    from .. import setuplab
+    last = S.get("last")
+    if not last:
+        return None
+    by = {s["id"]: s for s in setuplab.group(S["recs"])["setups"]}
+    return (by.get(last.get("from_id")) or {}).get("fingerprint")
+
+
+def get_handling(h, q):
+    """GET api/handling?car=&track=[&setup=]: the automatic handling read and the advice, with his earlier answers
+    and the setup history. Nothing to press: the Set-Up Lab page and the Practice session page ask for it."""
+    import time
+    from .. import handling, setupadvice, setuplab
+    server = h.server
+    cfg = h._cfg()
+    S = _selection(h, q)
+    if S["none"]:
+        msg = "No telemetry with a setup for this car and track yet, so there is nothing to read."
+        return h._json({"ok": True, "report": None, "advice": {"ok": False, "empty": msg, "items": [], "top": None,
+                                                              "card": "Car balance: " + msg}, "message": msg})
+    rep, hit = cached(server, cfg["cache_dir"], cache_key("handling", S["paths"], extra=[handling.VERSION]),
+                      lambda: handling_report(S["paths"], S["kind"]))
+    st = _store()
+    hk = setupadvice.history_key(S["car"], S["track"])
+    feel = (st["feel"].get(hk) or {})
+    setup = S["setup"] or {}
+    advice = setupadvice.advise(rep, setup, series_setup=S["kind"], last_change=S["last"], dials=rep.get("dials"),
+                                feel=feel)
+    fp = setuplab.fingerprint(setup) if setup else None
+    changed = False
+    if S["chosen"] != "all":
+        from .. import ibt
+        changed |= setupadvice.evaluate(st["history"], hk, fp, _prev_fp(S), ibt.flatten(setup),
+                                        S["last"], [i["id"] for i in rep.get("setup_issues") or []])
+        changed |= setupadvice.record_shown(st["history"], hk, advice.get("top"), fp,
+                                            time.strftime("%Y-%m-%d %H:%M"))
+    if changed:
+        _save_store(st)
+    return h._json({"ok": True, "report": {k: v for k, v in rep.items() if k != "dials"}, "advice": advice,
+                    "setups": S["pub"], "setup": S["chosen"], "cached": hit, "series_setup": S["kind"],
+                    "history": setupadvice.history_view(st["history"], hk), "feel": feel})
+
+
+def post_handling_feel(h, body):
+    """POST api/handling/feel {car, track, issue, answer: "agree" | "disagree" | "clear"}: "How did the car feel?"
+    Kept locally; it moves that issue's sureness one step next time."""
+    import time
+    car, track = _combo(body)
+    issue = str(body.get("issue") or "")
+    answer = str(body.get("answer") or "")
+    if not re.fullmatch(r"[a-z]{4,20}:[a-z]{3,6}:[a-z]{3,6}", issue):
+        raise ValueError("That isn't one of the car-balance items.")
+    if answer not in ("agree", "disagree", "clear"):
+        raise ValueError("Answer agree, not what I felt, or clear.")
+    from .. import setupadvice
+    st = _store()
+    hk = setupadvice.history_key(car, track)
+    mine = st["feel"].setdefault(hk, {})
+    if answer == "clear":
+        mine.pop(issue, None)
+    else:
+        mine[issue] = {"answer": answer, "at": time.strftime("%Y-%m-%d %H:%M")}
+    try:
+        settings_io.save_extra(HANDLING_STORE, st)
+    except OSError:
+        raise ValueError("Debrief couldn't save your answer. Check that its settings folder can be written to.")
+    return h._json({"ok": True, "feel": mine})
 
 
 def _series_kind(car, track, idx):
@@ -886,13 +1001,13 @@ def coach_extra(server, status: dict) -> dict:
 
 # ---------------------------------------------------------------- dispatch (called from server.Handler)
 def get(h, r, q):
-    fn = {"api/balance": get_balance, "api/pressure": get_pressure, "api/setuplab/share": get_setuplab_share,
+    fn = {"api/balance": get_balance, "api/handling": get_handling, "api/pressure": get_pressure, "api/setuplab/share": get_setuplab_share,
           "api/teamref": get_teamref, "api/teamref/cards": get_teamref_cards, "api/teamref/laps": get_teamref_laps,
           "api/teamref/for-review": get_teamref_for_review}[r]
     return fn(h, q)
 
 
 def post(h, r, body):
-    fn = {"api/pressure/predict": post_pressure_predict, "api/teamref/forget": post_teamref_forget,
+    fn = {"api/pressure/predict": post_pressure_predict, "api/handling/feel": post_handling_feel, "api/teamref/forget": post_teamref_forget,
           "api/teamref/coach": post_teamref_coach, "api/teamref/keep": post_teamref_keep}[r]
     return fn(h, body)

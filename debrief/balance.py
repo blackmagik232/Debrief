@@ -157,7 +157,7 @@ PHASE_WORDS = {"entry": "on the way in", "mid": "in the middle", "exit": "on the
 PHASE_OF = {"entry": "on the way into", "mid": "in the middle of", "exit": "on the way out of"}
 CHANNELS = ("Lap", "LapLastLapTime", "SessionNum", "OnPitRoad", "PlayerTrackSurface", "PlayerCarMyIncidentCount",
             "IsOnTrack", "LapDistPct", "Speed", "Brake", "Throttle", "SteeringWheelAngle", "YawRate", "LatAccel",
-            "VertAccel", "LFshockVel", "RFshockVel", "LRshockVel", "RRshockVel")
+            "VertAccel", "LFshockVel", "RFshockVel", "LRshockVel", "RRshockVel", "LFspeed", "RFspeed", "LRspeed", "RRspeed")
 
 
 # ---------------------------------------------------------------- small helpers
@@ -258,6 +258,15 @@ def _length_m(ib) -> float | None:
     return None
 
 
+def _wheel_speeds(col: dict, a: int, b: int) -> dict:
+    """2.23: the mean rear and front wheel speeds of a lap (m/s), when the file has all four wheel-speed channels
+    (the handling read uses them to spot wheelspin). {} otherwise."""
+    if all(c in col for c in ("LFspeed", "RFspeed", "LRspeed", "RRspeed")):
+        return {"wsr": (col["LRspeed"][a:b] + col["RRspeed"][a:b]) / 2.0,
+                "wsf": (col["LFspeed"][a:b] + col["RFspeed"][a:b]) / 2.0}
+    return {}
+
+
 def load_laps(src) -> tuple:
     """Clean laps from one .ibt path or a list (one car and track), as time series. Never raises.
 
@@ -320,7 +329,8 @@ def load_laps(src) -> tuple:
                                  "pct": pct, "v": col["Speed"][a:b], "sw": col["SteeringWheelAngle"][a:b] * 57.2958,
                                  "r": col["YawRate"][a:b], "ay": col["LatAccel"][a:b],
                                  "b": col["Brake"][a:b] * 100.0, "th": col["Throttle"][a:b] * 100.0,
-                                 "kerb": kerb[a:b], "setup": fp})
+                                 "kerb": kerb[a:b], "setup": fp, "session": x.get("session")}
+                                | _wheel_speeds(col, a, b))
                     n += 1
                 info["files"].append({"file": name, "clean_laps": n})
         except Exception as e:  # noqa: BLE001

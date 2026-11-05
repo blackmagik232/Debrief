@@ -81,6 +81,7 @@ for _must in ("debrief.prep", "debrief.goals", "debrief.results", "debrief.team"
               "debrief.sessionibt", "debrief.cornercoach",
               "debrief.practiceplan", "debrief.wheelmute", "debrief.firstrun",
               "debrief.balance", "debrief.pressurelearn", "debrief.setupshare", "debrief.teamref",
+              "debrief.handling", "debrief.setupadvice",
               "debrief.startreport", "debrief.incidentmap",
               "debrief.voicepack", "debrief.audioout", "debrief.coachvoice", "debrief.cuelog",
               "debrief.audioin", "debrief.cornernotes", "debrief.noterec",

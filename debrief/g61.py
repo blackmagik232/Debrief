@@ -254,8 +254,11 @@ class Garage61:
     def _get(self, path: str, params: dict | None = None, raw: bool = False, forbidden_ok: bool = False):
         params = {k: v for k, v in (params or {}).items() if v is not None}
         for k, v in list(params.items()):
+            if isinstance(v, dict):   # 2.23.1: a track or car object is sent as its numeric id, never as text
+                v = v.get("id", v.get("ID"))
+                params[k] = v
             if isinstance(v, (list, tuple)):
-                params[k] = ",".join(map(str, v))
+                params[k] = ",".join(str(x.get("id", x.get("ID")) if isinstance(x, dict) else x) for x in v)
             elif isinstance(v, bool):
                 params[k] = "true" if v else "false"
         url = self.base + path.lstrip("/")
@@ -478,6 +481,21 @@ class Garage61:
         if isinstance(d, dict):
             return d.get("drivingStatistics") or d.get("items") or []
         return d or []
+
+    def team_statistics(self, slug: str, start_iso: str):
+        """GET /teams/{slug}/statistics: driving statistics for the whole team (one row per driver/car/track/day).
+        Cached 10 minutes. Raises Garage61Error (with .status) on 400/403."""
+        def go():
+            d = self._get(f"teams/{slug}/statistics", {"start": start_iso})
+            return d if d is not None else {"items": []}
+        d = self._cached("teamstats?" + json.dumps([slug, start_iso[:10]]), go, max_age_s=600)
+        if isinstance(d, dict):
+            return d.get("drivingStatistics") or d.get("items") or []
+        return d or []
+
+    def team_info(self, slug: str):
+        """GET /teams/{slug}: the team (it may list its members). Cached 10 minutes; None if Garage 61 has no such team."""
+        return self._cached("teaminfo?" + slug, lambda: self._get(f"teams/{slug}") or {}, max_age_s=600)
 
     def csv_missing(self, lap_id: str) -> bool:
         """True if Garage 61 recently said this lap has no telemetry for you (403/404; re-asked after a day)."""

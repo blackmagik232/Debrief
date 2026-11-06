@@ -323,6 +323,10 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
   <div class="h2h" id="seasonList"></div>
 </section>
 
+<section id="races" hidden>
+  <div class="sechead"><span class="eyebrow">Same race</span><h2>Who from the team was in your race</h2></div>
+  <div class="boards" id="raceList"></div>
+</section>
 <section id="boards">
   <div class="sechead"><span class="eyebrow">Leaderboards</span><h2>Best lap per track and car</h2>
     <p class="lede">Each driver's best clean lap on Garage 61. Yours is the quicker of your reviewed races and your Garage 61 laps.</p></div>
@@ -462,6 +466,11 @@ let p1s=0;combos.forEach(c=>{if(c.board[0]&&c.board[0].key===meKey&&c.board.leng
 ].forEach(([l,v,s])=>{const k=h('div','stat');k.append(h('span','lab',l),h('span','v',String(v)),h('span','ctx',s));$('totals').append(k)});
 
 // ---------- leaderboards
+(function races(){const R=Array.isArray(D.races)?D.races.filter(x=>x&&typeof x==='object'&&Array.isArray(x.drivers)&&x.drivers.length):[];if(!R.length)return;
+  $('races').hidden=false;const host=$('raceList');
+  R.forEach(r=>{const p=h('div','panel');p.append(h('h3',null,String(r.title||r.track_short||'Race')));
+    const ul=h('ul');r.drivers.forEach(v=>{ul.append(h('li',null,String(v.name)+(v.is_me?' (you)':'')+' \u00b7 '+String(v.car||'car not named')+' \u00b7 best '+fmt(v.t)))});
+    p.append(ul);host.append(p)})})();
 (function boards(){const host=$('boardList');
   if(!combos.length){const e=h('div','empty');e.append(h('b',null,'No races in your library yet.'),h('span',null,'Review a race, or pick a track and car on Prepare, then press Refresh team data. The team hub compares the tracks and cars you have raced.'));host.append(e);return}
   combos.forEach(c=>{const p=h('div','panel');const hd=h('div','phead');const t=h('h3',null,c.track_short||c.track);t.title=c.track;t.append(h('span','u',c.car));hd.append(t);
@@ -474,7 +483,7 @@ let p1s=0;combos.forEach(c=>{if(c.board[0]&&c.board[0].key===meKey&&c.board.leng
       const body=h('tbody');c.board.forEach(r=>{const tr=h('tr',r.key===meKey?'me':null);
         const nm=h('td');nm.append(mlink(r.name));if(r.key===meKey)nm.append(h('span','you','You'));
         if(r.key===meKey&&r.source)nm.append(h('span','src','From '+r.source));
-        if(r.key!==meKey&&r.car)nm.append(h('span','src',' \u00b7 '+r.car+(r.diff_car?' (different car)':'')));
+        if(r.key!==meKey&&r.car)nm.append(h('span','src',' \u00b7 '+r.car+(r.other_class?' (different class)':r.diff_car?' (different car)':'')+(r.note?' \u00b7 '+r.note:'')));
         const g=h('td','n');g.append(document.createTextNode(r.pos===1?'P1':fmtD(r.gap)));const b=h('span','gapbar');b.style.width=Math.round(4+56*(r.gap||0)/maxGap)+'px';b.setAttribute('aria-hidden','true');g.append(b);
         tr.append(h('td','pos',String(r.pos)),nm,h('td','n',fmt(r.t)),g,h('td','n',ok(r.irating)?String(Math.round(r.irating)):'–'),h('td','mono nw',fmtDate(r.date)));body.append(tr)});
       tb.append(body);tw.append(tb);p.append(tw)}

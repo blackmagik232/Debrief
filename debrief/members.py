@@ -118,9 +118,13 @@ def view(data, name, unit="mph") -> dict:
             last = d
         if _num(r.get("irating")) and d >= ir_day:
             best_ir, ir_day = round(r["irating"]), d
-        item = {"label": label, "track": c["track"], "car": c.get("car"), "best": _lap(r.get("t")), "date": d}
+        car = r.get("car") or c.get("car")
+        label = (c.get("track_short") or c["track"]) + " \u00b7 " + str(car or "")
+        item = {"label": label, "track": c["track"], "car": car, "best": _lap(r.get("t")), "date": d}
         if not is_me:
-            if mine is None or not _num(mine.get("t")):
+            if r.get("other_class"):
+                item["yours"], item["gap_text"] = "no time", "You haven't driven this class here."
+            elif mine is None or not _num(mine.get("t")):
                 item["yours"], item["gap_text"] = "no time", "You haven't driven this."
             elif _num(r.get("t")):
                 g = round(float(mine["t"]) - float(r["t"]), 3)
@@ -144,7 +148,8 @@ def view(data, name, unit="mph") -> dict:
                           + _first(disp) + " is lap to lap.")
     if not latest:
         why["latest"] = "No dated laps are saved yet."
-    out = {"ok": True, "name": disp, "key": key, "is_me": is_me, "irating": best_ir, "tracks": tracks,
+    rec = next((x for x in (data.get("member_stats") or []) if isinstance(x, dict) and norm_name(x.get("name")) == norm_name(disp)), None)
+    out = {"ok": True, "records": rec, "name": disp, "key": key, "is_me": is_me, "irating": best_ir, "tracks": tracks,
            "unloaded": unloaded, "corners": [{"track": a, "text": units.convert_text(b, unit)} for a, b in corners],
            "latest": latest, "last_lap": last or None, "refreshed": data.get("generated_at"), "why": why}
     return out
@@ -194,6 +199,12 @@ def html(v) -> str:
     for u in v["unloaded"]:
         h.append(f"<p class=m>{e(u['label'])}: not loaded yet. <button data-t=\"{e(u['track'], True)}\" "
                  f"data-c=\"{e(str(u['car']), True)}\">Load this track</button></p>")
+    rec = v.get("records")
+    if rec:
+        h.append(f"<p class=m>Garage 61 records, last {int(rec.get('days') or 90)} days: {int(rec.get('tracks') or 0)} tracks, "
+                 f"{int(rec.get('cars') or 0)} cars, {int(rec.get('laps') or 0)} laps, {rec.get('hours') or 0} hours.</p><ul>"
+                 + "".join(f"<li>{e(str(x.get('track')))} \u00b7 {e(str(x.get('car')))} \u00b7 {int(x.get('laps') or 0)} laps</li>"
+                           for x in rec.get("combos") or []) + "</ul>")
     h.append("</div>")
     if not v["is_me"]:
         h.append("<div class=c><h2>Corners where they're quicker than you</h2>")

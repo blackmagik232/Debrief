@@ -26,7 +26,7 @@ Sign conventions (tested in tests/test_desktop.py):
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -343,7 +343,7 @@ def head_to_heads(combos, my_key="me"):
             continue
         kings = c.get("kings") or {}
         for k, r in board.items():
-            if k == my_key:
+            if k == my_key or (r.get("class") != mine.get("class") and r.get("class") and mine.get("class")):
                 continue
             p = people.setdefault(k, {"key": k, "name": r["name"], "combos": [], "ahead": 0, "behind": 0,
                                       "corners_you": 0, "corners_them": 0})
@@ -556,7 +556,7 @@ def _track_limit(text, default):
     return max(1, min(default, int(m.group(1)))) if m else default
 
 
-def candidate_track_ids(api, folder, mine=None, days=DISCOVER_DAYS, now=None) -> list:
+def candidate_track_ids(api, folder, mine=None, days=DISCOVER_DAYS, now=None, first=None) -> list:
     """2.23.1: which tracks to ask Garage 61 about, newest first and without repeats: your own tracks from the last
     `days` days of synced sessions, your reviewed races, the track picked on Prepare (this week's series), then the
     tracks in the last Team page. No requests."""
@@ -565,6 +565,8 @@ def candidate_track_ids(api, folder, mine=None, days=DISCOVER_DAYS, now=None) ->
     def add(i):
         if i is not None and i not in out:
             out.append(i)
+    for i in first or []:   # tracks the team's own statistics say it drove (newest first)
+        add(i)
     cutoff = ((now or datetime.now(timezone.utc)).timestamp() - days * 86400)
     try:
         from . import sync
@@ -585,17 +587,20 @@ def candidate_track_ids(api, folder, mine=None, days=DISCOVER_DAYS, now=None) ->
             add(app.id_for_name(api.cached_items("tracks") or [], ch["track"]))
     except Exception:  # noqa: BLE001
         pass
+    # tracks any teammate was seen at (the last Team page and the saved series boards), newest first
     try:
-        prev = json.loads((Path(folder) / "team" / "team.json").read_text(encoding="utf-8"))
-        for c in (prev.get("combos") if isinstance(prev, dict) else None) or []:
-            if isinstance(c, dict):
-                add(c.get("track_id"))
-    except (OSError, ValueError, AttributeError):
+        titems = api.cached_items("tracks") or []
+        for c in sorted(stored_combos(folder), key=lambda c: str(c.get("last") or ""), reverse=True):
+            tid = c.get("track_id")
+            if tid is None and titems:
+                tid = app.id_for_name(titems, c["track"])
+            add(tid)
+    except Exception:  # noqa: BLE001
         pass
     return out
 
 
-def discover_combos(api, slug, members, my_slug="", my_name="", log=print, track_ids=None):
+def discover_combos(api, slug, members, my_slug="", my_name="", log=print, track_ids=None, member_slugs=None):
     """The group's laps at the candidate tracks (2.23.1). Garage 61 needs `tracks` and allows at most 10 per request,
     so the candidates (newest first) go in chunks of 10, at most DISCOVER_MAX_REQUESTS requests per Refresh; if
     Garage 61 names a lower limit the chunks shrink to it. Returns ([combos with "who", source "garage61"], status
@@ -610,7 +615,9 @@ def discover_combos(api, slug, members, my_slug="", my_name="", log=print, track
         return [], "No recent tracks to search yet; showing tracks Debrief already knows."
     cached = getattr(api, "_cached", None)
     state = {"sent": 0, "limit": DISCOVER_TRACKS_PER_REQUEST}
-    ids = ids[:DISCOVER_MAX_REQUESTS * DISCOVER_TRACKS_PER_REQUEST]
+    main_cap = DISCOVER_MAX_REQUESTS - (1 if member_slugs else 0)    # one request kept for a member nobody has a row for
+    pool = ids[main_cap * DISCOVER_TRACKS_PER_REQUEST:]            # candidates the normal passes will not reach
+    ids = ids[:main_cap * DISCOVER_TRACKS_PER_REQUEST]
 
     def err_text(e):
         return ((getattr(e, "detail", "") or "") + " " + (str(e) or type(e).__name__)).replace("\n", " ").strip()[:200]
@@ -627,7 +634,7 @@ def discover_combos(api, slug, members, my_slug="", my_name="", log=print, track
     rows, seen_ids, searched = [], set(), []
     queue = [ids[i:i + state["limit"]] for i in range(0, len(ids), state["limit"])]
     failed = None
-    while queue and state["sent"] < DISCOVER_MAX_REQUESTS:
+    while queue and state["sent"] < main_cap:
         ch = queue.pop(0)
         log(f"  Garage 61 team discovery: asking for {len(ch)} tracks (request {state['sent'] + 1} of at most "
             f"{DISCOVER_MAX_REQUESTS})")
@@ -653,8 +660,38 @@ def discover_combos(api, slug, members, my_slug="", my_name="", log=print, track
                 continue
             seen_ids.add(i)
             rows.append(l)
+    pool = [t for q in queue for t in q] + pool
     if queue:
         log(f"  Garage 61 team discovery: {sum(len(q) for q in queue)} older tracks were not searched this time")
+    # a member nobody has a row for yet: ask for just their laps (drivers filter) on the next tracks not yet searched,
+    # only while under the request cap
+    if failed is None and member_slugs:
+        got_names = {norm_name(driver_of(l)["name"]) for l in rows if isinstance(l, dict)} | \
+                    {norm_name(driver_of(l)["slug"]) for l in rows if isinstance(l, dict)}
+        for nm, sl in member_slugs.items():
+            if state["sent"] >= DISCOVER_MAX_REQUESTS or not pool:
+                break
+            if norm_name(nm) in got_names or norm_name(sl) in got_names or sl == my_slug:
+                continue
+            ch, pool = pool[:state["limit"]], pool[state["limit"]:]
+            log(f"  Garage 61 team discovery: no laps yet for {nm}; asking for their laps at {len(ch)} more tracks")
+            try:
+                def go2(ch=ch, sl=sl):
+                    state["sent"] += 1
+                    return list(fetch(teams=[slug], drivers=[sl], group="none", limit=1000, tracks=list(ch), age=-2)[0])
+                key = "discover?" + json.dumps({"d": sl, "t": ch}, sort_keys=True, default=str)
+                got = cached(key, go2, max_age_s=600) if callable(cached) else go2()
+            except Exception as e:  # noqa: BLE001
+                log(f"  Garage 61 member search for {nm} failed: {getattr(e, 'status', None) or type(e).__name__} {err_text(e)}")
+                continue
+            searched += ch
+            log(f"  Garage 61 team discovery: {len(got)} laps came back for {nm}")
+            for l in got:
+                i = g(l, "id") if isinstance(l, dict) else None
+                if i is not None and i in seen_ids:
+                    continue
+                seen_ids.add(i)
+                rows.append(l)
     log(f"  Garage 61 team discovery: {state['sent']} requests sent, {len(searched)} tracks searched, {len(rows)} laps in total")
     items = [l for l in rows if isinstance(l, dict)]
     if not items:
@@ -814,6 +851,15 @@ def _unloaded_entry(c, members, note=None) -> dict:
     return e
 
 
+def _same_group(weekly, slug, name, mem):
+    """2.23.1: the weekly boards describe the group the Team page resolved, never the built-in default slug."""
+    if isinstance(weekly, dict):
+        weekly["team"] = {"slug": slug, "name": name}
+        if weekly.get("membership") in (None, brand.UNKNOWN) and mem:
+            weekly["membership"] = mem
+    return weekly
+
+
 def _assemble(ctx, out_combos, api, start_req, folder, notes, cfg, log) -> dict:
     seen = {}
     for c in out_combos:
@@ -821,6 +867,8 @@ def _assemble(ctx, out_combos, api, start_req, folder, notes, cfg, log) -> dict:
             if isinstance(r, dict) and r.get("key") not in (None, "me"):
                 seen[r["key"]] = r.get("name") or r["key"]
     members, grp, group_name = ctx["members"], ctx["grp"], ctx["group_name"]
+    for k, n_ in (ctx.get("extra_seen") or {}).items():
+        seen.setdefault(k, n_)
     total, loaded = len(out_combos), sum(1 for c in out_combos if c.get("loaded", True))
     matched, unmatched = match_members(members, {**ctx["roster"], **seen}, ctx["my_slug"], ctx["my_name"])
     member_rows = []
@@ -860,6 +908,7 @@ def _assemble(ctx, out_combos, api, start_req, folder, notes, cfg, log) -> dict:
     try:
         from . import leaderboards
         data["weekly"] = leaderboards.view(folder)   # saved snapshots only: no requests
+        _same_group(data["weekly"], ctx["team_slug"], group_name, ctx["mem"])
     except Exception as e:  # noqa: BLE001
         import traceback
         log("  Couldn't load this week's leaderboards:\n" + traceback.format_exc())
@@ -887,13 +936,31 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
                          "and it will use your own tracks and cars.")
         else:
             log("No reviews in your library yet.")
-    cand = candidate_track_ids(api, folder, mine)
+    info_roster = {}
+    try:
+        info = api.team_info(ctx["team_slug"]) if callable(getattr(api, "team_info", None)) and not ctx["not_member"] else None
+        info_roster = roster_from_info(info)
+        if info is not None:
+            log(f"  Garage 61 team info: {len(info_roster)} members listed")
+    except Exception as e:  # noqa: BLE001
+        log(f"  Garage 61 team info unavailable: {getattr(e, 'status', None) or type(e).__name__}")
+    if info_roster:
+        ctx["roster"] = {**info_roster, **ctx["roster"]}
+    stats, stats_note = team_stats(api, ctx, log)
+    scombos = stats_combos(stats, ctx["my_slug"], ctx["my_name"]) if stats else []
+    if stats_note:
+        notes.append(stats_note)
+    for r in stats or []:
+        if r["slug"] and r["slug"] != ctx["my_slug"]:
+            ctx.setdefault("extra_seen", {})[r["slug"]] = r["name"]
+    races = race_groups(api, ctx, log)
+    cand = candidate_track_ids(api, folder, mine, first=[c["track_id"] for c in scombos])
     log(f"Team: {len(cand)} candidate tracks to search for teammates (your last {DISCOVER_DAYS} days, the series, the last page)")
     found, disc_note = ([], "Garage 61 couldn't list the team's tracks; showing tracks Debrief already knows.") \
         if ctx["not_member"] else discover_combos(api, ctx["team_slug"], ctx["members"], ctx["my_slug"], ctx["my_name"], log,
-                                                  track_ids=cand)
+                                                  track_ids=cand, member_slugs=_member_slugs(ctx))
     ctx["searched_tracks"] = len(cand)
-    allc = order_combos(mine, merge_combos(found, stored_combos(folder)))
+    allc = order_combos(mine, merge_combos(scombos, found, stored_combos(folder)))
     notes.append(COVERAGE_NOTE)
     prev = {}
     try:
@@ -922,6 +989,8 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
     if slowed:
         notes.append(SLOW_NOTE)
     data = _assemble(ctx, out_combos, api, start_req, folder, notes, cfg, log)
+    data["races"] = races
+    data["member_stats"] = member_records(stats, ctx["members"], ctx["my_slug"]) if stats else []
     data["discovery"] = disc_note
     log(f"Team hub ready. Garage 61 requests used: {data['requests']}.")
     return data
@@ -951,6 +1020,157 @@ def load_combo(api, folder, track, car, team_slug=None, log=print, cfg=None) -> 
     combos[idx] = _load_entry(api, ctx, c, {}, log)
     out = _assemble(ctx, combos, api, start_req, folder, [n for n in data.get("notes") or [] if isinstance(n, str)], cfg, log)
     out["checked_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return out
+
+
+def _member_slugs(ctx) -> dict:
+    """{member name: Garage 61 slug} for team members whose slug the group roster tells us."""
+    out = {}
+    for m in ctx["members"]:
+        for sl, nm in (ctx.get("roster") or {}).items():
+            if sl != ctx["my_slug"] and (norm_name(nm) == norm_name(m) or norm_name(sl) == norm_name(m)):
+                out[m] = sl
+    return out
+
+
+STATS_DAYS = 90
+
+
+def roster_from_info(info) -> dict:
+    """{slug: name} from GET /teams/{slug} when it lists members (same shapes as team_roster)."""
+    return team_roster([dict(info, slug="x")] if isinstance(info, dict) else [], "x")
+
+
+def team_stats(api, ctx, log, now=None) -> tuple:
+    """2.23.1: what the team drove in the last STATS_DAYS days, from Garage 61's team statistics (one request, no
+    lap search). Returns (rows [{slug,name,track_id,car_id,track,car,day,laps,secs}], note). rows is None when
+    Garage 61 would not say; the exact status and message are logged and the page note says so. Never raises."""
+    fn = getattr(api, "team_statistics", None)
+    if ctx["not_member"] or not callable(fn):
+        return None, ""
+    start = ((now or datetime.now(timezone.utc)) - timedelta(days=STATS_DAYS)).strftime("%Y-%m-%dT00:00:00Z")
+    try:
+        raw = list(fn(ctx["team_slug"], start) or [])
+    except Exception as e:  # noqa: BLE001
+        st = getattr(e, "status", None)
+        msg = ((getattr(e, "detail", "") or "") + " " + (str(e) or type(e).__name__)).replace("\n", " ").strip()[:200]
+        log(f"  Garage 61 team statistics refused: {st or type(e).__name__} {msg}")
+        return None, (f"Garage 61 wouldn't share the team's driving statistics ({st or type(e).__name__}), so Debrief "
+                      "searched the tracks you drove instead.")
+    raw = [r for r in raw if isinstance(r, dict)]
+    log(f"  Garage 61 team statistics: {len(raw)} rows" + (f"; first row has keys {sorted(raw[0])}" if raw else ""))
+    tn = {g(t, "id"): g(t, "name") for t in (api.cached_items("tracks") or []) if isinstance(t, dict)}
+    cn = {g(c, "id"): g(c, "name") for c in (api.cached_items("cars") or []) if isinstance(c, dict)}
+    rows = []
+    for r in raw:
+        who = g(r, "driver", "user", "member")
+        d = driver_of({"driver": who}) if isinstance(who, dict) else {"slug": str(who or ""), "name": str(who or "")}
+        tr, car = g(r, "track", "trackId", "track_id"), g(r, "car", "carId", "car_id")
+        tid, cid = (g(tr, "id") if isinstance(tr, dict) else tr), (g(car, "id") if isinstance(car, dict) else car)
+        tname = (g(tr, "name") if isinstance(tr, dict) else None) or tn.get(tid) or (f"Track {tid}" if tid is not None else None)
+        cname = (g(car, "name") if isinstance(car, dict) else None) or cn.get(cid) or (f"Car {cid}" if cid is not None else None)
+        if isinstance(tr, dict) and g(tr, "variant"):
+            tname = f"{tname} ({g(tr, 'variant')})"
+        if tid is None or not d["slug"] and not d["name"]:
+            continue
+        secs = g(r, "time", "timeDriven", "seconds", "duration")
+        rows.append({"slug": d["slug"], "name": d["name"], "track_id": tid, "car_id": cid, "track": tname, "car": cname,
+                     "day": str(g(r, "day", "date", "startDate", "start", default="") or "")[:10],
+                     "laps": int(g(r, "lapCount", "laps", "lapsDriven", default=0) or 0),
+                     "secs": float(secs) if isinstance(secs, (int, float)) and not isinstance(secs, bool) else 0.0})
+    return rows, ""
+
+
+def stats_combos(rows, my_slug, my_name) -> list[dict]:
+    """The team's track and car combinations from statistics rows, newest first, with who drove each."""
+    found = {}
+    for r in rows or []:
+        if r["car"] is None:
+            continue
+        k = (r["track_id"], r["car_id"])
+        c = found.setdefault(k, {"track": r["track"], "car": r["car"], "track_id": r["track_id"], "car_id": r["car_id"],
+                                 "races": 0, "best": None, "best_date": None, "last": "", "who": set(),
+                                 "source": "garage61 statistics"})
+        c["last"] = max(c["last"], r["day"])
+        if r["slug"] != my_slug:
+            c["who"].add(r["name"])
+    out = []
+    for c in found.values():
+        c["who"] = sorted(c["who"])
+        out.append(c)
+    return sorted(out, key=lambda c: c["last"], reverse=True)
+
+
+def member_records(rows, members, my_slug="") -> list[dict]:
+    """Per team member from statistics: tracks, cars, laps, hours driven (before any lap is loaded)."""
+    out = []
+    for m in members or []:
+        mine = [r for r in rows or [] if norm_name(r["name"]) == norm_name(m) or norm_name(r["slug"]) == norm_name(m)]
+        tr = {}
+        for r in mine:
+            e = tr.setdefault((r["track"], r["car"]), {"track": r["track"], "car": r["car"], "laps": 0, "day": ""})
+            e["laps"] += r["laps"]
+            e["day"] = max(e["day"], r["day"])
+        out.append({"name": m, "tracks": len({r["track"] for r in mine}), "cars": len({r["car"] for r in mine if r["car"]}),
+                    "laps": sum(r["laps"] for r in mine), "hours": round(sum(r["secs"] for r in mine) / 3600, 1),
+                    "days": STATS_DAYS,
+                    "combos": sorted(tr.values(), key=lambda e: e["day"], reverse=True)[:30]})
+    return out
+
+
+def race_groups(api, ctx, log, n=2, now=None) -> list[dict]:
+    """2.23.1: for your newest `n` races (events in your synced sessions), who from the team was in the SAME race, in
+    any car: /laps?event=..&tracks=..&teams=..&unclean=true, one request each, no car filter. Race laps with incidents
+    count. Never raises."""
+    if ctx["not_member"]:
+        return []
+    try:
+        from . import sync
+        rows = sync.Store.for_api(api).sessions()
+    except Exception:  # noqa: BLE001
+        return []
+    events, seen = [], set()
+    for s_ in sorted(rows, key=lambda r: str(r.get("start") or ""), reverse=True):
+        ev, tid = s_.get("event"), s_.get("track_id")
+        if ev and tid is not None and ev not in seen:
+            seen.add(ev)
+            events.append(s_)
+        if len(events) >= n:
+            break
+    today = (now or datetime.now()).date().isoformat()
+    out = []
+    for s_ in events:
+        if getattr(api, "rate_limited", 0) >= 2:
+            break
+        short = library.short_track_name(s_.get("track") or f"Track {s_['track_id']}")
+        try:
+            laps = list(api.find_laps(event=s_["event"], tracks=[s_["track_id"]], teams=[ctx["team_slug"]],
+                                      unclean=True, group="driver", limit=200))
+        except Exception as e:  # noqa: BLE001
+            log(f"  Same-race search failed for {short}: {type(e).__name__}: {e}")
+            continue
+        cars = _cars_by_id(api)
+        drivers = {}
+        for l in sorted(laps, key=lambda l: app.lap_time(l) or 1e9):
+            d = driver_of(l)
+            if not d["slug"] or not app.lap_time(l):
+                continue
+            is_me = d["slug"] == ctx["my_slug"]
+            if d["slug"] in drivers:
+                continue
+            cid, cname = _car_of(l)
+            drivers[d["slug"]] = {"key": "me" if is_me else d["slug"], "name": ctx["my_name"] if is_me else d["name"],
+                                  "car": cname or None, "class": _class_label(cars, cid, cname) if (cid or cname) else None,
+                                  "t": app.lap_time(l), "is_me": is_me, "clean": usable(l)}
+        day = library.local_day(s_.get("start")) or str(s_.get("start") or "")[:10]
+        log(f"  Same race at {short} ({day}): {len(drivers)} drivers: " +
+            ", ".join(f"{v['name']} ({v['car'] or 'car not named'})" for v in drivers.values()))
+        for sl, v in drivers.items():
+            if not v["is_me"]:
+                ctx.setdefault("extra_seen", {})[sl] = v["name"]
+        out.append({"event": str(s_["event"]), "track": s_.get("track"), "track_short": short, "date": day,
+                    "title": (f"Tonight at {short}" if day == today else f"{day} at {short}"),
+                    "drivers": sorted(drivers.values(), key=lambda v: v["t"])})
     return out
 
 
@@ -1002,23 +1222,25 @@ def settings_stamp(cfg) -> str:
 _CLASS_KEYS = ("category", "class", "carClass", "classId", "carClassId", "categories")
 
 
-def _class_car_ids(api, cid):
-    """Ids of every car in the same class/category as car `cid` per Garage 61's car list; None when the list says
-    nothing about classes (then plausibility of the lap time is the only guard, and the car is named on the row)."""
+def _cars_by_id(api) -> dict:
     try:
-        items = [c for c in (api.cars() or []) if isinstance(c, dict)]
+        return {g(c, "id"): c for c in (api.cars() or []) if isinstance(c, dict)}
     except Exception:  # noqa: BLE001
-        return None
-    me = next((c for c in items if g(c, "id") == cid), None)
-    if me is None:
-        return None
+        return {}
+
+
+def _class_label(cars, cid, cname="") -> str:
+    """The car's class/category from Garage 61's car list (GT3, GT4...); the car's own name when the list has none."""
+    item = cars.get(cid) or {}
     for k in _CLASS_KEYS:
-        v = me.get(k)
+        v = item.get(k)
         if v not in (None, "", [], {}):
-            key = json.dumps(v, sort_keys=True, default=str)
-            same = {g(c, "id") for c in items if c.get(k) not in (None, "") and json.dumps(c.get(k), sort_keys=True, default=str) == key}
-            return same | {cid}
-    return None
+            if isinstance(v, dict):
+                v = g(v, "name") or json.dumps(v, sort_keys=True, default=str)
+            elif isinstance(v, list):
+                v = ", ".join(str(x.get("name") if isinstance(x, dict) else x) for x in v)
+            return str(v)
+    return str(cname or item.get("name") or (f"car {cid}" if cid is not None else "unknown car"))
 
 
 def _car_of(lap):
@@ -1055,16 +1277,25 @@ def _build_combo(api, entry, c, ids_for, track_items, team_slug, not_member, my_
         entry["note"] = NO_MATCH_NOTE
         return
     # not on the team: zero team-lap requests, only your own laps (your board row and telemetry)
-    # 2.23.1: teammates are searched by TRACK only (no car filter): in GT3/GT4 they drive other cars. Laps in
-    # another class are dropped; laps in a different car of this class are kept and say which car.
-    cls = _class_car_ids(api, cid)
-    raw_rows = []
-
-    def keep(rows):
-        raw_rows.extend(rows)
-        return [l for l in rows if cls is None or _car_of(l)[0] is None or _car_of(l)[0] in cls]
-    team_laps = [] if not_member else keep(api.find_laps(tracks=[tid], teams=[team_slug],
-                                                         group="driver", age=-2, limit=100))
+    # 2.23.1: teammates are searched by TRACK only (no car filter, no class filter): in GT3/GT4 each driver has
+    # another car, and a teammate may have driven a class you did not. Every lap is kept and grouped by class below.
+    cars_by_id = _cars_by_id(api)
+    my_cls = _class_label(cars_by_id, cid, c["car"])
+    first = [] if not_member else list(api.find_laps(tracks=[tid], teams=[team_slug], group="driver", age=-2, limit=100))
+    raw_rows, fetch_failed = list(first), False
+    if not not_member:   # all their laps (one more request, cached 10 min): the best lap in each class, race laps included
+        try:
+            have = {g(l, "id") for l in raw_rows if g(l, "id") is not None}
+            raw_rows += [l for l in api.find_laps(tracks=[tid], teams=[team_slug], group="none", age=-2, limit=1000)
+                         if g(l, "id") is None or g(l, "id") not in have]
+        except Exception as e:  # noqa: BLE001
+            fetch_failed = True
+            log(f"  Couldn't load everyone's laps: {type(e).__name__}: {e}")
+    by_cls = {}
+    for l in sorted(raw_rows, key=lambda l: app.lap_time(l) or 1e9):
+        lcid, lcar = _car_of(l)
+        by_cls.setdefault(_class_label(cars_by_id, lcid, lcar) if (lcid is not None or lcar) else my_cls, []).append(l)
+    team_laps = by_cls.get(my_cls, [])
     my_laps = api.find_laps(tracks=[tid], cars=[cid], drivers=["me"], group="none", age=-2, limit=1000)
     anchor = anchor_for([app.lap_time(l) for l in my_laps if usable(l)], c["best"])
     my_ok = sorted((l for l in my_laps if usable(l) and plausible(app.lap_time(l), anchor)), key=app.lap_time)
@@ -1072,18 +1303,26 @@ def _build_combo(api, entry, c, ids_for, track_items, team_slug, not_member, my_
     my_best = c["best"] or (app.lap_time(my_api) if my_api else None)
     mates, reasons = {}, []
     if not not_member:
-        # 2.20.1: one extra request at most (all their laps) when a best lap was rejected or a member has no row
-        found, reasons = gather_mates(
-            team_laps, lambda: keep(api.find_laps(tracks=[tid], teams=[team_slug], group="none",
-                                                       age=-2, limit=1000)),
-            my_slug, my_best, roster_g61, members=members, my_name=my_name, group=group_name, log=log)
-        for sl, m in found.items():
-            l = m["lap"]
-            seen_drivers[sl] = m["name"]
-            lcid, lcar = _car_of(l)
-            mates[sl] = {"key": sl, "name": m["name"], "t": m["t"], "is_me": False, "member": m["member"],
-                         "date": lap_day(l), "irating": g(l, "driverRating"), "_lap": g(l, "id"),
-                         "car": lcar or None, "diff_car": bool(lcid is not None and lcid != cid)}
+        found, reasons = gather_mates(team_laps, None, my_slug, my_best, roster_g61, members=members, my_name=my_name,
+                                      group=group_name, log=log)
+        groups = [(my_cls, found)]
+        for cls in sorted(k for k in by_cls if k != my_cls):
+            f2, _r = gather_mates(by_cls[cls], None, my_slug, my_best, None, members=members, my_name=my_name, log=None)
+            groups.append((cls, f2))
+        elsewhere = {m["name"] for _c, f in groups[1:] for m in f.values()}
+        reasons = [r for r in reasons if r["name"] not in elsewhere]
+        if fetch_failed:
+            reasons.append({"name": "A teammate", "text": "some laps couldn't be loaded this time. Try Refresh again."})
+        for cls, fnd in groups:
+            for sl, m in fnd.items():
+                l = m["lap"]
+                seen_drivers[sl] = m["name"]
+                lcid, lcar = _car_of(l)
+                mates[sl if sl not in mates else f"{sl}|{cls}"] = {
+                    "key": sl if sl not in mates else f"{sl}|{cls}", "name": m["name"], "t": m["t"], "is_me": False,
+                    "member": m["member"], "date": lap_day(l), "irating": g(l, "driverRating"), "_lap": g(l, "id"),
+                    "car": lcar or None, "diff_car": bool(lcid is not None and lcid != cid), "class": cls,
+                    "other_class": cls != my_cls}
         _log_rows(log, raw_rows, members)
         for l in team_laps:
             d = driver_of(l)
@@ -1103,11 +1342,19 @@ def _build_combo(api, entry, c, ids_for, track_items, team_slug, not_member, my_
     # the team's board has the team's members and you; other drivers in the group are listed apart (never mixed in)
     team_mates = {k: m for k, m in mates.items() if m["member"]}
     others = {k: m for k, m in mates.items() if not m["member"]}
-    board = sorted(list(team_mates.values()) + ([mine] if mine else []), key=lambda r: r["t"])
-    p1 = board[0]["t"] if board else None
-    for pos, r in enumerate(board, 1):
-        r["pos"] = pos
-        r["gap"] = round(r["t"] - p1, 3)  # always >= 0
+    if mine:
+        mine["class"], mine["car"] = my_cls, c["car"]
+    rows_all = list(team_mates.values()) + ([mine] if mine else [])
+    board = []
+    # positions and gaps only inside one class; your own class first, then the others A to Z
+    for cls in sorted({r["class"] for r in rows_all}, key=lambda k: (k != my_cls, k)):
+        grp = sorted((r for r in rows_all if r["class"] == cls), key=lambda r: r["t"])
+        for pos, r in enumerate(grp, 1):
+            r["pos"] = pos
+            r["gap"] = round(r["t"] - grp[0]["t"], 3)  # always >= 0
+            if cls != my_cls and not any(x["is_me"] for x in grp):
+                r["note"] = "You haven't driven this class here."
+        board += grp
     entry["academy"] = [dict(_slim({**m, "gap": None}), car=m.get("car"), diff_car=m.get("diff_car")) for m in sorted(others.values(), key=lambda m: m["t"])]
     entry["mate_notes"] = [reason_text(r) for r in reasons]
     if not team_mates:
@@ -1117,7 +1364,7 @@ def _build_combo(api, entry, c, ids_for, track_items, team_slug, not_member, my_
             "No teammate lap could be used here. Reasons are below.")
     # corner kings: one lap of yours + the fastest teammates, MAX_TEL_DRIVERS in all
     entries = []
-    mates_all = [r for r in board if not r["is_me"]]
+    mates_all = [r for r in board if not r["is_me"] and r.get("class") == my_cls]
     cap = MAX_TEL_DRIVERS - (1 if my_ok else 0)
     mates_sorted = mates_all[:cap]
     if len(mates_all) > cap:
@@ -1476,6 +1723,8 @@ def render_saved(library_folder, cfg=None) -> Path:
             except Exception:  # noqa: BLE001
                 c["learn"] = []
     data["weekly"] = leaderboards.view(folder)
+    if isinstance(data.get("team"), dict) and data["team"].get("slug"):   # the Team page's own group, not the default
+        _same_group(data["weekly"], data["team"]["slug"], data["team"].get("name"), data.get("membership"))
     if cfg is not None and data.get("settings_stamp") not in (None, settings_stamp(cfg)):
         data["stale"] = "Team settings changed. Press Refresh team data to see the new team."
     elif cfg is not None:

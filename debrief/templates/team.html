@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Midfield Menace · Team hub</title>
+<title>Team hub</title>
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="connect-src 'none'; object-src 'none'; base-uri 'none'">
 <script>try{const t=localStorage.getItem('debrief-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
@@ -284,7 +284,7 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 <header>
   <div class="chiprow"><span class="chip team" id="chipTeam">Team</span><span class="chip" id="chipCombos"></span><span id="when"></span></div>
   <span class="eyebrow">Team hub</span>
-  <h1 id="title">Midfield Menace</h1>
+  <h1 id="title">Team hub</h1>
   <p class="lede" id="lede">How you stack up against your teammates on the tracks and cars you race.</p>
   <p class="note" id="refreshed"></p>
   <p class="note" id="stale" hidden></p>
@@ -302,7 +302,7 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 </nav>
 
 <section id="join" hidden>
-  <div class="empty joinpanel"><b id="joinTitle">Join Midfield Menace on Garage 61</b><span id="joinText"></span><a id="joinLink" target="_blank" rel="noreferrer" href="https://garage61.net">Open Garage 61</a></div>
+  <div class="empty joinpanel"><b id="joinTitle">Join a team on Garage 61</b><span id="joinText"></span><a id="joinLink" target="_blank" rel="noreferrer" href="https://garage61.net">Open Garage 61</a></div>
 </section>
 
 <section id="roster" hidden>
@@ -396,12 +396,12 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;',
 
 // 2.6: the team name always comes from the data (Garage 61's name, else brand.py), never the bare slug
 const BRAND=(D&&D.brand&&typeof D.brand==='object')?D.brand:{};
-const BRAND_NAME=(typeof BRAND.team_name==='string'&&BRAND.team_name.trim())||'Midfield Menace';
+const BRAND_NAME='Team hub';
 const TEAM=(D&&D.team&&typeof D.team==='object')?D.team:{};
-// 2.21: the page's name is the TEAM (Midfield Menace); the Garage 61 GROUP the laps come from (Overdriver Academy) is named apart
+// 2.23.1: the page is named after the Garage 61 teams you are in
 const teamName=(D&&typeof D.team_name==='string'&&D.team_name.trim())||BRAND_NAME;
 const GROUP=(D&&D.group&&typeof D.group.name==='string'&&D.group.name.trim())||(typeof TEAM.name==='string'&&TEAM.name.trim())||'your Garage 61 group';
-$('chipTeam').textContent=teamName;$('title').textContent=teamName;document.title=teamName+' · Team hub';
+$('chipTeam').textContent=teamName;$('title').textContent=teamName;document.title=teamName==='Team hub'?teamName:teamName+' · Team hub';
 // not on the team on Garage 61: a join panel instead of empty boards (your own times still show where there are any)
 const NOT_MEMBER=!!D&&(D.membership==='not_member'||(D.weekly&&typeof D.weekly==='object'&&D.weekly.membership==='not_member'));
 if(NOT_MEMBER){$('join').hidden=false;$('joinTitle').textContent=BRAND.join_title||('Join '+GROUP+' on Garage 61');   // the data's brand words are built from the group's name

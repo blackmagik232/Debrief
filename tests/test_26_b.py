@@ -221,7 +221,7 @@ def test_pb_for_and_rebuild_accept_rows():
         library.pb_for(lib, data, rows=library.list_reviews(lib, _pbs=False))
     out = library.rebuild(lib, rows=rows)
     html = out.read_text(encoding="utf-8")
-    assert '"brand":' in html and brand.TEAM_NAME in html
+    assert '"brand":' in html and brand.MAKER in html
     library.rebuild(lib)   # without rows too
 
 
@@ -538,13 +538,13 @@ def test_brand_in_every_template_render():
             "best": {"n": 1, "t": 90.0}}
     report.write(d, data)
     html = (d / "index.html").read_text(encoding="utf-8")
-    assert '"brand":{' in html and brand.TEAM_NAME in html
+    assert '"brand":{' in html and brand.MAKER in html
     assert "brand" not in json.loads((d / "review.json").read_text(encoding="utf-8"))   # page only
     assert '"brand":{' in report.render_library([], {"goals": []})
     assert '"brand":{' in report.render_library([], None)
     # any template with /*BRAND*/null gets it; a caller's own value wins; data can't inject a marker
     out = report.fill("<script>B=/*BRAND*/null;X=/*X*/null</script>", {"/*X*/null": report._embed("/*BRAND*/null")})
-    assert brand.TEAM_NAME in out and out.count("/*BRAND*/null") == 1
+    assert brand.MAKER in out and out.count("/*BRAND*/null") == 1
     assert report.fill("a /*BRAND*/null", {"/*BRAND*/null": "1"}) == "a 1"
 
 

@@ -302,7 +302,7 @@ class FakeApi:
         self.params = None
 
     def teams(self):
-        return [{"slug": "midfield-menace"}]
+        return [{"slug": "team-a"}]
 
     def find_laps(self, **p):
         self.params = p
@@ -334,7 +334,7 @@ def test_on_track_with_you():
         got = app.on_track(api, 5, "EV1", "me", 7, schedule.class_lookup(None))
     finally:
         app.name_of = real_name_of
-    assert api.params["event"] == "EV1" and "cars" not in api.params and api.params["teams"] == ["midfield-menace"]
+    assert api.params["event"] == "EV1" and "cars" not in api.params and api.params["teams"] == ["team-a"]
     names = [d["name"] for d in got["drivers"]]
     assert names == ["Bob X", "Ann X"], names           # cat was in another event; me is left out
     bob, ann = got["drivers"]

@@ -214,13 +214,12 @@ def test_combos_teams_settings():
     code, j = _req("api/combos?fetch=1")
     assert j["requests"] == 0                                        # now cached
     code, j = _req("api/teams")
-    assert code == 200 and j["teams"] is None and j["requests"] == 0 and j["team_slug"] == "midfield-menace"
+    assert code == 200 and j["teams"] is None and j["requests"] == 0 and "team_slug" not in j
     code, j = _req("api/teams?fetch=1")
-    assert j["requests"] == 1 and "midfield-menace" in {t["slug"] for t in j["teams"]} and len(j["teams"]) >= 2
+    assert j["requests"] == 1 and "team-a" in {t["slug"] for t in j["teams"]} and len(j["teams"]) >= 2
     # settings: team picker + optional iRacing credentials (never shown back)
-    code, j = _req("api/settings", {"team_slug": "Other-Team"})
-    assert code == 200 and j["settings"]["team_slug"] == "other-team"
-    assert _req("api/settings", {"team_slug": "bad slug!"})[0] == 400
+    code, j = _req("api/settings", {"team_slug": "Other-Team"})      # 2.23.1: an old key is ignored, never saved
+    assert "team_slug" not in j.get("settings", {})
     code, j = _req("api/settings", {"iracing_client_id": "client-abc", "iracing_client_secret": "very-secret-xyz"})
     assert code == 200 and j["settings"]["iracing_client_id_saved"] and j["settings"]["iracing_client_secret_saved"]
     _, view = _req("api/settings")
@@ -230,10 +229,8 @@ def test_combos_teams_settings():
     assert _req("api/settings", {"iracing_client_secret": "has space"})[0] == 400
     code, j = _req("api/settings", {"clear_iracing": True})
     assert not j["settings"]["iracing_client_id_saved"] and not j["settings"]["iracing_client_secret_saved"]
-    code, j = _req("api/settings", {"team_slug": "midfield-menace"})
-    assert j["settings"]["team_slug"] == "midfield-menace"
     from debrief import app
-    assert app.load_settings()["team_slug"] == "midfield-menace"
+    assert "team_slug" not in app.load_settings()
 
 
 def test_goals_endpoints():
@@ -382,7 +379,7 @@ class _FakeTeamApi:
         return {"slug": "me", "firstName": "Alex", "lastName": "Driver"}
 
     def teams(self):
-        return [{"slug": "midfield-menace", "name": "Midfield Menace"}]
+        return [{"slug": "team-a", "name": "Team A"}]
 
     def cached_items(self, name):
         return []
@@ -427,7 +424,7 @@ def test_team_board_keeps_much_quicker_teammate_drops_partial_laps():
     tmp = Path(tempfile.mkdtemp(prefix="debrief-test-"))
     try:
         _lib_review(tmp, "a", 90.0, "2026-10-01T20:00:00+00:00")
-        data = team.build(_FakeTeamApi(), tmp, "midfield-menace", log=lambda m: None)
+        data = team.build(_FakeTeamApi(), tmp, None, log=lambda m: None)
         board = data["combos"][0]["board"]
         got = {r["key"]: r["t"] for r in board}
         assert got.get("jake") == 70.0, got               # 22% quicker than you: kept
@@ -456,7 +453,7 @@ def test_team_page_names_cant_break_the_script():
     nasty = "/*TEAM*/null <!--<script> </script> & Co"
     tmp = Path(tempfile.mkdtemp(prefix="debrief-test-"))
     try:
-        data = {"version": 1, "team": {"slug": "midfield-menace", "name": nasty}, "me": {"name": nasty, "key": "me"},
+        data = {"version": 1, "team": {"slug": "team-a", "name": nasty}, "me": {"name": nasty, "key": "me"},
                 "generated_at": "2026-10-26T00:00:00+00:00", "requests": 0, "notes": [nasty],
                 "combos": [{"track": nasty, "track_short": nasty, "car": nasty, "track_id": 468, "car_id": 190,
                             "races": 1, "last_date": "2026-10-01", "kings": None, "note": None,

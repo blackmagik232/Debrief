@@ -200,25 +200,25 @@ def _membership(api, slug, log=print):
     """(membership, team {"slug", "name"}) from api.teams() (cached a day). UNKNOWN when it can't be read."""
     from . import team
     if api is None or not callable(getattr(api, "teams", None)):
-        return brand.UNKNOWN, team.team_info(slug, None)
-    mem, teams = team.membership_for(api, slug, log=lambda m: None)
-    g = team.resolve_group(teams, slug, log)
+        return brand.UNKNOWN, {**team.team_info(slug, None), "slugs": [], "name": "Your teams"}
+    mem, teams = team.membership_for(api, None, log=lambda m: None)
+    g = team.resolve_group(teams, None, log)
     if teams is not None:
-        mem = brand.membership(teams, g["slug"]) if g["ok"] else brand.NOT_MEMBER
-    return mem, team.team_info(g["slug"], teams)
+        mem = brand.MEMBER if g["ok"] else brand.NOT_MEMBER
+    return mem, {**team.team_info(g["slug"], teams), "slugs": g["slugs"], "name": g["name"] or "Your teams"}
 
 
 def _teammates(api, track_id, car_id, team_slug, my_best, log, members=None):
     """ONE /laps request: best lap per driver on the team at this combo (group=driver). None when you're
     not on the team (then no request at all)."""
-    team_slug = team_slug or brand.GROUP_SLUG
+    team_slug = [team_slug] if isinstance(team_slug, str) else list(team_slug or [])
     if api is None:
         return {"laps": [], "team": team_slug, "error": "Offline: teammates' laps weren't loaded."}
     if track_id is None or car_id is None:
         return {"laps": [], "team": team_slug, "error": "Garage 61 doesn't know this track or car id yet."}
     from .g61 import Garage61Error
     try:
-        teams = [team_slug]
+        teams = list(team_slug)
         me = (api.me() or {})
         my_slug = g(me, "slug", default="")
         my_name = " ".join(filter(None, [g(me, "firstName", "firstname"), g(me, "lastName", "lastname")])) or my_slug
@@ -229,8 +229,8 @@ def _teammates(api, track_id, car_id, team_slug, my_best, log, members=None):
     from . import team
     try:
         tl = api.teams()
-        roster = team.team_roster(tl, team_slug)
-        group = brand.team_name_for(tl, team_slug)
+        roster = {k: v for sl in team_slug for k, v in team.team_roster(tl, sl).items()}
+        group = brand.team_name_for([t for t in tl if isinstance(t, dict) and str(t.get("slug") or t.get("id")) in team_slug])
     except Exception:  # noqa: BLE001
         roster, group = {}, ""
     # 2.20.1: one extra request at most (all their laps) when a best lap was rejected or a member has no row
@@ -624,11 +624,10 @@ def build(api, folder, track_id: int, car_id: int, team_slug: str | None, log=pr
     if track_id is None or car_id is None:
         ids = next(((r["track_id"], r["car_id"]) for r in mine if r.get("track_id") is not None), (None, None))
         track_id, car_id = track_id if track_id is not None else ids[0], car_id if car_id is not None else ids[1]
-    team_slug = team_slug or brand.GROUP_SLUG
     mem, team_d = _membership(api, team_slug, log)
-    team_slug = team_d["slug"]      # 2.21: the team the laps really come from (self-correcting)
-    if mem == brand.NOT_MEMBER:
-        log(f"You're not on the {team_d['name']} team on Garage 61, so teammates' laps weren't loaded.")
+    team_slug = team_d["slugs"]      # 2.23.1: every Garage 61 team you are in
+    if mem == brand.NOT_MEMBER or not team_slug:
+        log("You're not in a Garage 61 team (or your teams couldn't be read), so teammates' laps weren't loaded.")
         mates = {"laps": [], "team": team_slug, "error": None, "skipped": 0}
     else:
         log("Loading your teammates' best laps here (1 request)...")

@@ -242,7 +242,7 @@ def laps_on_hand(entry, board_rows=None, notes=None) -> list:
 
 
 def possessive(name: str) -> str:
-    """"Alex Smith's", "Swazi Williams'" (a name ending in s takes only the apostrophe)."""
+    """"Alex Smith's", "Chris Jones'" (a name ending in s takes only the apostrophe)."""
     name = str(name or "").strip()
     return name + ("'" if name.lower().endswith("s") else "'s")
 

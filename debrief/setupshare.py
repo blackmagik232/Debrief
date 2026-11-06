@@ -160,7 +160,7 @@ def _known_names(rep: dict) -> list:
 
 
 def _strip_names(s: str, rep: dict | None = None) -> str:
-    """'Setup B (Swazi Williams (v2) quali)' -> 'Setup B': every known setup name and label is removed literally
+    """'Setup B (Alex Smith (v2) quali)' -> 'Setup B': every known setup name and label is removed literally
     (brackets inside a name can't leak part of it), then any "Setup B (...)" left keeps only "Setup B"."""
     s = str(s or "")
     for nm in _known_names(rep or {}):

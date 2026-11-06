@@ -747,7 +747,7 @@ if(!isObj(D.best)||typeof D.best.t!=='number'){const pool=D.laps.filter(l=>l.cle
 if(typeof D.median!=='number'){const ts=D.laps.map(l=>l.t).sort((a,b)=>a-b);D.median=ts.length?(ts.length%2?ts[(ts.length-1)/2]:(ts[ts.length/2-1]+ts[ts.length/2])/2):null}
 if(typeof D.trend_total!=='number')D.trend_total=0;
 D.sector_names=Array.isArray(D.sector_names)?D.sector_names:[];
-const BRAND=(D.brand&&typeof D.brand==='object')?D.brand:{};const TEAM_NAME=(typeof BRAND.team_name==='string'&&BRAND.team_name.trim())||'Midfield Menace';
+const BRAND=(D.brand&&typeof D.brand==='object')?D.brand:{};const TEAM_NAME='Team';
 const M=D.meta,L=typeof D.L==='number'&&D.L>0?D.L:1000,STEP=typeof D.step==='number'&&D.step>0?D.step:10,bestKey='me'+D.best.n;
 const NO_LAPS=typeof D.best.n!=='number'||typeof D.best.t!=='number'||!isFinite(D.best.t),NO_LAPS_TXT='No usable laps in this race, so there is nothing to compare.';   // 2.19.1: never print null / NaN for a missing best lap
 const trOk=t=>isObj(t)&&Array.isArray(t.tt)&&t.tt.length>1&&Array.isArray(t.v);

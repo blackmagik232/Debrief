@@ -173,7 +173,7 @@ def fakes(rec=None, post_raises=None, check_result=None, learn=True):
             if series_ids and s["id"] not in series_ids:
                 continue
             log(f"Week {s['week']} at {s['track']}...")
-            api.find_laps(tracks=[1], cars=[2], teams=[cfg["team_slug"]], drivers=["me"], group="driver", limit=200)
+            api.find_laps(tracks=[1], cars=[2], teams=["team1"], drivers=["me"], group="driver", limit=200)
         return {"series": len(sample("plan")["series"]), "requests": api.requests_made}
     lb.refresh = refresh
     lb.view = lambda folder, sched=None: {"season": "2026 Season 4", "series": [], "h2h": []}
@@ -674,12 +674,12 @@ def test_weekly_passes_saved_series_to_leaderboards():
         old = lb.refresh
 
         def refresh(api, cfg, sched, mine, **kw):
-            seen.update(mine=mine, sched=sched, kw=kw, slug=cfg["team_slug"])
+            seen.update(mine=mine, sched=sched, kw=kw, slug="team1")
             return old(api, cfg, sched, mine, **kw)
         lb.refresh = refresh
-        res = app.cmd_weekly({"library_folder": str(lib), "team_slug": "midfield-menace", "cache_dir": str(TMP / "c")})
+        res = app.cmd_weekly({"library_folder": str(lib), "cache_dir": str(TMP / "c")})
     assert seen["mine"]["series"] == series.load(lib)["series"] and seen["sched"]["season"] == "2026 Season 4"
-    assert seen["kw"] == {"series_ids": None, "force_old": False, "log": seen["kw"]["log"]} and seen["slug"] == "midfield-menace"
+    assert seen["kw"] == {"series_ids": None, "force_old": False, "log": seen["kw"]["log"]} and seen["slug"] == "team1"
     assert res["page"] == lib / "team" / "index.html" and res["requests"] == 2
     write_settings()
 
@@ -725,7 +725,7 @@ def _run_review(lib):
     laps, csv = _tel()
     api = FakeG61(laps, csv)
     cfg = {"library_folder": str(lib), "include_practice": False, "cache_dir": str(TMP / "cache"),
-           "max_reference_laps": 0, "salutation": "", "team_slug": "midfield-menace"}
+           "max_reference_laps": 0, "salutation": ""}
     with patched(app, make_api=lambda c: api):
         # 2.18: the same race again is a rebuild (a plain Review last race opens the saved one)
         page = app.cmd_review(cfg, "EVT25D000001", open_after=False, session_kind=3, track_id=468, car_id=190,

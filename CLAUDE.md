@@ -26,8 +26,7 @@ words and say what he will see differently in the window.
 - Brand: "Debrief · by Black Magik Studios" (Magik with a K). Licence: free to use, all rights reserved (LICENSE).
   Credit borrowed ideas/code in CREDITS.md and THIRD_PARTY_LICENSES.txt.
 - Speeds in mph by default, following Settings > Units everywhere.
-- The team is **Midfield Menace**: Josh Spence, Swazi Williams, Kenta Young (Settings > Team). Garage 61 group slug
-  `midfield-menace`; the team is also in Garage 61's OverdriverAcademy. Never favour or single out a driver in code.
+- Team features are generic: teams and members come only from the user's own Garage 61 teams. Never hard-code team names, slugs or people.
 - Garage 61 `/laps` REQUIRES a `tracks` parameter (400 "query parameter \"tracks\" not set" otherwise). Team-track
   discovery passes every track id. It returns only your own, teammates' and followed drivers' laps.
 - Never drop a teammate or a lap silently: say who and why, by name.

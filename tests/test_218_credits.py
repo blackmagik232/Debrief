@@ -107,7 +107,7 @@ print("== branding")
 html, js = read(UI / "index.html"), read(UI / "app.js")
 check(brand.MAKER == "Black Magik Studios" and brand.PUBLISHER == brand.MAKER, "the maker is Black Magik Studios")
 check(brand.BYLINE == "Debrief · by Black Magik Studios" and brand.COPYRIGHT == "© 2026 Black Magik Studios", brand.BYLINE)
-check(brand.TEAM_NAME == "Midfield Menace", "Midfield Menace is still the team")
+check(not hasattr(brand, "TEAM_NAME"), "no team is built in")
 check("<title>Debrief · by Black Magik Studios</title>" in html and 'id="brandMaker">by Black Magik Studios<' in html,
       "window title and the line under the logo")
 check("© 2026 Black Magik Studios" in html and 'id="btnCredits"' in html, "About: the copyright and a Credits button")

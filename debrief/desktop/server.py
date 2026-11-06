@@ -2639,8 +2639,8 @@ class Handler(BaseHTTPRequestHandler):
         out = None if teams is None else [{"slug": str(t.get("slug")), "name": str(t.get("name") or t.get("slug"))}
                                          for t in teams if isinstance(t, dict) and t.get("slug")]
         from .. import brand
-        return self._json({"ok": True, "teams": out, "team_slug": cfg["team_slug"], "requests": used,
-                           "token": api is not None, "membership": brand.membership(teams, cfg["team_slug"])})
+        return self._json({"ok": True, "teams": out, "requests": used,
+                           "token": api is not None, "membership": brand.membership(teams)})
 
     def _get_goals(self, q):
         cfg = self._cfg()
@@ -2768,7 +2768,7 @@ class Handler(BaseHTTPRequestHandler):
                 "warnings": list(st.get("last_warnings") or [])}
 
     def _get_brand(self, q):
-        """Team identity for the window (Midfield Menace names and links). Constants only: no settings, no secrets."""
+        """App identity for the window (maker, credits). Constants only: no settings, no secrets. No team is built in."""
         from .. import brand
         from .. import credits   # 2.18: Help > Credits and About show the same list as CREDITS.md
         return self._json({"ok": True, **brand.as_dict(), "credits": credits.as_list(), "kinds": credits.KINDS,
@@ -3262,14 +3262,6 @@ class Handler(BaseHTTPRequestHandler):
                 what.append("Discord webhook removed")
             if body.get("clear_discord") is True or body.get("discord_webhook"):
                 self.server.discord_info = None   # a new webhook: its name is learnt again by Check
-            if any(k in body for k in ("team_slug", "team_name", "team_members")):
-                try:   # 2.21: the saved team page says it was built with the old team settings
-                    from .. import team as _team
-                    cfg = self._cfg()
-                    _team.mark_stale(cfg["library_folder"], cfg)
-                except Exception:  # noqa: BLE001
-                    import traceback
-                    app.say("Couldn't mark the team page out of date:\n" + traceback.format_exc())
             # never the values themselves: only which secrets changed
             app.say("Settings saved from the desktop app" + (f" ({', '.join(what)})." if what else "."))
             return self._json({"ok": True, "settings": view})

@@ -230,8 +230,8 @@ FIRSTRUN = {"ok": True, "steps": [{"id": "token", "done": True, "title": "Connec
 def _api(**over):
     one = today.pick(plan=PLAN, practice=dict(PRACTICE, date="2026-11-02T18:00:00"))
     a = {"settings": {"ok": True, "token_saved": True, "token_hint": "…abcd", "version": "2.18.0", "installed": True,
-                      "first_name": "Sam", "data_folder": "C:/x", "team_slug": "midfield-menace", "max_reference_laps": 2},
-         "brand": {"app_name": "Debrief", "team_slug": "midfield-menace", "team_name": "Midfield Menace"},
+                      "first_name": "Sam", "data_folder": "C:/x", "team_slug": "team-a", "max_reference_laps": 2},
+         "brand": {"app_name": "Debrief", "team_slug": "team-a", "team_name": "Team A"},
          "reviews": {"ok": True, "folder": "C:/lib", "groups": GROUPS},
          "status": {"state": "idle"}, "sync": {"ok": True, "skipped": True}, "update": {"ok": True, "skipped": True},
          "pages": {"ok": True, "prep": []}, "firstrun": FIRSTRUN, "review": {"ok": False, "error": "Garage 61 is busy."},

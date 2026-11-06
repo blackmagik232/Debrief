@@ -868,7 +868,7 @@ def team_board(cfg, car_name, track_name) -> list:
 
 
 def team_notes(cfg, car_name, track_name) -> list:
-    """2.20.1: the team page's per-teammate reasons ("Josh: no laps ...") for this car and track, or []."""
+    """2.20.1: the team page's per-teammate reasons ("Alex: no laps ...") for this car and track, or []."""
     try:
         data = json.loads((Path(cfg["library_folder"]) / "team" / "team.json").read_text(encoding="utf-8"))
     except (OSError, ValueError, KeyError, TypeError):

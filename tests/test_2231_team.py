@@ -29,7 +29,7 @@ FAILS = []
 SPA, ZOL = 11, 12
 CORVETTE, BMW, MX5, LAMBO, GT4 = 100, 101, 102, 103, 104
 NOW = datetime.now(timezone.utc)
-CFG = {"team_name": "Midfield Menace", "team_slug": "overdriveracademy", "team_members": list(brand.MEMBERS)}
+CFG = {}
 
 
 def lap(slug, first, last, t, track, car, tname, cname, day):
@@ -67,9 +67,10 @@ class Api:
         return {"slug": "swazi", "firstName": "Swazi", "lastName": "Williams"}
 
     def teams(self, refresh=False):
-        t = {"slug": "overdriveracademy", "name": "Overdriver Academy"}
+        t = {"slug": "team-one", "name": "Team One"}
         if self.roster:
             t["members"] = [{"slug": "josh", "firstName": "Josh", "lastName": "Spence"},
+                            {"slug": "kenta", "firstName": "Kenta", "lastName": "Young"},
                             {"slug": "swazi", "firstName": "Swazi", "lastName": "Williams"}]
         return [t]
 
@@ -134,7 +135,7 @@ class Api:
 def build(api, logs=None):
     team.library_combos = lambda f: []
     logs = logs if logs is not None else []
-    return team.build(api, Path(tempfile.mkdtemp()), "overdriveracademy", log=logs.append, cfg=CFG), logs
+    return team.build(api, Path(tempfile.mkdtemp()), None, log=logs.append, cfg=CFG), logs
 
 
 def check(name, fn):
@@ -164,11 +165,11 @@ def test_discovery_chunks_and_cap():
     api = Api(limit=3)
     ids = list(range(1, 46))
     logs = []
-    combos, note = team.discover_combos(api, "overdriveracademy", [], "swazi", "Swazi", logs.append, track_ids=ids)
+    combos, note = team.discover_combos(api, "team-one", [], "swazi", "Swazi", logs.append, track_ids=ids)
     assert len(api.pages) <= team.DISCOVER_MAX_REQUESTS and all(len(p["tracks"]) <= 10 for p in api.pages), api.pages
     assert all(len(p["tracks"]) <= 3 for p in api.pages[1:]), [len(p["tracks"]) for p in api.pages]
     api2 = Api()
-    team.discover_combos(api2, "overdriveracademy", [], "swazi", "Swazi", logs.append, track_ids=ids)
+    team.discover_combos(api2, "team-one", [], "swazi", "Swazi", logs.append, track_ids=ids)
     assert len(api2.pages) == 4 and all(len(p["tracks"]) == 10 for p in api2.pages)
 
 
@@ -208,12 +209,12 @@ def test_teammate_seen_tracks_are_candidates():
 
 def test_member_pass_respects_cap():
     api = Api(rows=[ROWS[0]], roster=True)
-    team.discover_combos(api, "overdriveracademy", ["Josh Spence"], "swazi", "Swazi", lambda *_: None,
+    team.discover_combos(api, "team-one", ["Josh Spence"], "swazi", "Swazi", lambda *_: None,
                          track_ids=list(range(1, 36)), member_slugs={"Josh Spence": "josh"})
     assert len(api.pages) <= team.DISCOVER_MAX_REQUESTS and len(api.pages) == 4, len(api.pages)
     assert api.pages[-1]["drivers"] == ["josh"] and len(api.pages[-1]["tracks"]) <= 10
     api2 = Api(rows=[ROWS[0]])
-    team.discover_combos(api2, "overdriveracademy", ["Josh Spence"], "swazi", "Swazi", lambda *_: None,
+    team.discover_combos(api2, "team-one", ["Josh Spence"], "swazi", "Swazi", lambda *_: None,
                          track_ids=list(range(1, 80)), member_slugs={"Josh Spence": "josh", "Kenta Young": "kenta"})
     assert len(api2.pages) == 4 and api2.pages[-1]["drivers"] == ["josh"], [p.get("drivers") for p in api2.pages]
 
@@ -228,7 +229,7 @@ def test_same_race_by_event_and_weekly_group():
     r = d["races"][0]
     assert r["title"].startswith("Tonight at") and any(v["name"] == "Josh Spence" and v["car"].startswith("Lamborghini")
                                                       for v in r["drivers"]), r
-    assert d["weekly"]["team"]["slug"] == "overdriveracademy", d["weekly"]["team"]     # not the built-in default
+    assert d["weekly"]["team"]["slug"] == "team-one", d["weekly"]["team"]     # not the built-in default
     assert d["weekly"]["membership"] != "unknown", d["weekly"]["membership"]
 
 
@@ -278,7 +279,7 @@ def test_team_statistics_refused_is_honest():
     api = Api()
     api.stats_error = Garage61Error("no", status=403, detail="forbidden")
     d, logs = build(api)
-    assert any("team statistics refused: 403" in l for l in logs), logs
+    assert any("team statistics refused for team-one: 403" in l for l in logs), logs
     assert any("wouldn't share the team's driving statistics" in n for n in d["notes"]), d["notes"]
     assert d["combos"] and d["member_stats"] == []
 
@@ -296,9 +297,10 @@ def test_two_429_stops_loading():
 
 
 def test_honest_missing_member():
-    d, logs = build(Api(rows=[ROWS[0]]))
+    d, logs = build(Api(rows=[ROWS[0]], roster=True))
     joined = "\n".join(logs)
-    assert "No laps found for" in joined and "tracks searched" in joined, joined
+    notes = " ".join(d["combos"][0]["mate_notes"])
+    assert "Josh Spence is on your team but Garage 61 returned no laps" in notes, notes      # named, with what to do
     assert "matching Garage 61 driver" not in joined
 
 

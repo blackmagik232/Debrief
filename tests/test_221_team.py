@@ -95,8 +95,7 @@ def combos(*tracks):
 def run_build(api, cc, members=None, monkey=True):
     folder = Path(tempfile.mkdtemp())
     team.library_combos = lambda f: cc
-    cfg = {"team_name": "Midfield Menace", "team_slug": "overdriver-academy",
-           "team_members": list(brand.MEMBERS) if members is None else members}
+    cfg = {}   # 2.23.1: nothing about teams is typed in
     logs = []
     return team.build(api, folder, "overdriver-academy", log=logs.append, cfg=cfg), logs, folder
 
@@ -142,22 +141,9 @@ def test_zero_one_three_twentyfive():
         if n == 0:
             assert "No teammate lap" in c["note"] or "No teammate lap" in (c["note"] or ""), c["note"]
         assert d["me"]["name"] == "Swazi Williams"
-        assert {m["name"] for m in d["members"]} == set(brand.MEMBERS), d["members"]   # always all three
-    # 25 drivers: only the members are on the team's board; the rest are listed apart
-    assert len(c["board"]) <= 3 and len(c["academy"]) >= 20, (len(c["board"]), len(c["academy"]))
-    assert all(r["name"] in PEOPLE.values() for r in c["board"])
-    assert d["h2h"] and all(p["name"] in PEOPLE.values() for p in d["h2h"])      # Academy extras never in head-to-heads
-
-
-def test_missing_member_named_and_logged():
-    rows = [lap("swazi", "Swazi Williams", 140.0), lap("josh", "Josh Spence", 141.2, ir=3100)]
-    d, logs, _ = run_build(Api({1: rows}), combos((TRACK, 1)))
-    c = d["combos"][0]
-    assert any(n.startswith("Kenta Young: no laps came back from Garage 61 in Overdriver Academy") for n in c["mate_notes"]), c["mate_notes"]
-    assert any("Garage 61 rows for Kenta Young: 0 laps at this track and car" in l for l in logs), logs     # raw counts in the log
-    assert any("Garage 61 rows for Josh Spence: 1 returned, 1 usable" in l for l in logs), logs
-    kenta = next(m for m in d["members"] if m["name"] == "Kenta Young")
-    assert not kenta["matched"] and "Kenta Young" in kenta["problem"] and "Settings > Team" in kenta["problem"]
+    # 2.23.1: no fixed team: every driver Garage 61 returns for your teams is on the board
+    assert len(c["board"]) == 26 and not c["academy"], (len(c["board"]), len(c["academy"]))
+    assert d["h2h"] and len(d["h2h"]) == 25
 
 
 def test_matching_ignores_case_and_accents():
@@ -181,20 +167,13 @@ def test_irating_on_every_row_and_template():
             lap("kenta", "Kenta Young", 142.0, ir=3300), lap("zed", "Zed Other", 139.0, ir=1500)]
     d, _, folder = run_build(Api({1: rows}), combos((TRACK, 1)))
     c = d["combos"][0]
-    assert {r["name"]: r["irating"] for r in c["board"]} == {"Swazi Williams": 2700, "Josh Spence": 2900, "Kenta Young": 3300}
-    assert c["academy"][0]["name"] == "Zed Other" and c["academy"][0]["irating"] == 1500
+    assert {r["name"]: r["irating"] for r in c["board"]} == {"Swazi Williams": 2700, "Josh Spence": 2900, "Kenta Young": 3300,
+                                                             "Zed Other": 1500}
     page = team.write(folder, d, unit="mph")
     html = page.read_text(encoding="utf-8")
-    assert "iRating" in html and "Midfield Menace" in html and "Join Overdriver Academy" not in html.split("<script>")[0]
+    assert "iRating" in html and "Join Overdriver Academy" not in html.split("<script>")[0]
     j = json.loads((folder / "team" / "team.json").read_text(encoding="utf-8"))
     assert j["brand"]["join_title"] == "Join Overdriver Academy on Garage 61"
-
-
-def test_join_words_name_the_group():
-    assert brand.join_title("Some Group") == "Join Some Group on Garage 61"
-    assert "Overdriver Academy" in brand.JOIN_TEXT and "Midfield Menace" not in brand.JOIN_TEXT
-    assert team.team_info()["name"] == "Overdriver Academy"
-    assert brand.parse_members(None) == list(brand.MEMBERS) and brand.parse_members("") == []
 
 
 def test_units_in_learn_text():
@@ -205,19 +184,6 @@ def test_units_in_learn_text():
     assert "10 mph" in d["combos"][0]["learn"][0]["text"] and d["units"] == "mph"
 
 
-def test_stale_and_cache_reuse():
-    rows = [lap("swazi", "Swazi Williams", 140.0), lap("josh", "Josh Spence", 141.0)]
-    cfg = {"team_name": "Midfield Menace", "team_slug": "overdriver-academy", "team_members": list(brand.MEMBERS)}
-    d, _, folder = run_build(Api({1: rows}), combos((TRACK, 1)))
-    team.write(folder, d)
-    assert team.mark_stale(folder, cfg) is False
-    cfg2 = dict(cfg, team_members=["Josh Spence", "Swazi Williams"])
-    assert team.mark_stale(folder, cfg2) is True
-    saved = json.loads((folder / "team" / "team.json").read_text(encoding="utf-8"))
-    assert saved["stale"].startswith("Team settings changed")
-    assert "Team settings changed" in (folder / "team" / "index.html").read_text(encoding="utf-8")
-
-
 def test_prepare_same_rules_and_cap():
     rows = [lap("swazi", "Swazi Williams", 140.0)] + [lap(f"m{i}", f"Member{i} Fast", 141.0 + i) for i in range(15)] \
         + [lap("zed", "Zed Other", 145.0)]
@@ -226,7 +192,7 @@ def test_prepare_same_rules_and_cap():
     out = prep._teammates(api, 1, 2, "overdriver-academy", 140.0, lambda m: None, members)
     assert len(out["laps"]) == prep.MAX_TEAMMATES
     assert any("3 slower teammates left out" in n and "Member14 Fast" in n for n in out["notes"]), out["notes"]
-    assert any(n.startswith("Also in Overdriver Academy (not on your team): Zed Other") for n in out["notes"]), out["notes"]
+    assert any(n.startswith("Also in") and "(not on your team): Zed Other" in n for n in out["notes"]), out["notes"]
     assert all(c.get("age") == -2 for c in api.calls), api.calls     # the Team page's window
 
 
@@ -274,35 +240,6 @@ def test_carcompare_bands():
     assert carcompare.MIN_DRIVERS == 15            # the evidence bar is not lowered
 
 
-def test_group_self_corrects():
-    T = lambda *a: [{"slug": x, "name": n} for x, n in a]
-    logs = []
-    r = team.resolve_group(T(("overdriver-academy", "Overdriver Academy"), ("other", "O")), "overdriver-academy", logs.append)
-    assert r["slug"] == "overdriver-academy" and r["why"] == "the group set in Settings" and logs, r
-    r = team.resolve_group(T(("od-acad", "Overdriver  Academy"), ("x", "X")), "wrong-guess")           # name match
-    assert r["slug"] == "od-acad" and r["ok"], r
-    r = team.resolve_group(T(("midfield-menace", "Midfield Menace"), ("x", "X")), "wrong-guess")       # earlier default
-    assert r["slug"] == "midfield-menace" and r["why"].startswith("the earlier default"), r
-    r = team.resolve_group(T(("solo", "Solo Team")), "wrong-guess")                                    # only team
-    assert r["slug"] == "solo" and r["why"] == "the only team you are in", r
-    r = team.resolve_group(T(("a", "A"), ("b", "B")), "wrong-guess")                                   # none fits: never guess
-    assert not r["ok"] and r["teams"] == ["A", "B"] and "You are in: A, B." in team.no_group_note(r), r
-    assert team.resolve_group(None, "keep-me")["slug"] == "keep-me"                                    # unreadable: keep
-    # build uses it: a wrong saved slug does not blank the page
-    rows = [lap("swazi", "Swazi Williams", 140.0), lap("kenta", "Kenta Young", 141.0)]
-    api = Api({1: rows}, group="midfield-menace")
-    folder = Path(tempfile.mkdtemp())
-    team.library_combos = lambda f: combos((TRACK, 1))
-    d = team.build(api, folder, "overdriver-academy", log=lambda m: None, cfg={"team_members": list(brand.MEMBERS)})
-    assert d["group"]["slug"] == "midfield-menace" and d["combos"][0]["board"] and "Laps come from" in d["laps_from"], d["group"]
-    api = Api({1: rows}, group="zzz")
-    api.teams = lambda refresh=False: [{"slug": "a", "name": "A"}, {"slug": "b", "name": "B"}]
-    d = team.build(api, folder, "overdriver-academy", log=lambda m: None, cfg={})
-    assert not d["group"]["ok"] and "You are in: A, B." in d["laps_from"] and all(r["is_me"] for r in d["combos"][0]["board"])
-    m, t = prep._membership(Api({}, group="midfield-menace"), "overdriver-academy", lambda m: None)
-    assert m == brand.MEMBER and t["slug"] == "midfield-menace"
-
-
 def _laps_for(n_tracks):
     rows = {}
     for i in range(1, n_tracks + 1):
@@ -326,7 +263,7 @@ def test_every_combo_listed_lazy_load_and_no_silent_cap():
         (snap / f"w{i}.json").write_text(json.dumps({"schema": 1, "track": n, "track_id": i, "fetched_at": "2026-09-01T00:00:00Z",
             "board": [{"key": "josh", "name": "Josh Spence", "car": CAR, "t": 141.0}, {"key": "me", "name": "Swazi Williams", "car": CAR, "t": 140.0}]}), encoding="utf-8")
     api = Api(_laps_for(9))
-    cfg = {"team_name": "Midfield Menace", "team_slug": "overdriver-academy", "team_members": list(brand.MEMBERS)}
+    cfg = {}
     d = team.build(api, folder, "overdriver-academy", log=lambda m: None, cfg=cfg, max_combos=6)
     cs = d["combos"]
     assert len(cs) == 9, [c["track"] for c in cs]                       # nothing dropped
@@ -373,7 +310,7 @@ class DiscApi(Api):
 
 
 def test_discovery_merges_and_falls_back():
-    cfg = {"team_name": "Midfield Menace", "team_slug": "overdriver-academy", "team_members": list(brand.MEMBERS)}
+    cfg = {}
     team.library_combos = lambda f: combos((TRACK, 1))
     logs = []
     api = DiscApi(_laps_for(9))
@@ -382,8 +319,6 @@ def test_discovery_merges_and_falls_back():
     assert {"Far Track 7", "Far Track 8", "Far Track 9", TRACK} <= tr, tr           # tracks he never drove
     assert len(api.pages) == 1 and api.pages[0]["teams"] == ["overdriver-academy"]   # ONE request, all tracks
     assert d["discovery"] == "Found 3 tracks where the team has laps on Garage 61.", d["discovery"]
-    assert any("Discovery: Josh Spence: 1 laps, 1 track and car combinations" in l for l in logs), logs
-    assert any("Discovery: Kenta Young: 1 laps" in l for l in logs) and any("Discovery: Swazi Williams: 1 laps" in l for l in logs)
     far = next(c for c in d["combos"] if c["track"] == "Far Track 7")
     assert far["who_note"].startswith("Josh") and "you haven't driven this" in far["who_note"] or far["loaded"], far
     # a 400 falls back and never fails the refresh
@@ -393,10 +328,48 @@ def test_discovery_merges_and_falls_back():
     assert d["discovery"].startswith("Garage 61 couldn't list the team's tracks") and d["combos"][0]["board"]
 
 
-def test_settings_names():
-    from debrief.desktop import settings_io
-    assert "team_name" in settings_io.public_view() and settings_io.public_view()["team_members"] == list(brand.MEMBERS)
+def test_missing_member_named_and_logged():
+    # members come from the team roster Garage 61 lists; one without laps is named, never silently dropped
+    class RosterApi(Api):
+        def teams(self, refresh=False):
+            return [{"slug": "team-x", "name": "Team X", "members": [
+                {"slug": "swazi", "firstName": "Swazi", "lastName": "Williams"}, {"slug": "josh", "firstName": "Josh", "lastName": "Spence"},
+                {"slug": "kenta", "firstName": "Kenta", "lastName": "Young"}]}]
+    rows = [lap("swazi", "Swazi Williams", 140.0), lap("josh", "Josh Spence", 141.2, ir=3100)]
+    d, logs, _ = run_build(RosterApi({1: rows}), combos((TRACK, 1)))
+    c = d["combos"][0]
+    assert any(n.startswith("Kenta Young is on your team but Garage 61 returned no laps") for n in c["mate_notes"]), c["mate_notes"]
+    assert any("Garage 61 rows for Josh Spence: 1 returned, 1 usable" in l for l in logs), logs
+    kenta = next(m for m in d["members"] if m["name"] == "Kenta Young")
+    assert kenta["name"] == "Kenta Young" and "Settings" not in str(kenta.get("problem"))   # listed from Garage 61's roster
 
+
+def test_join_words_are_generic():
+    assert brand.join_title("Some Group") == "Join Some Group on Garage 61"
+    assert brand.join_title() == "Join a team on Garage 61"
+    assert not hasattr(brand, "TEAM_NAME") and not hasattr(brand, "MEMBERS") and not hasattr(brand, "GROUP_SLUG")
+    assert team.team_info()["name"] == "Your team"
+
+
+def test_all_your_teams_are_used_and_zero_teams_is_plain():
+    rows = [lap("swazi", "Swazi Williams", 140.0), lap("josh", "Josh Spence", 141.0)]
+    team.library_combos = lambda f: combos((TRACK, 1))
+    api = Api({1: rows})
+    api.teams = lambda refresh=False: [{"slug": "alpha", "name": "Alpha Racing"}, {"slug": "beta", "name": "Beta Club"}]
+    d = team.build(api, Path(tempfile.mkdtemp()), None, log=lambda m: None, cfg={})
+    assert d["group"]["name"] == "Alpha Racing, Beta Club" and [t["slug"] for t in d["teams"]] == ["alpha", "beta"], d["group"]
+    assert all(c["teams"] == ["alpha", "beta"] for c in api.calls if c.get("group") in ("driver", "none") and c.get("drivers") != ["me"]), api.calls
+    api0 = Api({1: rows})
+    api0.teams = lambda refresh=False: []
+    d0 = team.build(api0, Path(tempfile.mkdtemp()), None, log=lambda m: None, cfg={})
+    assert not d0["group"]["ok"] and "not in any Garage 61 team" in d0["laps_from"] and d0["membership"] == brand.NOT_MEMBER, d0["laps_from"]
+    assert not [c for c in api0.calls if c.get("teams")]
+
+
+def test_old_team_settings_are_ignored():
+    from debrief.desktop import settings_io
+    assert "team_slug" not in settings_io.public_view() and "team_members" not in settings_io.public_view()
+    assert team.settings_of({"team_name": "Old", "team_slug": "old", "team_members": "A; B"})["members"] == []
 
 for n, f in list(globals().items()):
     if n.startswith("test_") and callable(f):

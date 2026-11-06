@@ -66,6 +66,9 @@ def default_laps(kw):
 
 
 class FakeApi:
+    def teams(self, refresh=False):
+        return [{"slug": "team1", "name": "Team One"}]
+
     """Records every call. requests_made counts what would have been a Garage 61 request.
     No network code: nothing here can reach the internet."""
 
@@ -123,7 +126,7 @@ def mine(sched):
 
 def lib():
     p = Path(tempfile.mkdtemp(dir=TMP))
-    return {"library_folder": str(p), "team_slug": "midfield-menace"}
+    return {"library_folder": str(p)}
 
 
 def at(dt):
@@ -141,7 +144,7 @@ def test_one_series_one_request_with_the_spec_params():
     res = leaderboards.refresh(api, cfg, sched, mine(sched), log=lambda m: None)
     assert len(api.calls) == 1 and api.requests_made == 1 and res["requests"] == 1, api.calls
     kw = api.calls[0][1]
-    assert kw == {"tracks": [51], "cars": [67], "teams": ["midfield-menace"], "drivers": ["me"], "group": "driver",
+    assert kw == {"tracks": [51], "cars": [67], "teams": ["team1"], "drivers": ["me"], "group": "driver",
                   "after": "2026-10-28T00:00:00Z", "age": 4, "limit": 200}, kw
     snap = leaderboards.load_snapshot(cfg["library_folder"], "2026-season-4", sched["series"][0]["id"], 7)
     assert snap and snap["requests"] == 1 and not snap["final"] and snap["end"] == "2026-11-04"
@@ -506,7 +509,7 @@ def test_learn_from_saved_and_render_saved():
     # an old (2.4) team.json without weekly/learn/metrics
     corners = [{"id": "C1", "apex_m": 700.0, "times": {"me": 8.0, "jordan-x": 7.8}}]
     old = _team(corners, drivers=("me", "jordan-x"))
-    old.update({"team": {"slug": "midfield-menace", "name": "Midfield Menace"}, "me": {"name": "S", "key": "me"},
+    old.update({"team": {"slug": "team1", "name": "Team One"}, "me": {"name": "S", "key": "me"},
                 "h2h": [], "notes": [], "requests": 3, "generated_at": "2026-10-01T00:00:00+00:00"})
     (folder / "team" / "team.json").write_text(json.dumps(old), encoding="utf-8")
     (folder / "team" / "team.json.bad").write_text("x", encoding="utf-8")
@@ -516,7 +519,7 @@ def test_learn_from_saved_and_render_saved():
     team.render_saved(folder)
     d = json.loads((folder / "team" / "team.json").read_text(encoding="utf-8"))
     assert d["weekly"]["series"][0]["weeks"][0]["week"] == 7 and d["combos"][0]["learn"]
-    assert d["requests"] == 3 and d["team"]["name"] == "Midfield Menace"
+    assert d["requests"] == 3 and d["team"]["name"] == "Team One"
     html = (folder / "team" / "index.html").read_text(encoding="utf-8")
     assert "Okayama" in html
     (folder / "team" / "team.json").write_text("[]", encoding="utf-8")

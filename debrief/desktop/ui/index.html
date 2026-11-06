@@ -285,7 +285,7 @@
         <div id="allPlanWeeks" class="gridf"></div>
       </details>
       <div class="callout join joinsmall" id="prepJoin" hidden>
-        <h3 class="joinTitle">Join Overdriver Academy on Garage 61</h3>
+        <h3 class="joinTitle">Join a team on Garage 61</h3>
         <p class="joinText"></p>
         <div class="row"><a class="btn joinLink" href="https://garage61.net" target="_blank" rel="noreferrer">Open Garage 61</a></div>
       </div>
@@ -704,10 +704,10 @@
   <section id="vTeam" class="view pad" hidden>
     <div class="col">
       <span class="eyebrow">Team hub</span>
-      <h1 id="teamTitle">Midfield Menace</h1>
-      <p class="lede">Leaderboards for the tracks and cars you race, who owns each corner, and how you stack up against each teammate. Laps come from the Garage 61 group set in Settings.</p>
+      <h1 id="teamTitle">Team hub</h1>
+      <p class="lede">Leaderboards for the tracks and cars you race, who owns each corner, and how you stack up against each teammate. Laps come from the Garage 61 teams you are in.</p>
       <div class="callout join" id="teamJoin" hidden>
-        <h3 class="joinTitle">Join Overdriver Academy on Garage 61</h3>
+        <h3 class="joinTitle">Join a team on Garage 61</h3>
         <p class="joinText"></p>
         <div class="row"><a class="btn primary joinLink" href="https://garage61.net" target="_blank" rel="noreferrer">Open Garage 61</a></div>
       </div>
@@ -800,15 +800,9 @@
         <summary><h3>Team and extras</h3><span class="note">Team, track cards, Discord, library folder</span></summary>
       <form class="panel" id="fTeam" autocomplete="off">
         <div class="phead"><h3>Team</h3><span class="pill" id="teamStatus"></span></div>
-        <p class="note" id="teamLine">Team: Midfield Menace</p>
+        <p class="note" id="teamLine">Teams: not checked yet</p>
         <p class="note" id="teamJoinNote" hidden></p>
         <div class="row"><button type="button" class="btn" id="btnTeams" hidden>Check my teams</button><span class="msg" id="teamSetMsg" role="status"></span></div>
-        <label class="field" for="teamNameIn"><span>Team name</span><input id="teamNameIn" type="text" maxlength="60" autocomplete="off"></label>
-        <label class="field" for="teamMembersIn"><span>Team members (one name per line, as Garage 61 shows them)</span><textarea id="teamMembersIn" rows="4" maxlength="600" spellcheck="false" autocomplete="off"></textarea></label>
-        <p class="note">Members are matched to Garage 61 drivers by name or short name (capitals and accents don't matter). Anyone in the group who isn't on this list is shown apart, under the group's name.</p>
-        <label class="field" for="teamSlugIn"><span>Garage 61 group the laps come from (its short name, e.g. overdriver-academy)</span><input id="teamSlugIn" type="text" maxlength="80" spellcheck="false" autocomplete="off" list="dlTeams"></label>
-        <datalist id="dlTeams"></datalist>
-        <div class="row"><button type="submit" class="btn" id="teamSave">Save team</button><button type="button" class="btn ghost" id="teamReset" hidden>Use Overdriver Academy</button></div>
       </form>
 
       <form class="panel" id="fRaceCap" autocomplete="off">
@@ -821,7 +815,7 @@
       <form class="panel" id="fCards" autocomplete="off">
         <div class="phead"><h3>Team track cards</h3><span class="pill" id="cardsPill">Off</span></div>
         <p class="note">Pick a folder your team already shares (OneDrive, Google Drive, Dropbox...). Debrief shows your teammates' track cards from it, and if you switch sharing on it saves your own cards there too. It only ever writes your own file. Nothing goes through the internet except your sync app.</p>
-        <label class="field wide" for="cardsFolder"><span>Shared folder</span><input id="cardsFolder" type="text" maxlength="400" spellcheck="false" autocomplete="off" placeholder="e.g. D:\OneDrive\Menace"></label>
+        <label class="field wide" for="cardsFolder"><span>Shared folder</span><input id="cardsFolder" type="text" maxlength="400" spellcheck="false" autocomplete="off" placeholder="e.g. D:\OneDrive\Cards"></label>
         <label class="check" for="cardsShare"><input id="cardsShare" type="checkbox"><span>Share my track cards with the team</span></label>
         <p class="note" id="cardsStatus"></p>
         <div class="row"><button type="submit" class="btn">Save</button><span class="msg" id="cardsMsg" role="status"></span></div>
@@ -830,7 +824,7 @@
       <form class="panel" id="fDiscord" autocomplete="off">
         <div class="phead"><h3>Discord</h3><span class="pill" id="discordPill">Off</span></div>
         <p class="note msg bad" id="discordUnread" role="alert" hidden>Your saved Discord webhook can't be opened on this Windows account. Paste it again.</p>
-        <p class="note">A Discord webhook is a link that lets Debrief post into one Discord channel. Post a review's share card to the <span class="brandName">Midfield Menace</span> Discord channel. In Discord: channel settings &gt; Integrations &gt; Webhooks &gt; Copy Webhook URL, then paste it here. It's saved on this PC and Debrief never shows it again. Making a webhook needs the Manage Webhooks permission: if you don't have it, ask your team's Discord admin to make one and send you the link.</p>
+        <p class="note">A Discord webhook is a link that lets Debrief post into one Discord channel. Post a review's share card to the <span class="brandName">team</span> Discord channel. In Discord: channel settings &gt; Integrations &gt; Webhooks &gt; Copy Webhook URL, then paste it here. It's saved on this PC and Debrief never shows it again. Making a webhook needs the Manage Webhooks permission: if you don't have it, ask your team's Discord admin to make one and send you the link.</p>
         <p class="note"><b>Debrief only posts when you press Post and confirm. It never posts on its own.</b></p>
         <label class="field wide" for="discordHook" title="A link that lets Debrief post into one Discord channel."><span>Webhook address</span>
           <input id="discordHook" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste here">

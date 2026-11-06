@@ -75,7 +75,7 @@ class FakeApi:
 
 def run(api, members=("Josh Spence", "Kenta Young"), ids=(1, 11, 12)):
     logs = []
-    found, note = team.discover_combos(api, "midfield-menace", list(members), "swazi", "Swazi Williams", logs.append,
+    found, note = team.discover_combos(api, "team-a", list(members), "swazi", "Swazi Williams", logs.append,
                                        track_ids=list(ids))
     return found, note, logs
 

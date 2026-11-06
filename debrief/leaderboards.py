@@ -8,7 +8,7 @@ Garage 61 request budget (spec 2.5, section 3.7):
     | Weekly refresh | 1 per series, 2 if a "best" lap is partial or unclean, max 8 series -> <= 16;
     |                | 0 when cached (< 10 min) or the week is final; past weeks max 3 per refresh
     |                | (same per-series cost) |
-    Request 1   find_laps(tracks, cars, teams=[slug], drivers=["me"], group="driver"/"driver-car",
+    Request 1   find_laps(tracks, cars, teams=_team_slugs(api), drivers=["me"], group="driver"/"driver-car",
                 after=<week start>, age=<days since start + 2>, limit=200)          cached 10 min
     Request 2   only when a returned "best" is unusable (partial, unclean, pit, implausible or set
                 outside the race week): the same search with group="none", limit=1000  cached 10 min
@@ -350,8 +350,15 @@ def plan(cfg, api_or_none, sched, mine_series) -> dict:
 
 
 # ---------------------------------------------------------------- membership (2.6)
+def _team_slugs(api) -> list:
+    try:
+        return [str(t.get("slug") or t.get("id")) for t in (api.teams() or []) if isinstance(t, dict) and (t.get("slug") or t.get("id"))]
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def _slug(cfg) -> str:
-    return (cfg or {}).get("team_slug") or brand.GROUP_SLUG
+    return None   # 2.23.1: no team is built in or typed in; every team you are in counts
 
 
 def _saved_membership(api, cfg) -> dict:
@@ -548,8 +555,7 @@ def fetch_week(api, cfg, ser, w, track_id, car_ids, car_names, my_slug, my_name,
                                 multiclass)
         except Exception:  # noqa: BLE001  (no library: judge the laps against each other)
             refs = {}
-    slug = cfg.get("team_slug") or brand.GROUP_SLUG
-    base = dict(tracks=[int(track_id)], cars=list(car_ids), teams=[slug], drivers=["me"],
+    base = dict(tracks=[int(track_id)], cars=list(car_ids), teams=_team_slugs(api), drivers=["me"],
                 after=_iso(_midnight(a)), age=max(1, (now.date() - a).days + 2))
     used = 1
     laps = api.find_laps(group="driver-car" if multiclass else "driver", limit=200, **base) or []

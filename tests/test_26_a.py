@@ -146,10 +146,10 @@ def test_team_build_member_unchanged_and_keys():
 def test_team_build_not_member_makes_no_team_requests():
     lib = _newdir()
     _lib_review(lib)
-    api = CountingApi(teams=[{"slug": "other-team", "name": "Other"}, {"slug": "third", "name": "Third"}])   # 2.21: a single team would be used
+    api = CountingApi(teams=[])   # 2.23.1: not in any Garage 61 team
     d = team.build(api, lib, "overdriver-academy", log=QUIET)
     assert d["membership"] == brand.NOT_MEMBER
-    assert d["team"] == {"slug": "overdriver-academy", "name": brand.GROUP_NAME}
+    assert d["team"]["slug"] == "" and d["team"]["name"], d["team"]
     assert api.team_calls() == [], api.calls
     board = d["combos"][0]["board"]
     assert [r["key"] for r in board] == ["me"], board        # your own best still shows
@@ -161,8 +161,8 @@ def test_team_build_unknown_membership_proceeds():
     _lib_review(lib)
     api = CountingApi(teams_raises=True)
     d = team.build(api, lib, "overdriver-academy", log=QUIET)
-    assert d["membership"] == brand.UNKNOWN and len(api.team_calls()) >= 1
-    assert d["team"]["name"] == "Overdriver Academy"
+    assert d["membership"] == brand.UNKNOWN and api.team_calls() == []      # 2.23.1: no teams read, no team laps asked for
+    assert "couldn't read your Garage 61 teams" in d["laps_from"]
 
 
 def test_render_saved_has_membership_and_team_name():
@@ -170,7 +170,7 @@ def test_render_saved_has_membership_and_team_name():
     p = team.render_saved(lib)
     data = json.loads((Path(lib) / "team" / "team.json").read_text(encoding="utf-8"))
     assert p.exists() and data["membership"] == brand.UNKNOWN
-    assert data["team"] == {"slug": brand.GROUP_SLUG, "name": brand.GROUP_NAME}
+    assert data["team"] == {"slug": "", "name": "Your team"}
 
 
 def test_prep_membership():
@@ -184,19 +184,13 @@ def test_prep_membership():
     api = CountingApi(teams=[])
     d = prep.build(api, lib, 468, 190, "overdriver-academy", log=QUIET)
     assert d["membership"] == brand.NOT_MEMBER and api.team_calls() == [] and d["teammates"]["laps"] == []
-    assert d["team"] == {"slug": "overdriver-academy", "name": "Overdriver Academy"}
+    assert d["team"]["slug"] == ""
     assert d["history"]                                    # your own part still works
     api = CountingApi(teams_raises=True)
     d = prep.build(api, lib, 468, 190, None, log=QUIET)
-    assert d["membership"] == brand.UNKNOWN and len(api.team_calls()) == 1
+    assert d["membership"] == brand.UNKNOWN and api.team_calls() == []
     off = prep.build(None, lib, 468, 190, None, log=QUIET)
-    assert off["membership"] == brand.UNKNOWN and off["team"]["name"] == brand.GROUP_NAME
-
-
-def test_prep_teammates_uses_brand_slug_when_none_given():
-    api = CountingApi()
-    prep._teammates(api, 468, 190, None, 90.0, QUIET)
-    assert api.team_calls()[0]["teams"] == [brand.GROUP_SLUG]
+    assert off["membership"] == brand.UNKNOWN and off["team"]["name"] == "Your teams"
 
 
 def _sched():
@@ -220,12 +214,12 @@ def test_leaderboards_not_member_no_requests():
     # only the one re-check of the teams list (a cached "not a member" may be a day old); no lap requests
     assert res["membership"] == brand.NOT_MEMBER and api.calls == [("teams", {"refresh": True})]
     assert res["requests"] == 1
-    assert res["team"] == {"slug": "overdriver-academy", "name": "Overdriver Academy"}
+    assert res["team"] == {"slug": "", "name": "Your team"}
     v = leaderboards.view(lib, sched)
-    assert v["membership"] == brand.NOT_MEMBER and v["series"] == [] and v["team"]["name"] == "Overdriver Academy"
+    assert v["membership"] == brand.NOT_MEMBER and v["series"] == [] and v["team"]["name"] == "Your team"
     api.calls.clear()   # plan() reads the saved teams list only
     p = leaderboards.plan(cfg, api, sched, mine)
-    assert p["membership"] == brand.NOT_MEMBER and p["team"]["name"] == "Overdriver Academy" and api.calls == []
+    assert p["membership"] == brand.NOT_MEMBER and p["team"]["name"] == "Your team" and api.calls == []
     # the team page picks the newest weekly check up
     team.render_saved(lib)
     data = json.loads((Path(lib) / "team" / "team.json").read_text(encoding="utf-8"))
@@ -239,19 +233,12 @@ def test_leaderboards_member_and_unknown_keys():
     mine = {"chosen": True, "series": [{"id": sched["series"][0]["id"], "name": "Mazda Cup"}]}
     for api, want in ((CountingApi(), brand.MEMBER), (CountingApi(teams_raises=True), brand.UNKNOWN)):
         res = leaderboards.refresh(api, cfg, sched, mine, log=QUIET)
-        assert res["membership"] == want and res["team"]["name"] == "Overdriver Academy", res
+        assert res["membership"] == want and res["team"]["name"] == ("Overdriver Academy" if want == brand.MEMBER else "Your team"), res
     v = leaderboards.view(_newdir())
-    assert v["membership"] == brand.UNKNOWN and v["team"] == {"slug": brand.GROUP_SLUG, "name": brand.GROUP_NAME}
+    assert v["membership"] == brand.UNKNOWN and v["team"] == {"slug": "", "name": "Your team"}
 
 
 # ================================================================ 3. single source
-def test_team_slug_single_source():
-    assert app.DEFAULT_TEAM == brand.GROUP_SLUG
-    for f in ("leaderboards.py", "prep.py", "app.py", "team.py"):
-        assert '"midfield-menace"' not in (ROOT / "debrief" / f).read_text(encoding="utf-8"), f
-
-
-# ================================================================ 4. last race from the sync store
 def _seed_store(api, last_success, sessions, stopped=False):
     store = sync.Store.for_api(api)
     store.root.mkdir(parents=True, exist_ok=True)
@@ -621,3 +608,12 @@ if __name__ == "__main__":
             traceback.print_exc()
     print(f"{len(tests) - failed}/{len(tests)} passed")
     sys.exit(1 if failed else 0)
+def test_no_team_is_built_in():
+    assert app.DEFAULT_TEAM is None
+    bad = ("midfield", "overdriver", "menace", "josh spence", "kenta young")
+    for f in (ROOT / "debrief").rglob("*"):
+        if f.suffix in (".py", ".html", ".js") and "setuplab" not in f.name and f.is_file():
+            t = f.read_text(encoding="utf-8", errors="ignore").lower()
+            assert not any(b in t for b in bad), (f.name, [b for b in bad if b in t])
+
+

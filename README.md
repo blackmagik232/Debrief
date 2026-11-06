@@ -19,7 +19,7 @@ You need Windows 10 or 11. Microsoft Edge is used for the Debrief window (it com
 3. Click through the installer. It installs just for you (no admin password needed), adds Debrief to the Start menu and, if you leave the box ticked, to your desktop. Leave **Launch Debrief** ticked at the end.
 4. Debrief opens on a short getting-started guide. Practice, Setup Lab, the Coach and Racing work straight away, from the telemetry iRacing saves on your PC; only race reviews, your Garage 61 history and team features wait for Garage 61:
    - **Turn on telemetry in iRacing.** iRacing doesn't save telemetry until you turn it on: in the car, press **Alt+L** (or turn on telemetry recording in iRacing's settings), then drive a few laps. The checklist shows whether Debrief found your telemetry folder and any telemetry files (.ibt) in it.
-   - Make a free account at **garage61.net** and connect your iRacing account. If you're on a team, ask a teammate to invite you to it on Garage 61 (Midfield Menace drivers: see [Midfield Menace on Garage 61](#midfield-menace-on-garage-61) below).
+   - Make a free account at **garage61.net** and connect your iRacing account. If you're on a team, ask a teammate to invite you to it on Garage 61 (see [Teams on Garage 61](#teams-on-garage-61) below).
    - Request a personal access token at **garage61.net/developer**. It's free for personal, non-commercial use. Garage 61 checks each request by hand, so it can take a little while. Practice, Setup Lab, the Coach and Racing work while you wait.
    - Paste the token into Debrief and click **Save and check**. Debrief checks the connection straight away, then starts downloading your history in the background. If the check fails, the steps stay open and say why once. Waiting for Garage 61's email? Close Debrief; the steps are still there when you come back.
    - Click **Review last race** (or press **Ctrl+Enter**) once your race has uploaded to Garage 61.
@@ -92,7 +92,7 @@ The source-only launchers live in the `dev` folder (see `dev/README.md`).
 - **Privacy**: Debrief talks only to Garage 61 (your sync and reviews) and GitHub (the daily update check). Fonts ship inside the app.
 - **Multi-class races**: a review lists every teammate and followed driver who was in the same session, in any car or class (1 extra request; Garage 61 doesn't share the rest of the field). In a multi-class race, clean laps that lost their time in one short stretch (usually traffic) are left out of your pace and consistency numbers and listed in the review.
 - **Team member pages** (2.22): on the Team page click a member's name, in the **Members** strip, a leaderboard or a head-to-head, to see their best laps against yours, the corners where they are quicker and their latest laps. It uses only what the Team page already saved, so it asks Garage 61 for nothing; an empty part says why.
-- **Team**: the Midfield Menace hub. Its laps come from the Overdriver Academy group on Garage 61 (you need to be in it; until then the page shows how to join and your own sections still work). The three members are always listed, with a reason for anyone missing; other Overdriver Academy drivers are listed apart. Settings > Team sets the name, the members and the group. Click **Refresh team data** to get:
+- **Team**: the hub for the Garage 61 teams you are in. Its laps come from those teams, in any car; nothing about a team is typed in or built in, and the members are whatever Garage 61 lists (until you are in a team the page shows how to join and your own sections still work). Click **Refresh team data** to get:
   - **Leaderboards**: everyone's best clean lap at your six most recent tracks and cars, with you highlighted.
   - **Corner kings**: who is quickest through each corner, from each driver's best lap with telemetry (up to five drivers per track and car; the page says who was left out). Every teammate shows their iRating.
   - **Head-to-heads**: you against each teammate. The gap is your best minus theirs, so a minus number means you were quicker.
@@ -131,17 +131,15 @@ The Garage 61 API only shares laps from **you, your teammates, and drivers you f
 - Requests are spaced about a second apart; if Garage 61 asks Debrief to slow down, later requests in that run are spaced further apart.
 - Goals, race results, Season, Practice, Setup Lab and the Coach use no requests at all.
 
-## Midfield Menace and Overdriver Academy on Garage 61
+## Teams on Garage 61
 
-Debrief's team features are set up for the Midfield Menace team (a team brand; the app itself is by Black Magik Studios). The Team hub, the weekly leaderboards and the teammates' laps on Prep pages come from the **Overdriver Academy group on Garage 61** (Settings > Team can change it), so you need to be in it:
+Debrief's team features use whatever Garage 61 teams you are in; no team names are built into Debrief. The Team hub, the weekly leaderboards and the teammates' laps on Prep pages come from those teams, so you need to be in at least one:
 
 1. Make your Garage 61 account and connect iRacing (step 4 of the install).
-2. Ask a Midfield Menace teammate (or Overdriver) to invite you to the team on Garage 61, and accept the invite.
+2. Ask someone in a team to invite you to it on Garage 61, and accept the invite.
 3. In Debrief, open **Team** and press **Refresh**.
 
-Until you're on the team, the Team page, Prep pages and weekly leaderboards show a "Join Overdriver Academy on Garage 61" panel instead of empty boards. Your own reviews, Library, Season, Skills, Goals and Prepare work without it. **Settings > Team and extras > Team** shows whether Debrief sees you as a member.
-
-Developers who want to point Debrief at a different Garage 61 team can use **Advanced: use a different Garage 61 team** under that same card, or `team_slug` in settings.toml.
+Until you're in a team, the Team page, Prep pages and weekly leaderboards show a "Join a team on Garage 61" panel instead of empty boards. Your own reviews, Library, Season, Skills, Goals and Prepare work without it. **Settings > Team and extras > Team** shows the teams Debrief sees you in.
 
 The optional iRacing API credentials (`iracing_client_id` / `iracing_client_secret` in settings.toml) are still read if present, but no longer shown in Settings: nothing in Debrief needs them today, and typing a race result works without them.
 

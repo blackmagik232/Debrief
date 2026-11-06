@@ -428,7 +428,7 @@ def test_prep_teammates_keeps_much_quicker_driver_drops_partial_laps():
             mk = lambda slug, t, **x: {"lapTime": t, "driver": {"slug": slug, "firstName": slug.title()}, **x}
             return [mk("me", 90.0), mk("jake", 70.0), mk("tyler", 6.0, incomplete=True), mk("sam", 30.0),
                     mk("dom", 91.0)]
-    m = prep._teammates(Api(), 468, 190, "midfield-menace", 90.0, log=lambda x: None)
+    m = prep._teammates(Api(), 468, 190, "team-a", 90.0, log=lambda x: None)
     names = [x["slug"] for x in m["laps"]]
     assert names == ["jake", "dom"], names       # 22% quicker teammate kept; 6 s and 30 s partial laps dropped
     assert m["skipped"] == 2
@@ -460,7 +460,7 @@ def test_replace_retries_briefly_locked_files():
             results.save(f, "a", {"finish_pos": 4})
             assert prep.write(f, prep.build(None, f, 468, 190, None, log=lambda m: None)).exists()
             assert team.write(f, {"combos": [], "h2h": [], "team": {"name": "T"}}).exists()
-            settings_io.save({"team_slug": "midfield-menace"})
+            settings_io.save({"salutation": "Boss"})
             # always locked: gives up after fsutil.RETRIES tries and re-raises
             from debrief import fsutil
             fails.clear()
@@ -498,7 +498,7 @@ def test_replace_retries_briefly_locked_files():
             else:
                 os.environ["DEBRIEF_SETTINGS"] = old_env
         assert json.loads((f / "goals.json").read_text())["goals"][0]["target_s"] == 84.0
-        assert "midfield-menace" in st.read_text()
+        assert "Boss" in st.read_text()
 
 
 if __name__ == "__main__":

@@ -325,7 +325,7 @@ def test_h1_ci_workflow_split_and_signing():
 # ================================================================ M1: library pages sandboxed
 EVIL = """<!doctype html><html><head><title>Evil</title></head><body><script>
 window.__res = 'pending';
-fetch('../api/settings', {method: 'POST', headers: {'X-Debrief': '1'}, body: JSON.stringify({team_slug: 'pwned'})})
+fetch('../api/settings', {method: 'POST', headers: {'X-Debrief': '1'}, body: JSON.stringify({salutation: 'pwned'})})
   .then(r => r.json()).then(j => { window.__res = 'ok:' + JSON.stringify(j) }).catch(e => { window.__res = 'blocked' });
 try { window.__parent = String(parent.document.title) } catch (e) { window.__parent = 'blocked' }
 </script></body></html>"""
@@ -617,13 +617,13 @@ def test_l2_new_key_goes_before_tables():
 
 
 def test_l2_keys_inside_strings_and_tables_are_left_alone():
-    _save_with(f"token = 'PASTE'\nlibrary_folder = '{LIB}'\nmotd = \"\"\"\nteam_slug = \"in-a-string\"\n\"\"\"\n"
-               f"team_slug = \"real\"\n", {"team_slug": "new-team"})
+    _save_with(f"token = 'PASTE'\nlibrary_folder = '{LIB}'\nmotd = \"\"\"\nsalutation = \"in-a-string\"\n\"\"\"\n"
+               f"salutation = \"real\"\n", {"salutation": "new-team"})
     d = app._parse_toml(ST.read_text())
-    assert d["team_slug"] == "new-team" and 'team_slug = "in-a-string"' in d["motd"]
-    _save_with(f"library_folder = '{LIB}'\n[t]\nteam_slug = 'x'\n", {"team_slug": "top"})
+    assert d["salutation"] == "new-team" and 'salutation = "in-a-string"' in d["motd"]
+    _save_with(f"library_folder = '{LIB}'\n[t]\nsalutation = 'x'\n", {"salutation": "top"})
     d = app._parse_toml(ST.read_text())
-    assert d["team_slug"] == "top" and d["t"]["team_slug"] == "x"
+    assert d["salutation"] == "top" and d["t"]["salutation"] == "x"
     # a key whose value spans lines is replaced whole
     _save_with(f"library_folder = '{LIB}'\ntoken = '''\nold\n'''\nmax_reference_laps = 1\n", {"token": "abcdefgh123"})
     d = app._parse_toml(ST.read_text())
@@ -648,7 +648,7 @@ def test_l2_concurrent_saves_and_unique_temp():
 
     def go(i):
         try:
-            settings_io.save({"max_reference_laps": i % 4, "team_slug": f"team-{i}"})
+            settings_io.save({"max_reference_laps": i % 4, "salutation": f"team-{i}"})
         except Exception as e:  # noqa: BLE001
             errs.append(e)
     ts = [threading.Thread(target=go, args=(i,)) for i in range(12)]

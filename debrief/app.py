@@ -6,7 +6,7 @@ Usage:
     python -m debrief check           test the token and show what your account can access
     python -m debrief library         rebuild the library home page
     python -m debrief prep --track ID --car ID   build a track prep page for one track and car
-    python -m debrief team            update the Midfield Menace team hub
+    python -m debrief team            update the team hub (your Garage 61 teams)
     python -m debrief weekly          update this week's team leaderboards for your series
     python -m debrief sync            download your Garage 61 history (races and practice)
 """
@@ -26,7 +26,7 @@ from . import brand, engine, report, library
 from .engine import g
 from .g61 import Garage61, Garage61Error
 
-DEFAULT_TEAM = brand.GROUP_SLUG
+DEFAULT_TEAM = None   # 2.23.1: no team is built in; teams come from your Garage 61 account
 
 # Two ways Debrief runs:
 #  * from source (Setup.bat + .venv): everything lives in the Debrief folder next to the code, as always.
@@ -157,10 +157,8 @@ def load_settings() -> dict:
     cfg["max_reference_laps"] = max(0, min(3, int(cfg.get("max_reference_laps", 3))))
     cfg["include_practice"] = bool(cfg.get("include_practice", False))
     cfg["salutation"] = normalise_salutation(cfg.get("salutation", ""))
-    cfg["team_slug"] = str(cfg.get("team_slug") or DEFAULT_TEAM).strip().lower() or DEFAULT_TEAM
-    # 2.21: the team (a name and its members) is not the Garage 61 group the laps come from (team_slug above)
-    cfg["team_name"] = " ".join(str(cfg.get("team_name") or brand.TEAM_NAME).split())[:60] or brand.TEAM_NAME
-    cfg["team_members"] = brand.parse_members(cfg.get("team_members"))
+    for old in ("team_slug", "team_name", "team_members"):   # 2.23.1: no longer used; an old settings file is tolerated
+        cfg.pop(old, None)
     # history sync: catch up with Garage 61 each time the window opens; telemetry "best" or "none"
     cfg["sync_on_open"] = bool(cfg.get("sync_on_open", True))
     cfg["check_updates"] = bool(cfg.get("check_updates", True))
@@ -225,8 +223,8 @@ def _path_rx(parts: list) -> str:
 
 def _home_patterns() -> list:
     """(compiled regex, replacement) for the home folder in every form a log line can carry it: both slash
-    styles, doubled backslashes (a repr or JSON), URL-encoded (file:///C:/Users/Swazi%20Williams), and the
-    8.3 short name of the user's folder (C:\\Users\\SWAZIW~1)."""
+    styles, doubled backslashes (a repr or JSON), URL-encoded (file:///C:/Users/Alex%20Smith), and the
+    8.3 short name of the user's folder (C:\\Users\\ALEXSM~1)."""
     import re as _re
     pats, seen = [], set()
     for h in _home_forms():
@@ -239,7 +237,7 @@ def _home_patterns() -> list:
         lead = "" if drive else _SEP      # /home/x: the leading slash is part of the match
         flags = _re.IGNORECASE if os.name == "nt" or drive else 0
         pats.append((_re.compile(lead + _path_rx(parts) + _HOME_END, flags), "~"))
-        if len(parts) >= 2:                # the user's folder as an 8.3 short name: <parent>\SWAZIW~1
+        if len(parts) >= 2:                # the user's folder as an 8.3 short name: <parent>\ALEXSM~1
             pats.append((_re.compile(lead + _path_rx(parts[:-1]) + _SEP + r"[^\\/\s\"'<>|:*?]{1,8}~\d+" + _HOME_END,
                                      flags), "~"))
     return pats
@@ -1143,8 +1141,7 @@ def cmd_prep(cfg, track_id, car_id, progress=None, open_after=False) -> Path:
     step, log = _job_logger(progress)
     step("Getting your history at this track and car...", 0.04)
     api = make_api(cfg)
-    data = prep.build(api, cfg["library_folder"], track_id, car_id, cfg.get("team_slug") or None, log=log,
-                      members=cfg.get("team_members"))
+    data = prep.build(api, cfg["library_folder"], track_id, car_id, None, log=log)
     data.update(prep_strategy(cfg, api, data))
     step("Saving the prep page...", 0.95)
     page = prep.write(cfg["library_folder"], data)
@@ -1161,7 +1158,7 @@ def cmd_team(cfg, progress=None, open_after=False) -> Path:
     step, log = _job_logger(progress)
     step("Connecting to Garage 61...", 0.03)
     api = make_api(cfg)
-    data = team.build(api, cfg["library_folder"], cfg.get("team_slug") or DEFAULT_TEAM, log=log, max_combos=6, cfg=cfg)
+    data = team.build(api, cfg["library_folder"], None, log=log, max_combos=6, cfg=cfg)
     step("Saving the team hub...", 0.96)
     data["checked_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     data["cache_reused"] = (data.get("requests") or 0) == 0
@@ -1183,7 +1180,7 @@ def cmd_team_load(cfg, track, car, progress=None) -> Path:
     step, log = _job_logger(progress)
     step("Connecting to Garage 61...", 0.03)
     api = make_api(cfg)
-    data = team.load_combo(api, cfg["library_folder"], track, car, cfg.get("team_slug") or DEFAULT_TEAM, log=log, cfg=cfg)
+    data = team.load_combo(api, cfg["library_folder"], track, car, None, log=log, cfg=cfg)
     step("Saving the team hub...", 0.96)
     data["cache_reused"] = (data.get("requests") or 0) == 0
     page = team.write(cfg["library_folder"], data)

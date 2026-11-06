@@ -65,7 +65,7 @@ def team_24():
            {"key": "sam-y", "name": "Sam Y", "ahead": 0, "behind": 1, "corners_you": 3, "corners_them": 4, "shared": 1,
             "avg_gap": 0.173, "combos": [
                 {"track": TRACK, "track_short": "Roval", "car": CAR, "you": 97.018, "them": 96.845, "gap": 0.173, "corners": {"you": 3, "them": 4}}]}]
-    return {"version": 1, "team": {"slug": "midfield-menace", "name": "Midfield Menace"},
+    return {"version": 1, "team": {"slug": "team-a", "name": "Team A"},
             "me": {"name": "Test Driver", "key": "me"}, "generated_at": "2026-10-28T19:00:00+00:00",
             "combos": [roval, okayama], "h2h": h2h, "requests": 9,
             "notes": ["Showing your 6 most recent track and car combinations (1 older one left out to keep Garage 61 traffic light)."]}

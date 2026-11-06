@@ -1,4 +1,4 @@
-"""Team hub: leaderboards, corner kings and head-to-heads with your Garage 61 team (Midfield Menace).
+"""Team hub: leaderboards, corner kings and head-to-heads with the Garage 61 teams you are in.
 
 Only runs when you click "Refresh" in the Team view (or run `python -m debrief team`).
 
@@ -125,7 +125,7 @@ def team_roster(teams, slug) -> dict:
 
 
 def norm_name(s) -> str:
-    """A name for matching: no accents, no case, no spaces or dashes ("Kenta Young" == "kenta-young" == "KENTÁ YOUNG")."""
+    """A name for matching: no accents, no case, no spaces or dashes ("Alex Smith" == "alex-smith" == "ÁLEX SMITH")."""
     import unicodedata
     t = unicodedata.normalize("NFKD", str(s or ""))
     return "".join(ch for ch in t if ch.isalnum() and not unicodedata.combining(ch)).lower()
@@ -385,7 +385,6 @@ def can_refresh_teams(api) -> bool:
 def membership_for(api, slug=None, log=print) -> tuple[str, list | None]:
     """(brand.MEMBER / NOT_MEMBER / UNKNOWN, the teams list or None) from api.teams(), which the client
     caches for a day. UNKNOWN when the list couldn't be loaded: callers then carry on as before."""
-    slug = slug or brand.GROUP_SLUG
     try:
         teams = api.teams()
     except Exception as e:  # noqa: BLE001  (unknown membership never stops a page)
@@ -416,58 +415,36 @@ def membership_for(api, slug=None, log=print) -> tuple[str, list | None]:
 
 
 def resolve_group(teams, slug=None, log=None) -> dict:
-    """Which Garage 61 team the laps come from, self-correcting (2.21). Only ever a team you are in:
-    1 the slug asked for (Settings), 2 the team named like "Overdriver Academy", 3 the earlier default
-    (midfield-menace), 4 your only team. teams None = couldn't be read: the slug is kept, nothing is claimed.
-    Returns {"slug","name","why","ok","teams":[names]}."""
-    slug = slug or brand.GROUP_SLUG
+    """2.23.1: the Garage 61 teams you are in, all of them (nothing is built in or chosen for you). teams None =
+    couldn't be read. Returns {"slug" (the first), "slugs", "name" (all names), "why", "ok", "teams":[names]}."""
     mine = [t for t in (teams or []) if isinstance(t, dict) and (t.get("slug") or t.get("id"))]
     names = [str(t.get("name") or t.get("slug") or t.get("id")) for t in mine]
-
-    def pick(t, why):
-        sl = str(t.get("slug") or t.get("id"))
-        out = {"slug": sl, "name": brand.team_name_for(mine, sl), "why": why, "ok": True, "teams": names}
-        if log:
-            log(f"  Garage 61 team used for laps: {sl} ({why})")
-        return out
+    slugs = [str(t.get("slug") or t.get("id")) for t in mine]
     if teams is None:
-        return {"slug": slug, "name": brand.team_name_for(None, slug), "why": "your teams couldn't be read, so the saved one is kept",
-                "ok": True, "teams": []}
-    want = norm_name(slug)
-    t = next((t for t in mine if norm_name(t.get("slug") or t.get("id")) == want), None)
-    if t:
-        return pick(t, "the group set in Settings")
-    t = next((t for t in mine if norm_name(brand.GROUP_NAME) in (norm_name(t.get("name")), norm_name(t.get("slug") or t.get("id")))), None)
-    if t:
-        return pick(t, f"you are in a team named {brand.GROUP_NAME}")
-    t = next((t for t in mine if norm_name(t.get("slug") or t.get("id")) == norm_name(brand.TEAM_SLUG)), None)
-    if t:
-        return pick(t, "the earlier default team you are in")
-    if len(mine) == 1:
-        return pick(mine[0], "the only team you are in")
+        return {"slug": "", "slugs": [], "name": "", "why": "your Garage 61 teams couldn't be read", "ok": False, "teams": [],
+                "unread": True}
     if log:
-        log(f"  No Garage 61 team fits {slug}. You are in: {', '.join(names) or 'no teams'}")
-    return {"slug": slug, "name": brand.team_name_for(None, slug), "why": "none of your teams fits", "ok": False, "teams": names}
+        log(f"  Garage 61 teams used for laps: {', '.join(slugs) or 'none'} (every team you are in)")
+    return {"slug": slugs[0] if slugs else "", "slugs": slugs, "name": ", ".join(names), "why": "every team you are in",
+            "ok": bool(mine), "teams": names}
 
 
 def no_group_note(g) -> str:
-    return (f"None of your Garage 61 teams matches {g['slug']}. " + (f"You are in: {', '.join(g['teams'])}. " if g["teams"] else
-            "You are not in any Garage 61 team. ") + "Pick the right one in Settings > Team.")
+    if g.get("unread"):
+        return "Debrief couldn't read your Garage 61 teams this time. Press Refresh to try again."
+    return "You are not in any Garage 61 team yet, so there is nobody to compare with. " + brand.join_text()
 
 
 def team_info(slug=None, teams=None) -> dict:
     """{"slug", "name"} for a data dict: the display name, never the bare slug."""
-    slug = slug or brand.GROUP_SLUG
-    return {"slug": slug, "name": brand.team_name_for(teams, slug)}
+    return {"slug": slug or "", "name": brand.team_name_for(teams, slug) or "Your team"}
 
 
 # ---------------------------------------------------------------- 2.21: the team, the group, and the combos to look at
 def settings_of(cfg) -> dict:
-    """{"name", "members", "slug"} from the settings (defaults: Midfield Menace, its three drivers, Overdriver Academy)."""
-    cfg = cfg or {}
-    return {"name": str(cfg.get("team_name") or brand.TEAM_NAME), "slug": str(cfg.get("team_slug") or brand.GROUP_SLUG),
-            "members": (brand.parse_members(cfg.get("team_members")) if "team_members" in cfg else list(brand.MEMBERS))
-            if cfg else []}   # no settings at all (a bare call): no fixed team, everyone in the group counts
+    """2.23.1: nothing about teams is typed in or saved any more; old team_name / team_slug / team_members keys in a
+    settings file are ignored. Kept so callers have one shape."""
+    return {"name": "", "slug": "", "members": []}
 
 
 def prepare_combos(folder) -> list[dict]:
@@ -623,7 +600,7 @@ def discover_combos(api, slug, members, my_slug="", my_name="", log=print, track
         return ((getattr(e, "detail", "") or "") + " " + (str(e) or type(e).__name__)).replace("\n", " ").strip()[:200]
 
     def one(tids):
-        params = dict(teams=[slug], group="none", limit=1000, tracks=list(tids), age=-2)
+        params = dict(teams=list(slug), group="none", limit=1000, tracks=list(tids), age=-2)
 
         def go():
             state["sent"] += 1
@@ -678,7 +655,7 @@ def discover_combos(api, slug, members, my_slug="", my_name="", log=print, track
             try:
                 def go2(ch=ch, sl=sl):
                     state["sent"] += 1
-                    return list(fetch(teams=[slug], drivers=[sl], group="none", limit=1000, tracks=list(ch), age=-2)[0])
+                    return list(fetch(teams=list(slug), drivers=[sl], group="none", limit=1000, tracks=list(ch), age=-2)[0])
                 key = "discover?" + json.dumps({"d": sl, "t": ch}, sort_keys=True, default=str)
                 got = cached(key, go2, max_age_s=600) if callable(cached) else go2()
             except Exception as e:  # noqa: BLE001
@@ -753,7 +730,7 @@ def merge_combos(*lists) -> list[dict]:
 
 
 def who_note(entry, members, my_name="") -> str:
-    """"Josh, Kenta · you haven't driven this": which team members have a lap here."""
+    """"Alex, Sam · you haven't driven this": which team members have a lap here."""
     names = [r.get("name") for r in (entry.get("board") or []) if isinstance(r, dict) and r.get("key") != "me"]
     if not entry.get("loaded", True):
         names = [n for n in (entry.get("who") or []) if any(norm_name(n) == norm_name(m) for m in members)] \
@@ -769,17 +746,17 @@ def _ctx(api, team_slug, cfg, log):
     me = api.me() or {}
     my_slug = g(me, "slug", default="") or ""
     my_name = " ".join(filter(None, [g(me, "firstName", "firstname"), g(me, "lastName", "lastname")])) or my_slug or "You"
-    team_slug = team_slug or st["slug"] or brand.GROUP_SLUG
-    mem, teams_list = membership_for(api, team_slug, log)
-    grp = resolve_group(teams_list, team_slug, log)
+    mem, teams_list = membership_for(api, None, log)
+    grp = resolve_group(teams_list, None, log)
+    team_slugs = grp["slugs"]
     team_slug = grp["slug"]
     if teams_list is not None:
-        mem = brand.membership(teams_list, team_slug) if grp["ok"] else brand.NOT_MEMBER
-    group_name = brand.team_name_for(teams_list, team_slug) if grp["ok"] else grp["name"]
+        mem = brand.MEMBER if grp["ok"] else brand.NOT_MEMBER
+    group_name = grp["name"] or "Your teams"
     notes = [] if grp["ok"] else [no_group_note(grp)]
-    not_member = mem == brand.NOT_MEMBER
+    not_member = not grp["ok"]
     if not_member:
-        log(f"You're not in the {group_name} group on Garage 61, so no team laps were loaded.")
+        log("You're not in a Garage 61 team (or the list couldn't be read), so no team laps were loaded.")
     lists = {}
 
     def ids_for(c):
@@ -792,8 +769,8 @@ def _ctx(api, team_slug, cfg, log):
             cid = app.id_for_name(lists["cars"], c["car"])
         return tid, cid
     return {"st": st, "members": st["members"], "my_slug": my_slug, "my_name": my_name, "team_slug": team_slug,
-            "mem": mem, "teams": teams_list, "grp": grp, "group_name": group_name, "not_member": not_member,
-            "roster": team_roster(teams_list, team_slug), "notes": notes, "ids_for": ids_for,
+            "team_slugs": team_slugs, "mem": mem, "teams": teams_list, "grp": grp, "group_name": group_name, "not_member": not_member,
+            "roster": {k: v for sl in team_slugs for k, v in team_roster(teams_list, sl).items()}, "notes": notes, "ids_for": ids_for,
             "track_items": api.cached_items("tracks") or []}
 
 
@@ -804,7 +781,7 @@ def _load_entry(api, ctx, c, seen, log, label="") -> dict:
              "car_id": c["car_id"], "races": c["races"], "last_date": library.local_day(c["last"]) or None,
              "board": [], "academy": [], "kings": None, "note": None, "mate_notes": [], "loaded": True}
     try:   # 2.21: one combination failing never costs the others
-        _build_combo(api, entry, c, ctx["ids_for"], ctx["track_items"], ctx["team_slug"], ctx["not_member"],
+        _build_combo(api, entry, c, ctx["ids_for"], ctx["track_items"], ctx["team_slugs"], ctx["not_member"],
                      ctx["my_slug"], ctx["my_name"], ctx["members"], ctx["group_name"], ctx["roster"], seen, log)
     except Exception as e:  # noqa: BLE001
         import traceback
@@ -877,7 +854,7 @@ def _assemble(ctx, out_combos, api, start_req, folder, notes, cfg, log) -> dict:
         if m not in matched:
             n_s = max(ctx.get("searched_tracks") or 0, loaded)
             row["problem"] = (f"No laps found for {m} at the {n_s} tracks searched. If they have driven elsewhere, open "
-                              "that track; if Garage 61 shows them under another name, change it in Settings > Team."
+                              "that track."
                               if (seen or ctx["roster"]) and not ctx["not_member"] and n_s else
                               f"Not seen yet: no {group_name} laps have been loaded, so this name couldn't be matched.")
         member_rows.append(row)
@@ -892,7 +869,8 @@ def _assemble(ctx, out_combos, api, start_req, folder, notes, cfg, log) -> dict:
         "team": {"slug": ctx["team_slug"], "name": group_name},          # the Garage 61 group (kept for older readers)
         "group": {"slug": ctx["team_slug"], "name": group_name, "why": grp["why"], "ok": grp["ok"]},
         "laps_from": f"Laps come from {group_name} on Garage 61." if grp["ok"] else no_group_note(grp),
-        "team_name": ctx["st"]["name"],
+        "team_name": group_name,
+        "teams": [{"slug": sl, "name": nm} for sl, nm in zip(grp["slugs"], grp["teams"])],
         "members": member_rows,
         "membership": ctx["mem"],
         "me": {"name": ctx["my_name"], "key": "me"},
@@ -937,13 +915,13 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
         else:
             log("No reviews in your library yet.")
     info_roster = {}
-    try:
-        info = api.team_info(ctx["team_slug"]) if callable(getattr(api, "team_info", None)) and not ctx["not_member"] else None
-        info_roster = roster_from_info(info)
-        if info is not None:
-            log(f"  Garage 61 team info: {len(info_roster)} members listed")
-    except Exception as e:  # noqa: BLE001
-        log(f"  Garage 61 team info unavailable: {getattr(e, 'status', None) or type(e).__name__}")
+    for sl in ([] if ctx["not_member"] or not callable(getattr(api, "team_info", None)) else ctx["team_slugs"]):
+        try:
+            got = roster_from_info(api.team_info(sl))
+            info_roster.update(got)
+            log(f"  Garage 61 team info for {sl}: {len(got)} members listed")
+        except Exception as e:  # noqa: BLE001
+            log(f"  Garage 61 team info unavailable for {sl}: {getattr(e, 'status', None) or type(e).__name__}")
     if info_roster:
         ctx["roster"] = {**info_roster, **ctx["roster"]}
     stats, stats_note = team_stats(api, ctx, log)
@@ -953,11 +931,14 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
     for r in stats or []:
         if r["slug"] and r["slug"] != ctx["my_slug"]:
             ctx.setdefault("extra_seen", {})[r["slug"]] = r["name"]
+    # members come from Garage 61 only: the team's own member list, else the statistics, else (in _assemble) the drivers seen
+    ctx["members"] = _members_from(ctx, stats)
+    log(f"  Team members from Garage 61: {len(ctx['members'])}")
     races = race_groups(api, ctx, log)
     cand = candidate_track_ids(api, folder, mine, first=[c["track_id"] for c in scombos])
     log(f"Team: {len(cand)} candidate tracks to search for teammates (your last {DISCOVER_DAYS} days, the series, the last page)")
     found, disc_note = ([], "Garage 61 couldn't list the team's tracks; showing tracks Debrief already knows.") \
-        if ctx["not_member"] else discover_combos(api, ctx["team_slug"], ctx["members"], ctx["my_slug"], ctx["my_name"], log,
+        if ctx["not_member"] else discover_combos(api, ctx["team_slugs"], ctx["members"], ctx["my_slug"], ctx["my_name"], log,
                                                   track_ids=cand, member_slugs=_member_slugs(ctx))
     ctx["searched_tracks"] = len(cand)
     allc = order_combos(mine, merge_combos(scombos, found, stored_combos(folder)))
@@ -1011,6 +992,8 @@ def load_combo(api, folder, track, car, team_slug=None, log=print, cfg=None) -> 
     if idx is None:
         raise ValueError("That track and car isn't on the Team page. Refresh team data first.")
     ctx = _ctx(api, team_slug, cfg, log)
+    ctx["members"] = [str(m["name"]) for m in data.get("members") or [] if isinstance(m, dict) and m.get("name")] or \
+        _members_from(ctx, None)
     old = combos[idx]
     c = {"track": old["track"], "car": old["car"], "track_id": old.get("track_id"), "car_id": old.get("car_id"),
          "races": old.get("races") or 0, "best": None, "best_date": None, "last": str(old.get("last_date") or "")}
@@ -1021,6 +1004,17 @@ def load_combo(api, folder, track, car, team_slug=None, log=print, cfg=None) -> 
     out = _assemble(ctx, combos, api, start_req, folder, [n for n in data.get("notes") or [] if isinstance(n, str)], cfg, log)
     out["checked_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return out
+
+
+def _members_from(ctx, stats) -> list:
+    names = {}
+    for sl, nm in (ctx.get("roster") or {}).items():
+        names.setdefault(norm_name(nm), nm)
+    if not names:
+        for r in stats or []:
+            if r.get("name"):
+                names.setdefault(norm_name(r["name"]), r["name"])
+    return sorted(names.values(), key=str.lower)
 
 
 def _member_slugs(ctx) -> dict:
@@ -1049,12 +1043,19 @@ def team_stats(api, ctx, log, now=None) -> tuple:
     if ctx["not_member"] or not callable(fn):
         return None, ""
     start = ((now or datetime.now(timezone.utc)) - timedelta(days=STATS_DAYS)).strftime("%Y-%m-%dT00:00:00Z")
-    try:
-        raw = list(fn(ctx["team_slug"], start) or [])
-    except Exception as e:  # noqa: BLE001
+    raw, failed = [], None
+    for sl in ctx["team_slugs"]:
+        try:
+            raw += list(fn(sl, start) or [])
+        except Exception as e:  # noqa: BLE001
+            failed = e
+            st = getattr(e, "status", None)
+            msg = ((getattr(e, "detail", "") or "") + " " + (str(e) or type(e).__name__)).replace("\n", " ").strip()[:200]
+            log(f"  Garage 61 team statistics refused for {sl}: {st or type(e).__name__} {msg}")
+    if failed is not None and not raw:
+        e = failed
         st = getattr(e, "status", None)
         msg = ((getattr(e, "detail", "") or "") + " " + (str(e) or type(e).__name__)).replace("\n", " ").strip()[:200]
-        log(f"  Garage 61 team statistics refused: {st or type(e).__name__} {msg}")
         return None, (f"Garage 61 wouldn't share the team's driving statistics ({st or type(e).__name__}), so Debrief "
                       "searched the tracks you drove instead.")
     raw = [r for r in raw if isinstance(r, dict)]
@@ -1144,7 +1145,7 @@ def race_groups(api, ctx, log, n=2, now=None) -> list[dict]:
             break
         short = library.short_track_name(s_.get("track") or f"Track {s_['track_id']}")
         try:
-            laps = list(api.find_laps(event=s_["event"], tracks=[s_["track_id"]], teams=[ctx["team_slug"]],
+            laps = list(api.find_laps(event=s_["event"], tracks=[s_["track_id"]], teams=ctx["team_slugs"],
                                       unclean=True, group="driver", limit=200))
         except Exception as e:  # noqa: BLE001
             log(f"  Same-race search failed for {short}: {type(e).__name__}: {e}")
@@ -1214,6 +1215,10 @@ def order_combos(owner, others) -> list[dict]:
 
 
 def settings_stamp(cfg) -> str:
+    return "teams-from-garage61"
+
+
+def _old_settings_stamp(cfg) -> str:
     """A short fingerprint of the team settings a page was built with, so a change can mark the page out of date."""
     st = settings_of(cfg)
     return "|".join([st["name"], st["slug"]] + st["members"])
@@ -1269,7 +1274,7 @@ def _log_rows(log, rows, members):
             f"{', '.join(sorted(e['tracks'])) or 'not named'}; cars: {', '.join(sorted(e['cars'])) or 'not named'}")
 
 
-def _build_combo(api, entry, c, ids_for, track_items, team_slug, not_member, my_slug, my_name, members, group_name,
+def _build_combo(api, entry, c, ids_for, track_items, team_slugs, not_member, my_slug, my_name, members, group_name,
                  roster_g61, seen_drivers, log):
     tid, cid = ids_for(c)
     entry["track_id"], entry["car_id"] = tid, cid
@@ -1281,12 +1286,12 @@ def _build_combo(api, entry, c, ids_for, track_items, team_slug, not_member, my_
     # another car, and a teammate may have driven a class you did not. Every lap is kept and grouped by class below.
     cars_by_id = _cars_by_id(api)
     my_cls = _class_label(cars_by_id, cid, c["car"])
-    first = [] if not_member else list(api.find_laps(tracks=[tid], teams=[team_slug], group="driver", age=-2, limit=100))
+    first = [] if not_member else list(api.find_laps(tracks=[tid], teams=team_slugs, group="driver", age=-2, limit=100))
     raw_rows, fetch_failed = list(first), False
     if not not_member:   # all their laps (one more request, cached 10 min): the best lap in each class, race laps included
         try:
             have = {g(l, "id") for l in raw_rows if g(l, "id") is not None}
-            raw_rows += [l for l in api.find_laps(tracks=[tid], teams=[team_slug], group="none", age=-2, limit=1000)
+            raw_rows += [l for l in api.find_laps(tracks=[tid], teams=team_slugs, group="none", age=-2, limit=1000)
                          if g(l, "id") is None or g(l, "id") not in have]
         except Exception as e:  # noqa: BLE001
             fetch_failed = True
@@ -1494,7 +1499,7 @@ def write(folder, data, unit=None) -> Path:
     except Exception:  # noqa: BLE001  (words in the wrong unit are better than no page)
         data.setdefault("units", "mph")
     try:   # the join words name the Garage 61 group (from the data), not a brand constant
-        gname = ((data.get("group") or {}).get("name")) or ((data.get("team") or {}).get("name")) or brand.GROUP_NAME
+        gname = ((data.get("group") or {}).get("name")) or ((data.get("team") or {}).get("name")) or "your Garage 61 team"
         data["brand"] = {**brand.as_dict(), "join_title": brand.join_title(gname), "join_text": brand.join_text(gname)}
     except Exception:  # noqa: BLE001
         pass

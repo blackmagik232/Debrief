@@ -31,7 +31,7 @@ def test_installer_publisher_is_the_brand_and_upgrade_ids_unchanged():
     from debrief import brand
     iss = _read(ROOT / "packaging" / "debrief.iss")
     pub = re.search(r"^AppPublisher=(.+)$", iss, re.M).group(1).strip()
-    assert pub == brand.PUBLISHER == "Black Magik Studios", pub    # 2.18: the maker; Midfield Menace is a team brand
+    assert pub == brand.PUBLISHER == "Black Magik Studios", pub    # 2.18: the maker; Team A is a team brand
     # upgrades from 2.5.0 must still install over the old copy: same AppId and install folder
     assert "AppId={{14DA940F-67E3-4A45-8F42-4FC631C59763}" in iss
     assert re.search(r"^DefaultDirName=\{localappdata\}\\Programs\\\{#AppName\}$", iss, re.M)
@@ -70,7 +70,7 @@ def test_readme_for_buddies():
     assert "Sync each time Debrief opens" in s and "Check for updates when Debrief opens" in s
     assert "2.2.1" not in s
     assert "**Skills**" in s
-    assert "## Midfield Menace and Overdriver Academy on Garage 61" in s and "invite you to the team on Garage 61" in s
+    assert "## Teams on Garage 61" in s and "invite you to it on Garage 61" in s
     assert "still work if you ever need them" not in s          # the .bat files aren't recommended any more
     assert "Ctrl+Enter" in s and "Ctrl+R" not in s         # 2.18: Review last race moved off the reload key
 
@@ -104,13 +104,13 @@ def test_templates_are_branded():
     # 2.18: your own reviews and library carry the app's name; the team's name is for team features
     assert "<title>Debrief · Race Review</title>" in rv
     assert "<title>Debrief · Library</title>" in lib
-    assert "<title>Midfield Menace · Prep</title>" in prep
-    assert "<title>Midfield Menace · Team hub</title>" in team
+    assert "<title>Team · Prep</title>" in prep
+    assert "<title>Team hub</title>" in team
     # share card footer: DEBRIEF · BLACK MAGIK STUDIOS (2.18: the maker, not the team)
     assert "x.fillText('Debrief · Black Magik Studios'.toUpperCase(),W-64,H-48)" in rv
     assert "GARAGE 61 TELEMETRY" not in rv
     # the Team page never shows a bare slug as its heading
-    assert '<h1 id="title">Midfield Menace</h1>' in team
+    assert '<h1 id="title">Team hub</h1>' in team
     assert "(D&&typeof D.team_name==='string'&&D.team_name.trim())||BRAND_NAME" in team   # 2.21: the team's name, never the group's slug
     # join panels when Garage 61 says you're not on the team
     for s in (team, prep):
@@ -118,7 +118,7 @@ def test_templates_are_branded():
     for s in (rv, lib, prep, team):
         assert "debrief-key" in s                       # Ctrl+R / Ctrl+, from inside a page reach the window
     for s in (prep, team):
-        assert "Midfield Menace" in s
+        assert "midfield" not in s.lower() and "overdriver" not in s.lower()
 
 
 def test_team_template_join_panel_in_browser():
@@ -127,7 +127,7 @@ def test_team_template_join_panel_in_browser():
         return
     data = {"version": 1, "team": {"slug": "overdriver-academy", "name": "Overdriver Academy"}, "group": {"slug": "overdriver-academy", "name": "Overdriver Academy"}, "me": {"name": "You", "key": "me"},
             "membership": "not_member", "combos": [], "requests": 0,
-            "brand": {"team_name": "Midfield Menace", "join_title": "Join Overdriver Academy on Garage 61",
+            "brand": {"team_name": "Team A", "join_title": "Join Overdriver Academy on Garage 61",
                       "join_text": "Ask a teammate to invite you.", "team_url": "https://garage61.net"}}
     html = _read(TPL / "team.html").replace("window.TEAM=/*TEAM*/null;", "window.TEAM=" + json.dumps(data) + ";")
     pg = b.new_page()
@@ -139,7 +139,7 @@ def test_team_template_join_panel_in_browser():
         info = pg.evaluate("""() => ({title: document.title, h1: document.getElementById('title').textContent,
             join: !document.getElementById('join').hidden, jt: document.getElementById('joinTitle').textContent,
             kings: document.getElementById('kings').hidden, h2h: document.getElementById('h2h').hidden})""")
-        assert info == {"title": "Midfield Menace · Team hub", "h1": "Midfield Menace", "join": True,
+        assert info == {"title": "Team hub", "h1": "Team hub", "join": True,
                         "jt": "Join Overdriver Academy on Garage 61", "kings": True, "h2h": True}, info
         assert not errs, errs
     finally:
@@ -149,8 +149,8 @@ def test_team_template_join_panel_in_browser():
 # ---------------------------------------------------------------- window (static)
 def test_window_static_bits():
     js, html = _read(UI / "app.js"), _read(UI / "index.html")
-    assert "<title>Debrief · by Black Magik Studios</title>" in html and "Midfield Menace</div>" not in html
-    assert "let teamSlug='midfield-menace'" not in js and "api('brand')" in js
+    assert "<title>Debrief · by Black Magik Studios</title>" in html and "Team A</div>" not in html
+    assert "let teamSlug='team-a'" not in js and "api('brand')" in js
     # one heartbeat source: the worker; the main thread pings every 5 s only if the worker can't start
     assert js.count("setInterval(ping,5000)") == 1 and "catch(e){setInterval(ping,5000)}" in js
     # first screen loads side by side
@@ -206,14 +206,14 @@ def _api(token=True, reviews=True, **over):
         {"track": "Spa", "car": "GT3", "reviews": [
         {"dir": "2026-10-25_spa", "date": "2026-10-25", "started_at": "2026-10-25T12:00:00Z", "best": "2:18.000", "session": "Race", "laps": 9}]}]
     a = {"settings": {"ok": True, "token_saved": token, "token_hint": "…abcd", "version": "2.6.0", "installed": True,
-                      "data_folder": "C:/x", "team_slug": "overdriver-academy", "max_reference_laps": 2},
-         "brand": {"app_name": "Debrief", "publisher": "Midfield Menace", "team_slug": "midfield-menace",
-                   "team_name": "Midfield Menace", "team_short": "MM", "team_url": "https://garage61.net",
-                   "join_title": "Join Midfield Menace on Garage 61", "join_text": "Ask a teammate to invite you."},
+                      "data_folder": "C:/x", "max_reference_laps": 2},
+         "brand": {"app_name": "Debrief", "publisher": "Team A", "team_slug": "team-a",
+                   "team_name": "Team A", "team_short": "MM", "team_url": "https://garage61.net",
+                   "join_title": "Join Team A on Garage 61", "join_text": "Ask a teammate to invite you."},
          "reviews": {"ok": True, "folder": "C:/lib", "groups": groups if reviews else []},
          "status": {"state": "idle"}, "sync": {"ok": True, "skipped": True}, "update": {"ok": True, "skipped": True},
          "pages": {"ok": True, "prep": []},
-         "teams": {"ok": True, "token": token, "team_slug": "overdriver-academy", "teams": [{"slug": "other", "name": "Other"}]},
+         "teams": {"ok": True, "token": token, "teams": []},
          "weekly": {"ok": True, "available": True, "schedule": True, "membership": "not_member", "plan": {"series": []}}}
     a.update(over)
     return a
@@ -359,8 +359,8 @@ def test_window_opens_on_last_race_shortcuts_and_banners():
         st = pg.evaluate("""() => ({extras: document.getElementById('pExtras').open, ir: document.getElementById('pIracing').hidden,
             team: document.getElementById('teamLine').textContent, adv: false})""")
         assert st["extras"] is False and st["ir"] is True and st["adv"] is False, st
-        pg.wait_for_function("() => document.getElementById('teamLine').textContent.includes('not in it yet')")
-        assert pg.text_content("#teamLine") == "Team: Midfield Menace. Laps come from the Garage 61 group Overdriver Academy \u2014 you are not in it yet (join on Garage 61)"
+        pg.wait_for_function("() => document.getElementById('teamLine').textContent.includes('not in a team yet')")
+        assert pg.text_content("#teamLine") == "Teams: you are not in a team yet (join one on Garage 61)"
         # 2.18: Ctrl+R neither reloads nor starts a review; Ctrl+Enter = Review last race; the error banner stays until it's closed
         pg.evaluate("() => { window.__alive = 1 }")
         pg.keyboard.press("Control+r")
@@ -404,8 +404,8 @@ def test_window_sessions_page_by_page_and_team_join():
         # Team: not on the team -> the join panel (no team page saved yet in this mock)
         pg.click(".navbtn[data-nav=team]")
         pg.wait_for_function("() => !document.getElementById('teamJoin').hidden", timeout=10000)
-        assert pg.text_content("#teamTitle") == "Midfield Menace"
-        assert pg.text_content("#teamJoin .joinTitle") == "Join Overdriver Academy on Garage 61"
+        assert pg.text_content("#teamTitle") == "Team hub"
+        assert pg.text_content("#teamJoin .joinTitle") == "Join a team on Garage 61"
         assert not errs, errs
     finally:
         ctx.close()

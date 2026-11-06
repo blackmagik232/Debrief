@@ -2,8 +2,11 @@
 
 ## 2.23.1
 
+Team pages now use whatever Garage 61 teams you're in; no team names are built into Debrief.
+
 Teammates now show up even when they drove a different car in the same race. Fix for the Team page showing Josh Spence with no laps although all three of you raced Spa together.
 
+- **Teams and members come from Garage 61 only.** Settings > Team no longer asks for a team name, group or member list: Debrief reads every team you are in, lists the members Garage 61 gives (the team's member list, else the team statistics, else the drivers it sees), and says "Join a team on Garage 61" if you are in none. Old team settings are ignored.
 - **Teammates are searched by track, not by your car.** In GT3 and GT4 each of you can drive a different make. Debrief now asks Garage 61 for every teammate lap at the track, keeps every car, and shows each person's best lap in each class with their car, for example "Josh Spence · Lamborghini Huracán GT3 EVO". Positions and gaps are worked out inside one class only; a class you did not drive there says "You haven't driven this class here". Josh's member page lists his tracks with his car.
 - **Your newest race comes first.** The Team page now starts from your synced Garage 61 sessions, so tonight's race is the first track even before it has a saved review. One row per track.
 - **Fewer, smarter Garage 61 questions.** Garage 61 allows only 10 tracks per search (the old all-tracks search was refused every time). Debrief now searches your last 60 days of tracks, the series pick, and every track a teammate was seen at on the last Team page and the series boards, 10 at a time, at most 4 searches per Refresh, and shrinks the batch if Garage 61 names a lower limit. If a team member still has no laps, one more search asks for just that person's laps on the next tracks, while under the 4-search cap. Race laps count: no session-type, clean-lap or date filter is used (only the existing age window).

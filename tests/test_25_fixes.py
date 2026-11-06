@@ -101,7 +101,7 @@ def mine(sched):
 
 
 def lib():
-    return {"library_folder": str(Path(tempfile.mkdtemp(dir=TMP))), "team_slug": "midfield-menace"}
+    return {"library_folder": str(Path(tempfile.mkdtemp(dir=TMP)))}
 
 
 def at(dt):

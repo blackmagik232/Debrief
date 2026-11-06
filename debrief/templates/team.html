@@ -574,7 +574,8 @@ else{sel.addEventListener('change',()=>kings(+sel.value));kings(0)}
 
 // ---------- footer
 $('reqs').textContent='Garage 61 requests used: '+(ok(D.requests)?D.requests:'–');
-const notes=(Array.isArray(D.notes)?D.notes:[]).concat([
+const TS=D.team_sync&&typeof D.team_sync==='object'?D.team_sync:null;
+const notes=(Array.isArray(D.notes)?D.notes:[]).concat(TS?[TS.message].concat(TS.notes||[],TS.lines||[]).filter(x=>typeof x==='string'&&x):[]).concat([
   'Garage 61 only shares laps from you, your teammates and drivers you follow. Teammates without a clean lap at a track and car are left out there.',
   'Gaps compare best laps from different days, setups and track conditions, so treat them as a rough guide.',
   'Debrief only contacts Garage 61 when you click Refresh. Telemetry it has downloaded before is reused.']);

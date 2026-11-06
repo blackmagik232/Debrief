@@ -91,7 +91,7 @@ def _corner_lines(c, key, name):
     return [x[1] for x in out[:6]]
 
 
-def view(data, name, unit="mph") -> dict:
+def view(data, name, unit="mph", lib_root=None) -> dict:
     """The member page as plain data. {"ok": False, "message"} for an unknown name."""
     hit = find(data, name)
     if hit is None:
@@ -152,6 +152,14 @@ def view(data, name, unit="mph") -> dict:
     out = {"ok": True, "records": rec, "name": disp, "key": key, "is_me": is_me, "irating": best_ir, "tracks": tracks,
            "unloaded": unloaded, "corners": [{"track": a, "text": units.convert_text(b, unit)} for a, b in corners],
            "latest": latest, "last_lap": last or None, "refreshed": data.get("generated_at"), "why": why}
+    if lib_root is not None:   # 2.24: the team library (Refresh team data); nothing is asked of Garage 61
+        try:
+            from . import teamsync
+            out["library"] = teamsync.member_sessions(lib_root, disp)
+        except Exception:  # noqa: BLE001
+            out["library"] = {"found": False, "why": "The team library couldn't be read (details are in debrief.log)."}
+        if out["library"].get("found"):
+            why.pop("consistency", None)
     return out
 
 
@@ -211,7 +219,20 @@ def html(v) -> str:
         h.append("<ul>" + "".join(f"<li><span class=m>{e(c['track'])}</span> — {e(c['text'])}</li>" for c in v["corners"]) + "</ul>"
                  if v["corners"] else "<p class=m>" + e(v["why"].get("corners", "No corner comparison to show.")) + "</p>")
         h.append("</div>")
-    h.append("<div class=c><h2>How steady</h2><p class=m>" + e(v["why"]["consistency"]) + "</p></div>")
+    lib = v.get("library")
+    if lib is not None:
+        if lib.get("found"):
+            h.append(f"<div class=c><h2>Synced sessions</h2><p class=m>{lib['laps']} laps · last synced {e(lib['last_synced_text'])} · "
+                     f"{len(lib['tracks'])} tracks, {len(lib['cars'])} cars</p><table><tr><th>Date</th><th>Track</th><th>Car</th>"
+                     "<th>Type</th><th>Laps</th><th>Best</th><th>Typical</th></tr>" + "".join(
+                         f"<tr><td>{e(s['date'])}</td><td>{e(s['track'])}</td><td>{e(s['car'])}</td><td>{e(s['type'])}</td>"
+                         f"<td>{s['laps']}</td><td>{e(_lap(s['best']))}{' (not clean)' if s['only_unclean'] else ''}</td>"
+                         f"<td>{e(_lap(s['typical']))}</td></tr>" for s in lib["sessions"][:40]) + "</table></div>")
+            h.append("<div class=c><h2>How steady</h2><p class=m>" + e(lib["consistency"]) + "</p></div>")
+        else:
+            h.append("<div class=c><h2>Synced sessions</h2><p class=m>" + e(lib["why"]) + "</p></div>")
+    if "consistency" in v["why"]:
+        h.append("<div class=c><h2>How steady</h2><p class=m>" + e(v["why"]["consistency"]) + "</p></div>")
     h.append("<div class=c><h2>Latest laps</h2>")
     h.append("<table><tr><th>Date</th><th>Track and car</th><th>Time</th></tr>" + "".join(
         f"<tr><td>{e(r['date'])}</td><td>{e(r['label'])}</td><td>{e(r['time'])}</td></tr>" for r in v["latest"]) + "</table>"
@@ -233,4 +254,10 @@ def page_for(library_folder, name, unit="mph") -> str:
         data = json.loads((Path(library_folder) / "team" / "team.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return html({"ok": False, "message": "The Team page hasn't been built yet. Open Team and press Refresh team data."})
-    return html(view(data, name, unit))
+    root = None
+    try:
+        from . import teamsync
+        root = teamsync.root_from_library(library_folder)
+    except Exception:  # noqa: BLE001
+        pass
+    return html(view(data, name, unit, root))

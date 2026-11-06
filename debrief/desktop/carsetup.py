@@ -53,8 +53,8 @@ NAME_OK = re.compile(r"^[^\x00-\x1f/\\<>:\"|?*]{1,160}$")
 SETUP_ID_OK = re.compile(r"^(all|[A-Z]{1,3})$")
 
 GET_ROUTES = ("api/balance", "api/handling", "api/pressure", "api/setuplab/share", "api/teamref", "api/teamref/cards",
-              "api/teamref/laps", "api/teamref/for-review")
-POST_ROUTES = ("api/pressure/predict", "api/handling/feel", "api/teamref/forget", "api/teamref/coach", "api/teamref/keep")
+              "api/teamref/laps", "api/teamref/for-review", "api/teamsync/summary")
+POST_ROUTES = ("api/pressure/predict", "api/handling/feel", "api/teamref/forget", "api/teamref/coach", "api/teamref/keep", "api/teamref/use", "api/teamsync/hide")
 UPLOAD_ROUTE = "api/teamref/upload"
 
 
@@ -879,6 +879,66 @@ def team_notes(cfg, car_name, track_name) -> list:
     return []
 
 
+def synced_laps(cfg, car_name, track_name) -> list:
+    """2.24: the team library's best laps at this car and track (no requests)."""
+    from .. import teamsync
+    root = teamsync.root_from_library(cfg["library_folder"]) if cfg.get("library_folder") else None
+    if root is None or not (car_name and track_name):
+        return []
+    return teamsync.laps_for(root, car_name, track_name, lambda c, t: _same_names(c, t, car_name, track_name))
+
+
+def post_teamref_use(h, body):
+    """2.24: use a synced teammate lap (its telemetry is already on this PC, or one request fetches it) as the reference."""
+    from .. import teamref, teamsync
+    cfg = h._cfg()
+    car, track = _combo(body)
+    root = teamsync.root_from_library(cfg["library_folder"])
+    if root is None:
+        raise ValueError("No team data is synced yet. Press Refresh team data on the Team page.")
+    names = {}
+    recs = _records(_index(h.server, cfg), car, track)
+    if recs:
+        c, t = recs[-1].get("car") or {}, recs[-1].get("track") or {}
+        names = {"car": c.get("name") or "", "track": " ".join(x for x in (t.get("name"), f"({t['config']})" if t.get("config") else "") if x)}
+    lap = next((x for x in synced_laps(cfg, names.get("car"), names.get("track")) if x["lap_id"] == str(body.get("lap_id"))), None)
+    if lap is None:
+        raise ValueError("That teammate lap isn't in the team library for this car and track.")
+    if not lap["usable"]:
+        raise ValueError(lap["note"])
+    csv = app.make_api(cfg).lap_csv(lap["lap_id"])
+    if csv is None:
+        raise ValueError("Garage 61 hasn't shared telemetry for this lap.")
+    res = teamref.load_reference_csv(csv, lap["lap"], lap["driver"], teamsync.track_length(root, lap["team"], lap["track_id"]),
+                                     names.get("car", ""), names.get("track", ""), car, track)
+    if not res.get("ok"):
+        raise ValueError(res.get("reason") or "This lap can't be used.")
+    e = _team_entry(res, False)
+    st = state(h.server)
+    k = _team_key(car, track)
+    with st.lock:
+        st.team[k] = e
+        st.team_all[k + (dkey(e["summary"]),)] = e
+        st.team_cards = {kk: v for kk, v in st.team_cards.items() if kk[:2] != k}
+    return h._json({"ok": True, "teammate": _team_public(e, h.server, car, track)})
+
+
+def get_teamsync_summary(h, q):
+    """2.24: your teams, the teammates a comparison could use, and what teammates have at one track. No requests."""
+    from .. import schedule, teamsync
+    cfg = h._cfg()
+    root = teamsync.root_from_library(cfg["library_folder"]) if cfg.get("library_folder") else None
+    track = (q.get("track") or [""])[0] if isinstance(q.get("track"), list) else str(q.get("track") or "")
+    return h._json(teamsync.summary(root, cfg.get("library_folder"), track[:200] or None, schedule.same_track))
+
+
+def post_teamsync_hide(h, body):
+    from .. import teamsync
+    cfg = h._cfg()
+    teamsync.set_hidden(cfg["library_folder"], str(body.get("slug") or "")[:80], body.get("hidden") is True)
+    return h._json({"ok": True})
+
+
 def get_teamref_laps(h, q):
     """The teammate laps Debrief already has for this car + track: the telemetry lap in use (loaded or kept) and
     the team page's Garage 61 lap times, plus how to get a teammate's file. No requests."""
@@ -897,7 +957,8 @@ def get_teamref_laps(h, q):
         names = {}
     board = team_board(cfg, names.get("car"), names.get("track")) if names else []
     notes = team_notes(cfg, names.get("car"), names.get("track")) if names else []
-    return h._json({"ok": True, "laps": teamref.laps_on_hand(e, board, notes), "how": teamref.HOW_TO_GET,
+    synced = synced_laps(cfg, names.get("car"), names.get("track")) if names else []
+    return h._json({"ok": True, "laps": teamref.laps_on_hand(e, board, notes, synced), "how": teamref.HOW_TO_GET,
                     "team_page": bool(board)})
 
 
@@ -1003,11 +1064,11 @@ def coach_extra(server, status: dict) -> dict:
 def get(h, r, q):
     fn = {"api/balance": get_balance, "api/handling": get_handling, "api/pressure": get_pressure, "api/setuplab/share": get_setuplab_share,
           "api/teamref": get_teamref, "api/teamref/cards": get_teamref_cards, "api/teamref/laps": get_teamref_laps,
-          "api/teamref/for-review": get_teamref_for_review}[r]
+          "api/teamref/for-review": get_teamref_for_review, "api/teamsync/summary": get_teamsync_summary}[r]
     return fn(h, q)
 
 
 def post(h, r, body):
     fn = {"api/pressure/predict": post_pressure_predict, "api/handling/feel": post_handling_feel, "api/teamref/forget": post_teamref_forget,
-          "api/teamref/coach": post_teamref_coach, "api/teamref/keep": post_teamref_keep}[r]
+          "api/teamref/coach": post_teamref_coach, "api/teamref/keep": post_teamref_keep, "api/teamref/use": post_teamref_use, "api/teamsync/hide": post_teamsync_hide}[r]
     return fn(h, body)

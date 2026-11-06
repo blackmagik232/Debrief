@@ -870,7 +870,9 @@ function detailsPart(d){const S=d.series,R=d.race||{};if(!S)return null;const dl
   if(!dl.children.length)return null;const x=h('details','sub pvdetails');x.append(h('summary',null,'Race details'),dl);x.open=!!renderFocus.detailsOpen;
   x.addEventListener('toggle',()=>{renderFocus.detailsOpen=x.open});return x}
 function pacePart(d){const sec=pvSection('Your laps here'),P=d.pace;
-  if(!P){sec.append(h('p','note',d.status?d.status.detail:'No laps on record here.'));return sec}
+  if(!P){sec.append(h('p','note',d.status?d.status.detail:'No laps on record here.'));
+    const tn=h('p','note','Checking what your teammates have here...');sec.append(tn);
+    api('teamsync/summary?track='+encodeURIComponent(d.track||'')).then(j=>{tn.textContent=(j&&j.here)||''}).catch(()=>{tn.remove()});return sec}
   if(P.other_car)sec.append(h('p','note','Not in this car yet. These are from the '+P.other_car+'.'));
   const t=h('table','pacetbl'),hd=h('thead'),hr=h('tr');['','Best','Typical','Races'].forEach(x=>hr.append(h('th',null,x)));hd.append(hr);
   hr.firstChild.setAttribute('aria-label','Conditions');const tb=h('tbody');
@@ -2203,7 +2205,8 @@ function renderCoPlan(){const box=$('coPlan'),j=co.planRep;box.replaceChildren()
   const F=j.focus||[],R=j.report||{},where=(j.car||j.car_path)+' at '+(j.track||j.track_code);box.append(h('h4',null,'From the Corner coach'));
   if(F.length){box.append(h('p','note','For the '+where+', from your last '+plural(R.laps||0,'clean lap')+' there. It starts with the biggest and says the tip after the corner:'));
     const ul=h('ul','pvlist');F.forEach(f=>{const li=h('li'),nm=/^([CT]\d+):/.exec(String(f.phrase||''));li.append(nm?turnEl('b',null,nm[1],f.id):h('b',null,turnName(f.id)),
-      h('span','sub2','Says "'+f.phrase+'"'+(ok(f.lost_s)?', best laps '+f.lost_s.toFixed(2)+' s quicker here':'')));ul.append(li)});box.append(ul)}
+      h('span','sub2','Says "'+f.phrase+'"'+(ok(f.lost_s)?', best laps '+f.lost_s.toFixed(2)+' s quicker here':'')));if(x.kind==='synced'&&x.usable){const ub=h('button','btn','Use as my reference');ub.type='button';ub.addEventListener('click',async()=>{ub.disabled=true;let r;try{r=await post('teamref/use',{car,track,lap_id:x.lap_id})}catch(e){ub.disabled=false;return}
+        ub.disabled=false;ub.after(h('span','sub2',r&&r.ok?' Loaded. It is now your reference.':' '+((r&&r.error)||'That didn\'t work.')))});li.append(' ',ub)}ul.append(li)});box.append(ul)}
   else box.append(h('p','note','For the '+where+': '+(R.message||'no corner shows a clear pattern yet.')+' So the coach uses your race reviews.'));
   box.hidden=!!co.planHide}
 function coPlanShow(on){co.planHide=!on;if(co.planRep)$('coPlan').hidden=!on}
@@ -2396,7 +2399,7 @@ function fillSettings(v){if(v&&(v.units==='kmh'||v.units==='mph'))UNITS=v.units;
   const unread=!v.token_saved&&!!v.token_unreadable;$('tokUnread').hidden=!unread;$('gTokUnread').hidden=!unread;
   const st=$('tokStatus');st.textContent=v.token_saved?'Token saved (ends in '+v.token_hint+')':(unread?'Saved token can\'t be opened':'No token saved yet');
   st.className='pill '+(v.token_saved?'ok':'no');
-  $('refs').value=String(v.max_reference_laps);$('prac').checked=!!v.include_practice;
+  $('refs').value=String(v.max_reference_laps);teamSettingsLoad();$('prac').checked=!!v.include_practice;
   if(v.token_saved&&started)tourHint();
   racecapOn=!!v.racecap_library;$('rcapPill').textContent=racecapOn?'On':'Off';$('rcapPill').className='pill'+(racecapOn?' ok':'');
   if(document.activeElement!==$('rcapFolder'))$('rcapFolder').value=v.racecap_library||'';
@@ -3212,3 +3215,13 @@ async function cnWatch(){clearTimeout(cn.poll);let j;try{j=await api('coach/mic'
 $('cnCopy').addEventListener('click',async()=>{let j;try{j=await api('cornernotes')}catch(e){connectionLost();return}if(!j||!j.ok)return;
   try{await navigator.clipboard.writeText(j.summary||'');setMsg('cnMsg','Copied: one line per note.','ok')}catch(e){setMsg('cnMsg','Couldn\'t copy. Select the text yourself: '+(j.summary||'').split('\n')[0],'bad')}});
 })();
+
+
+/* 2.24: Settings > Team (your teams, show/hide, last synced) and who the "Comparison laps" would use */
+async function teamSettingsLoad(){let j;try{j=await api('teamsync/summary')}catch(e){return}
+  if(!j||!j.ok)return;const ul=$('teamList');if(ul){ul.replaceChildren();
+    if(!j.teams.length)ul.append(h('li',null,'No team data is synced yet. Press Refresh team data on the Team page.'));
+    j.teams.forEach(t=>{const li=h('li');const cb=document.createElement('input');cb.type='checkbox';cb.checked=!t.hidden;cb.id='tmShow_'+t.slug;
+      const lb=h('label',null,' '+t.name+' - '+t.members+' member'+(t.members===1?'':'s')+', last synced '+t.last_synced_text);lb.htmlFor=cb.id;
+      cb.addEventListener('change',async()=>{try{await post('teamsync/hide',{slug:t.slug,hidden:!cb.checked})}catch(e){connectionLost()}});li.append(cb,lb);ul.append(li)})}
+  const w=$('refsWho');if(w)w.textContent=j.people.length?'Teammates available to compare with (the quickest laps in the same car are used): '+j.people.map(p=>p.name+(p.cars.length?' ('+p.cars.join(', ')+')':'')).join('; ')+'.':'No teammate laps are synced yet, so nothing would be compared. Press Refresh team data on the Team page.'}

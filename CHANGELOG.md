@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.24.0 "Team sync"
+
+Refresh team data is now a real sync of your teams' shared data, the way your own history sync works: it keeps a copy of your teammates' practice, qualifying and race laps on this PC, and the member pages and the reference picker read that copy.
+
+- **What Refresh does now.** After the Team page is rebuilt, Debrief asks Garage 61 for each of your teams' driving statistics (one request per team; first time the last 180 days) to see who drove which track, car and day. It then fetches only the laps that are new, per teammate, at most 10 tracks per request, practice, qualifying and race together, unclean laps included and marked. Nothing already saved is downloaded again, and a repeat Refresh with no new driving costs one request per team.
+- **Telemetry.** The best lap of each teammate at each track and car, up to 25 per Refresh, never twice. A lap Garage 61 won't share is remembered with the reason and asked for again after 30 days.
+- **Gentle on Garage 61.** Requests are 3 seconds apart. After two "slow down" answers it stops and says "Synced 6 of 14 tracks; Refresh again to continue", and the next Refresh picks up where it left off.
+- **Member pages.** Each teammate's page now lists their synced sessions (date, track, car, type, laps, best, typical lap), says in plain words how steady their clean laps are, and shows when they were last synced. The Team page's notes list one line per member: "Name: N tracks, M laps, last synced date".
+- **Teammate laps as references.** "Compare with a teammate's lap" (Practice and the Coach) now lists the synced laps, with a "Use as my reference" button when their telemetry is saved.
+- **Every gap says why**: "Garage 61 hasn't shared telemetry for this lap", "Not synced yet: press Refresh team data", "Not a clean lap".
+- **Tester fixes.** The Team page now lists every team by its Garage 61 name with its member count, or says "Garage 61 didn't share a member list; members come from laps instead". "Same race" says "No teammates were in this race" when only you were there, names teammates in other cars with their car, and "1 driver" is singular. Prepare's "Your laps here" now says whether teammates have laps at that track (from the team library) or why not. Review options lists which teammates and cars "Comparison laps" could use. Settings > Team lists your Garage 61 teams with a show/hide tick (a hidden team is not synced) and when each was last synced.
+- Teams and members still come only from your own Garage 61 teams.
+
+Not proven yet: tested only against a stand-in Garage 61. The real team statistics rows and how many laps a real team has (so how long a first sync takes) need a real Refresh on your PC. Using a synced Garage 61 telemetry lap as the coach's reference, and the sessions table on the member page, have not been seen in the real window.
+
 ## 2.23.1
 
 Team pages now use whatever Garage 61 teams you're in; no team names are built into Debrief.

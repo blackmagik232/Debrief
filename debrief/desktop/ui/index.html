@@ -755,6 +755,7 @@
           <select id="refs"><option value="0">None</option><option value="1">1</option><option value="2">2</option><option value="3">3 (most)</option></select>
         </label>
         <p class="note">Laps from your teammates and drivers you follow on Garage 61.</p>
+        <p class="note" id="refsWho"></p>
         <label class="check" for="prac"><input id="prac" type="checkbox"><span>Also review practice and qualifying sessions</span></label>
         <label class="field" for="salut"><span>How Debrief addresses you</span>
           <input id="salut" type="text" maxlength="20" autocomplete="off" spellcheck="false" placeholder="For example: Sir" aria-describedby="salutNote">
@@ -802,6 +803,7 @@
         <div class="phead"><h3>Team</h3><span class="pill" id="teamStatus"></span></div>
         <p class="note" id="teamLine">Teams: not checked yet</p>
         <p class="note" id="teamJoinNote" hidden></p>
+        <ul class="note" id="teamList"></ul>
         <div class="row"><button type="button" class="btn" id="btnTeams" hidden>Check my teams</button><span class="msg" id="teamSetMsg" role="status"></span></div>
       </form>
 

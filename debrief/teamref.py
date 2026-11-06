@@ -214,7 +214,41 @@ def headline(driver, ref_time, my_best, cards=None) -> str:
     return s + (f" {who} is still quicker than your typical laps in {where}." if where else "")
 
 
-def laps_on_hand(entry, board_rows=None, notes=None) -> list:
+def load_reference_csv(csv_text, lap_time, driver, track_length, car="", track="", car_path="", track_code="") -> dict:
+    """2.24: a synced teammate lap (Garage 61 telemetry CSV) as a reference, shaped like load_reference's answer."""
+    out = {"ok": False, "reason": "", "driver": driver or "Your teammate", "label": "", "car": car, "car_path": car_path,
+           "track": track, "track_code": track_code, "lap": None, "lap_time": None, "lap_text": "", "file": "Garage 61 lap",
+           "check": None, "livecoach": None, "cornercoach": None, "summary": None}
+    try:
+        from . import engine
+        raw = engine.parse_csv(csv_text)
+        if not track_length:
+            out["reason"] = "The track length isn't known yet, so the lap can't be lined up with yours."
+            return _done(out)
+        name = out["driver"]
+        short = f"{possessive(name)} best lap"
+        ref = livecoach.reference_from_raw(raw, float(lap_time), float(track_length),
+                                           {"name": car}, {"name": track}, {"kind": "teammate", "driver": name, "label": short})
+        cc = cornercoach.lap_from_raw(raw, float(lap_time), float(track_length), label=short)
+        if cc is not None:
+            cc["driver"] = name
+        if ref is None and cc is None:
+            out["reason"] = "The synced telemetry doesn't cover the whole lap, so it can't be used as a reference."
+            return _done(out)
+        lt = livecoach.fmt_lap(float(lap_time))
+        out.update(ok=True, lap_time=round(float(lap_time), 3), lap_text=lt, label=f"{short[:1].upper() + short[1:]} ({lt})",
+                   livecoach=ref, cornercoach=cc)
+    except Exception as e:  # noqa: BLE001
+        out["reason"] = f"The synced telemetry could not be read ({str(e)[:120]})."
+    return _done(out)
+
+
+def _norm(n):
+    from .team import norm_name
+    return norm_name(n)
+
+
+def laps_on_hand(entry, board_rows=None, notes=None, synced=None) -> list:
     """The teammate laps Debrief already has for one car + track, for the "Compare with a teammate's lap" list:
     the telemetry lap in use (loaded or kept) and the teammates' best lap times on the team page (Garage 61, lap
     time only). Each: {"driver", "lap_text", "kind": "telemetry"|"garage61", "usable", "in_use", "note"}."""
@@ -225,7 +259,14 @@ def laps_on_hand(entry, board_rows=None, notes=None) -> list:
                     "kind": "telemetry", "usable": True, "in_use": True,
                     "note": "From their telemetry file: compared corner by corner below." +
                             (" Kept for this car and track." if entry.get("kept") else "")})
+    have = set()
+    for x in synced or []:   # 2.24: laps from the team library (Refresh team data)
+        have.add(str(x.get("norm") or ""))
+        out.append({"driver": x["driver"], "lap_text": livecoach.fmt_lap(x["lap"]) if x.get("lap") else "", "kind": "synced",
+                    "usable": bool(x.get("usable")), "in_use": False, "note": x.get("note") or "", "lap_id": x.get("lap_id"),
+                    "team": x.get("team"), "member": x.get("member"), "track_id": x.get("track_id")})
     rows = sorted((r for r in board_rows or [] if isinstance(r, dict) and not r.get("is_me")
+                   and _norm(r.get("name")) not in have
                    and isinstance(r.get("t"), (int, float)) and r["t"] > 0), key=lambda r: r["t"])
     for r in rows[:8]:
         nm = str(r.get("name") or "A teammate").strip()[:80]

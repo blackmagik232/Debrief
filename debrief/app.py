@@ -1159,6 +1159,16 @@ def cmd_team(cfg, progress=None, open_after=False) -> Path:
     step("Connecting to Garage 61...", 0.03)
     api = make_api(cfg)
     data = team.build(api, cfg["library_folder"], None, log=log, max_combos=6, cfg=cfg)
+    step("Syncing your teams' practice sessions and laps...", 0.7)
+    try:
+        from . import teamsync
+        ts = teamsync.run(api, log=log, progress=progress, library_folder=cfg["library_folder"])
+        data["team_sync"] = {"message": ts["message"], "notes": ts["notes"], "requests": ts["requests"],
+                             "lines": teamsync.member_lines(teamsync.root_for(api)), "limited": ts["limited"]}
+        step(ts["message"], 0.9)
+    except Exception as e:  # noqa: BLE001
+        say(f"Team sync failed: {type(e).__name__}: {e}")
+        data["team_sync"] = {"message": "Team sync couldn't finish (details are in debrief.log). Refresh again.", "lines": [], "notes": []}
     step("Saving the team hub...", 0.96)
     data["checked_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     data["cache_reused"] = (data.get("requests") or 0) == 0

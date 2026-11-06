@@ -920,8 +920,12 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
             got = roster_from_info(api.team_info(sl))
             info_roster.update(got)
             log(f"  Garage 61 team info for {sl}: {len(got)} members listed")
+            tname = next((str(g(t, "name") or sl) for t in (ctx.get("teams") or []) if isinstance(t, dict) and g(t, "slug") == sl), sl)
+            notes.append(f"{tname}: {len(got)} member{'s' if len(got) != 1 else ''} listed by Garage 61." if got else
+                         f"{tname}: Garage 61 didn't share a member list; members come from laps instead.")
         except Exception as e:  # noqa: BLE001
             log(f"  Garage 61 team info unavailable for {sl}: {getattr(e, 'status', None) or type(e).__name__}")
+            notes.append(f"{sl}: Garage 61 didn't share team info ({getattr(e, 'status', None) or type(e).__name__}); members come from laps instead.")
     if info_roster:
         ctx["roster"] = {**info_roster, **ctx["roster"]}
     stats, stats_note = team_stats(api, ctx, log)
@@ -935,6 +939,7 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
     ctx["members"] = _members_from(ctx, stats)
     log(f"  Team members from Garage 61: {len(ctx['members'])}")
     races = race_groups(api, ctx, log)
+    notes += ctx.get("race_notes", [])
     cand = candidate_track_ids(api, folder, mine, first=[c["track_id"] for c in scombos])
     log(f"Team: {len(cand)} candidate tracks to search for teammates (your last {DISCOVER_DAYS} days, the series, the last page)")
     found, disc_note = ([], "Garage 61 couldn't list the team's tracks; showing tracks Debrief already knows.") \
@@ -1164,7 +1169,13 @@ def race_groups(api, ctx, log, n=2, now=None) -> list[dict]:
                                   "car": cname or None, "class": _class_label(cars, cid, cname) if (cid or cname) else None,
                                   "t": app.lap_time(l), "is_me": is_me, "clean": usable(l)}
         day = library.local_day(s_.get("start")) or str(s_.get("start") or "")[:10]
-        log(f"  Same race at {short} ({day}): {len(drivers)} drivers: " +
+        others = [v for v in drivers.values() if not v["is_me"]]
+        if not others:
+            ctx.setdefault("race_notes", []).append(f"Same race at {short} ({day}): No teammates were in this race.")
+        else:
+            ctx.setdefault("race_notes", []).append(f"Same race at {short} ({day}): " + ", ".join(
+                f"{v['name']} ({v['car'] or 'car not named'})" for v in others) + ".")
+        log(f"  Same race at {short} ({day}): {len(drivers)} driver{'s' if len(drivers) != 1 else ''}: " +
             ", ".join(f"{v['name']} ({v['car'] or 'car not named'})" for v in drivers.values()))
         for sl, v in drivers.items():
             if not v["is_me"]:

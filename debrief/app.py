@@ -1229,6 +1229,29 @@ def cmd_weekly(cfg, progress=None, series_ids=None, force_old=False, open_after=
     return {"page": Path(page), "requests": api.requests_made, "summary": summary if isinstance(summary, dict) else {}}
 
 
+def cmd_team_auto(cfg, progress=None, should_stop=None) -> dict | None:
+    """2.25: the incremental team sync in the background, at most once per 30 minutes. Never raises: it is a
+    convenience, and Refresh team data still does everything."""
+    from . import teamsync
+    try:
+        if not teamsync.auto_due(cfg["library_folder"]):
+            return None
+        api = make_api(cfg)
+        out = teamsync.auto_run(api, cfg["library_folder"], log=say, progress=None, should_stop=should_stop,
+                                telemetry=cfg.get("sync_telemetry", "best"))
+        if out is not None:
+            try:
+                from . import team
+                if (Path(cfg["library_folder"]) / "team" / "team.json").is_file():
+                    team.render_saved(cfg["library_folder"], cfg)
+            except Exception as e:  # noqa: BLE001
+                say(f"Team page not redrawn after the automatic sync: {type(e).__name__}: {e}")
+        return out
+    except (SystemExit, Exception) as e:  # noqa: BLE001
+        say(f"Automatic team sync skipped: {type(e).__name__}: {e}")
+        return None
+
+
 def cmd_sync(cfg, progress=None, should_stop=None, open_after=False) -> dict:
     """Bring the local copy of your Garage 61 history up to date (see sync.py). The first run
     downloads everything; after that only new laps. Stops cleanly when should_stop() is True."""

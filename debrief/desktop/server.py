@@ -549,7 +549,7 @@ def sample_page() -> bytes:
 # ---------------------------------------------------------------- background jobs
 JOB_TITLES = {"review": "Reviewing your last race", "check": "Checking the connection",
               "prep": "Building your track prep page", "team": "Updating the team hub", "teamload": "Loading a track for the team hub",
-              "sync": "Syncing your Garage 61 history", "schedule": "Loading the iRacing season schedule",
+              "sync": "Syncing your Garage 61 history", "teamauto": "Syncing your team's laps", "schedule": "Loading the iRacing season schedule",
               "scan": "Scanning the replay", "rival": "Reading a rival's lap", "update": "Updating Debrief", "weekly": "Updating this week's team leaderboards",
               "setuplab": "Reading your telemetry files"}
 BACKGROUND_TITLES = {"refresh": "Updating your saved reviews to the new page layout"}
@@ -674,7 +674,7 @@ class Jobs:
             self.st = {"state": "running", "kind": kind, "id": self.seq, "title": title, "frac": 0.0,
                        "message": "Starting...", "steps": [], "started": time.time()}
             jid = self.seq
-            if kind == "sync":
+            if kind in ("sync", "teamauto"):
                 self.stop_sync.clear()
             if kind in ("scan", "rival", "setuplab"):
                 self.stop_scan.clear()
@@ -734,6 +734,11 @@ class Jobs:
                 result = _run_setuplab(cfg, cb, self.stop_scan.is_set)
             elif kind == "sync":
                 result = {"sync": app.cmd_sync(cfg, progress=cb, should_stop=self.stop_sync.is_set)}
+                if not self.stop_sync.is_set():   # 2.25: then the team's laps, quietly (throttled to once per 30 minutes)
+                    cb(0.98, "Syncing your team's laps...")
+                    result["team_auto"] = bool(app.cmd_team_auto(cfg, should_stop=self.stop_sync.is_set))
+            elif kind == "teamauto":
+                result = {"team_auto": bool(app.cmd_team_auto(cfg, should_stop=self.stop_sync.is_set))}
             elif kind == "prep":
                 page = app.cmd_prep(cfg, params["track_id"], params["car_id"], progress=cb)
                 result = {"page": _lib_rel(cfg, page)}
@@ -3314,7 +3319,13 @@ class Handler(BaseHTTPRequestHandler):
             if api is None or not cfg.get("sync_on_open", True) or self.server.jobs.running:
                 return self._json({"ok": True, "skipped": True})
             from .. import sync
-            if not sync.due(sync.Store.for_api(api)):
+            if not sync.due(sync.Store.for_api(api)):   # own history is fresh: the team's laps may still be due
+                try:
+                    from .. import teamsync
+                    if teamsync.auto_due(cfg["library_folder"]):
+                        return self._json(self.server.jobs.start("teamauto"))
+                except Exception:  # noqa: BLE001
+                    pass
                 return self._json({"ok": True, "skipped": True})
         elif self.server.jobs.kind == "sync":
             return self._json({"ok": True, "id": self.server.jobs.snapshot().get("id"), "already": True})

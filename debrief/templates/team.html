@@ -474,6 +474,7 @@ let p1s=0;combos.forEach(c=>{if(c.board[0]&&c.board[0].key===meKey&&c.board.leng
       const body=h('tbody');c.board.forEach(r=>{const tr=h('tr',r.key===meKey?'me':null);
         const nm=h('td');nm.append(mlink(r.name));if(r.key===meKey)nm.append(h('span','you','You'));
         if(r.key===meKey&&r.source)nm.append(h('span','src','From '+r.source));
+        if(r.key!==meKey&&r.car)nm.append(h('span','src',' \u00b7 '+r.car+(r.diff_car?' (different car)':'')));
         const g=h('td','n');g.append(document.createTextNode(r.pos===1?'P1':fmtD(r.gap)));const b=h('span','gapbar');b.style.width=Math.round(4+56*(r.gap||0)/maxGap)+'px';b.setAttribute('aria-hidden','true');g.append(b);
         tr.append(h('td','pos',String(r.pos)),nm,h('td','n',fmt(r.t)),g,h('td','n',ok(r.irating)?String(Math.round(r.irating)):'–'),h('td','mono nw',fmtDate(r.date)));body.append(tr)});
       tb.append(body);tw.append(tb);p.append(tw)}

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.23.1
+
+Teammates now show up even when they drove a different car in the same race. Fix for the Team page showing Josh Spence with no laps although all three of you raced Spa together.
+
+- **Teammates are searched by track, not by your car.** In GT3 and GT4 each of you can drive a different make. Debrief now asks Garage 61 for every teammate lap at the track, keeps the ones in the same class as your car, and shows each person's best lap with their car, for example "Josh Spence · BMW M4 GT3". When the car differs from yours it says "(different car)" so the gap is not mistaken for like-for-like.
+- **Your newest race comes first.** The Team page now starts from your synced Garage 61 sessions, so tonight's race is the first track even before it has a saved review. One row per track.
+- **Fewer, smarter Garage 61 questions.** Garage 61 allows only 10 tracks per search (the old all-tracks search was refused every time). Debrief now searches your last 60 days of tracks, the series pick and the last Team page, 10 at a time, at most 4 searches per Refresh, and shrinks the batch if Garage 61 names a lower limit.
+- **Gentler pace.** Requests are 3 seconds apart. If Garage 61 says "slow down" twice, Debrief stops loading more tracks and says "Garage 61 asked Debrief to slow down; open a track to load it." The newest track still loads.
+- **Honest wording.** "No matching Garage 61 driver" is gone. A missing teammate now reads "No laps found for Josh Spence at the N tracks searched". debrief.log now lists, per person, how many rows came back and which tracks and cars they were at.
+
+Not proven yet: this was tested only against a stand-in Garage 61. Whether the real car list carries a class field (if not, only the lap-time sanity check keeps other classes out), and that Josh's laps really come back for Spa, needs a real Refresh on your PC.
+
 ## 2.23.0
 
 Set-Up Lab now gives setup advice on its own, for any car and track. There is no button: open Set-Up Lab (or a Practice session) and it has already read your laps.

@@ -197,7 +197,7 @@ def gather_mates(first, fetch_more, my_slug, my_best, roster=None, members=None,
                 + (f", flags seen: {', '.join(flags)}" if flags else ""))
         for m in missing:
             if _DISCOVERED and norm_name(m) not in _DISCOVERED:
-                log(f"  Garage 61 rows for {m}: 0 returned (name not matched to any Garage 61 driver)")
+                log(f"  Garage 61 rows for {m}: 0 returned at this track (no laps from this name in the recent-tracks search)")
             else:
                 log(f"  Garage 61 rows for {m}: 0 laps at this track and car")
     bests = [min(app.lap_time(l) for l in ls if usable(l)) for ls in by.values() if any(usable(l) for l in ls)]
@@ -223,7 +223,7 @@ def gather_mates(first, fetch_more, my_slug, my_best, roster=None, members=None,
     where = f"in {group}" if group else "in the group"
     for m in missing:
         reasons.append({"name": m, "text": ("laps couldn't be loaded this time. Try Refresh again." if failed else
-                        f"no laps came back from Garage 61 {where} at this track and car. If they have driven it, "
+                        f"no laps came back from Garage 61 {where} at this track (in any car of this class). If they have driven it, "
                         "check their laps are shared with the group in Garage 61."), "member": True})
     named = {norm_name(r["name"]) for r in reasons}
     for sl, nm in roster.items():
@@ -349,7 +349,8 @@ def head_to_heads(combos, my_key="me"):
                                       "corners_you": 0, "corners_them": 0})
             gap = round(mine["t"] - r["t"], 3)
             entry = {"track": c["track"], "track_short": c["track_short"], "car": c["car"],
-                     "you": mine["t"], "them": r["t"], "gap": gap, "corners": None}
+                     "you": mine["t"], "them": r["t"], "gap": gap, "corners": None,
+                     "them_car": r.get("car"), "diff_car": bool(r.get("diff_car"))}
             if gap < 0:
                 p["ahead"] += 1
             elif gap > 0:
@@ -534,10 +535,6 @@ def stored_combos(folder, cars=None) -> list[dict]:
 
 
 _DISCOVERED: set = set()      # normalised names of every driver seen in the last discovery (for the 0-rows log text)
-DISCOVER_CHUNK = 40
-DISCOVER_MAX_REQUESTS = 6
-
-
 def _ids(items) -> list:
     out = []
     for t in items or []:
@@ -547,32 +544,79 @@ def _ids(items) -> list:
     return out
 
 
-def discover_combos(api, slug, members, my_slug="", my_name="", log=print):
-    """The group's laps across every track (2.22.1: Garage 61's /laps requires `tracks`, so all track ids from the
-    cached track list are sent; `cars` too if Garage 61 asks; split into chunks if one request is refused as too long).
-    Returns ([combos with "who", source "garage61"], status line). Never raises: a refusal or an empty answer is
-    logged exactly and the caller falls back to stored_combos. Cached 10 minutes like find_laps."""
+DISCOVER_TRACKS_PER_REQUEST = 10     # Garage 61: "Cannot specify more than 10 tracks"
+DISCOVER_MAX_REQUESTS = 4            # 2.23.1: a hard cap per Refresh
+DISCOVER_DAYS = 60
+
+
+def _track_limit(text, default):
+    """"Cannot specify more than 7 tracks" -> 7 (never above the default, never below 1)."""
+    import re
+    m = re.search(r"more than (\d+) tracks?", str(text or ""), re.I)
+    return max(1, min(default, int(m.group(1)))) if m else default
+
+
+def candidate_track_ids(api, folder, mine=None, days=DISCOVER_DAYS, now=None) -> list:
+    """2.23.1: which tracks to ask Garage 61 about, newest first and without repeats: your own tracks from the last
+    `days` days of synced sessions, your reviewed races, the track picked on Prepare (this week's series), then the
+    tracks in the last Team page. No requests."""
+    out = []
+
+    def add(i):
+        if i is not None and i not in out:
+            out.append(i)
+    cutoff = ((now or datetime.now(timezone.utc)).timestamp() - days * 86400)
+    try:
+        from . import sync
+        st = sync.Store.for_api(api)
+        rows = sorted(st.sessions(), key=lambda s: str(s.get("start") or ""), reverse=True)
+        for s in rows:
+            d = sync._parse(s.get("start"))
+            if d is not None and d.timestamp() >= cutoff:
+                add(s.get("track_id"))
+    except Exception:  # noqa: BLE001  (no synced history: other sources below)
+        pass
+    for c in mine or []:
+        add(c.get("track_id"))
+    try:
+        from . import series
+        ch = series.load_choice(folder)
+        if ch.get("track"):
+            add(app.id_for_name(api.cached_items("tracks") or [], ch["track"]))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        prev = json.loads((Path(folder) / "team" / "team.json").read_text(encoding="utf-8"))
+        for c in (prev.get("combos") if isinstance(prev, dict) else None) or []:
+            if isinstance(c, dict):
+                add(c.get("track_id"))
+    except (OSError, ValueError, AttributeError):
+        pass
+    return out
+
+
+def discover_combos(api, slug, members, my_slug="", my_name="", log=print, track_ids=None):
+    """The group's laps at the candidate tracks (2.23.1). Garage 61 needs `tracks` and allows at most 10 per request,
+    so the candidates (newest first) go in chunks of 10, at most DISCOVER_MAX_REQUESTS requests per Refresh; if
+    Garage 61 names a lower limit the chunks shrink to it. Returns ([combos with "who", source "garage61"], status
+    line). Never raises. Cached 10 minutes like find_laps."""
     fetch = getattr(api, "laps_page", None)
     fallback = "Garage 61 couldn't list the team's tracks; showing tracks Debrief already knows."
+    ids = list(track_ids or [])
     if not callable(fetch):
         return [], fallback
+    if not ids:
+        log("  Garage 61 team discovery: no recent tracks to search yet")
+        return [], "No recent tracks to search yet; showing tracks Debrief already knows."
     cached = getattr(api, "_cached", None)
-    try:
-        track_ids = _ids(api.tracks())
-    except Exception as e:  # noqa: BLE001
-        log(f"  Garage 61 team discovery: couldn't load the track list: {type(e).__name__}")
-        return [], fallback
-    if not track_ids:
-        log("  Garage 61 team discovery: the track list was empty")
-        return [], fallback
-    state = {"cars": None, "sent": 0}
+    state = {"sent": 0, "limit": DISCOVER_TRACKS_PER_REQUEST}
+    ids = ids[:DISCOVER_MAX_REQUESTS * DISCOVER_TRACKS_PER_REQUEST]
 
-    def one(tids, age):
-        params = dict(teams=[slug], group="none", limit=1000, tracks=list(tids))
-        if age is not None:
-            params["age"] = age
-        if state["cars"]:
-            params["cars"] = state["cars"]
+    def err_text(e):
+        return ((getattr(e, "detail", "") or "") + " " + (str(e) or type(e).__name__)).replace("\n", " ").strip()[:200]
+
+    def one(tids):
+        params = dict(teams=[slug], group="none", limit=1000, tracks=list(tids), age=-2)
 
         def go():
             state["sent"] += 1
@@ -580,70 +624,42 @@ def discover_combos(api, slug, members, my_slug="", my_name="", log=print):
         key = "discover?" + json.dumps(params, sort_keys=True, default=str)
         return cached(key, go, max_age_s=600) if callable(cached) else go()
 
-    def err_text(e):
-        return ((getattr(e, "detail", "") or "") + " " + (str(e) or type(e).__name__)).replace("\n", " ").strip()[:200]
-
-    def call(tids, age):
-        """One request; on 'cars not set' adds every car id and retries once."""
-        log(f"  Garage 61 team discovery: asking for {len(tids)} tracks, {len(state['cars'] or [])} cars, "
-            f"age {age if age is not None else 'any'}")
+    rows, seen_ids, searched = [], set(), []
+    queue = [ids[i:i + state["limit"]] for i in range(0, len(ids), state["limit"])]
+    failed = None
+    while queue and state["sent"] < DISCOVER_MAX_REQUESTS:
+        ch = queue.pop(0)
+        log(f"  Garage 61 team discovery: asking for {len(ch)} tracks (request {state['sent'] + 1} of at most "
+            f"{DISCOVER_MAX_REQUESTS})")
         try:
-            r = one(tids, age)
+            got = one(ch)
         except Exception as e:  # noqa: BLE001
-            msg = err_text(e).lower()
-            if state["cars"] is None and "cars" in msg and ("not set" in msg or "required" in msg):
-                log(f"  Garage 61 asked for cars too ({getattr(e, 'status', None)}); adding all car ids and retrying")
-                try:
-                    state["cars"] = _ids(api.cars())
-                except Exception as e2:  # noqa: BLE001
-                    log(f"  Garage 61 team discovery: couldn't load the car list: {type(e2).__name__}")
-                    raise e
-                if not state["cars"]:
-                    raise
-                log(f"  Garage 61 team discovery: asking for {len(tids)} tracks, {len(state['cars'])} cars, "
-                    f"age {age if age is not None else 'any'}")
-                r = one(tids, age)
-            else:
-                raise
-        log(f"  Garage 61 team discovery: {len(r)} laps came back")
-        return r
-
-    def run(age):
-        try:
-            return call(track_ids, age)
-        except Exception as e:  # noqa: BLE001
-            st = getattr(e, "status", None)
-            msg = err_text(e).lower()
-            if st not in (400, 413, 414) or "not set" in msg:
-                raise
-            if not any(w in msg for w in ("long", "large", "many", "limit", "size", "exceed")):
-                raise
-            log(f"  Garage 61 refused the whole track list ({st} {msg[:80]}); splitting it into chunks of {DISCOVER_CHUNK}")
-            chunks = [track_ids[i:i + DISCOVER_CHUNK] for i in range(0, len(track_ids), DISCOVER_CHUNK)]
-            if len(chunks) > DISCOVER_MAX_REQUESTS:
-                log(f"  Garage 61 team discovery: {len(chunks)} chunks needed, only the first {DISCOVER_MAX_REQUESTS} asked")
-            rows, seen_ids = [], set()
-            for ch in chunks[:DISCOVER_MAX_REQUESTS]:
-                for l in call(ch, age):
-                    i = g(l, "id") if isinstance(l, dict) else None
-                    if i is not None and i in seen_ids:
-                        continue
-                    seen_ids.add(i)
-                    rows.append(l)
-            return rows
-    try:
-        items = run(-2)
-        if not items:
-            log("  Garage 61 team discovery: nothing with age -2; asking once more without age")
-            items = run(None)
-    except Exception as e:  # noqa: BLE001
-        log(f"  Garage 61 team discovery failed: {getattr(e, 'status', None) or type(e).__name__} {err_text(e)}")
-        return [], fallback
-    log(f"  Garage 61 team discovery: {state['sent']} requests sent, {len(items or [])} laps in total")
-    items = [l for l in items or [] if isinstance(l, dict)]
+            msg = err_text(e)
+            lim = _track_limit(msg, state["limit"])
+            if getattr(e, "status", None) == 400 and lim < state["limit"] and len(ch) > lim:
+                log(f"  Garage 61 allows only {lim} tracks per request; using chunks of {lim}")
+                state["limit"] = lim
+                rest = ch + [t for q in queue for t in q]
+                queue = [rest[i:i + lim] for i in range(0, len(rest), lim)]
+                continue
+            failed = e
+            log(f"  Garage 61 team discovery failed: {getattr(e, 'status', None) or type(e).__name__} {msg}")
+            break
+        searched += ch
+        log(f"  Garage 61 team discovery: {len(got)} laps came back")
+        for l in got:
+            i = g(l, "id") if isinstance(l, dict) else None
+            if i is not None and i in seen_ids:
+                continue
+            seen_ids.add(i)
+            rows.append(l)
+    if queue:
+        log(f"  Garage 61 team discovery: {sum(len(q) for q in queue)} older tracks were not searched this time")
+    log(f"  Garage 61 team discovery: {state['sent']} requests sent, {len(searched)} tracks searched, {len(rows)} laps in total")
+    items = [l for l in rows if isinstance(l, dict)]
     if not items:
-        log("  Garage 61 team discovery: 200 (no laps came back)")
-        return [], fallback
+        return [], (fallback if failed is not None else
+                    f"No team laps found at the {len(searched)} recent tracks searched; showing tracks Debrief already knows.")
     found, per = {}, {}
     names = {}
     _DISCOVERED.clear()
@@ -763,12 +779,37 @@ def _load_entry(api, ctx, c, seen, log, label="") -> dict:
     return entry
 
 
-def _unloaded_entry(c, members) -> dict:
+SLOW_NOTE = "Garage 61 asked Debrief to slow down; open a track to load it."
+TEAM_PACE_S = 3.0
+
+
+def merge_combos_keep(*lists) -> list[dict]:
+    """Your own combos from several sources, one per track and car, newest first."""
+    seen, out = {}, []
+    for lst in lists:
+        for c in lst:
+            k = _ckey(c["track"], c["car"])
+            if k in seen:
+                t = seen[k]
+                t["races"] = max(t.get("races") or 0, c.get("races") or 0)
+                t["track_id"] = t.get("track_id") or c.get("track_id")
+                t["car_id"] = t.get("car_id") or c.get("car_id")
+                if str(c.get("last") or "") > str(t.get("last") or ""):
+                    t["last"] = c["last"]
+                if c.get("best") is not None and (t.get("best") is None or c["best"] < t["best"]):
+                    t["best"], t["best_date"] = c["best"], c.get("best_date")
+                continue
+            seen[k] = dict(c)
+            out.append(seen[k])
+    return sorted(out, key=lambda c: str(c.get("last") or "")[:19], reverse=True)
+
+
+def _unloaded_entry(c, members, note=None) -> dict:
     e = {"track": c["track"], "track_short": library.short_track_name(c["track"]), "car": c["car"],
          "track_id": c.get("track_id"), "car_id": c.get("car_id"), "races": c.get("races") or 0,
          "last_date": library.local_day(c.get("last")) or (str(c.get("last") or "") or None),
          "board": [], "academy": [], "kings": None, "mate_notes": [], "loaded": False, "who": list(c.get("who") or []),
-         "note": "Not loaded yet. In the Team view of the window, pick this track and press Load this track."}
+         "note": note or "Not loaded yet. In the Team view of the window, pick this track and press Load this track."}
     e["who_note"] = who_note(e, members)
     return e
 
@@ -780,19 +821,22 @@ def _assemble(ctx, out_combos, api, start_req, folder, notes, cfg, log) -> dict:
             if isinstance(r, dict) and r.get("key") not in (None, "me"):
                 seen[r["key"]] = r.get("name") or r["key"]
     members, grp, group_name = ctx["members"], ctx["grp"], ctx["group_name"]
+    total, loaded = len(out_combos), sum(1 for c in out_combos if c.get("loaded", True))
     matched, unmatched = match_members(members, {**ctx["roster"], **seen}, ctx["my_slug"], ctx["my_name"])
     member_rows = []
     for m in members:
         row = {"name": m, "key": matched.get(m), "is_me": matched.get(m) == "me", "matched": m in matched}
         if m not in matched:
-            row["problem"] = (f"No driver in {group_name} on Garage 61 matched the name \u201c{m}\u201d (checked their name "
-                              "and short name). If Garage 61 shows them under another name, change it in Settings > Team."
-                              if (seen or ctx["roster"]) and not ctx["not_member"] else
+            n_s = max(ctx.get("searched_tracks") or 0, loaded)
+            row["problem"] = (f"No laps found for {m} at the {n_s} tracks searched. If they have driven elsewhere, open "
+                              "that track; if Garage 61 shows them under another name, change it in Settings > Team."
+                              if (seen or ctx["roster"]) and not ctx["not_member"] and n_s else
                               f"Not seen yet: no {group_name} laps have been loaded, so this name couldn't be matched.")
         member_rows.append(row)
-    if unmatched and not ctx["not_member"] and (seen or ctx["roster"]):
-        log("  Team members with no matching Garage 61 driver: " + ", ".join(unmatched))
-    total, loaded = len(out_combos), sum(1 for c in out_combos if c.get("loaded", True))
+    if unmatched and not ctx["not_member"]:
+        n_s = max(ctx.get("searched_tracks") or 0, loaded)
+        log(f"  No laps found for {', '.join(unmatched)} at the {n_s} tracks searched" if n_s else
+            "  Team members not seen yet: " + ", ".join(unmatched))
     cov = (f"{total} tracks \u00b7 {loaded} loaded \u00b7 open a track to load it" if loaded < total
            else f"{total} track{'s' if total != 1 else ''} \u00b7 all loaded")
     data = {
@@ -829,9 +873,13 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
     max_combos, and leave the rest to load on demand (load_combo). Nothing is dropped without being counted."""
     max_combos = max(1, min(MAX_COMBOS, int(max_combos)))
     start_req = api.requests_made
+    if hasattr(api, "min_gap") and isinstance(api.min_gap, (int, float)):   # 2.23.1: start slower (3 s apart)
+        api.min_gap = max(api.min_gap, TEAM_PACE_S)
+        if isinstance(getattr(api, "base_gap", None), (int, float)):
+            api.base_gap = max(api.base_gap, TEAM_PACE_S)
     ctx = _ctx(api, team_slug, cfg, log)
     notes = list(ctx["notes"])
-    mine = library_combos(folder)
+    mine = merge_combos_keep(session_combos(api), library_combos(folder))
     if not mine:
         mine = prepare_combos(folder)
         if mine:
@@ -839,9 +887,13 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
                          "and it will use your own tracks and cars.")
         else:
             log("No reviews in your library yet.")
+    cand = candidate_track_ids(api, folder, mine)
+    log(f"Team: {len(cand)} candidate tracks to search for teammates (your last {DISCOVER_DAYS} days, the series, the last page)")
     found, disc_note = ([], "Garage 61 couldn't list the team's tracks; showing tracks Debrief already knows.") \
-        if ctx["not_member"] else discover_combos(api, ctx["team_slug"], ctx["members"], ctx["my_slug"], ctx["my_name"], log)
-    allc = merge_combos(mine, found, stored_combos(folder))
+        if ctx["not_member"] else discover_combos(api, ctx["team_slug"], ctx["members"], ctx["my_slug"], ctx["my_name"], log,
+                                                  track_ids=cand)
+    ctx["searched_tracks"] = len(cand)
+    allc = order_combos(mine, merge_combos(found, stored_combos(folder)))
     notes.append(COVERAGE_NOTE)
     prev = {}
     try:
@@ -851,8 +903,14 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
     except (OSError, ValueError, AttributeError):
         pass
     out_combos, seen = [], {}
+    slowed = False
     for i, c in enumerate(allc):
-        if i < max_combos:
+        if 0 < i < max_combos and getattr(api, "rate_limited", 0) >= 2:
+            if not slowed:
+                slowed = True
+                log("Garage 61 asked Debrief to slow down twice; the remaining tracks are left to open on demand.")
+            out_combos.append(_unloaded_entry(c, ctx["members"], SLOW_NOTE))
+        elif i < max_combos:
             out_combos.append(_load_entry(api, ctx, c, seen, log, f" ({i + 1} of {min(max_combos, len(allc))})"))
         elif _ckey(c["track"], c["car"]) in prev:       # loaded on demand earlier: kept, said so
             e = dict(prev[_ckey(c["track"], c["car"])])
@@ -861,6 +919,8 @@ def build(api, folder, team_slug, log=print, max_combos=MAX_COMBOS, cfg=None) ->
             out_combos.append(e)
         else:
             out_combos.append(_unloaded_entry(c, ctx["members"]))
+    if slowed:
+        notes.append(SLOW_NOTE)
     data = _assemble(ctx, out_combos, api, start_req, folder, notes, cfg, log)
     data["discovery"] = disc_note
     log(f"Team hub ready. Garage 61 requests used: {data['requests']}.")
@@ -894,10 +954,97 @@ def load_combo(api, folder, track, car, team_slug=None, log=print, cfg=None) -> 
     return out
 
 
+def session_combos(api, days=DISCOVER_DAYS * 6) -> list[dict]:
+    """Your own synced sessions as track/car combos, newest first (no requests). This is what puts tonight's race
+    on the Team page even before it has a saved review."""
+    try:
+        from . import sync
+        rows = sync.Store.for_api(api).sessions()
+    except Exception:  # noqa: BLE001
+        return []
+    out = {}
+    for s in sorted(rows, key=lambda r: str(r.get("start") or ""), reverse=True):
+        if not (s.get("track") and s.get("car") and s.get("track_id") is not None):
+            continue
+        k = (s.get("track_id"), s.get("car_id"))
+        c = out.setdefault(k, {"track": s["track"], "car": s["car"], "track_id": s["track_id"], "car_id": s.get("car_id"),
+                               "races": 0, "best": None, "best_date": None, "last": str(s.get("start") or "")})
+        c["races"] += 1
+    return list(out.values())
+
+
+def _tkey(c):
+    return ("id", c["track_id"]) if c.get("track_id") is not None else ("n", norm_name(library.short_track_name(c["track"])))
+
+
+def order_combos(owner, others) -> list[dict]:
+    """2.23.1: your own newest sessions first, then the other known tracks; one row per TRACK (the team view compares
+    drivers at a track, whatever car each drove), keeping the first (your newest) car for it."""
+    owner = sorted(owner, key=lambda c: str(c.get("last") or "")[:19], reverse=True)
+    seen, out = set(), []
+    for c in owner + list(others):
+        names = {("n", norm_name(library.short_track_name(c["track"])))}
+        if c.get("track_id") is not None:
+            names.add(("id", c["track_id"]))
+        if names & seen:
+            continue
+        seen |= names
+        out.append(c)
+    return out
+
+
 def settings_stamp(cfg) -> str:
     """A short fingerprint of the team settings a page was built with, so a change can mark the page out of date."""
     st = settings_of(cfg)
     return "|".join([st["name"], st["slug"]] + st["members"])
+
+
+_CLASS_KEYS = ("category", "class", "carClass", "classId", "carClassId", "categories")
+
+
+def _class_car_ids(api, cid):
+    """Ids of every car in the same class/category as car `cid` per Garage 61's car list; None when the list says
+    nothing about classes (then plausibility of the lap time is the only guard, and the car is named on the row)."""
+    try:
+        items = [c for c in (api.cars() or []) if isinstance(c, dict)]
+    except Exception:  # noqa: BLE001
+        return None
+    me = next((c for c in items if g(c, "id") == cid), None)
+    if me is None:
+        return None
+    for k in _CLASS_KEYS:
+        v = me.get(k)
+        if v not in (None, "", [], {}):
+            key = json.dumps(v, sort_keys=True, default=str)
+            same = {g(c, "id") for c in items if c.get(k) not in (None, "") and json.dumps(c.get(k), sort_keys=True, default=str) == key}
+            return same | {cid}
+    return None
+
+
+def _car_of(lap):
+    car = g(lap, "car")
+    if isinstance(car, dict):
+        return g(car, "id"), (g(car, "name") or "")
+    return None, ""
+
+
+def _log_rows(log, rows, members):
+    """2.23.1: per driver, how many rows came back in all the searches and which tracks and cars they were at."""
+    by = {}
+    for l in rows:
+        d = driver_of(l)
+        if not d["slug"]:
+            continue
+        e = by.setdefault(d["slug"], {"name": d["name"], "n": 0, "tracks": set(), "cars": set()})
+        e["n"] += 1
+        tr = g(l, "track")
+        if isinstance(tr, dict) and g(tr, "name"):
+            e["tracks"].add(g(tr, "name"))
+        if _car_of(l)[1]:
+            e["cars"].add(_car_of(l)[1])
+    for e in by.values():
+        log(f"  Garage 61 total for {e['name']}: {e['n']} rows in all searches; tracks: "
+            f"{', '.join(sorted(e['tracks'])) or 'not named'}; cars: {', '.join(sorted(e['cars'])) or 'not named'}")
 
 
 def _build_combo(api, entry, c, ids_for, track_items, team_slug, not_member, my_slug, my_name, members, group_name,
@@ -908,8 +1055,16 @@ def _build_combo(api, entry, c, ids_for, track_items, team_slug, not_member, my_
         entry["note"] = NO_MATCH_NOTE
         return
     # not on the team: zero team-lap requests, only your own laps (your board row and telemetry)
-    team_laps = [] if not_member else api.find_laps(tracks=[tid], cars=[cid], teams=[team_slug],
-                                                     group="driver", age=-2, limit=100)
+    # 2.23.1: teammates are searched by TRACK only (no car filter): in GT3/GT4 they drive other cars. Laps in
+    # another class are dropped; laps in a different car of this class are kept and say which car.
+    cls = _class_car_ids(api, cid)
+    raw_rows = []
+
+    def keep(rows):
+        raw_rows.extend(rows)
+        return [l for l in rows if cls is None or _car_of(l)[0] is None or _car_of(l)[0] in cls]
+    team_laps = [] if not_member else keep(api.find_laps(tracks=[tid], teams=[team_slug],
+                                                         group="driver", age=-2, limit=100))
     my_laps = api.find_laps(tracks=[tid], cars=[cid], drivers=["me"], group="none", age=-2, limit=1000)
     anchor = anchor_for([app.lap_time(l) for l in my_laps if usable(l)], c["best"])
     my_ok = sorted((l for l in my_laps if usable(l) and plausible(app.lap_time(l), anchor)), key=app.lap_time)
@@ -919,14 +1074,17 @@ def _build_combo(api, entry, c, ids_for, track_items, team_slug, not_member, my_
     if not not_member:
         # 2.20.1: one extra request at most (all their laps) when a best lap was rejected or a member has no row
         found, reasons = gather_mates(
-            team_laps, lambda: api.find_laps(tracks=[tid], cars=[cid], teams=[team_slug], group="none",
-                                             age=-2, limit=1000),
+            team_laps, lambda: keep(api.find_laps(tracks=[tid], teams=[team_slug], group="none",
+                                                       age=-2, limit=1000)),
             my_slug, my_best, roster_g61, members=members, my_name=my_name, group=group_name, log=log)
         for sl, m in found.items():
             l = m["lap"]
             seen_drivers[sl] = m["name"]
+            lcid, lcar = _car_of(l)
             mates[sl] = {"key": sl, "name": m["name"], "t": m["t"], "is_me": False, "member": m["member"],
-                         "date": lap_day(l), "irating": g(l, "driverRating"), "_lap": g(l, "id")}
+                         "date": lap_day(l), "irating": g(l, "driverRating"), "_lap": g(l, "id"),
+                         "car": lcar or None, "diff_car": bool(lcid is not None and lcid != cid)}
+        _log_rows(log, raw_rows, members)
         for l in team_laps:
             d = driver_of(l)
             if d["slug"] and d["slug"] != my_slug:
@@ -950,7 +1108,7 @@ def _build_combo(api, entry, c, ids_for, track_items, team_slug, not_member, my_
     for pos, r in enumerate(board, 1):
         r["pos"] = pos
         r["gap"] = round(r["t"] - p1, 3)  # always >= 0
-    entry["academy"] = [_slim({**m, "gap": None}) for m in sorted(others.values(), key=lambda m: m["t"])]
+    entry["academy"] = [dict(_slim({**m, "gap": None}), car=m.get("car"), diff_car=m.get("diff_car")) for m in sorted(others.values(), key=lambda m: m["t"])]
     entry["mate_notes"] = [reason_text(r) for r in reasons]
     if not team_mates:
         entry["note"] = brand.join_title(group_name) + "." if not_member else (

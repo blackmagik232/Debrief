@@ -173,6 +173,7 @@ class Garage61:
         self._ok_run = 0
         self._last = 0.0
         self.requests_made = 0
+        self.rate_limited = 0   # 429 answers so far in this run (2.23.1: the team page stops loading more after two)
         self.log = log
         self.should_stop = None   # optional callable: long waits end early (raising Interrupted) when it's True
         self.stop_event = stop_event   # optional threading.Event: the same, for callers that hold an Event
@@ -303,6 +304,7 @@ class Garage61:
                 return None
             if r.status_code == 429 or r.status_code >= 500:
                 if r.status_code == 429:
+                    self.rate_limited += 1
                     self._slow_down()
                 if last:
                     break

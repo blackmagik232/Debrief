@@ -1503,6 +1503,27 @@ def _in_unit(data, unit):
     data["units"] = units.norm(unit)
 
 
+CARDS_JS = TPL.with_name("cards.js")
+
+
+def _share_cards(folder, data) -> dict:
+    """2.25: the words for every "Save as picture" card on the page (cards.py). Never stops the page being written."""
+    try:
+        from . import cards
+        return cards.build_all(data, _unit(), _member_library(folder))
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _member_library(folder):
+    try:
+        from . import teamsync
+        root = teamsync.root_from_library(folder)
+        return (lambda name: teamsync.member_sessions(root, name)) if root is not None else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def write(folder, data, unit=None) -> Path:
     from . import report
     try:
@@ -1529,7 +1550,8 @@ def write(folder, data, unit=None) -> Path:
         data["cards"] = []
     tmpj.write_text(json.dumps(data), encoding="utf-8")
     fsutil.replace(tmpj, tj)
-    html = report.fill(TPL.read_text(encoding="utf-8"), {"/*TEAM*/null": _embed(data)})
+    html = report.fill(TPL.read_text(encoding="utf-8"), {"/*TEAM*/null": _embed(data), "/*CARDS*/null": _embed(_share_cards(folder, data)),
+                                                         "/*CARDS_JS*/": CARDS_JS.read_text(encoding="utf-8")})
     page = out / "index.html"
     tmp = page.with_name("index.html.tmp")
     tmp.write_text(html, encoding="utf-8")

@@ -10,6 +10,14 @@ from pathlib import Path
 from . import units
 from .team import norm_name
 
+CARDS_JS = Path(__file__).resolve().parent / "templates" / "cards.js"
+
+
+def report_embed(obj) -> str:
+    from . import report
+    return report._embed(obj)
+
+
 GATE_S = 0.05            # a corner counts as "quicker" at this much or more
 MIN_MPH = 1.5            # and a speed is named only when it differs by this much
 
@@ -184,7 +192,7 @@ CSS = ("body{font:16px/1.5 system-ui,sans-serif;max-width:760px;margin:0 auto;pa
        "button{font:inherit;padding:4px 12px;border-radius:6px;border:1px solid #1f6cc4;background:#1f6cc4;color:#fff;cursor:pointer}")
 
 
-def html(v) -> str:
+def html(v, card=None) -> str:
     e = escape
     if not v.get("ok"):
         return _page("Team member", f"<h1>Team member</h1><div class=c><p>{e(v['message'])}</p>"
@@ -237,6 +245,12 @@ def html(v) -> str:
     h.append("<table><tr><th>Date</th><th>Track and car</th><th>Time</th></tr>" + "".join(
         f"<tr><td>{e(r['date'])}</td><td>{e(r['label'])}</td><td>{e(r['time'])}</td></tr>" for r in v["latest"]) + "</table>"
         if v["latest"] else "<p class=m>" + e(v["why"].get("latest", "")) + "</p>")
+    if card:    # 2.25: "Save as picture" (cards.py makes the words, cards.js draws and saves the picture)
+        from . import cards
+        h.append("<p><button id=cardbtn type=button>Save as picture</button></p><script>window.CARDS="
+                 + report_embed({"member": card}) + ";</script><script>" + CARDS_JS.read_text(encoding="utf-8")
+                 + "</script><script>(function(){var b=document.getElementById('cardbtn');if(!b||!window.DebriefCards)return;"
+                 "b.onclick=function(){b.disabled=true;window.DebriefCards.save(window.CARDS.member).then(function(){b.disabled=false})}})()</script>")
     h.append("</div><p class=m id=msg></p><script>document.querySelectorAll('button[data-t]').forEach(function(b){b.onclick=function(){"
              "try{parent.postMessage({type:'debrief-team-load',track:b.dataset.t,car:b.dataset.c},'*')}catch(x){}"
              "document.getElementById('msg').textContent='Loading started. Come back to this page when the Team page says it is done.'}})</script>")
@@ -260,4 +274,12 @@ def page_for(library_folder, name, unit="mph") -> str:
         root = teamsync.root_from_library(library_folder)
     except Exception:  # noqa: BLE001
         pass
-    return html(view(data, name, unit, root))
+    v = view(data, name, unit, root)
+    card = None
+    if v.get("ok"):
+        try:
+            from . import cards
+            card = cards.member(data, v["name"], unit, v.get("library"))
+        except Exception:  # noqa: BLE001  (no picture button rather than no page)
+            card = None
+    return html(v, card)

@@ -17,7 +17,7 @@ VERSION = re.search(r'^__version__\s*=\s*"([^"]+)"', (PKG / "__init__.py").read_
 # Bundled files keep the package layout, because the code finds them next to its own modules
 # (debrief/templates, debrief/desktop/ui, debrief/desktop/icon.png). settings.example.toml goes to the
 # bundle root (sys._MEIPASS), where app.RES points when frozen.
-datas = [(str(p), "debrief/templates") for p in sorted((PKG / "templates").glob("*.html"))]
+datas = [(str(p), "debrief/templates") for p in sorted(list((PKG / "templates").glob("*.html")) + list((PKG / "templates").glob("*.js")))]
 datas += [(str(p), "debrief/desktop/ui") for p in sorted((PKG / "desktop" / "ui").iterdir()) if p.is_file()]
 # 2.7.0: the bundled fonts (ui/fonts/*.woff2, fonts.css, LICENSE.txt), so no page ever calls a font service
 datas += [(str(p), "debrief/desktop/ui/fonts") for p in sorted((PKG / "desktop" / "ui" / "fonts").iterdir()) if p.is_file()]

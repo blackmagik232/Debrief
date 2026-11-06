@@ -101,6 +101,8 @@ a.chip{text-decoration:none}
 .controls label{display:grid;gap:4px;font-size:var(--t-xs);color:var(--muted);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase}
 .controls label .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
 select,input[type=search]{font:inherit;font-family:var(--body);font-size:14px;text-transform:none;letter-spacing:0;color:var(--ink);background:var(--panel);border:1px solid var(--axis);border-radius:5px;padding:6px 10px;min-width:220px;max-width:100%}
+button.cardbtn{font-size:var(--t-xs);padding:3px 9px;margin:0 6px 0 0;border-color:var(--a);color:var(--a);background:transparent}
+.cardrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0 0}
 button{font:inherit;font-size:var(--t-sm);color:var(--ink);background:var(--panel);border:1px solid var(--axis);border-radius:5px;padding:6px 10px;cursor:pointer;white-space:nowrap}
 button:hover{background:var(--band)}
 button.ghost{border-color:transparent;color:var(--ink2)}
@@ -363,7 +365,9 @@ footer ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:100ch}
 <div id="srLive" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)" aria-live="polite"></div>
 <div id="tip" hidden></div>
 
-<script>window.TEAM=/*TEAM*/null;</script>
+<script>window.TEAM=/*TEAM*/null;window.CARDS=/*CARDS*/null;</script>
+<script>/*CARDS_JS*/</script>
+<script>window.cardBtn=function(id,l){try{return window.DebriefCards?window.DebriefCards.button(id,l):null}catch(e){return null}};</script>
 <script>
 (function(){
 const D=window.TEAM||null;
@@ -444,7 +448,7 @@ function mlink(name,cls){const a=document.createElement('a');a.className=cls||'m
     k.append(h('span','mline',ok(m.irating)?'iRating '+Math.round(m.irating):'iRating not known'),
       h('span','mline',plural(+m.tracks||0,'track','tracks')+' with laps'),
       h('span','mline',m.last_lap?'Last lap '+String(m.last_lap):'No lap date saved'));
-    if(m.problem)k.append(h('span','mline',String(m.problem)));host.append(k)})})();
+    if(m.problem)k.append(h('span','mline',String(m.problem)));{const cb=window.cardBtn('mb:'+m.name);if(cb){const r=h('div','cardrow');r.append(cb);k.append(r)}}host.append(k)})})();
 const combos=D.combos.filter(c=>c&&Array.isArray(c.board));
 const meKey=(D.me&&D.me.key)||'me';
 // colours: you are always blue; teammates get orange, purple, then greys, in order of who appears first
@@ -475,6 +479,7 @@ let p1s=0;combos.forEach(c=>{if(c.board[0]&&c.board[0].key===meKey&&c.board.leng
   if(!combos.length){const e=h('div','empty');e.append(h('b',null,'No races in your library yet.'),h('span',null,'Review a race, or pick a track and car on Prepare, then press Refresh team data. The team hub compares the tracks and cars you have raced.'));host.append(e);return}
   combos.forEach(c=>{const p=h('div','panel');const hd=h('div','phead');const t=h('h3',null,c.track_short||c.track);t.title=c.track;t.append(h('span','u',c.car));hd.append(t);
     hd.append(h('p','note',(c.races?plural(c.races,'reviewed race'):'')+(c.last_date?' · last '+fmtDate(c.last_date):'')));p.append(hd);
+    {const ix=D.combos.indexOf(c),r=h('div','cardrow'),b1=window.cardBtn('lb:'+ix,'Save as picture'),b2=window.cardBtn('nb:'+ix,'Team best card');if(b1)r.append(b1);if(b2)r.append(b2);if(b1||b2)p.append(r)}
     if(c.who_note)p.append(h('p','note',c.who_note));
     if(c.note)p.append(h('p','note',c.note));
     if(Array.isArray(c.mate_notes)&&c.mate_notes.length){const ul=h('ul','note');c.mate_notes.forEach(n=>{if(typeof n==='string')ul.append(h('li',null,n))});p.append(ul)}
@@ -506,6 +511,7 @@ function kings(i){const host=$('kingBody');host.replaceChildren();const c=kc[i];
   // wins
   const wp=h('div','panel');const wh=h('div','phead');const t=h('h3',null,c.track_short||c.track);t.append(h('span','u',c.car));wh.append(t);wp.append(wh);
   const wins=h('div','wins');K.drivers.forEach(k=>{const s=h('span');const sw=h('i','sw');sw.style.background=col(k);s.append(sw,document.createTextNode(nm(k)+' '));s.append(h('b',null,String((K.wins||{})[k]||0)));s.append(document.createTextNode(' of '+K.corners.length));wins.append(s)});wp.append(wins);
+  {const cb=window.cardBtn('kg:'+D.combos.indexOf(c),'Save as picture');if(cb){const r=h('div','cardrow');r.append(cb);wp.append(r)}}
   // ribbon: one block per stretch, width by distance, coloured when you own it
   const rib=h('div','ribbon');rib.setAttribute('role','list');const total=K.corners.reduce((s,z)=>s+Math.max(1,(z.to_m||0)-(z.from_m||0)),0);
   K.corners.forEach(z=>{const d=h('div',z.king===meKey?'mine':'pb');d.setAttribute('role','listitem');d.style.flex=String(Math.max(1,(z.to_m||0)-(z.from_m||0))/total*100);
@@ -534,10 +540,10 @@ function kings(i){const host=$('kingBody');host.replaceChildren();const c=kc[i];
   draw();redraw=draw;
   // table
   const tp=h('div','panel');tp.append(h('h3',null,'Corner by corner'));const tw=h('div','tablewrap');const tb=h('table');tb.style.minWidth='560px';
-  tb.innerHTML='<thead><tr><th>Corner</th><th class="n">Apex</th><th>King</th><th class="n">Their time</th><th class="n">Ahead of next by</th><th class="n">You vs king</th></tr></thead>';
+  tb.innerHTML='<thead><tr><th>Corner</th><th class="n">Apex</th><th>King</th><th class="n">Their time</th><th class="n">Ahead of next by</th><th class="n">You vs king</th><th></th></tr></thead>';
   const body=h('tbody');K.corners.forEach(z=>{const tr=h('tr',z.king===meKey?'me':null);const kt=h('td');kt.append(document.createTextNode(nm(z.king)));if(z.king===meKey)kt.append(h('span','crown','Yours'));
     const yg=h('td','n'+(ok(z.your_gap)&&z.your_gap>0.0005?' worse':''),z.your_gap==null?'–':(z.king===meKey?'Quickest':fmtD(z.your_gap)));
-    tr.append(h('td','mono',z.id),h('td','n',ok(z.apex_m)?Math.round(z.apex_m).toLocaleString('en-US')+' m':'–'),kt,h('td','n',z.king_t.toFixed(3)+' s'),h('td','n',z.margin.toFixed(3)+' s'),yg);body.append(tr)});
+    tr.append(h('td','mono',z.id),h('td','n',ok(z.apex_m)?Math.round(z.apex_m).toLocaleString('en-US')+' m':'–'),kt,h('td','n',z.king_t.toFixed(3)+' s'),h('td','n',z.margin.toFixed(3)+' s'),yg);{const tdc=h('td'),cb=window.cardBtn('kg:'+D.combos.indexOf(c)+':'+z.id,'Picture');if(cb)tdc.append(cb);tr.append(tdc)}body.append(tr)});
   tb.append(body);tw.append(tb);tp.append(tw);
   tp.append(h('p','note','"You vs king" is your time through the stretch minus the king\'s: plus means you were slower there. It compares single laps, so treat small gaps as a hint, not a verdict.'));host.append(tp);
 }
@@ -548,7 +554,7 @@ else{sel.addEventListener('change',()=>kings(+sel.value));kings(0)}
 // ---------- head-to-heads
 (function h2h(){const host=$('h2hList');const list=Array.isArray(D.h2h)?D.h2h:[];
   if(!list.length){const e=h('div','empty');e.append(h('b',null,'No head-to-heads yet.'),h('span',null,'They appear when a teammate has a lap at a track and car you have raced.'));host.append(e);return}
-  list.forEach(p=>{const pn=h('div','panel');const hd=h('div','phead');{const t3=h('h3',null,'You vs ');t3.append(mlink(p.name));hd.append(t3)}pn.append(hd);
+  list.forEach(p=>{const pn=h('div','panel');const hd=h('div','phead');{const t3=h('h3',null,'You vs ');t3.append(mlink(p.name));hd.append(t3)}pn.append(hd);{const cb=window.cardBtn('dh:'+p.key,'Save as picture');if(cb){const r=h('div','cardrow');r.append(cb);pn.append(r)}}
     const rec=h('div','rec');const add=(lab,val,cls)=>{const d=h('div');d.append(h('span',null,lab),h('b',cls||null,val));rec.append(d)};
     add('Quicker at',p.ahead+' of '+p.shared,p.ahead>p.behind?'better':(p.behind>p.ahead?'worse':null));
     add('Average gap',fmtD(p.avg_gap),ok(p.avg_gap)?(p.avg_gap<0?'better':(p.avg_gap>0?'worse':null)):null);
@@ -676,6 +682,8 @@ safe('this week',()=>{if(!W)return;show('weekly',true);
       weeks.forEach((w,i)=>{const o=h('option',null,weekLabel(w));o.value=String(i);sel.append(o)});
       sel.addEventListener('change',()=>drawBoard(box,sr,weeks[+sel.value]));hd.append(sel)}
     else hd.append(h('span','note',weekLabel(weeks[0])));
+    {const si=W.series.indexOf(sr);let cur=0;const sel=hd.querySelector('select');if(sel)sel.addEventListener('change',()=>{cur=+sel.value});
+     const cb=window.cardBtn(()=>'wk:'+si+':'+cur,'Save as picture');if(cb){const r=h('div','cardrow');r.append(cb);p.append(r)}}
     p.append(box);drawBoard(box,sr,weeks[0]);host.append(p)})},'weekly');
 
 // ---------- season head-to-heads (gap_pct = your best / their best - 1, x100: plus = they were quicker)
@@ -701,6 +709,7 @@ safe('season head-to-heads',()=>{if(!W||!Array.isArray(W.h2h))return;show('seaso
     const ln=h('p','sline');ln.append(document.createTextNode(nm+': ahead of you in '),h('b',null,be+' of '+sh),document.createTextNode(' '+(sh===1?'week':'weeks')));
     if(num(md))ln.append(document.createTextNode(' · median '),h('b',null,Math.abs(md).toFixed(2)+' %'),document.createTextNode(Math.abs(md)<0.005?' (level)':(md>0?' quicker':' slower')));
     pn.append(ln);
+    {const cb=window.cardBtn('ss:'+p.key,'Save as picture');if(cb){const r=h('div','cardrow');r.append(cb);pn.append(r)}}
     if(typeof p.verdict==='string'&&p.verdict)pn.append(h('p','note',p.verdict==='about level'?'About level with you over the season so far.':nm+' is '+p.verdict+' over the season so far.'));
     else if(sh<2)pn.append(h('p','note','Too few shared weeks to call it yet.'));
     (Array.isArray(p.series)?p.series:[]).filter(isObj).forEach(s=>{const sp=spark(p,s);if(sp)pn.append(sp)});
@@ -725,6 +734,7 @@ safe('who to learn from',()=>{const LC=(Array.isArray(D.combos)?D.combos:[]).fil
     c.learn.filter(isObj).slice(0,5).forEach(r=>{const tm=isObj(r.teammate)?r.teammate:{};const row=h('div','lrow');
       row.append(h('span','cid',str(r.corner||'–')),h('span','who',str(tm.name||tm.key||'Teammate')),h('span','gapv',num(r.gap_s)?r.gap_s.toFixed(2)+' s quicker':'–'));
       const fs=howFacts(r.how);if(fs.length){const f=h('div','facts');f.style.display='flex';f.style.flexWrap='wrap';f.style.gap='4px';fs.forEach(x=>f.append(h('span','fact',x)));row.append(f)}
+      {const cb=window.cardBtn('ln:'+D.combos.indexOf(c)+':'+c.learn.indexOf(r),'Save as picture');if(cb){const rw=h('div','cardrow');rw.append(cb);row.append(rw)}}
       if(r.text)row.append(h('p','ltext',str(r.text)));
       const extra=[];if(r.similar_pace===false&&num(r.lap_gap_pct))extra.push('Their best lap overall is '+Math.abs(r.lap_gap_pct).toFixed(1)+' % quicker than yours.');
       if(isObj(r.alt)&&(r.alt.name||r.alt.key))extra.push('Also quicker here: '+str(r.alt.name||r.alt.key)+(num(r.alt.gap_s)?' ('+r.alt.gap_s.toFixed(2)+' s)':'')+'.');

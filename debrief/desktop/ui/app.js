@@ -1349,13 +1349,13 @@ addEventListener('message',async e=>{const f=$('frame');if(!f||e.source!==f.cont
   if(typeof m.png!=='string'||!m.png.startsWith('data:image/png;base64,')||m.png.length>6e6){banner('The share card couldn\'t be made. Reload the review and try again.',true);return}
   let blob;try{blob=pngBlob(m.png)}catch(err){banner('The share card couldn\'t be read. Reload the review and try again.',true);return}
   shareSaving=true;let r;
-  try{r=await fetch(BASE+'api/share-save?'+new URLSearchParams({name:typeof m.name==='string'?m.name.slice(0,200):''}),{method:'POST',headers:{'X-Debrief':'1','Content-Type':'image/png'},body:blob}).then(x=>x.json())}
+  try{r=await fetch(BASE+'api/share-save?'+new URLSearchParams(Object.assign({name:typeof m.name==='string'?m.name.slice(0,200):''},m.kind==='card'?{kind:'card'}:{})),{method:'POST',headers:{'X-Debrief':'1','Content-Type':'image/png'},body:blob}).then(x=>x.json())}
   catch(err){shareSaving=false;banner('Couldn\'t save the share card. Try again.',true);return}
   shareSaving=false;
   if(!r||!r.ok){banner((r&&r.error)||'Couldn\'t save the share card.',true);return}
   shareSaved(r)});
-function shareSaved(r){banner('Share card saved: '+r.path,false,15000);const b=$('banner');
-  const o=h('button','btn ghost bannerbtn','Open the folder');o.type='button';o.id='shareOpen';
+function shareSaved(r){banner(r.card?'Saved to '+(r.shown||r.path):'Share card saved: '+r.path,false,15000);const b=$('banner');
+  const o=h('button','btn ghost bannerbtn',r.card?'Open folder':'Open the folder');o.type='button';o.id='shareOpen';
   o.addEventListener('click',async()=>{let x;try{x=await post('share-open')}catch(err){connectionLost();return}if(!x.ok&&x.error)banner(x.error,false,15000)});
   const old=$('shareOpen');if(old)old.remove();$('bannerText').after(o)}
 function pngBlob(url){const b=atob(url.slice(url.indexOf(',')+1));const a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return new Blob([a],{type:'image/png'})}

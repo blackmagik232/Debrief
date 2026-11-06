@@ -1363,11 +1363,27 @@ def share_file_name(name) -> str:
     return (base[:80].strip("-_") or "debrief") + "_share.png"
 
 
-def save_share_png(png: bytes, name) -> Path:
-    """Write a checked PNG into the Downloads folder under a new name (never over an existing file)."""
-    d = downloads_dir()
+def card_file_name(name) -> str:
+    """2.25: a safe file name for an engagement card ("spa-gt3-leaderboard.png"): lower-case letters, digits, - and _."""
+    base = SHARE_NAME_OK.sub("-", str(name or "").lower().removesuffix(".png")).strip("-_")
+    return (base[:80].strip("-_") or "debrief-card") + ".png"
+
+
+def friendly_path(p) -> str:
+    """The folder as the owner knows it: "Documents\\Debrief Reviews\\shares\\x.png" when it is under his home folder."""
+    p = Path(p)
+    try:
+        return str(p.relative_to(Path.home())).replace("/", "\\")
+    except ValueError:
+        return str(p)
+
+
+def save_share_png(png: bytes, name, folder=None) -> Path:
+    """Write a checked PNG under a new name (never over an existing file): into the Downloads folder, or for an
+    engagement card (folder given) into the library's shares folder."""
+    d = Path(folder) if folder is not None else downloads_dir()
     d.mkdir(parents=True, exist_ok=True)
-    fn = share_file_name(name)
+    fn = card_file_name(name) if folder is not None else share_file_name(name)
     stem = fn[:-len(".png")]
     for i in range(1, 1000):
         p = d / (fn if i == 1 else f"{stem}-{i}.png")
@@ -3266,7 +3282,7 @@ class Handler(BaseHTTPRequestHandler):
             app.say("Settings saved from the desktop app" + (f" ({', '.join(what)})." if what else "."))
             return self._json({"ok": True, "settings": view})
         if r == "api/share-open":         # 2.18: the Downloads folder a share card was saved in (that folder only)
-            d = downloads_dir()
+            d = getattr(self.server, "last_share_dir", None) or downloads_dir()   # 2.25: a card's folder is the shares folder
             try:
                 os.startfile(str(d))  # type: ignore[attr-defined]  (Windows only)
             except (AttributeError, OSError):
@@ -3594,13 +3610,23 @@ class Handler(BaseHTTPRequestHandler):
         png = bytes(buf)
         if png_size(png) is None:
             return self._json({"ok": False, "error": "That picture can't be saved. Press Share card again."}, 400)
-        name = (parse_qs(urlsplit(self.path).query).get("name") or [""])[0][:200]
+        q = parse_qs(urlsplit(self.path).query)
+        name = (q.get("name") or [""])[0][:200]
+        card = (q.get("kind") or [""])[0] == "card"
+        lib = self._library_folder() if card else None
+        if card and lib is None:
+            return self._json({"ok": False, "error": NO_TOKEN_SAVED}, 400)
         try:
-            p = save_share_png(png, name)
+            p = save_share_png(png, name, (lib / "shares") if card else None)
         except OSError as e:
             app.say(f"Couldn't save a share card ({type(e).__name__}: {e}).")
             return self._json({"ok": False, "error": "Debrief couldn't save the picture in your Downloads folder. "
                                                      "Details were saved to debrief.log."}, 500)
+        self.server.last_share_dir = p.parent
+        if card:
+            app.say(f"Picture card saved as {p.name} in the shares folder.")
+            return self._json({"ok": True, "path": str(p), "file": p.name, "folder": str(p.parent),
+                               "shown": friendly_path(p), "card": True})
         app.say(f"Share card saved as {p.name} in the Downloads folder.")
         return self._json({"ok": True, "path": str(p), "file": p.name, "folder": str(p.parent)})
 

@@ -2205,8 +2205,7 @@ function renderCoPlan(){const box=$('coPlan'),j=co.planRep;box.replaceChildren()
   const F=j.focus||[],R=j.report||{},where=(j.car||j.car_path)+' at '+(j.track||j.track_code);box.append(h('h4',null,'From the Corner coach'));
   if(F.length){box.append(h('p','note','For the '+where+', from your last '+plural(R.laps||0,'clean lap')+' there. It starts with the biggest and says the tip after the corner:'));
     const ul=h('ul','pvlist');F.forEach(f=>{const li=h('li'),nm=/^([CT]\d+):/.exec(String(f.phrase||''));li.append(nm?turnEl('b',null,nm[1],f.id):h('b',null,turnName(f.id)),
-      h('span','sub2','Says "'+f.phrase+'"'+(ok(f.lost_s)?', best laps '+f.lost_s.toFixed(2)+' s quicker here':'')));if(x.kind==='synced'&&x.usable){const ub=h('button','btn','Use as my reference');ub.type='button';ub.addEventListener('click',async()=>{ub.disabled=true;let r;try{r=await post('teamref/use',{car,track,lap_id:x.lap_id})}catch(e){ub.disabled=false;return}
-        ub.disabled=false;ub.after(h('span','sub2',r&&r.ok?' Loaded. It is now your reference.':' '+((r&&r.error)||'That didn\'t work.')))});li.append(' ',ub)}ul.append(li)});box.append(ul)}
+      h('span','sub2','Says "'+f.phrase+'"'+(ok(f.lost_s)?', best laps '+f.lost_s.toFixed(2)+' s quicker here':'')));ul.append(li)});box.append(ul)}
   else box.append(h('p','note','For the '+where+': '+(R.message||'no corner shows a clear pattern yet.')+' So the coach uses your race reviews.'));
   box.hidden=!!co.planHide}
 function coPlanShow(on){co.planHide=!on;if(co.planRep)$('coPlan').hidden=!on}
@@ -2842,7 +2841,8 @@ function csTeamBody(body,T,car,track,where,redraw,onChange){body.replaceChildren
 function csTeamHave(box,car,track,open){(async()=>{let j;try{j=await api('teamref/laps?'+csQ(car,track))}catch(e){return}
   if(!j||!j.ok)return;box.replaceChildren();const L=j.laps||[];
   if(L.length){box.append(h('h4',null,'Teammate laps Debrief already has here'));const ul=h('ul','pvlist teamlaps');
-    L.forEach(x=>{const li=h('li');li.append(h('b',null,String(x.driver||'A teammate')),document.createTextNode(' '+(x.lap_text||'')+(x.in_use?' (in use)':'')),h('span','sub2',' '+(x.note||'')));ul.append(li)});box.append(ul)}
+    L.forEach(x=>{const li=h('li');li.append(h('b',null,String(x.driver||'A teammate')),document.createTextNode(' '+(x.lap_text||'')+(x.in_use?' (in use)':'')),h('span','sub2',' '+(x.note||'')));if(x.kind==='synced'&&x.usable){const ub=h('button','btn','Use as my reference');ub.type='button';ub.addEventListener('click',async()=>{ub.disabled=true;let r;try{r=await post('teamref/use',{car,track,lap_id:x.lap_id})}catch(e){ub.disabled=false;return}
+        ub.disabled=false;ub.after(h('span','sub2',r&&r.ok?' Loaded. It is now your reference.':' '+((r&&r.error)||'That didn\'t work.')))});li.append(' ',ub)}ul.append(li)});box.append(ul)}
   else box.append(h('p','note','Debrief has no teammate laps for this car and track yet.'+(j.team_page?'':' Refresh team data on the Team page lists your teammates\' best lap times here too.')));
   const how=h('details','teamhow');how.open=!!open;how.append(h('summary',null,'How to get a teammate\'s file'),h('p','note',j.how||''));box.append(how)})()}
 function csTeamNote(on,restart){const n=$('coTeamNote');if(!n)return;

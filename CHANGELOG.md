@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.25.1
+
+Team sync no longer stops at a teammate with "Invalid drivers parameter".
+
+- Garage 61 refuses a teammate's name as a filter, so Debrief now asks for the whole team's laps on those tracks and sorts them to each teammate itself.
+- If one request still fails, Debrief skips those tracks for this run and carries on with everyone else, instead of stopping the whole sync. They are tried again next time.
+- Not proven yet: tested with a stand-in Garage 61 that refuses names the same way the real one did on your PC.
+
 ## 2.25.0 "Save as picture"
 
 The Team page and the member pages can now save nice information cards as .png pictures, ready to post in Discord or on socials.

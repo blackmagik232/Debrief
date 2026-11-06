@@ -598,3 +598,50 @@ def track_length(root, team, track_id):
     st = _state(Path(root) / _safe(team))
     v = st["track_len"].get(str(track_id))
     return float(v) if isinstance(v, (int, float)) and v > 0 else None
+
+
+# ---------------------------------------------------------------- 2.25: automatic background sync
+AUTO_FILE = "autosync.json"   # <library>/team/autosync.json: when the last automatic sync ran and what it found
+AUTO_GAP_S = 30 * 60          # at most one automatic team sync per 30 minutes
+
+
+def _auto_path(library_folder) -> Path:
+    return Path(library_folder) / "team" / AUTO_FILE
+
+
+def auto_due(library_folder, now: datetime | None = None, gap_s: float = AUTO_GAP_S) -> bool:
+    """True when no automatic team sync has run in the last 30 minutes (attempts count, so a failure isn't retried at once)."""
+    now = now or datetime.now(timezone.utc)
+    d = sync._read_json(_auto_path(library_folder), {})
+    last = sync._parse(d.get("at")) if isinstance(d, dict) else None
+    return last is None or (now - last).total_seconds() >= gap_s
+
+
+def auto_line(library_folder) -> str | None:
+    """"Synced 11:42 pm · 3 new laps" for the Team page, or None when no automatic sync has finished."""
+    d = sync._read_json(_auto_path(library_folder), {})
+    last = sync._parse(d.get("done_at")) if isinstance(d, dict) else None
+    if last is None:
+        return None
+    n = int(d.get("new_laps") or 0)
+    when = last.astimezone().strftime("%I:%M %p").lstrip("0").lower()
+    return f"Synced {when} \u00b7 {n} new lap{'s' if n != 1 else ''}"
+
+
+def auto_run(api, library_folder, log=print, progress=None, should_stop=None, telemetry: str = "best",
+             now: datetime | None = None) -> dict | None:
+    """The incremental team sync, run by Debrief itself (no button): when it opens after your own sync and after a new
+    race of yours. None when one already ran in the last 30 minutes. Same pacing and 429 rules as Refresh."""
+    now = now or datetime.now(timezone.utc)
+    if not auto_due(library_folder, now):
+        return None
+    p = _auto_path(library_folder)
+    rec = {"at": sync._iso(now)}
+    sync._write_json(p, rec)    # the attempt counts even if it fails
+    out = run(api, log=log, progress=progress, should_stop=should_stop, telemetry=telemetry, now=now,
+              library_folder=library_folder)
+    if out.get("teams"):
+        rec.update({"done_at": sync._iso(datetime.now(timezone.utc)), "new_laps": out.get("new_laps", 0),
+                    "message": out.get("message", "")})
+        sync._write_json(p, rec)
+    return out

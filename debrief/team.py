@@ -26,6 +26,7 @@ Sign conventions (tested in tests/test_desktop.py):
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -735,7 +736,9 @@ def who_note(entry, members, my_name="") -> str:
     if not entry.get("loaded", True):
         names = [n for n in (entry.get("who") or []) if any(norm_name(n) == norm_name(m) for m in members)] \
             if members else list(entry.get("who") or [])
-    first = [str(n).split()[0] for n in names if n]
+    full = list(dict.fromkeys(str(n).strip() for n in names if n and str(n).strip()))   # each person once, in order
+    firsts = [n.split()[0] for n in full]
+    first = [n if firsts.count(n.split()[0]) > 1 else n.split()[0] for n in full]   # two people, one first name: full names
     mine = bool(entry.get("races")) or any(r.get("key") == "me" for r in (entry.get("board") or []) if isinstance(r, dict))
     bits = ", ".join(first) if first else "no teammate laps found yet"
     return bits + ("" if mine else " \u00b7 you haven't driven this")
@@ -1155,7 +1158,7 @@ def race_groups(api, ctx, log, n=2, now=None) -> list[dict]:
         except Exception as e:  # noqa: BLE001
             log(f"  Same-race search failed for {short}: {type(e).__name__}: {e}")
             continue
-        cars = _cars_by_id(api)
+        cars, groups = _cars_by_id(api), _car_groups(api)
         drivers = {}
         for l in sorted(laps, key=lambda l: app.lap_time(l) or 1e9):
             d = driver_of(l)
@@ -1166,7 +1169,7 @@ def race_groups(api, ctx, log, n=2, now=None) -> list[dict]:
                 continue
             cid, cname = _car_of(l)
             drivers[d["slug"]] = {"key": "me" if is_me else d["slug"], "name": ctx["my_name"] if is_me else d["name"],
-                                  "car": cname or None, "class": _class_label(cars, cid, cname) if (cid or cname) else None,
+                                  "car": cname or None, "class": _class_label(cars, cid, cname, groups) if (cid or cname) else None,
                                   "t": app.lap_time(l), "is_me": is_me, "clean": usable(l)}
         day = library.local_day(s_.get("start")) or str(s_.get("start") or "")[:10]
         others = [v for v in drivers.values() if not v["is_me"]]
@@ -1245,9 +1248,49 @@ def _cars_by_id(api) -> dict:
         return {}
 
 
-def _class_label(cars, cid, cname="") -> str:
-    """The car's class/category from Garage 61's car list (GT3, GT4...); the car's own name when the list has none."""
+_NAME_CLASS_RX = [("GT3", r"\bGT3\b(?!\s*Cup)"), ("GT4", r"\bGT4\b"), ("GTE", r"\bGTE\b"), ("LMP2", r"\bLMP2\b"),
+                  ("F4", r"\bF4\b")]
+
+
+def class_from_name(name) -> str:
+    """A class from a car's name when it carries one ('... GT3 EVO' -> GT3). '' when it doesn't."""
+    for cls, rx in _NAME_CLASS_RX:
+        if re.search(rx, str(name or ""), re.I):
+            return cls
+    return ""
+
+
+def _car_groups(api) -> dict:
+    """{car id: group name} from Garage 61's car groups; {} when unavailable. A car in several groups gets the one
+    whose name carries a class (GT3...), else the smallest group."""
+    try:
+        items = api.car_groups() or []
+    except Exception:  # noqa: BLE001
+        return {}
+    best: dict = {}
+    for grp in items:
+        if not isinstance(grp, dict):
+            continue
+        gname = str(g(grp, "name") or "").strip()
+        ids = g(grp, "cars", "carIds", "car_ids") or []
+        if not gname or not isinstance(ids, list):
+            continue
+        ids = [g(x, "id") if isinstance(x, dict) else x for x in ids]
+        for cid in ids:
+            if cid is None:
+                continue
+            score = (0 if class_from_name(gname) else 1, len(ids))
+            if cid not in best or score < best[cid][0]:
+                best[cid] = (score, gname)
+    return {cid: v[1] for cid, v in best.items()}
+
+
+def _class_label(cars, cid, cname="", groups=None) -> str:
+    """The car's class: Garage 61's car group, else the car list's class/category, else a class in the name
+    (GT3, GT4, GTE, LMP2, F4), else the car's own name."""
     item = cars.get(cid) or {}
+    if groups and groups.get(cid):
+        return str(groups[cid])
     for k in _CLASS_KEYS:
         v = item.get(k)
         if v not in (None, "", [], {}):
@@ -1256,6 +1299,9 @@ def _class_label(cars, cid, cname="") -> str:
             elif isinstance(v, list):
                 v = ", ".join(str(x.get("name") if isinstance(x, dict) else x) for x in v)
             return str(v)
+    by_name = class_from_name(cname) or class_from_name(item.get("name"))
+    if by_name:
+        return by_name
     return str(cname or item.get("name") or (f"car {cid}" if cid is not None else "unknown car"))
 
 
@@ -1295,8 +1341,8 @@ def _build_combo(api, entry, c, ids_for, track_items, team_slugs, not_member, my
     # not on the team: zero team-lap requests, only your own laps (your board row and telemetry)
     # 2.23.1: teammates are searched by TRACK only (no car filter, no class filter): in GT3/GT4 each driver has
     # another car, and a teammate may have driven a class you did not. Every lap is kept and grouped by class below.
-    cars_by_id = _cars_by_id(api)
-    my_cls = _class_label(cars_by_id, cid, c["car"])
+    cars_by_id, groups = _cars_by_id(api), _car_groups(api)
+    my_cls = _class_label(cars_by_id, cid, c["car"], groups)
     first = [] if not_member else list(api.find_laps(tracks=[tid], teams=team_slugs, group="driver", age=-2, limit=100))
     raw_rows, fetch_failed = list(first), False
     if not not_member:   # all their laps (one more request, cached 10 min): the best lap in each class, race laps included
@@ -1310,7 +1356,7 @@ def _build_combo(api, entry, c, ids_for, track_items, team_slugs, not_member, my
     by_cls = {}
     for l in sorted(raw_rows, key=lambda l: app.lap_time(l) or 1e9):
         lcid, lcar = _car_of(l)
-        by_cls.setdefault(_class_label(cars_by_id, lcid, lcar) if (lcid is not None or lcar) else my_cls, []).append(l)
+        by_cls.setdefault(_class_label(cars_by_id, lcid, lcar, groups) if (lcid is not None or lcar) else my_cls, []).append(l)
     team_laps = by_cls.get(my_cls, [])
     my_laps = api.find_laps(tracks=[tid], cars=[cid], drivers=["me"], group="none", age=-2, limit=1000)
     anchor = anchor_for([app.lap_time(l) for l in my_laps if usable(l)], c["best"])
@@ -1739,6 +1785,11 @@ def render_saved(library_folder, cfg=None) -> Path:
             except Exception:  # noqa: BLE001
                 c["learn"] = []
     data["weekly"] = leaderboards.view(folder)
+    try:   # 2.25: "Synced 11:42 pm · N new laps" from the automatic background team sync
+        from . import teamsync
+        data["auto_sync"] = teamsync.auto_line(folder)
+    except Exception:  # noqa: BLE001
+        data["auto_sync"] = None
     if isinstance(data.get("team"), dict) and data["team"].get("slug"):   # the Team page's own group, not the default
         _same_group(data["weekly"], data["team"]["slug"], data["team"].get("name"), data.get("membership"))
     if cfg is not None and data.get("settings_stamp") not in (None, settings_stamp(cfg)):

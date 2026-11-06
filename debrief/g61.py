@@ -444,6 +444,14 @@ class Garage61:
         d = self._cached("cars", lambda: self._get("cars"), max_age_s=0 if refresh else 7 * 86400)
         return (d or {}).get("items", [])
 
+    def car_groups(self, refresh=False):
+        """Garage 61's car groups (GET /cargroups, as the public garage61-js-client's carGroups.list()), cached 7
+        days. Used to rank every car of one class (all GT3 cars) on one board. [] when Garage 61 has none."""
+        d = self._cached("cargroups", lambda: self._get("cargroups"), max_age_s=0 if refresh else 7 * 86400)
+        if isinstance(d, dict):
+            d = d.get("items", [])
+        return d if isinstance(d, list) else []
+
     def tracks(self, refresh=False):
         d = self._cached("tracks", lambda: self._get("tracks"), max_age_s=0 if refresh else 7 * 86400)
         return (d or {}).get("items", [])

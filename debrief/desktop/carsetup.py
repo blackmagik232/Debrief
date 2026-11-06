@@ -370,6 +370,16 @@ def get_handling(h, q):
     setup = S["setup"] or {}
     advice = setupadvice.advise(rep, setup, series_setup=S["kind"], last_change=S["last"], dials=rep.get("dials"),
                                 feel=feel)
+    confirmed = _series_confirmed(S["car"], S["track"], _index(server, cfg))
+    advice["ask_series"] = not confirmed
+    if not confirmed:
+        # the series' rules are not known: no garage change is shown until he says open or fixed
+        for it in advice.get("items") or []:
+            if it.get("change") or it.get("dial"):
+                it["held"] = True
+        if any(it.get("held") for it in advice.get("items") or []):
+            advice["card"] = ("Car balance: there is something to try, but is this series open setup or fixed? "
+                              "Say which and the advice appears.")
     fp = setuplab.fingerprint(setup) if setup else None
     changed = False
     if S["chosen"] != "all":
@@ -397,6 +407,9 @@ def post_handling_feel(h, body):
     if answer not in ("agree", "disagree", "clear"):
         raise ValueError("Answer agree, not what I felt, or clear.")
     from .. import setupadvice
+    felt = str(body.get("felt") or "")
+    if felt and felt not in setupadvice.FELT:
+        raise ValueError("Say what you felt: understeer, oversteer, nervous entry, no grip on exit, or fine.")
     st = _store()
     hk = setupadvice.history_key(car, track)
     mine = st["feel"].setdefault(hk, {})
@@ -404,11 +417,28 @@ def post_handling_feel(h, body):
         mine.pop(issue, None)
     else:
         mine[issue] = {"answer": answer, "at": time.strftime("%Y-%m-%d %H:%M")}
+        if answer == "disagree" and felt:
+            mine[issue]["felt"] = felt
     try:
         settings_io.save_extra(HANDLING_STORE, st)
     except OSError:
         raise ValueError("Debrief couldn't save your answer. Check that its settings folder can be written to.")
     return h._json({"ok": True, "feel": mine})
+
+
+def _series_confirmed(car, track, idx) -> bool:
+    """True when the series' setup rules are known for sure: his own answer, or the season schedule."""
+    from .. import setuplab
+    from . import server as S
+    try:
+        saved = settings_io.load_extra("setuplab").get("series") or {}
+        if isinstance(saved, dict) and saved.get(S.series_key(car, track)) in ("open", "fixed"):
+            return True
+        combo = next((c for c in setuplab.combos(idx) if (c.get("car_path") or "").lower() == car.lower()
+                      and (c.get("track_code") or "").lower() == track.lower()), None)
+        return S.schedule_series_setup(combo, None)[0] in ("open", "fixed")
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _series_kind(car, track, idx):

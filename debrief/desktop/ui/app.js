@@ -2669,7 +2669,7 @@ function csIdeas(R,j){const fixedSeries=R.series_setup==='fixed',box=h('div','ba
   const ul=h('ul','pvlist');
   I.forEach(i=>{const li=h('li','balidea'+(i.first?' first':'')),top=h('div','slidea');
     const cf=IDEA_CONF[i.confidence]||[i.confidence||'',''];const pill=h('span','pill sure'+(cf[1]?' '+cf[1]:''),cf[0]);pill.title=cf[2]||'How sure this is';
-    top.append(h('b',null,i.change?i.change.label:i.dial?i.dial.label:i.driving?'Driving':'No setup change'),pill);li.append(top);
+    top.append(h('b',null,i.change?'Next change: '+i.change.label:i.dial?'Next change: '+i.dial.label:i.alternative?'Next change: '+i.alternative.label:i.driving?'Driving':'No setup change'),pill);li.append(top);
     let t=String(i.text||''),then=String(i.then||''),cav='';
     if(then&&t.endsWith(then))t=t.slice(0,-then.length).trim();
     const k=t.indexOf('On most cars in iRacing');if(k>0){cav=t.slice(k);t=t.slice(0,k).trim()}
@@ -2697,7 +2697,11 @@ function csRenderHandling(sec,body,j,c,mode){body.replaceChildren();const A=j.ad
   if(R.ok&&lk.length)body.append(h('p','balsmall','Left out of this read: '+lk.map(k=>lo[k]+' '+k).join(', ')+'. Only clean laps count.'));
   const I=A.items||[];
   if(!I.length){body.append(h('p','note',A.empty||R.message||'Nothing to show yet.'))}
-  else{if(A.series_setup==='fixed'||j.series_setup==='fixed')body.append(h('p','note warn','This series uses a fixed setup, so only the in-car dials (brake bias, traction control, ABS) are offered, otherwise the driving.'));
+  else{if(A.ask_series)body.append(csAskSeries(c,reload));
+    const anyChange=I.some(x=>x.verdict==='setup'&&(x.change||x.dial)&&!x.held);
+    if(!anyChange&&!A.ask_series)body.append(h('p','note','Nothing here to change in the garage: these are driving points.'));
+    else if(A.ask_series){}
+    else if(A.series_setup==='fixed'||j.series_setup==='fixed')body.append(h('p','note warn','This series uses a fixed setup, so only the in-car dials (brake bias, traction control, ABS) are offered, otherwise the driving.'));
     else body.append(h('p','note','One change at a time, so you know what did it. Make it in the iRacing garage, drive at least 6 clean laps, then open this page again.'));
     const ul=h('ul','pvlist');
     I.forEach(i=>{const li=h('li','balidea hdlitem'+(i.first?' first':'')),top=h('div','slidea');
@@ -2707,7 +2711,8 @@ function csRenderHandling(sec,body,j,c,mode){body.replaceChildren();const A=j.ad
       const tag=h('span','pill',lab);tag.title=HDL_VERDICT[i.verdict][1];top.append(tag);li.append(top);
       let t=String(i.text||''),then=String(i.then||'');if(then&&t.endsWith(then))t=t.slice(0,-then.length).trim();
       const k=t.indexOf('On most cars in iRacing');let cav='';if(k>0){cav=t.slice(k);t=t.slice(0,k).trim()}
-      li.append(h('span',null,csTurn(t)));if(cav)li.append(h('span','sub2',cav));if(then)li.append(h('span','sub2 balthen',then));
+      if(i.held){li.append(h('span',null,'There is a setup change to try here. Answer "Open setup?" above to see it.'))}
+      else{li.append(h('span',null,csTurn(t)));if(cav)li.append(h('span','sub2',cav));if(then&&!(i.verdict==='driving'))li.append(h('span','sub2 balthen',then))}
       if(i.coach)li.append(h('span','sub2',i.coach));if(i.feel_note)li.append(h('span','sub2',i.feel_note));
       li.append(csFeelPicker(i,c,reload));ul.append(li)});body.append(ul)}
   if((j.history||[]).length){const d=h('details','balhow');d.append(h('summary',null,'What was suggested before, and what happened'));
@@ -2716,10 +2721,20 @@ function csRenderHandling(sec,body,j,c,mode){body.replaceChildren();const A=j.ad
   how.append(h('p','note','Debrief reads your clean laps corner by corner (way in, middle, way out). Understeer and oversteer come from the steering you used against how fast the car turned, compared with how this car steers in gentle bends. Instability is the wheel being corrected on the way in while the car wobbles. Poor traction is the car sliding, or not speeding up, as you pick up the throttle (and the rear wheels spinning, when the file has the wheel-speed channels). It is called the setup only when it shows on most laps and in several corners of the same kind; otherwise it looks like driving.'));
   const ch=R.channels||{};if(ch.used)how.append(h('p','note','Channels used: '+ch.used.join(', ')+'.'+(ch.note?' '+ch.note:'')));
   how.append(h('p','note','Sure, Likely, A hint, A guess, as everywhere in Debrief. These ideas are not tested on your laps: that is what the next stints are for.'));body.append(how)}
-function csFeelPicker(i,c,reload){const w=h('div','hdlfeel');w.append(h('span','balsmall','How did the car feel?'));
-  [['agree','Agree'],['disagree','Not what I felt']].forEach(([a,t])=>{const b=h('button','btn small',t);b.type='button';b.setAttribute('aria-pressed',i.feel===a?'true':'false');if(i.feel===a)b.classList.add('on');
-    b.addEventListener('click',async()=>{b.disabled=true;let r;try{r=await post('handling/feel',{car:c.car,track:c.track,issue:i.issue_id,answer:i.feel===a?'clear':a})}catch(e){connectionLost();return}
+function csAskSeries(c,reload){const w=h('div','hdlask');w.append(h('b',null,'Open setup? '),h('span','balsmall','Can you change the setup in the garage in this series?'));
+  [['open','Yes, open'],['fixed','Fixed']].forEach(([v,t])=>{const b=h('button','btn small',t);b.type='button';
+    b.addEventListener('click',async()=>{b.disabled=true;let r;try{r=await post('setuplab/series',{car:c.car,track:c.track,setup:v})}catch(e){connectionLost();return}
       if(r&&r.ok!==false)reload();else{b.disabled=false;banner((r&&r.error)||'That didn\'t save.',true)}});w.append(b)});return w}
+const HDL_FELT=[['understeer','Understeer'],['oversteer','Oversteer'],['nervous entry','Nervous entry'],['no grip on exit','No grip on exit'],['fine','It felt fine']];
+function csFeelPicker(i,c,reload){const w=h('div','hdlfeel');w.append(h('span','balsmall','How did the car feel?'));
+  const send=async(a,felt,b)=>{if(b)b.disabled=true;let r;try{r=await post('handling/feel',{car:c.car,track:c.track,issue:i.issue_id,answer:a,felt:felt||undefined})}catch(e){connectionLost();return}
+    if(r&&r.ok!==false)reload();else{if(b)b.disabled=false;banner((r&&r.error)||'That didn\'t save.',true)}};
+  if(i.feel==='disagree'){w.append(h('span','balsmall','Not what I felt'+(i.felt?': '+i.felt:'')+'. '));const u=h('button','btn small','Undo');u.type='button';u.addEventListener('click',()=>send('clear',null,u));w.append(u);return w}
+  const ag=h('button','btn small','Agree');ag.type='button';ag.setAttribute('aria-pressed',i.feel==='agree'?'true':'false');if(i.feel==='agree')ag.classList.add('on');
+  ag.addEventListener('click',()=>send(i.feel==='agree'?'clear':'agree',null,ag));w.append(ag);
+  const no=h('button','btn small','Not what I felt');no.type='button';
+  no.addEventListener('click',()=>{no.remove();w.append(h('span','balsmall','What did you feel? '));HDL_FELT.forEach(([v,t])=>{const b=h('button','btn small',t);b.type='button';b.addEventListener('click',()=>send('disagree',v,b));w.append(b)})});
+  w.append(no);return w}
 
 /* ---------- tyre pressures over time */
 async function csLoadPressure(){const sec=$('slPress'),c=cs.combo;if(!sec||!c)return;

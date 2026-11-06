@@ -233,20 +233,40 @@ def _sentence(o: dict) -> str:
     return _lower_first(o["text"])
 
 
+SWING_DRIVE = ("pick one line and one turn-in speed for this corner and repeat it; the car is reacting to how it "
+               "is driven from lap to lap")
+
+
+def _touched(o, last) -> dict | None:
+    """A change of his to any of the option's settings (for options with no number, like the diff ramp: which way it
+    goes differs per car, so any change he made there counts as the one this would undo)."""
+    if not o or not last:
+        return None
+    keys = set(o.get("keys") or [o.get("key")])
+    for ch in last.get("changes") or []:
+        if keys & set(ch.get("keys") or [ch.get("key")]):
+            return ch
+    return None
+
+
 # ---------------------------------------------------------------- feel
 def adjust_sureness(sure: str, answer: str | None) -> tuple:
-    """(new sureness, note): "agree" raises it one step (never above Likely: a feeling is not a measurement),
-    "disagree" lowers it one step (never below A guess)."""
+    """(new sureness, note): "agree" raises it one step but never above A hint (a feeling is not a measurement, and
+    it must not turn a noise-level read into a likely one), "disagree" lowers it one step (never below A guess)."""
     if sure not in hd.SURE_ORDER or answer not in ("agree", "disagree"):
         return sure, None
     i = hd.SURE_ORDER.index(sure)
+    top = hd.SURE_ORDER.index("hint")
     if answer == "agree":
-        j = min(i + 1, hd.SURE_ORDER.index("likely")) if i < hd.SURE_ORDER.index("likely") else i
-        return hd.SURE_ORDER[j], ("You said this matches what you felt, so it is one step surer." if j > i else
-                                  "You said this matches what you felt.")
+        j = i + 1 if i < top else i
+        return hd.SURE_ORDER[j], ("You said this matches what you felt, so it is one step surer (never above A hint "
+                                  "on a feeling alone)." if j > i else "You said this matches what you felt.")
     j = max(i - 1, 0)
     return hd.SURE_ORDER[j], ("You said this is not what you felt, so it is one step less sure." if j < i else
                               "You said this is not what you felt.")
+
+
+FELT = ("understeer", "oversteer", "nervous entry", "no grip on exit", "fine")
 
 
 def feel_key(issue_id: str) -> str:
@@ -297,13 +317,14 @@ def advise(report: dict, setup: dict | None, series_setup=None, last_change: dic
                     "sure_words": hd.SURE_WORDS[sure], "corners": i["corners"], "laps_showing": i["laps_showing"],
                     "laps": i["laps"], "change": None, "dial": None, "driving": None, "coach": None, "why": None,
                     "expect": None, "watch": None, "then": THEN, "first": False, "rank": None,
-                    "feel": (feel.get(feel_key(i["id"])) or {}).get("answer"), "feel_note": fnote, "alternative": None}
+                    "feel": (feel.get(feel_key(i["id"])) or {}).get("answer"),
+                    "felt": (feel.get(feel_key(i["id"])) or {}).get("felt"), "feel_note": fnote, "alternative": None}
             where = ", ".join(i["corners"])
             lead = f"{i['title']} on {i['laps_showing']} of {i['laps']} clean laps"
             if i["verdict"] == "driving":
                 base["coach"] = COACH_NOTE.format(where=where)
-                base["driving"] = DRIVING.get((i["kind"], i["phase"])) or bl.DRIVING.get(
-                    (i["phase"], "push" if i["kind"] == "understeer" else "rotate"))
+                base["driving"] = (SWING_DRIVE if i["kind"] == "swing" else DRIVING.get((i["kind"], i["phase"]))
+                                   or bl.DRIVING.get((i["phase"], "push" if i["kind"] == "understeer" else "rotate")))
                 base["text"] = i["text"] + (f" Try: {base['driving']}." if base["driving"] else "")
                 base["then"] = bl.THEN_DRIVE
                 items.append(base)
@@ -346,7 +367,7 @@ def advise(report: dict, setup: dict | None, series_setup=None, last_change: dic
                 if o is None:
                     continue
                 if last_change and not last_change.get("slower"):
-                    ch = bl._undo_of(o, last_change)
+                    ch = _touched(o, last_change) if o.get("manual") else bl._undo_of(o, last_change)
                     if ch:
                         undone = undone or (o, ch)
                         continue

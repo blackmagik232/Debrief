@@ -240,8 +240,9 @@ fx_u = sa.advise(ru, SETUP, series_setup="fixed", dials=["bias"])
 check(all(i["change"] is None for i in fx_u["items"]), "fixed series: never a garage change (bars, springs)")
 
 # ---------------------------------------------------------------- 10. feel, history
-check(sa.adjust_sureness("hint", "agree")[0] == "likely" and sa.adjust_sureness("likely", "agree")[0] == "likely",
-      "agree: one step surer, never above Likely")
+check(sa.adjust_sureness("guess", "agree")[0] == "hint" and sa.adjust_sureness("hint", "agree")[0] == "hint"
+      and sa.adjust_sureness("likely", "agree")[0] == "likely",
+      "agree: one step surer, never above A hint (2.23.2)")
 check(sa.adjust_sureness("likely", "disagree")[0] == "hint" and sa.adjust_sureness("guess", "disagree")[0] == "guess",
       "not what I felt: one step less sure, never below A guess")
 fa = sa.advise(two, {"Chassis": {"Front": {"ArbSetting": "3"}}}, feel={"understeer:mid:slow": {"answer": "disagree"}})

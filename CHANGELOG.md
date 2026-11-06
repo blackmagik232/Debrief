@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.24.1
+
+Set-Up Lab's automatic advice is much more careful: it only blames the setup when the evidence is strong.
+
+An independent statistics check found the 2.23 advice called "understeer, Likely" on noisy laps from a perfectly good car far too often. It now stays quiet unless the evidence is strong.
+
+- **Setup calls must pass a real test.** Understeer and oversteer are only called the setup when the Balance map's own luck check (which allows for the error in learning how the car normally steers) also calls at least two of the corners. Instability and traction must beat chance, corrected for the number of things checked. On laps with nothing wrong, false setup calls went from 15 to 100 percent of sessions in the noisy cases down to none in our test sets.
+- **Noisy yaw signal.** Blips from bumps are smoothed out before the car's normal steering is learned, and a second way of learning it is compared; if the two disagree, the signal is too noisy and nothing is called a push or a rotation (it says so).
+- **Entry is driving advice, never a setup verdict.** A corner entry is compared with your own typical entry, so a problem on every entry cancels out. It is now worded "relative to your typical entry" and points to the corner coach.
+- **Sureness is honest.** It rests on the lap share over all corners of the group, not just the highest-looking ones. A slide measured over a short stretch (not one sample) counts for traction. If the Balance map says a group is neutral, it is capped at A hint. "Agree" on how it felt never raises a read above A hint.
+- **A corner that swings** (understeer on some laps, oversteer on others) is driving, not setup.
+- **Diff ramp suggestions** respect the "don't undo your last change" guard.
+- **Screen fixes.** A card that proposes a change is titled "Next change: ..." ("No setup change" only when there is none). "Make it in the iRacing garage" only shows above setup cards. When laps exist but can't be used, it says why (for example "52 laps, but none has yaw-rate data"). "Not what I felt" asks what you did feel (understeer, oversteer, nervous entry, no grip on exit, fine) and keeps it. When the series' setup rules are unknown, setup ideas wait for a one-tap "Open setup? Yes / Fixed"; choosing Fixed switches the card to in-car dials or driving.
+- Not proven yet: all tests use stand-in laps. Real Garage 61 and iRacing files may need the thresholds nudged (for example, the noisy-yaw check may be too cautious on a real car).
+
 ## 2.24.0 "Team sync"
 
 Refresh team data is now a real sync of your teams' shared data, the way your own history sync works: it keeps a copy of your teammates' practice, qualifying and race laps on this PC, and the member pages and the reference picker read that copy.

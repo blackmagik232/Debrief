@@ -122,6 +122,9 @@ FIT_SPEED_MIN = 1.1         # gentle bends must span this speed ratio (90th / 10
 FIT_SPEED_SPREAD = 1.5      # ... and this much before K is trusted: below it, the fit with K = 0 is a second opinion and
                             # its difference goes into the fitting margin (G and K trade off when the bends are at
                             # one speed, which moves slow corners the most)
+IV_MAX_REL = 0.15           # the ordinary and the instrumented fit of G may differ this much (share); more = the yaw channel is
+                            # too noisy to call a place, and nothing is labelled push or rotate
+YAW_MEDIAN_S = 0.25         # the yaw rate goes through a running median this long before the low-pass (bump blips)
 LAG_MAX_S = 0.20            # the car's yaw follows the steering this much later at most (measured per file)
 ENTRY_MIN_CORNERS = 3       # corner entries a lap needs before "his typical entry" is worked out for it
 
@@ -345,7 +348,9 @@ def _prep(lap: dict, L: float) -> dict | None:
         rate = float(lap.get("rate") or 60.0)
         v = lowpass(lap["v"], rate)
         sw = lowpass(lap["sw"], rate)
-        r = lowpass(lap["r"], rate)
+        # yaw rate: a short running median first (bump blips of 0.1 to 0.15 s are removed, smooth turns are not
+        # changed). Noise in the yaw channel biases the fit of the car's normal steering toward "understeer".
+        r = lowpass(_running_median(np.asarray(lap["r"], float), max(3, int(round(rate * YAW_MEDIAN_S)))), rate)
         ay = lowpass(lap["ay"], rate)
         n = len(v)
         if n < 100 or not (len(sw) == len(r) == len(ay) == n):
@@ -383,12 +388,9 @@ def _apply_lag(p: dict, n: int) -> dict:
     return q
 
 
-def estimate_lag(P: list) -> tuple:
-    """(samples, seconds, correlation): how much later the yaw follows the steering on these laps (one file), the
-    shift between 0 and LAG_MAX_S where steering and yaw curvature line up best (cross-correlation over every
-    sample above MIN_KMH and off the kerbs). On his real McLaren files: 4 or 5 samples, about 0.07 s."""
-    if not P:
-        return 0, 0.0, None
+def _lag_corr(P: list, steady: bool) -> tuple:
+    """(best shift in samples, correlation there) of steering against the later yaw curvature. steady=True: only
+    brake-off samples."""
     rate = float(P[0]["rate"])
     best, best_c = 0, None
     for n in range(0, int(round(LAG_MAX_S * rate)) + 1):
@@ -398,6 +400,8 @@ def estimate_lag(P: list) -> tuple:
             if m < 10:
                 continue
             ok = p["ok"][:m] & p["ok"][n:]
+            if steady:
+                ok &= (p["b"] <= BRAKE_ON)[:m]
             a.append(p["sw"][:m][ok])
             b.append(p["k_yaw"][n:][ok])
         if not a:
@@ -408,6 +412,23 @@ def estimate_lag(P: list) -> tuple:
         c = abs(float(np.corrcoef(a, b)[0, 1]))
         if best_c is None or c > best_c + 1e-12:
             best, best_c = n, c
+    return best, best_c
+
+
+def estimate_lag(P: list) -> tuple:
+    """(samples, seconds, correlation): how much later the yaw follows the steering on these laps (one file), the
+    shift between 0 and LAG_MAX_S where steering and yaw curvature line up best (cross-correlation over every
+    sample above MIN_KMH and off the kerbs). On his real McLaren files: 4 or 5 samples, about 0.07 s.
+    2.23.2: it is worked out twice, on every sample and on brake-off samples only. A real problem on the way in
+    (braking) can pull the first one; when the two disagree by more than 2 samples the smaller shift is used."""
+    if not P:
+        return 0, 0.0, None
+    rate = float(P[0]["rate"])
+    best, best_c = _lag_corr(P, False)
+    if sum(int(((p["b"] <= BRAKE_ON) & p["ok"]).sum()) for p in P) >= 400:
+        b2, _c2 = _lag_corr(P, True)
+        if abs(b2 - best) > 2:
+            best = min(best, b2)
     return best, best / rate, best_c
 
 
@@ -518,6 +539,31 @@ def fit_car(P: list, kind: str = "yaw", steady: bool = True, boot: bool = True, 
             "K_ci": [float(x) for x in np.percentile(boots[:, 1], [5, 95])],
             "samples": int(len(sw)), "boots": boots, "speed_spread": round(spread, 2), "k_learned": bool(use_k),
             "k_trusted": bool(use_k and spread >= FIT_SPEED_SPREAD)}
+
+
+def fit_iv(P: list, use_k: bool = True) -> tuple | None:
+    """(G, K) fitted with the sideways-g curvature (LatAccel / speed squared) as the instrument for the yaw
+    curvature. Noise in the yaw rate makes the ordinary fit read G too small (the car then looks like it understeers
+    everywhere); this fit does not have that bias, so its difference from the ordinary fit is part of the margin."""
+    S, Zk, Xk, A = [], [], [], []
+    for p in P:
+        g = np.abs(p["ay"]) / G0
+        m = (p["ok"] & (g >= FIT_G[0]) & (g <= FIT_G[1]) & (np.abs(p["k_yaw"]) >= MIN_CURV)
+             & (p["b"] <= BRAKE_ON) & (np.abs(p["dsw"]) <= STEADY_DEG_S))
+        S.append(p["sw"][m]); Xk.append(p["k_yaw"][m]); Zk.append(p["k_ay"][m]); A.append(p["ay"][m] / G0)
+    if not S:
+        return None
+    sw, xk, zk, a = (np.concatenate(x) for x in (S, Xk, Zk, A))
+    if len(sw) < 50:
+        return None
+    try:
+        if use_k:
+            X, Z = np.column_stack([xk, a]), np.column_stack([zk, a])
+            beta = np.linalg.solve(Z.T @ X, Z.T @ sw)
+            return float(beta[0]), float(beta[1])
+        return float(np.sum(zk * sw) / np.sum(zk * xk)), 0.0
+    except (np.linalg.LinAlgError, FloatingPointError):
+        return None
 
 
 # ---------------------------------------------------------------- per lap, corner and phase
@@ -799,6 +845,11 @@ def analyze_laps(laps, info=None, setup=None, series_setup=None, prefix: str = "
             model = np.array([abs(float(np.nanmean(vals_b[key] - vals[key])))
                               if np.isfinite(vals_b[key] - vals[key]).any() else 0.0 for key in keys])
             margin = np.maximum(margin, model)
+            fit_i = fit_iv(P, fit["k_learned"])
+            unreliable = bool(fit_i and abs(fit_i[0]) > 1.0 and abs(fit_i[0] - G) / abs(G) > IV_MAX_REL)
+            if unreliable:
+                base["notes"].append("The yaw-rate signal is noisy enough that the car's normal steering cannot be "
+                                     "learned reliably, so no place is called a push or a rotation from these laps.")
             if not fit["k_trusted"]:
                 # gentle bends at about one speed: G and K can't be told apart well, so the fit with K = 0 is a
                 # second opinion, and its difference goes into the margin
@@ -824,7 +875,7 @@ def analyze_laps(laps, info=None, setup=None, series_setup=None, prefix: str = "
                 mg = float(margin[j])
                 xb = vals_b[key][np.isfinite(vals_b[key])]
                 med_b = float(np.median(xb)) if len(xb) else 0.0
-                if (padj[j] < ALPHA and abs(med) >= prac and abs(med) > mg and np.sign(med_b) == np.sign(med)
+                if (not unreliable and padj[j] < ALPHA and abs(med) >= prac and abs(med) > mg and np.sign(med_b) == np.sign(med)
                         and abs(med_b) >= prac):
                     label = "push" if med > 0 else "rotate"
                 elif lo is not None and lo - mg > -prac and hi + mg < prac:

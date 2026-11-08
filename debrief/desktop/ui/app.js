@@ -926,7 +926,11 @@ function renderFocus(d){const wrap=document.createDocumentFragment();const a=doc
     b.addEventListener('click',()=>buildPrep(b));acts.append(b);
     if(d.page){const o=h('button','btn','Open your last page');o.type='button';o.id='pvOpen';o.addEventListener('click',()=>openPage(d.page,'prepPage'));acts.append(o)}
     const f=h('button','btn','Plan fuel');f.type='button';f.id='pvFuel';f.dataset.fuel='1';
-    f.addEventListener('click',()=>openFuel({track:d.track,series:d.series?d.series.id:undefined,week:d.week?d.week.week:undefined,cars:[d.car],length:d.race?d.race.length:null}));acts.append(f)}
+    f.addEventListener('click',()=>openFuel({track:d.track,series:d.series?d.series.id:undefined,week:d.week?d.week.week:undefined,cars:[d.car],length:d.race?d.race.length:null}));acts.append(f);
+    // 2.26: long races (an hour or more) get the stint planner straight from the week box
+    const len=d.race&&typeof d.race.length==='string'?d.race.length:'';const mins=raceMinutes(len);
+    if(mins!=null&&mins>=60){const e=h('button','btn','Plan stints');e.type='button';e.id='pvEndu';
+      e.addEventListener('click',()=>openEndu({track:d.track,length:len,pre:{minutes:mins}}));acts.append(e)}}
   head.append(acts);wrap.append(head);wrap.append(toolLinks(d));
   const msg=h('p','msg');msg.id='pvMsg';msg.setAttribute('role','status');wrap.append(msg);
   if(d.track&&d.car&&!token)msg.textContent='Add your Garage 61 token in Settings to build a prep page.';
@@ -1125,6 +1129,109 @@ $('fuelSaveCar').addEventListener('click',async()=>{if(!fuelFor)return;const car
   let r;try{r=await post('strategy',body)}catch(e){connectionLost();return}
   if(!r.ok){setMsg('fuelMsg',r.error,'bad');return}
   setMsg('fuelMsg','Saved for the '+car+'.','ok');$('s_tank').textContent='saved for this car';$('s_tank').className='src'});
+
+// 2.26: "6 hours", "2 hr 40 min", "180 mins" -> minutes (null for laps or unreadable)
+function raceMinutes(t){t=String(t||'').toLowerCase();if(!t||/lap/.test(t))return null;let m=0,hit=false;
+  const hr=/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)\b/.exec(t);if(hr){m+=Number(hr[1])*60;hit=true}
+  const mn=/(\d+(?:\.\d+)?)\s*(?:m|min|mins|minute|minutes)\b/.exec(t);if(mn){m+=Number(mn[1]);hit=true}
+  return hit?Math.round(m):null}
+/* ---------- endurance planner (2.26): stints, drivers, fuel and tyres, worked out on this PC */
+let enduFor=null;
+const ENDU_MAX=8;
+function enduRow(d){d=d||{};const tr=h('tr');
+  const inp=(cls,type,val,attrs)=>{const i=h('input',cls);i.type=type;if(val!=null&&val!=='')i.value=val;Object.entries(attrs||{}).forEach(([k,v])=>i.setAttribute(k,v));return i};
+  const name=inp('e_dname','text',d.name||'',{maxlength:'40','aria-label':'Driver name'});
+  const lap=inp('e_dlap','text',ok(d.lap_t)?fmtT(d.lap_t):'',{inputmode:'decimal',placeholder:'1:40.000','aria-label':'Lap time',spellcheck:'false'});
+  const burn=inp('e_dburn','number',ok(d.burn_l)?Number(d.burn_l).toFixed(2):'',{min:'0.05',max:'20',step:'0.01','aria-label':'Fuel a lap in litres'});
+  const av=inp('e_davail','text',d.avail_text||'',{placeholder:'any time','aria-label':'Race hours this driver can drive'});
+  const tz=inp('e_dtz','number',ok(d.tz)?d.tz:'',{min:'-23',max:'23',step:'0.5',placeholder:'0','aria-label':'Their clock compared with yours, in hours'});
+  const del=h('button','btn ghost','Remove');del.type='button';del.addEventListener('click',()=>{if($('enduDrivers').children.length>1)tr.remove()});
+  [name,lap,burn,av,tz].forEach(el=>{const td=h('td');td.append(el);tr.append(td)});const td=h('td');td.append(del);tr.append(td);
+  $('enduDrivers').append(tr)}
+function parseHours(t,who){t=String(t||'').trim();if(!t)return null;const out=[];
+  for(const part of t.split(/[,;]+/)){const m=/^\s*(\d+(?:\.\d+)?)\s*[-–to]+\s*(\d+(?:\.\d+)?)\s*$/.exec(part);
+    if(!m)throw new Error(who+': type driving hours like 0-3, 6-9.');const a=Number(m[1]),b=Number(m[2]);
+    if(!(b>a))throw new Error(who+': each window needs a start before its end.');out.push([a*60,b*60])}
+  return out}
+function hoursText(av){return (Array.isArray(av)?av:[]).map(w=>(w[0]/60)+'-'+(w[1]/60)).join(', ')}
+function enduInputs(){const inp={};const hrs=numOr('e_hours'),laps=numOr('e_laps');
+  if(laps!=null)inp.laps=laps;else if(hrs!=null)inp.minutes=Math.round(hrs*60);
+  const map=[['e_tank','tank_l'],['e_reserve','reserve_laps'],['e_lane','pit_lane_s'],['e_rate','fuel_rate_lps'],['e_tyre','tyre_s'],
+    ['e_loss','pit_loss_s'],['e_tstints','tyre_stints'],['e_tsets','tyre_sets'],['e_inrow','stints_in_row'],['e_mind','min_drivers'],['e_maxd','max_drivers']];
+  map.forEach(([id,k])=>{const v=numOr(id);if(v!=null)inp[k]=v});
+  inp.parallel_service=$('e_parallel').checked;inp.fair_share=$('e_fair').checked;
+  inp.drivers=[...$('enduDrivers').children].filter(tr=>['e_dname','e_dlap','e_dburn','e_davail','e_dtz'].some(c=>tr.querySelector('.'+c).value.trim()!=='')).map((tr,i)=>{const g=c=>tr.querySelector('.'+c).value.trim();const who=g('e_dname')||('Driver '+(i+1));
+    const d={name:who};const lt=g('e_dlap');if(lt){const v=parseLap(lt);if(v==null)throw new Error(who+': type the lap time like 1:40.000.');d.lap_t=v}
+    const b=g('e_dburn');if(b!=='')d.burn_l=Number(b);const av=parseHours(g('e_davail'),who);if(av)d.avail=av;
+    const tz=g('e_dtz');if(tz!=='')d.tz=Number(tz);return d});
+  return inp}
+function enduFill(inp){inp=inp||{};const set=(id,v)=>{$(id).value=ok(v)?v:''};
+  set('e_laps',inp.laps);set('e_hours',ok(inp.minutes)?inp.minutes/60:null);
+  [['e_tank','tank_l'],['e_reserve','reserve_laps'],['e_lane','pit_lane_s'],['e_rate','fuel_rate_lps'],['e_tyre','tyre_s'],['e_loss','pit_loss_s'],
+   ['e_tstints','tyre_stints'],['e_tsets','tyre_sets'],['e_inrow','stints_in_row'],['e_mind','min_drivers'],['e_maxd','max_drivers']].forEach(([id,k])=>set(id,inp[k]));
+  if(!ok(inp.reserve_laps))$('e_reserve').value='1';if(!ok(inp.tyre_stints))$('e_tstints').value='1';if(!ok(inp.stints_in_row))$('e_inrow').value='1';
+  $('e_parallel').checked=inp.parallel_service!==false;$('e_fair').checked=inp.fair_share!==false;
+  $('enduDrivers').replaceChildren();(Array.isArray(inp.drivers)&&inp.drivers.length?inp.drivers:[{}]).slice(0,ENDU_MAX).forEach(d=>enduRow(Object.assign({},d,{avail_text:hoursText(d.avail)})))}
+function openEndu(ctx){enduFor={ctx,tz:{}};const c=ctx||{};$('enduTitle').textContent='Plan stints'+(c.track?': '+c.track:'');
+  $('enduRes').hidden=true;setMsg('enduMsg','');$('e_title').value=c.title||'';$('e_start').value='';
+  const pre=c.pre||{};const me={name:c.me||'You'};if(ok(pre.lap_t))me.lap_t=pre.lap_t;if(ok(pre.burn_l))me.burn_l=pre.burn_l;
+  const base={drivers:[me],tank_l:pre.tank_l,pit_loss_s:pre.pit_loss_s,laps:pre.laps,minutes:pre.minutes,reserve_laps:pre.reserve_laps};
+  enduFill(base);$('es_len').textContent=c.length?'schedule: '+c.length:'';$('es_tank').textContent=ok(pre.tank_l)?'from the fuel planner':'';
+  $('es_loss').textContent=ok(pre.pit_loss_s)?'measured from your stops':'';
+  const d=$('dlgEndu');if(d.showModal)d.showModal();else d.setAttribute('open','');
+  if(c.track)loadEndu(c.track)}
+async function loadEndu(track){const f=enduFor;let j;try{j=await api('endurance?track='+encodeURIComponent(track))}catch(e){return}
+  if(enduFor!==f||!j||!j.ok||!j.saved)return;enduFill(j.saved.inputs);if(j.saved.title)$('e_title').value=j.saved.title;
+  setMsg('enduMsg','Loaded your saved plan for this track'+(j.saved.saved?' ('+j.saved.saved+')':'')+'.','ok')}
+function closeEndu(){const d=$('dlgEndu');if(d.close)d.close();else d.removeAttribute('open');enduFor=null}
+$('enduClose').addEventListener('click',closeEndu);
+$('enduAdd').addEventListener('click',()=>{if($('enduDrivers').children.length>=ENDU_MAX){setMsg('enduMsg','A plan can have at most '+ENDU_MAX+' drivers.','bad');return}enduRow({})});
+function fmtDur(s){if(!ok(s))return '–';s=Math.round(s);const hh=Math.floor(s/3600),mm=Math.floor(s%3600/60);return hh?hh+' h '+String(mm).padStart(2,'0')+' min':mm+' min'}
+function enduClock(sec,tz){const v=$('e_start').value;const off=Math.floor(sec/60);
+  if(!v)return '+'+Math.floor(off/60)+':'+String(off%60).padStart(2,'0');
+  const t=new Date(new Date(v).getTime()+sec*1000+(ok(tz)?tz:0)*3600e3);return t.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}
+function renderEndu(p,inp){$('enduRes').hidden=false;const k=$('enduKpis');k.replaceChildren();
+  const tzOf={};(inp.drivers||[]).forEach(d=>{tzOf[d.name]=d.tz});
+  k.append(kpi('Laps',String(p.laps)),kpi('Stops',String(p.stops)),kpi('In the pits',fmtDur(p.pit_time_s)),kpi('Flag at',enduClock(p.finish_s),'after '+fmtDur(p.finish_s)),
+    kpi('Tyre sets',String(p.tyre_sets_used)));
+  const tb=$('enduStints');tb.replaceChildren();
+  (p.stints||[]).forEach(st=>{const tr=h('tr');const tz=tzOf[st.driver];
+    const when=enduClock(st.start_s)+(ok(tz)&&tz!==0&&$('e_start').value?' (their '+enduClock(st.start_s,tz)+')':'');
+    let box='Flag';if(st.stop){const b=['add '+fmtL(st.stop.fuel_add_l)];if(st.stop.tyres)b.push('tyres');if(st.stop.swap)b.push('swap to '+st.stop.to);b.push(Math.round(st.stop.stop_s)+' s');box=b.join(' · ')}
+    [String(st.n),st.driver,st.from_lap+'–'+st.to_lap+' ('+st.laps+')',when,box].forEach(t=>tr.append(h('td',null,t)));tb.append(tr)});
+  const sb=$('enduShare');sb.replaceChildren();
+  (p.drivers||[]).forEach(r=>{const tr=h('tr');[r.name,String(r.stints),String(r.laps)+(r.short?' (fair share '+r.fair_share_laps+')':''),r.share_pct.toFixed(0)+'%',fmtDur(r.drive_s)]
+    .forEach(t=>tr.append(h('td',r.short?'bad':null,t)));sb.append(tr)});
+  const ol=$('enduOpts');ol.replaceChildren();
+  (p.options||[]).forEach(o=>{const li=h('li');li.append(h('b',null,o.label));
+    if(ok(o.delta_s))li.append(document.createTextNode(': '+(Math.abs(o.delta_s)<0.05?'same time':Math.abs(o.delta_s).toFixed(0)+' s '+(o.delta_s<0?'quicker':'slower'))+' over the same distance'));
+    if(o.detail)li.append(h('span','sub2',' ('+o.detail+')'));ol.append(li)});
+  showWarnings('enduWarn',p.warnings,'Worth knowing:')}
+function enduCheck(){const badEl=['e_hours','e_laps','e_tank','e_reserve','e_lane','e_rate','e_tyre','e_loss','e_tstints','e_tsets','e_inrow','e_mind','e_maxd'].map($).find(x=>!x.checkValidity());
+  if(badEl){setMsg('enduMsg',badEl.closest('label').querySelector('span').textContent+': '+badEl.validationMessage,'bad');badEl.focus();return null}
+  let inp;try{inp=enduInputs()}catch(err){setMsg('enduMsg',err.message,'bad');return null}
+  if(!('laps' in inp)&&!('minutes' in inp)){setMsg('enduMsg','Type the race length in hours or laps.','bad');$('e_hours').focus();return null}
+  if(!('tank_l' in inp)){setMsg('enduMsg','Type the tank size.','bad');$('e_tank').focus();return null}
+  return inp}
+$('fEndu').addEventListener('submit',async e=>{e.preventDefault();const inp=enduCheck();if(!inp)return;
+  setMsg('enduMsg','Working it out...');$('enduGo').disabled=true;let r;
+  try{r=await post('endurance',{action:'plan',inputs:inp})}catch(err){connectionLost();return}finally{$('enduGo').disabled=false}
+  if(!r.ok){setMsg('enduMsg',r.error,'bad');$('enduRes').hidden=true;return}
+  setMsg('enduMsg','');renderEndu(r.plan||{},inp)});
+$('enduSave').addEventListener('click',async()=>{if(!enduFor)return;const track=(enduFor.ctx||{}).track;
+  if(!track){setMsg('enduMsg','Open the planner from a track to save it for that track.','bad');return}
+  const inp=enduCheck();if(!inp)return;let r;
+  try{r=await post('endurance',{action:'save',track,title:$('e_title').value.trim(),inputs:inp})}catch(e){connectionLost();return}
+  setMsg('enduMsg',r.ok?'Saved for '+track+'. It opens with these numbers next time.':r.error,r.ok?'ok':'bad')});
+$('enduCopy').addEventListener('click',async()=>{const inp=enduCheck();if(!inp)return;let r;
+  try{r=await post('endurance',{action:'text',title:$('e_title').value.trim(),inputs:inp})}catch(e){connectionLost();return}
+  if(!r.ok){setMsg('enduMsg',r.error,'bad');return}
+  try{await navigator.clipboard.writeText(r.text);setMsg('enduMsg','Copied. Paste it in your team chat.','ok')}catch(e){setMsg('enduMsg','Couldn\'t copy here. Select the table and copy it instead.','bad')}});
+$('fuelEndu').addEventListener('click',()=>{if(!fuelFor)return;const c=fuelFor.ctx,pre={};
+  const lt=$('f_lap_t').value.trim();if(lt){const v=parseLap(lt);if(v!=null)pre.lap_t=v}
+  const b=numOr('f_burn');if(b!=null)pre.burn_l=b;const t=numOr('f_tank');if(t!=null)pre.tank_l=t;const pl=numOr('f_pit');if(pl!=null)pre.pit_loss_s=pl;
+  const l=numOr('f_laps'),m=numOr('f_minutes');if(l!=null)pre.laps=l;else if(m!=null)pre.minutes=m;const rv=numOr('f_reserve');if(rv!=null)pre.reserve_laps=rv;
+  closeFuel();openEndu({track:c.track,length:c.length,pre})});
 
 /* ---------- Track Intel import (2.4): upload -> map columns -> preview -> import */
 let intel=null;
@@ -1484,7 +1591,7 @@ const HELP={tour:[['Review your race','Press Review last race. Debrief pulls you
   ['Trail braking','Keeping a little brake on as you turn in, then easing off towards the apex. It keeps weight on the front tyres so the car turns.'],
   ['Median','The middle value: half your laps were quicker and half slower. Debrief calls the median lap your typical lap.'],
   ['Pace drift','How much your clean laps got slower (+) or quicker (\u2212) from the start of the race to the end, from a straight line drawn through them.'],
-  ['Consistency score','A number out of 100 for how close together your clean lap times were. 100 means every lap the same; under 45 means they were spread out.'],['Stint','A run of laps between pit stops.'],
+  ['Consistency score','A number out of 100 for how close together your clean lap times were. 100 means every lap the same; under 45 means they were spread out.'],['Stint','A run of laps between pit stops.'],['Fair share','iRacing\'s team-race rule: each driver must drive at least a quarter of an equal share of the laps (the laps divided by the number of drivers, rounded up). The stint planner checks it.'],['Driver swap','Handing the car to a teammate in the pit stall. iRacing keeps the car there for at least 30 seconds, counting while it is serviced.'],
   ['Possibly traffic','A lap that lost time in one short stretch where your other laps did not. It could be another car or a mistake.'],['Race log','The passes, fights, incidents and pit stops found in a replay scan. Open one of your race reviews and press Scan this race.'],
   ['On the road','The order the cars crossed the line in the replay. The iRacing results are the official order.'],['Rolling or standing start','Whether the cars were already moving when the green flag came out.'],
   ['Resolve markers','For making a video of your race: a file that the DaVinci Resolve video editor reads to mark the race\'s big moments on its timeline.'],
@@ -1738,6 +1845,10 @@ $('slCheckFile').addEventListener('change',async()=>{const f=$('slCheckFile').fi
 let co={st:null,timer:null,seq:0,filled:false,dirty:false,busy:false,testing:null};
 const CO_SHOW={coaching:['Coaching','ok'],muted:['Muted','no'],rehearsing:['Rehearsing','ok'],waiting:['Waiting for iRacing',''],starting:['Starting',''],off:['Off','']};
 // 2.18: the mute in words, as the page shows it on reopening: since when, by what, and what still comes through
+// 2.26: the perf meter in plain words (same wording as perfmeter.words)
+function perfWords(p){if(!p||p.cpu_pct==null)return'';const sh=p.cpu_pct<0.1?'under 0.1%':'about '+p.cpu_pct.toFixed(1)+'%';
+  let t='Using '+sh+' of one CPU core ('+(p.step_ms||0).toFixed(1)+' ms a step).';
+  if(p.slow_steps)t+=' '+p.slow_steps+' slow step'+(p.slow_steps!==1?'s':'')+' (over 50 ms): see debrief.log.';return t}
 function coMuteWords(st){const M=st.mute||{};if(!st.muted)return '';
   if(ok(M.quiet_left))return 'Muted: quiet for '+Math.ceil(M.quiet_left)+' s more, then it talks again.';
   const t=ok(M.since)?new Date(M.since*1000):null,hm=t?String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0'):'';
@@ -1757,6 +1868,7 @@ function renderCoach(st){co.st=st;const run=!!st.running,state=CO_STATE[st.state
   const pill=$('coPill');pill.className='pill'+(show[1]?' '+show[1]:'');pill.textContent=run||st.state==='error'?show[0]:'Off';
   const mb=$('coMuted');mb.hidden=!(run&&st.muted);mb.replaceChildren(...(run&&st.muted?[h('b',null,'Muted'),h('span',null,coMuteWords(st))]:[]));
   $('coText').textContent=st.text||'';
+  {const P=$('coPerf'),pw=run?perfWords(st.perf):'';if(P){P.hidden=!pw;P.textContent=pw}}   // 2.26: how much of the PC the coach uses
   const b=$('coStart');b.textContent=run?'Stop coaching':'Start coaching';b.classList.toggle('primary',!run);b.disabled=!!co.busy;
   const m=$('coMute'),hk=st.hotkey||{};m.disabled=!run;m.setAttribute('aria-pressed',String(!!st.muted));
   m.replaceChildren(document.createTextNode(st.muted?'Unmute ':'Mute '),h('kbd',null,hk.key||'Ctrl+Shift+M'));
@@ -2526,6 +2638,7 @@ function diagText(d){const L=[];
   L.push('Platform: '+(d.platform||'?')+'; Python '+(d.python||'?'));
   L.push('Updates checked by: '+(d.verification_level==='signature'?'Ed25519 signature':d.verification_level==='checksum'?'SHA-256 checksum (a fingerprint that proves the update file wasn\'t changed)':String(d.verification_level||'?')));
   L.push('Reviews: '+(ok(d.reviews)?d.reviews:'unknown')+'; synced sessions: '+(ok(d.sessions)?d.sessions:'unknown')+'; cache: '+fmtBytes(d.cache_bytes));
+  L.push('Memory: '+(ok(d.memory_mb)?Math.round(d.memory_mb)+' MB':'unknown')+(d.coach_perf&&d.coach_perf.cpu_pct!=null?'; coach: '+perfWords(d.coach_perf):''));   // 2.26
   L.push('Settings folder: '+(d.settings_folder||'?'));
   if(d.library_folder)L.push('Library folder: '+d.library_folder);
   L.push('');L.push('--- debrief.log (last '+((d.log||[]).length)+' lines; home folder, token, webhook and e-mail addresses removed) ---');

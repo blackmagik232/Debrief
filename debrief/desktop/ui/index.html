@@ -479,6 +479,7 @@
         <div class="phead"><h3>Status</h3><span class="pill" id="coPill">Off</span><span class="reclight off" id="coRec" role="status"><i></i><span id="coRecWord">Recording: off</span></span><button type="button" class="btn codrivebtn" id="coDriveBtn" title="A big view to glance at from the car, on a second monitor">Driving view</button></div>
         <p class="comuted" id="coMuted" hidden></p>
         <p class="costatus" id="coText" role="status">Coach off</p>
+        <p class="note" id="coPerf" hidden></p>
         <div class="row">
           <button type="button" class="btn primary cobig" id="coStart">Start coaching</button>
           <button type="button" class="btn" id="coMute" aria-pressed="false" disabled>Mute <kbd>Ctrl+Shift+M</kbd></button>
@@ -966,13 +967,51 @@
       <label class="field" for="f_reserve"><span>Spare laps of fuel</span><input id="f_reserve" type="number" min="0" max="5" step="0.5" value="1"></label>
     </div>
     <label class="check" for="f_p90" id="fP90Wrap" hidden><input id="f_p90" type="checkbox" checked><span id="fP90Lab">Plan with your thirstier laps</span></label>
-    <div class="row"><button type="submit" class="btn primary" id="fuelGo">Work it out</button><button type="button" class="btn" id="fuelSaveCar">Save tank size for this car</button><span class="msg" id="fuelMsg" role="status"></span></div>
+    <div class="row"><button type="submit" class="btn primary" id="fuelGo">Work it out</button><button type="button" class="btn" id="fuelSaveCar">Save tank size for this car</button><button type="button" class="btn" id="fuelEndu">Plan stints and drivers</button><span class="msg" id="fuelMsg" role="status"></span></div>
     <div class="fuelres" id="fuelRes" hidden aria-live="polite">
       <div class="kpis" id="fuelKpis"></div>
       <ul class="plain" id="fuelWindows"></ul>
       <ul class="warnlist" id="fuelWarn" hidden></ul>
     </div>
     <p class="note">Fuel numbers come from your own laps. Check the garage before the race. The pit stop loss includes refuelling time.</p>
+  </form>
+</dialog>
+<dialog id="dlgEndu" aria-labelledby="enduTitle">
+  <form id="fEndu" method="dialog" autocomplete="off" novalidate>
+    <div class="phead"><h3 id="enduTitle">Plan stints</h3><button type="button" class="btn ghost" id="enduClose" aria-label="Close">Close</button></div>
+    <p class="note" id="enduSub">Stints, drivers, fuel and tyres for a long race. Worked out on this PC; nothing is sent anywhere.</p>
+    <div class="grid3">
+      <label class="field" for="e_title"><span>Race name</span><input id="e_title" type="text" maxlength="80" placeholder="Spa 6 Hours"></label>
+      <label class="field" for="e_hours"><span>Race hours</span><input id="e_hours" type="number" min="0" max="24" step="0.25"><small class="src" id="es_len"></small></label>
+      <label class="field" for="e_laps"><span>Or race laps</span><input id="e_laps" type="number" min="1" max="5000" step="1"></label>
+      <label class="field" for="e_start"><span>Green flag (your time)</span><input id="e_start" type="datetime-local"></label>
+      <label class="field" for="e_tank"><span>Tank (litres)</span><input id="e_tank" type="number" min="1" max="200" step="0.5"><small class="src" id="es_tank"></small></label>
+      <label class="field" for="e_reserve"><span>Spare laps of fuel</span><input id="e_reserve" type="number" min="0" max="5" step="0.5" value="1"></label>
+      <label class="field" for="e_lane"><span>Pit lane time (s)</span><input id="e_lane" type="number" min="0" max="180" step="0.5"><small class="src">driving through, without the stop</small></label>
+      <label class="field" for="e_rate"><span>Refuelling (litres a second)</span><input id="e_rate" type="number" min="0.2" max="20" step="0.1"></label>
+      <label class="field" for="e_tyre"><span>Tyre change (s)</span><input id="e_tyre" type="number" min="0" max="120" step="0.5"></label>
+      <label class="field" for="e_loss"><span>Or whole stop time (s)</span><input id="e_loss" type="number" min="0" max="300" step="0.1"><small class="src" id="es_loss"></small></label>
+      <label class="field" for="e_tstints"><span>Stints on a set of tyres</span><input id="e_tstints" type="number" min="0" max="6" step="1" value="1"><small class="src">0 = never change</small></label>
+      <label class="field" for="e_tsets"><span>Tyre set limit</span><input id="e_tsets" type="number" min="1" max="99" step="1"></label>
+      <label class="field" for="e_inrow"><span>Stints in a row each</span><input id="e_inrow" type="number" min="1" max="4" step="1" value="1"></label>
+      <label class="field" for="e_mind"><span>Minimum drivers</span><input id="e_mind" type="number" min="1" max="8" step="1"></label>
+      <label class="field" for="e_maxd"><span>Maximum drivers</span><input id="e_maxd" type="number" min="1" max="8" step="1"></label>
+    </div>
+    <label class="check" for="e_parallel"><input id="e_parallel" type="checkbox" checked><span>Fuel and tyres happen at the same time</span></label>
+    <label class="check" for="e_fair"><input id="e_fair" type="checkbox" checked><span>Check iRacing's fair share (each driver at least 1/4 of an equal share of the laps)</span></label>
+    <h4>Drivers</h4>
+    <div class="tblwrap"><table class="maptbl"><thead><tr><th>Name</th><th>Lap time</th><th>Fuel a lap (L)</th><th>Can drive (race hours)</th><th>Their clock vs yours (h)</th><th></th></tr></thead><tbody id="enduDrivers"></tbody></table></div>
+    <p class="note">Can drive: race hours like <b>0-3, 6-9</b> (hours after the green flag). Leave it empty for any time. Their clock: -2 if their time is two hours behind yours.</p>
+    <div class="row"><button type="button" class="btn" id="enduAdd">Add a driver</button></div>
+    <div class="row"><button type="submit" class="btn primary" id="enduGo">Work it out</button><button type="button" class="btn" id="enduSave">Save for this track</button><button type="button" class="btn" id="enduCopy">Copy plan</button><span class="msg" id="enduMsg" role="status"></span></div>
+    <div class="fuelres" id="enduRes" hidden aria-live="polite">
+      <div class="kpis" id="enduKpis"></div>
+      <div class="tblwrap"><table class="maptbl"><thead><tr><th>#</th><th>Driver</th><th>Laps</th><th>Starts</th><th>Then box</th></tr></thead><tbody id="enduStints"></tbody></table></div>
+      <div class="tblwrap"><table class="maptbl"><thead><tr><th>Driver</th><th>Stints</th><th>Laps</th><th>Share</th><th>Driving</th></tr></thead><tbody id="enduShare"></tbody></table></div>
+      <ul class="plain" id="enduOpts"></ul>
+      <ul class="warnlist" id="enduWarn" hidden></ul>
+    </div>
+    <p class="note">Numbers come from your own laps where Debrief has them. Driver swaps keep the car in the stall for at least 30 s (iRacing's swap timer). Check fuel and tank in the garage before the race.</p>
   </form>
 </dialog>
 <dialog id="dlgDiscord" aria-labelledby="discordTitle">

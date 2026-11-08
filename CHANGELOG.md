@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.26.0 "Stint plan"
+
+Plan a long race with your teammates before it starts, and see that Debrief's live coach barely touches your PC.
+
+- **Plan stints.** On Prepare, races of an hour or more get a **Plan stints** button (it is also inside **Plan fuel**). Type the race length (hours or laps), the green flag time, the tank, the pit lane time, the refuelling speed and the tyre change time (or just your whole stop time), then up to 8 drivers, each with their own lap time, fuel use, the race hours they can drive (like "0-3, 6-9") and how far their clock is from yours.
+- **What you get.** Every stint in order: who drives, which laps, when it starts (in your time and in theirs), and at each stop the fuel to add, tyres or not, the driver swap and how long the stop takes. Then the laps, stops, time in the pits, when the flag falls and tyre sets used, and each driver's share of the laps.
+- **iRacing's rules are built in.** A driver swap keeps the car in the stall for at least 30 seconds (iRacing's swap timer, which counts while the car is serviced). The **fair share** check flags any driver under a quarter of an equal share of the laps. Minimum and maximum drivers and the tyre set limit are checked too.
+- **Timed races count the pit stops.** Over hours the time in the pits costs whole laps, so the lap count comes from driving the race stint by stint, not from the lap time alone. The last stop only adds the fuel needed to finish, so it is quicker.
+- **Options, compared over the same distance.** The smallest fuel save that drops a whole stop (with the lap time it is assumed to cost) and double-stinting tyres, each with how much quicker or slower it would be.
+- **Save for this track** keeps the plan, so it opens with your numbers next time (in the `endurance` folder in your reviews folder). **Copy plan** puts it on the clipboard for your team chat. Nothing is sent anywhere.
+- **How much of your PC Debrief uses.** While the coach runs, the Coach page now says how much of one CPU core it uses (for example "Using under 0.1% of one CPU core"). A step that takes longer than 50 ms is written to debrief.log. Copy diagnostics now includes Debrief's memory and the coach's CPU use.
+- **Resource check.** A new check (tools/perf_audit.py) measures the live coach, telemetry reading, the session information iRacing sends, the stint planner and the planned race log against fixed limits, and runs with the tests. On the test machine: the coach used about 0.02% of one core, reading telemetry about 0.01%, a 24-hour plan took about 1 ms, and Debrief used about 73 MB of memory.
+- Not proven yet: the CPU and memory numbers on your PC (the Coach page and Copy diagnostics will show them), and the planner's numbers against a real team race. Pit lane time and refuelling speed are typed in for now; measuring them from your telemetry comes with the live crew chief.
+
 ## 2.25.0 "Save as picture"
 
 The Team page and the member pages can now save nice information cards as .png pictures, ready to post in Discord or on socials.

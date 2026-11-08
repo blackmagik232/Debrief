@@ -2538,7 +2538,7 @@ class Handler(BaseHTTPRequestHandler):
                  "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand", "api/team-combos",
                  "api/diagnostics", "api/setuplab/combos", "api/setuplab/report", "api/coach/status",
                  "api/sessions-ibt", "api/session-review", "api/corner-coach", "api/plan", "api/plan/history",
-                 "api/firstrun"):
+                 "api/firstrun", "api/endurance"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -2596,7 +2596,8 @@ class Handler(BaseHTTPRequestHandler):
         if m is None:
             raise ValueError({"prep": "Track prep", "goals": "Goals", "results": "Race results", "setuplab": "Setup Lab",
                               "livecoach": "The coach", "practiceplan": "The practice plan",
-                              "wheelmute": "Wheel button mute", "firstrun": "The first-run checklist"}.get(name, name) +
+                              "wheelmute": "Wheel button mute", "firstrun": "The first-run checklist",
+                              "endurance": "The endurance planner"}.get(name, name) +
                              " isn't available right now. Details were saved to debrief.log in " + app.data_folder_label() + ".")
         return m
 
@@ -2997,6 +2998,13 @@ class Handler(BaseHTTPRequestHandler):
                 out["cache_bytes"] = self._dir_size(Path(cfg["cache_dir"]))
             except Exception:  # noqa: BLE001
                 pass
+        try:                                   # 2.26: how much of the PC Debrief uses right now
+            from .. import perfmeter
+            out["memory_mb"] = perfmeter.memory_mb()
+            r = getattr(self.server, "coach", None)
+            out["coach_perf"] = r.perf.summary() if r is not None and getattr(r, "perf", None) else None
+        except Exception:  # noqa: BLE001
+            pass
         log = Path(app.LOG_FILE) if app.LOG_FILE else app.HERE / "debrief.log"
         out["log"] = [self.scrub_diagnostics(ln, secrets_) for ln in self._tail_lines(log, self.DIAG_LOG_LINES)]
         return self._json(out)
@@ -3256,7 +3264,8 @@ class Handler(BaseHTTPRequestHandler):
                  "api/strategy", "api/racecap-link", "api/intel-preview", "api/intel-import", "api/weekly", "api/discord-post", "api/team-load",
                  "api/discord-check", "api/setuplab/read", "api/setuplab/stop", "api/setuplab/series", "api/coach/start",
                  "api/coach/stop", "api/coach/mute", "api/coach/settings", "api/coach/test-voice", "api/plan/new",
-                 "api/plan/score", "api/coach/wheel-learn", "api/coach/wheel-clear", "api/firstrun/dismiss", "api/firstrun/skip"):
+                 "api/plan/score", "api/coach/wheel-learn", "api/coach/wheel-clear", "api/firstrun/dismiss", "api/firstrun/skip",
+                 "api/endurance"):
             try:
                 return getattr(self, "_post_" + r[4:].replace("-", "_").replace("/", "_"))(body)
             except ValueError as e:
@@ -3436,6 +3445,34 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("Pick a track for the pit stop loss.")
             saved = strategy.save_car(cfg["library_folder"], car, tank_l=tank, pit_loss_s=loss, track=track)
             return self._json({"ok": True, "car": saved})
+        raise ValueError("Bad request.")
+
+    def _get_endurance(self, q):
+        """2.26 endurance planner: the inputs saved for a track (if any). Never a request."""
+        cfg = self._cfg()
+        endurance = self._module("endurance")
+        track = _short_text(q.get("track"), "track")
+        return self._json({"ok": True, "track": track, "saved": endurance.load_inputs(cfg["library_folder"], track)})
+
+    def _post_endurance(self, body):
+        """2.26 endurance planner: action "plan" (work it out), "save" (keep the inputs for this track) or "text"
+        (the plan as text to paste). Pure arithmetic on the PC; nothing is sent anywhere."""
+        endurance = self._module("endurance")
+        act = body.get("action")
+        inputs = body.get("inputs")
+        if act in ("plan", "save", "text"):
+            if not isinstance(inputs, dict) or len(inputs) > 30:
+                raise ValueError("Fill in the race length, the tank and at least one driver.")
+            if act == "save":
+                cfg = self._cfg()
+                track = _short_text(body.get("track"), "track")
+                title = body.get("title") if isinstance(body.get("title"), str) else ""
+                return self._json({"ok": True, **endurance.save_inputs(cfg["library_folder"], track, dict(inputs), title)})
+            p = endurance.plan(dict(inputs))
+            if act == "text":
+                title = body.get("title") if isinstance(body.get("title"), str) else ""
+                return self._json({"ok": True, "text": endurance.share_text(p, title[:80])})
+            return self._json({"ok": True, "plan": p})
         raise ValueError("Bad request.")
 
     MAX_INTEL = 5 * 1024 * 1024

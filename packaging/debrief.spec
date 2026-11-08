@@ -75,7 +75,7 @@ hiddenimports = sorted(set(hiddenimports) | set(_on_disk) | {"irsdk", "yaml", "w
 for _must in ("debrief.prep", "debrief.goals", "debrief.results", "debrief.team", "debrief.sync",
               "debrief.schedule", "debrief.series", "debrief.notes", "debrief.prepare", "debrief.updater", "debrief.insights",
               "debrief.technique_plus", "debrief.skills", "debrief.session_review", "debrief.profile",
-              "debrief.strategy", "debrief.racecraft", "debrief.xlsx", "debrief.intel",
+              "debrief.strategy", "debrief.racecraft", "debrief.xlsx", "debrief.intel", "debrief.endurance", "debrief.perfmeter",
               "debrief.leaderboards", "debrief.discord", "debrief.ed25519",
               "debrief.ibt", "debrief.setuplab", "debrief.livecoach", "debrief.voice",
               "debrief.sessionibt", "debrief.cornercoach",

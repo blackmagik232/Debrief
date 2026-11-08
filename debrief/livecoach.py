@@ -2754,6 +2754,8 @@ class LiveRunner:
         self._weak_for = weak_for
         self._weak_static = weak_corners
         self._log = log or _LOG.warning
+        from . import perfmeter        # 2.26: how much of the PC this loop uses (Coach page, diagnostics)
+        self.perf = perfmeter.PerfMeter("coach", on_slow=lambda m: self._log("livecoach: " + m))
         self._clock = clock
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -3184,7 +3186,8 @@ class LiveRunner:
                 # 2.18 the driving view
                 "show": show_state(st, self.running(), self.mode, cs["muted"]), "mute": self.mute_state(),
                 "repeat_note": self.repeat_note, "live_delta": self.coach.live_delta, "speed": self.speed,
-                "skipping": (self._skip or {}).get("what"), "skip_note": self.skip_note, "skipped": self.skipped}
+                "skipping": (self._skip or {}).get("what"), "skip_note": self.skip_note, "skipped": self.skipped,
+                "perf": self.perf.summary()}
 
     def _notes_here(self):
         """How many of his notes are for the track he is on (the Coach page says so), or None without a store."""
@@ -3218,6 +3221,7 @@ class LiveRunner:
                     self.coach.unmute()
                     self._mute_by = self._mute_at = self.repeat_note = None
                     self._event({"ev": "muted", "why": "minute over, talking again", "seconds": 0.0})
+                _pw, _pc = time.perf_counter(), time.thread_time()     # 2.26 perf meter: this step's cost
                 try:
                     s = self.source.read()
                 except Exception as e:  # noqa: BLE001
@@ -3274,6 +3278,8 @@ class LiveRunner:
                             self._problem(f"speaking failed ({e.__class__.__name__})")
                 except Exception as e:  # noqa: BLE001
                     self._problem(f"coach step failed ({e.__class__.__name__}: {str(e)[:120]})")
+                if self.mode == "live":
+                    self.perf._done(_pw, _pc)
                 iv = getattr(self.source, "interval", 0.0) or 0.0
                 if self._skip is not None:
                     iv = 0.0                             # skipping ahead: as fast as it goes

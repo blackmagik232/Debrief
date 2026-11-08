@@ -250,6 +250,11 @@ h1{font-size:clamp(30px,5vw,46px)}
 ul.plain{margin:0;padding:0;list-style:none;display:grid;gap:3px;font-size:14px}
 ul.plain li b{font-weight:600}
 #dlgFuel{width:min(760px,calc(100vw - 32px))}
+/* 2.26 stint planner */
+#dlgEndu{width:min(920px,calc(100vw - 32px))}
+#enduDrivers input{width:100%;min-width:0;box-sizing:border-box}
+#enduDrivers .e_dname{min-width:110px}#enduDrivers .e_dlap{min-width:96px}#enduDrivers .e_dburn{min-width:76px}#enduDrivers .e_davail{min-width:110px}#enduDrivers .e_dtz{min-width:64px}
+#enduShare td.bad{color:var(--bad,#c0392b);font-weight:600}
 .teamnotes{display:grid;gap:8px;border-top:1px solid var(--grid);padding-top:12px}
 .tauthor{display:grid;gap:4px;padding:8px 0;border-top:1px solid var(--grid)}
 .tauthor:first-child{border-top:none}

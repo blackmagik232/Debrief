@@ -269,6 +269,7 @@ def test_setup_gate_and_sample_review():
         pg.click(".navbtn[data-nav=library]", force=True)
         pg.wait_for_function("() => !document.getElementById('vWelcome').hidden")
         # the sample review, labelled in the window and on the page
+        pg.click("details.gwait summary")      # 2.28: the sample button waits inside "Waiting for Garage 61's email?"
         pg.click("#btnSample")
         pg.wait_for_function("() => !document.getElementById('vFrame').hidden && document.getElementById('loadBar').hidden", timeout=30000)
         assert "made-up race" in pg.text_content("#fbText") and pg.text_content("#fbPill") == "Sample"

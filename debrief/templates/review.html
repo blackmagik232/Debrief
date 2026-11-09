@@ -25,6 +25,8 @@
   --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
   --t-xs:11.5px; --t-sm:13px; --t-md:15px; --t-lg:18px; --t-xl:24px; --t-2xl:38px;
+  /* 2.28: the six sizes of the window's type scale (11, 13, 14, 16, 21, 46) */
+  --fs-11:11px; --fs-13:13px; --fs-14:14px; --fs-16:16px; --fs-21:21px; --fs-46:46px;
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
@@ -169,6 +171,9 @@ tfoot td{border-top:1px solid var(--axis);border-bottom:none;font-weight:600}
 /* 2.2.1: coaching summary, corner table, details */
 .coach{display:grid;gap:var(--s4)}
 .verdict{font-size:var(--t-lg,19px);line-height:1.45;max-width:72ch;display:grid;gap:4px}
+.verdictTop{margin:var(--s1) 0 var(--s1);color:var(--ink)}
+.fixsame{margin:0 0 var(--s3);max-width:90ch}
+.fix .fsame summary{cursor:pointer}
 .fixes{display:grid;gap:var(--s3)}
 .fix{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--b);border-radius:6px;padding:var(--s4);display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:var(--s1) var(--s4);align-items:start}
 .fix .rk{font-family:var(--display);font-size:34px;font-weight:700;line-height:1;color:var(--bt)}
@@ -513,8 +518,8 @@ th,td{white-space:normal!important;overflow-wrap:break-word;max-width:none!impor
 </section>
 <section id="summary" aria-label="Summary">
   <div class="pbbanner" id="pbBanner" hidden></div>
-  <div class="stats" id="stats"></div>
   <div class="panel" id="resultPanel" hidden><h3>Race result <span class="note" id="resultSub"></span></h3><div class="rstats" id="resultStats"></div></div>
+  <div class="stats" id="stats"></div>
   <div class="panel" id="otPanel" hidden><h3>On track with you <span class="note" id="otSub"></span></h3><div id="otRows"></div><p class="note" id="otNote"></p></div>
   <p class="story" id="story"></p>
 </section>
@@ -524,8 +529,8 @@ th,td{white-space:normal!important;overflow-wrap:break-word;max-width:none!impor
 <section id="coach" hidden>
   <div class="sechead"><h2>What to work on</h2><div class="verdict" id="verdict"></div></div>
   <div class="coach">
-    <div><div class="subhead"><b>Fix first</b><span id="fixSub">ranked by time per lap</span></div><div class="fixes" id="fixList"></div></div>
     <div id="storyHere"></div>
+    <div><div class="subhead"><b>Fix first</b><span id="fixSub">ranked by time per lap</span></div><p class="note fixsame" id="fixSame" hidden></p><div class="fixes" id="fixList"></div></div>
     <div class="panel wic" id="wicPanel" hidden><h3>Where in the corner <span class="note" id="wicSub"></span></h3><p class="lede" id="wicLede">How close your typical laps are to your own better laps in each part of the corner. 100 means no difference.</p><div class="wicrows" id="wicRows"></div><div class="wicfoot" id="wicFoot"></div></div>
     <div class="hab">
       <div class="panel bad"><h3>Bad habits</h3><ul id="badList"></ul></div>
@@ -1583,15 +1588,23 @@ function cornerMap(f,nums,c){const box=h('div','fmapbox');const id=String(f.corn
   host.append(s);if(can){host.dataset.act='1';host.addEventListener('click',()=>showCorner(c));host.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&!host.querySelector('.kf')){e.preventDefault();showCorner(c)}})}else host.style.cursor='default';
   kbChart(host,'Where '+id+' is on the track.'+go);box.append(host);
   const key=marks.map(mk=>mk.k+' '+MARK_WORDS[mk.k]).join(' · ');const nt=(MAP?'':'No GPS in this review, so this is the lap as a straight line. ')+key;if(nt)box.append(h('p','note',nt));return box}
+// 2.28: when several corner cards have nothing specific to add they all carry the same explanation: it is said once above
+// the cards (#fixSame) and each of those cards keeps its own header line and numbers, with the full text in its fold
+const GENERIC_WHY='Your brake point, slowest speed, throttle and gear here look about the same on quicker and slower laps, so the time is spread thin. Next time watch your line and where you turn in: compare your best lap with a typical one in Compare laps.';
+const tipsOf=f=>Array.isArray(f.tips)?f.tips:((isObj(D.insights)&&isObj(D.insights.tips)&&D.insights.tips[f.corner])||[]);
+const OWN_SAME=/^Your brake point, slowest speed, throttle and gear in .+? look about the same on quicker and slower laps, so the time is spread thin\./;
+const isSame=f=>!tipsOf(f).length&&(f.watch?OWN_SAME.test(String(f.watch)):true);
+const GENERIC_N=FIXES.filter(isSame).length;
 function fixCard(f,i){const d=h('div','fix');d.append(h('span','rk',String(i+1)));const mid=h('div');const {c,nums,times,refName}=fixData(f);
   const gear=f.gear!=null?f.gear:(nums.typical&&nums.typical.gear);
   const fh=h('h3',null,String(f.corner)+(gear!=null?' · gear '+gear:''));const cx=isObj(D.racecap)&&isObj(D.racecap.corner_context)?D.racecap.corner_context[f.corner]:null;
   if(isObj(cx)&&(cx.kind==='racecraft'||cx.kind==='driving')){const b=h('span','ctxbadge '+cx.kind,cx.kind==='racecraft'?'Mostly when near other cars':'In clear air too');b.title=cx.kind==='racecraft'?'You were '+Math.abs(cx.busy_vs_clear).toFixed(2)+' s slower here near other cars than in clear air.':'This corner is about as slow in clear air, so it looks like driving more than traffic.';fh.append(b)}
   mid.append(fh);
   mid.append(h('p','why',f.why?String(f.why):(f.basis==='ref'?firstName(refName)+' is '+f.gain.toFixed(2)+' s quicker here on a good lap.':'Your typical lap loses '+f.gain.toFixed(2)+' s here compared with your better laps.')));
-  const tips=Array.isArray(f.tips)?f.tips:((isObj(D.insights)&&isObj(D.insights.tips)&&D.insights.tips[f.corner])||[]);
+  const tips=tipsOf(f);
   if(tips.length){const ul=h('ul');tips.forEach(t=>{t=String(t);ul.append(h('li',null,t.charAt(0).toUpperCase()+t.slice(1).replace(/\.+$/,'')+'.'))});mid.append(ul)}
-  else mid.append(h('p','why',f.watch?String(f.watch):'Your brake point, slowest speed, throttle and gear here look about the same on quicker and slower laps, so the time is spread thin. Next time watch your line and where you turn in: compare your best lap with a typical one in Compare laps.'));
+  else if(!isSame(f)||GENERIC_N<2)mid.append(h('p','why',f.watch?String(f.watch):GENERIC_WHY));
+  else{mid.append(h('p','why','The time is spread thin here.'));const fd=h('details','fnumbers fsame');fd.append(h('summary',null,'What to watch'),h('p','why',f.watch?String(f.watch):GENERIC_WHY));mid.append(fd)}
   const lf=learnFor(f.corner);if(lf)mid.append(learnLine(lf,f.corner));
   const ftop=h('div','ftop');const ftx=h('div');ftx.append(...mid.childNodes);ftop.append(ftx);const fm=safe('corner map '+f.corner,()=>cornerMap(f,nums,c));if(fm)ftop.append(fm);mid.append(ftop);
   const body=h('div','fbody');
@@ -1627,6 +1640,9 @@ safe('what to work on',()=>{const IN=isObj(D.insights)?D.insights:null;
   $('coach').hidden=false;
   const v=$('verdict');(IN&&Array.isArray(IN.verdict)?IN.verdict:[]).forEach(t=>v.append(h('p',null,String(t))));
   const fl=$('fixList');const fx=FIXES;
+  if(GENERIC_N>=2){const fs=$('fixSame');fs.hidden=false;fs.textContent='Where a card says the time is spread thin: '+GENERIC_WHY.charAt(0).toLowerCase()+GENERIC_WHY.slice(1)}
+  // 2.28: the one-sentence "what to work on" sits right under the title, where it is read first
+  if(v.children.length&&$('title')){const hv=v;hv.classList.add('verdictTop');$('title').after(hv)}
   if(!fx.length)fl.append(h('p','note',NO_LAPS?NO_LAPS_TXT:'Nothing big to fix: your typical laps are already close to your best in every corner.'));
   // 2.8: the top three up front; the rest one click away, with nothing dropped
   let moreBox=null;if(fx.length>FIX_SHOWN){const m=h('details','fixmore');m.id='fixMore';const n=fx.length-FIX_SHOWN;m.append(h('summary',null,'Show '+n+' more '+(n===1?'corner':'corners')+' to work on'));moreBox=h('div','fixes');m.append(moreBox);m.addEventListener('toggle',()=>{if(m.open)sparkFns.forEach(sf=>sf())});fl.append(m)}

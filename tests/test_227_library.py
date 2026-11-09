@@ -236,7 +236,7 @@ def test_review_page_template_has_the_section_and_draws_only_text():
     chunk = t[mark:mark + 2500]
     assert "innerHTML" not in chunk and "textContent" in chunk or "h('" in chunk
     assert t.index('id="fromIracing"') < t.index('<details class="deep"'), "up front, not folded away"
-    assert report.LAYOUT == "2.18.0", "reviews with a recording are rewritten by attach_pending; the rest need no re-render"
+    assert report.LAYOUT == "2.28.0", "2.28 re-renders saved reviews once (review.html changed); reviews with a recording are rewritten by attach_pending; the rest need no re-render"
 
 
 # ================================================================ endpoints
@@ -724,13 +724,11 @@ def test_window_settings_live_data_and_sessions_from_iracing():
         pg.wait_for_function("() => document.getElementById('recStatus').textContent.length > 0", timeout=5000)
         assert pg.text_content("#recStatus") == "Not running"
         assert "Recorded" in pg.text_content("#recPath") and "never deletes" in pg.text_content("#recPath")
-        pg.uncheck("#recWin")
-        pg.click("#fLive button[type=submit]")
-        pg.wait_for_function("() => document.getElementById('recMsg').textContent === 'Saved.'", timeout=5000)
+        pg.uncheck("#recWin")      # 2.28: a switch saves by itself
+        pg.wait_for_function("() => document.getElementById('recMsg').textContent.startsWith('Saved')", timeout=5000)
         assert call("api/settings")[1]["start_with_windows"] is False
         pg.check("#recWin")
-        pg.click("#fLive button[type=submit]")
-        pg.wait_for_function("() => document.getElementById('recMsg').textContent === 'Saved.'", timeout=5000)
+        pg.wait_for_function("() => document.getElementById('recMsg').textContent.startsWith('Saved')", timeout=5000)
         # the session list: one row, the Garage 61 numbers labelled, the recording joined to it
         pg.click(".navbtn[data-nav=sessions]")
         pg.wait_for_selector("#sessList .item.sess", timeout=10000)

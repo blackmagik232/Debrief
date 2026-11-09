@@ -185,7 +185,7 @@ def make_api(cfg):
     kw = {}
     if cfg.get("api_base"):
         kw["base_url"] = cfg["api_base"]
-    return Garage61(cfg.get("token", ""), Path(cfg["cache_dir"]), log=say, **kw)
+    return Garage61(cfg.get("token", ""), Path(cfg["cache_dir"]), log=say, fast_first=True, **kw)
 
 
 LOG_FILE = None

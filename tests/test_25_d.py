@@ -914,6 +914,7 @@ def _open_share_review(pg):
 
 
 def _preview(pg):
+    pg.click("#fbMore")      # 2.28: Post to Discord lives in the More menu
     pg.click("#fbDiscord")
     pg.wait_for_function("() => document.getElementById('dlgDiscord').open", timeout=10000)
 
@@ -984,6 +985,7 @@ def test_window_post_to_discord_dialog():
             pg.wait_for_function("() => !document.getElementById('vFrame').hidden", timeout=10000)
             assert not pg.evaluate("() => document.getElementById('fbDiscord').hidden")
             stages = len([u for m, u in seen if u.startswith("discord-stage")])
+            pg.click("#fbMore")      # 2.28: Post to Discord lives in the More menu
             pg.click("#fbDiscord")
             pg.wait_for_function("() => document.getElementById('dlgDiscordHow').open", timeout=5000)
             how = pg.text_content("#dlgDiscordHow")
@@ -1093,6 +1095,7 @@ def test_window_share_error_reply_stages_nothing():
             pg.click(f".rev[data-dir='{bad.name}']")
             pg.wait_for_function("() => !document.getElementById('fbDiscord').hidden && document.title.includes('Charlotte Roval')",
                                  timeout=15000)
+            pg.click("#fbMore")      # 2.28: Post to Discord lives in the More menu
             pg.click("#fbDiscord")
             pg.wait_for_function("() => document.getElementById('banner').textContent === \"Couldn't make the share card.\"",
                                  timeout=10000)

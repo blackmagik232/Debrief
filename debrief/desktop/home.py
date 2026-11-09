@@ -54,6 +54,39 @@ def _racing_cached(h, cfg):
     return today.racing_habit((val or {}).get("starts"))
 
 
+def week_race(cfg):
+    """2.28 "This week's race": the series you starred (or the one last prepared) and the track it races this week, so
+    Today can open Prepare on it in one click. {"state": "ready", ...} or {"state": "pick"} when nothing is known yet
+    (no season schedule, no starred series, nothing prepared before). Reads files only."""
+    from datetime import datetime, timezone
+    from .. import schedule, series
+    lib = cfg["library_folder"]
+    sched = schedule.load_current()
+    if not sched:
+        return {"state": "pick", "why": "no_schedule"}
+    day = datetime.now(timezone.utc).date()
+    wk = schedule.week_on(sched, day)
+    choice = series.load_choice(lib)
+    mine = [x for x in series.resolve(series.load(lib), sched) if not x.get("missing")]
+    ser = schedule.find_series(sched, choice["series"]) if choice.get("series") else None
+    how = "last"
+    if ser is None and not choice.get("track") and mine:
+        ser, how = mine[0], "starred"
+    elif ser is not None and any(x.get("id") == ser.get("id") for x in mine):
+        how = "starred"
+    if ser is None:
+        if choice.get("track"):
+            return {"state": "ready", "how": "last", "series": None, "track": choice["track"], "car": choice.get("car"), "week": None}
+        return {"state": "pick", "why": "nothing_chosen"}
+    w = next((x for x in ser.get("weeks") or [] if x.get("season_week", x.get("week")) == wk), None) if wk else None
+    if w is None:
+        return {"state": "ready", "how": how, "series": {"id": ser.get("id"), "name": ser.get("name")}, "track": None,
+                "car": choice.get("car"), "week": wk}
+    from .. import library
+    return {"state": "ready", "how": how, "series": {"id": ser.get("id"), "name": ser.get("name")}, "track": w.get("track"),
+            "short": library.short_track_name(w.get("track")), "car": choice.get("car"), "week": wk, "start": w.get("start")}
+
+
 def get_today(h, q):
     if set(q):
         raise ValueError("Bad request.")
@@ -66,11 +99,12 @@ def get_today(h, q):
     from .server import setuplab_cache_path
     setup = _try("setup", lambda: app.optional_module("firstrun").walkthrough(cache_file=setuplab_cache_path(cfg)))
     card = today.pick(plan=plan, review=review, racing=habit, practice=practice, setup=setup)
+    wr = _try("this week's race", lambda: week_race(cfg), {"state": "pick", "why": "error"})
     from .server import _jsonable
     return h._json(_jsonable({
         "ok": True, "one": card, "last_race": review, "last_practice": practice, "reviews": n_reviews,
         "sessions": len(ss), "plan": (plan or {}).get("plan"), "setup": setup,
-        "setup_done": today.setup_done(setup), "has_data": bool(review or ss)}))
+        "setup_done": today.setup_done(setup), "has_data": bool(review or ss), "week_race": wr}))
 
 
 def get(h, r, q):

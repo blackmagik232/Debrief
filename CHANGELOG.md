@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.28.0 "Clean clicks"
+
+Fewer dead ends: nothing that only looks or saves is ever blocked, long jobs can be cancelled, a missing internet fails in seconds, and the last review opens at once.
+
+- **Never blocked.** Browsing, filters and Settings were never meant to wait for a review. They do not now. Only an action that truly needs the job to finish (starting a sync while a review runs, for example) waits, says so in plain words ("Queued: Sync starts when the review finishes"), looks greyed out, and starts by itself afterwards. **Review last race** never does nothing silently any more. The "History sync paused" pop-up is gone.
+- **Cancel.** Reviews, Prepare, the team hub and the weekly leaderboards have a **Cancel** button; it stops between steps and changes nothing. The first connection to Garage 61 gives up after about 10 seconds when you are offline (it took over a minute before). The error screen has one main button, **Open saved reviews**, then **Try again**; Settings shows only when the token is the problem. No more Sessions button there.
+- **Instant last review.** If your newest saved review is as new as your newest synced race, **Review last race** opens it immediately and checks Garage 61 in the background; a banner says **Newer race found** with **Review it**. Without a Garage 61 token it scrolls to the token box and says "Paste your Garage 61 token first". On Welcome the token step now comes before the telemetry steps, and the sample-review button sits in a fold under it.
+- **One-click Prepare.** Today has a **This week's race** card with **Prepare this race** (or **Pick your series** when Debrief doesn't know yet). Prepare's car list starts with the chosen series' cars, with **Show all cars**.
+- **Driving view.** A visible **Exit driving view** button, and **Esc** leaves it.
+- **Tidier review page.** The bar keeps **Add race result** and **Share card**; Resolve markers, Scan this race, Read a rival's lap, Compare with a teammate's lap and Post to Discord are in a **More** menu (keyboard friendly). On the review itself, "what to work on" sits under the title, the result comes before the numbers, the "You completed N full laps" summary comes before the corner cards, and an explanation that was the same on every card is said once above them (the full text stays in each card's **What to watch** fold). Nothing was removed. Saved reviews are redrawn once on the first launch.
+- **Polish.** One empty-page style (a bold line, one sentence, one button). Bigger click targets for small links and checkboxes. Today keeps its layout while loading (grey bars instead of "Loading..."), so nothing jumps. Six text sizes everywhere, and the library pages share the window's look. Tab no longer lands on the logo; the theme choice moves with the arrow keys.
+- **Settings.** Section links at the top. Switches and lists save the moment you change them and show a small **Saved**; only text boxes keep a Save button, and Debrief asks before you leave with text you haven't saved.
+- Not proven yet: the Edge app window on Windows (focus rings, the More menu, Esc in the driving view, scrolling to the token box); real Garage 61 timing (the offline give-up was measured against stand-in servers: 0.1 s when the connection is refused, 6 s when nothing answers; the old code took 75 s); Cancel during a real review, Prepare and team refresh; the Newer race banner against your real synced history; and the This week's race card against the real season schedule.
+
 ## 2.27.0 "Live data"
 
 Debrief now reads iRacing directly while you drive and keeps a record of every session, so your own sessions get what Garage 61 never has: fuel, driver aids, pit stops, tyres, incidents and what every other car did. Garage 61 stays where your teammates, comparison laps and history come from.

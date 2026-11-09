@@ -179,7 +179,7 @@ def test_salutation_field_in_settings():
     assert re.search(r'<input id="salut"[^>]*maxlength="20"', html)
     assert "How Debrief addresses you" in html
     js = (UI / "app.js").read_text(encoding="utf-8")
-    assert "salutation:sal" in js and "$('salut').value=" in js
+    assert "salutation:sal" in js and "fillBox('salut'" in js
 
 
 def test_salutation_saved_through_api_and_read_by_reviews():

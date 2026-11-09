@@ -164,7 +164,7 @@ def test_window_static_bits():
     assert "API token" not in html and "API token" not in js        # 2.18: one name: personal access token
     assert 'id="pIracing" hidden' in html                           # credentials panel hidden; keys still work
     assert 'id="btnCheck">Save and check<' in html and "Save token" not in html and ">Check connection<" not in html
-    assert 'data-nav="sessions">Open Sessions<' in html
+    assert 'id="jobSaved"' in html and ">Open saved reviews<" in html and "Open Sessions" not in html    # 2.28: one main button
     assert 'title="Review last race (Ctrl+Enter)"' in html and 'title="Settings (Ctrl+,)"' in html     # 2.18: not Ctrl+R
 
 
@@ -424,9 +424,10 @@ def test_window_job_error_offers_sessions():
         pg.click("#btnReview")
         pg.wait_for_function("() => !document.getElementById('jobErr').hidden")
         btns = pg.evaluate("() => [...document.querySelectorAll('#jobErr button')].map(b => b.textContent)")
-        assert btns == ["Try again", "Open Sessions", "Settings"], btns
-        pg.click("#jobErr >> text=Open Sessions")
-        pg.wait_for_function("() => !document.getElementById('vSessions').hidden")
+        assert btns == ["Open saved reviews", "Try again", "Open Settings"], btns      # 2.28: no Sessions button
+        shown = pg.evaluate("() => [...document.querySelectorAll('#jobErr button')].filter(b => !b.hidden).map(b => b.textContent)")
+        assert "Try again" in shown and "Open Sessions" not in shown, shown
+        pg.click("#jobErr >> text=Try again")
         assert not errs, errs
     finally:
         ctx.close()

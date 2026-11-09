@@ -146,10 +146,13 @@ class Garage61:
     BACKOFF_BASE = 5
     # wait before the one retry after a connection/DNS failure (no network at all); never more than BACKOFF_BASE
     OFFLINE_RETRY_S = 2
+    # 2.28: the first request of a run (until Garage 61 has answered anything) gives up quickly, so a PC that is
+    # offline fails in about 10 s instead of sitting at 2% for over a minute. (connect seconds, read seconds)
+    FIRST_TIMEOUT = (4, 6)
 
     def __init__(self, token: str, cache_dir: Path, min_gap_s: float = 1.0,
                  base_url: str = BASE, log=print, stop_event: "threading.Event | None" = None,
-                 backoff_base: float | None = None):
+                 backoff_base: float | None = None, fast_first: bool = False):
         token = (token or "").strip()
         if not token or token.startswith("PASTE"):
             raise Garage61Error(MSG_NO_TOKEN)
@@ -173,6 +176,7 @@ class Garage61:
         self._ok_run = 0
         self._last = 0.0
         self.requests_made = 0
+        self.first_pending = bool(fast_first)   # True until any answer has come back (see FIRST_TIMEOUT)
         self.rate_limited = 0   # 429 answers so far in this run (2.23.1: the team page stops loading more after two)
         self.log = log
         self.should_stop = None   # optional callable: long waits end early (raising Interrupted) when it's True
@@ -276,9 +280,21 @@ class Garage61:
             last = attempt == 4
             self._wait()
             self.requests_made += 1
+            first = self.first_pending
             try:
-                r = self.s.get(url, timeout=30)
+                r = self.s.get(url, timeout=self.FIRST_TIMEOUT if first else 30)
             except requests.RequestException as e:
+                if first:
+                    # 2.28: the very first request of a run: a refused connection or a name that won't resolve
+                    # gets the one quick retry below; anything else (a drop, a timeout, a proxy error) means
+                    # Garage 61 can't be reached now, so say so at once instead of backing off for over a minute
+                    if isinstance(e, requests.ConnectionError) and _is_offline(e):
+                        down += 1
+                        if down < 2 and not last:
+                            self._sleep(min(self.OFFLINE_RETRY_S, self.BACKOFF_BASE) if self.BACKOFF_BASE else 0)
+                            continue
+                    self.log(f"  Garage 61 unreachable for {where}: {type(e).__name__}: {e}")
+                    raise Garage61Error(MSG_OFFLINE)
                 # 2.7 (M1): a DNS failure or a refused connection means there's no network, so a 5/10/20/40 s
                 # backoff only makes "Review last race" sit on "Connecting..." for 75 s with Wi-Fi off. One
                 # quick retry (OFFLINE_RETRY_S) and then the plain offline message. 2.7.1 (M3): only those
@@ -295,6 +311,7 @@ class Garage61:
                     self.log(f"  Garage 61 unreachable for {where}: {type(e).__name__}: {e}")
                     raise Garage61Error(MSG_OFFLINE)
                 self._sleep(delay); delay *= 2; continue
+            self.first_pending = False   # something answered: from here the normal timeout and backoff apply
             if r.status_code == 401:
                 self.log(f"  Garage 61 rejected the token (401) for {where}")
                 raise Garage61Error(MSG_TOKEN, status=401)

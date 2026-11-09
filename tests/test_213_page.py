@@ -648,7 +648,7 @@ def test_practice_before_reading():
         pg.goto(s.url)
         pg.wait_for_function("() => document.querySelector('.navbtn[data-nav=practice]')")
         pg.click(".navbtn[data-nav=practice]")
-        pg.wait_for_selector("#prSessions .pvnone")
+        pg.wait_for_selector("#prSessions .emptystate")      # 2.28: one empty-state style
         assert "Not read yet" in pg.text_content("#prSessions") and pg.is_enabled("#prRead")
         assert pg.text_content("#prPill") == "Not read yet"
         assert not errs, errs

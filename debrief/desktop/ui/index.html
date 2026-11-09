@@ -73,12 +73,17 @@
         <button type="button" class="btn" id="fbSampleBack" hidden>Back to setup</button>
         <button type="button" class="btn" id="fbGoals" hidden>Edit goals</button>
         <button type="button" class="btn" id="fbResult" hidden>Add race result</button>
-        <button type="button" class="btn" id="fbMarkers" hidden title="A marker file for DaVinci Resolve">Resolve markers</button>
-        <button type="button" class="btn" id="fbScan" hidden title="Add the race log by scanning this race's replay in iRacing">Scan this race</button>
-        <button type="button" class="btn" id="fbRival" hidden title="Add a nearby driver's lap to Compare by reading it from this race's replay">Read a rival's lap</button>
-        <button type="button" class="btn" id="fbRaceCap" hidden title="Add the race log from RaceCap's replay scan">Link RaceCap</button>
-        <button type="button" class="btn" id="fbTeamLap" hidden title="Line your laps up with a teammate's lap in this car at this track">Compare with a teammate's lap</button>
-        <button type="button" class="btn" id="fbDiscord" hidden>Post to Discord</button>
+        <span class="morewrap" id="fbMoreWrap" hidden>
+          <button type="button" class="btn" id="fbMore" aria-haspopup="menu" aria-expanded="false" aria-controls="fbMoreMenu">More <span aria-hidden="true">▾</span></button>
+          <div class="moremenu" id="fbMoreMenu" role="menu" aria-label="More for this page" hidden>
+            <button type="button" role="menuitem" class="btn" id="fbMarkers" hidden title="A marker file for DaVinci Resolve">Resolve markers</button>
+            <button type="button" role="menuitem" class="btn" id="fbScan" hidden title="Add the race log by scanning this race's replay in iRacing">Scan this race</button>
+            <button type="button" role="menuitem" class="btn" id="fbRival" hidden title="Add a nearby driver's lap to Compare by reading it from this race's replay">Read a rival's lap</button>
+            <button type="button" role="menuitem" class="btn" id="fbRaceCap" hidden title="Add the race log from RaceCap's replay scan">Link RaceCap</button>
+            <button type="button" role="menuitem" class="btn" id="fbTeamLap" hidden title="Line your laps up with a teammate's lap in this car at this track">Compare with a teammate's lap</button>
+            <button type="button" role="menuitem" class="btn" id="fbDiscord" hidden>Post to Discord</button>
+          </div>
+        </span>
         <button type="button" class="btn" id="fbPrep" hidden>Pick another track</button>
         <span class="note fbwhy" id="fbWeeklyWhy" hidden><span id="fbWeeklyWhyText"></span> <button type="button" class="linkbtn" id="fbWeeklyWhyGo"></button></span>
         <button type="button" class="btn" id="fbWeekly" hidden>Refresh this week</button>
@@ -103,24 +108,28 @@
       <span class="eyebrow" id="tdEyebrow">Debrief</span>
       <h1>Today</h1>
       <p class="lede" id="tdLede">Your one thing to work on, your last race and your last practice.</p>
-      <div class="frline" id="tdSetupLine" hidden></div>
-      <div class="panel onething tdone" id="tdOne" aria-live="polite">
+      <div class="frline tdsetup" id="tdSetupLine"></div>
+      <div class="panel onething tdone" id="tdOne" aria-live="polite" aria-busy="true">
         <div class="phead"><h3>Your #1 thing right now</h3><span class="pill" id="tdSure" hidden></span></div>
         <p class="note tdlegend" id="tdLegend" hidden><b>Sure</b>: read straight from your laps. <b>Likely</b>: unlikely to be chance. <b>A hint</b>: a few laps point that way. <b>A guess</b>: try it and see.</p>
         <p class="note ptwhere" id="tdWhere"></p>
-        <p class="ptmain" id="tdTitle">Loading...</p>
-        <div id="tdLines"></div>
+        <p class="ptmain" id="tdTitle"><span class="skel" style="width:70%"></span></p>
+        <div id="tdLines"><span class="skel" style="width:92%"></span><span class="skel" style="width:55%"></span></div>
         <details class="tdwhy" id="tdWhyBox" hidden><summary class="linkbtn">Why?</summary><p class="note" id="tdWhy"></p></details>
         <div class="row" id="tdActs"></div>
+      </div>
+      <div class="panel tdweek" id="tdWeek">
+        <div class="phead"><h3>This week's race</h3><span class="note" id="tdWeekWhen"></span></div>
+        <div id="tdWeekBody"><span class="skel" style="width:60%"></span><span class="skel" style="width:35%"></span></div>
       </div>
       <div class="tdgrid">
         <div class="panel tdcard" id="tdRace">
           <div class="phead"><h3>Last race</h3><span class="note" id="tdRaceWhen"></span></div>
-          <div id="tdRaceBody"></div>
+          <div id="tdRaceBody"><span class="skel" style="width:75%"></span><span class="skel" style="width:50%"></span></div>
         </div>
         <div class="panel tdcard" id="tdPrac">
           <div class="phead"><h3>Last practice</h3><span class="note" id="tdPracWhen"></span></div>
-          <div id="tdPracBody"></div>
+          <div id="tdPracBody"><span class="skel" style="width:75%"></span><span class="skel" style="width:50%"></span></div>
         </div>
       </div>
       <div id="tdSetupHost"></div>
@@ -161,9 +170,12 @@
           <div class="gbody">
             <h3>Ask for your personal access token</h3>
             <p class="note">Go to <a href="https://garage61.net/developer" target="_blank" rel="noreferrer">garage61.net/developer</a> and request a personal access token. It's free for personal, non-commercial use. Garage 61 looks at each request by hand, so it can take a little while to arrive.</p>
-            <p class="note"><b>Waiting for Garage 61's email? Practice, Setup Lab, the Coach and Racing already work from your telemetry: open them in the sidebar. These steps will be here when you come back.</b></p>
-            <p class="note">Curious what you'll get? Have a look at a made-up race while you wait.</p>
-            <div class="row"><button type="button" class="btn" id="btnSample">See a sample review</button></div>
+            <details class="gwait">
+              <summary>Still waiting for the token? See what you can do now</summary>
+              <p class="note"><b>Waiting for Garage 61's email? Practice, Setup Lab, the Coach and Racing already work from your telemetry: open them in the sidebar. These steps will be here when you come back.</b></p>
+              <p class="note">Curious what you'll get? Have a look at a made-up race while you wait.</p>
+              <div class="row"><button type="button" class="btn" id="btnSample">See a sample review</button></div>
+            </details>
           </div>
         </li>
         <li class="gstep" id="gs3">
@@ -198,14 +210,14 @@
       <h1 id="jobTitle">Reviewing your last race</h1>
       <div class="progress"><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="jobBar"><i></i></div><span class="pct num" id="jobPct">0%</span></div>
       <p class="now" id="jobNow">Starting...</p>
-      <div class="row"><button type="button" class="btn" id="jobStop" hidden>Stop scan</button></div>
+      <div class="row"><button type="button" class="btn" id="jobStop" hidden>Cancel</button></div>
       <div class="callout err" id="jobErr" hidden>
         <h3 id="jobErrTitle">The review stopped</h3>
         <p id="jobErrMsg"></p>
         <div class="row">
-          <button type="button" class="btn primary" data-act="retry">Try again</button>
-          <button type="button" class="btn" data-nav="sessions">Open Sessions</button>
-          <button type="button" class="btn" data-nav="settings">Settings</button>
+          <button type="button" class="btn primary" id="jobSaved">Open saved reviews</button>
+          <button type="button" class="btn" data-act="retry">Try again</button>
+          <button type="button" class="linkbtn" id="jobSettings" data-nav="settings" hidden>Open Settings</button>
         </div>
       </div>
       <div class="panel">
@@ -451,7 +463,7 @@
 
   <section id="vCoach" class="view pad" hidden>
     <div class="codrive" id="coDrive" hidden aria-label="Coach, driving view">
-      <div class="dtop"><span class="eyebrow">Coach · driving view</span><button type="button" class="btn" id="cdExit">Full Coach page</button></div>
+      <div class="dtop"><span class="eyebrow">Coach · driving view</span><button type="button" class="btn primary cdexit" id="cdExit" title="Back to the full Coach page and the sidebar (Esc)">Exit driving view <span class="cdkey" aria-hidden="true">Esc</span></button></div>
       <div class="dstate off" id="cdState" role="status" aria-live="polite"><b id="cdWord">OFF</b><span id="cdSub">Press Start coaching, then drive.</span></div>
       <div class="dgrid">
         <div class="dpanel"><span class="dlab">Your one thing</span><p class="dthing" id="cdThing">No plan for this car and track yet.</p><p class="dcount num" id="cdCount"></p><p class="dnote" id="cdDone"></p></div>
@@ -736,7 +748,19 @@
     <div class="col">
       <span class="eyebrow">Debrief</span>
       <h1>Settings</h1>
+      <nav class="setnav" id="setNav" aria-label="Jump to a settings section">
+        <button type="button" class="linkbtn" data-jump="fToken">Account</button>
+        <button type="button" class="linkbtn" data-jump="fOpts">Reviews</button>
+        <button type="button" class="linkbtn" data-jump="fUnits">Units</button>
+        <button type="button" class="linkbtn" data-jump="fLive">Live data</button>
+        <button type="button" class="linkbtn" data-jump="fSync">History sync</button>
+        <button type="button" class="linkbtn" data-jump="fTelemetry">Coach</button>
+        <button type="button" class="linkbtn" data-jump="fUpdate">Updates</button>
+        <button type="button" class="linkbtn" data-jump="pExtras">Team and extras</button>
+        <button type="button" class="linkbtn" data-jump="pAbout">About</button>
+      </nav>
       <p class="note" id="setFileErr" hidden></p>
+      <p class="note setauto">Switches and choices save as soon as you change them. Boxes you type in have a Save button.</p>
 
       <form class="panel" id="fToken" autocomplete="off">
         <div class="phead"><h3>Garage 61 token</h3><span class="pill" id="tokStatus">Checking...</span></div>
@@ -762,7 +786,7 @@
           <input id="salut" type="text" maxlength="20" autocomplete="off" spellcheck="false" placeholder="For example: Sir" aria-describedby="salutNote">
         </label>
         <p class="note" id="salutNote">A name or title the race summary starts with (for example "Alex, you completed..."). Up to 20 characters. Leave it empty for a plain "You completed...". New reviews use it.</p>
-        <div class="row"><button type="submit" class="btn">Save options</button><span class="msg" id="optMsg" role="status"></span></div>
+        <div class="row"><button type="submit" class="btn" id="btnSalut">Save</button><span class="msg" id="optMsg" role="status"></span></div>
       </form>
 
       <form class="panel" id="fUnits">
@@ -771,7 +795,7 @@
           <select id="unitsSel"><option value="mph">mph</option><option value="kmh">km/h</option></select>
         </label>
         <p class="note">Every page, every review and the coach's voice use this. Lap times are always minutes:seconds.thousandths, like 1:35.849.</p>
-        <div class="row"><button type="submit" class="btn">Save units</button><span class="msg" id="unitsMsg" role="status"></span></div>
+        <div class="row"><span class="msg" id="unitsMsg" role="status"></span></div>
       </form>
 
       <form class="panel" id="fLive">
@@ -782,7 +806,7 @@
         <p class="note">Recorder: <b id="recStatus"></b></p>
         <p class="note msg bad" id="recDisk" hidden></p>
         <p class="mono path" id="recPath"></p>
-        <div class="row"><button type="submit" class="btn">Save</button><span class="msg" id="recMsg" role="status"></span></div>
+        <div class="row"><span class="msg" id="recMsg" role="status"></span></div>
       </form>
 
       <form class="panel" id="fSync">
@@ -790,7 +814,7 @@
         <p class="note">Debrief keeps a copy of all your Garage 61 laps (races, qualifying and practice). The first sync downloads everything at a gentle pace, so it can take a while; you can keep using Debrief, and it carries on next time if you close it. After that, each sync only asks for new laps.</p>
         <label class="check" for="syncOpen"><input id="syncOpen" type="checkbox"><span>Sync each time Debrief opens</span></label>
         <label class="check" for="syncTel"><input id="syncTel" type="checkbox"><span>Also save telemetry for my best lap of every session (saved once)</span></label>
-        <div class="row"><button type="submit" class="btn">Save sync options</button><span class="msg" id="syncOptMsg" role="status"></span></div>
+        <div class="row"><span class="msg" id="syncOptMsg" role="status"></span></div>
       </form>
 
       <form class="panel" id="fTelemetry" autocomplete="off">
@@ -806,7 +830,7 @@
         <p class="note" id="updNote">Debrief checks GitHub for a newer version once a day. Updating downloads the installer, checks it arrived intact, installs it and reopens Debrief. Your settings, reviews and history are kept.</p>
         <p class="note" id="updVerify">Updates are checked by <abbr title="A fingerprint that proves the update file wasn't changed.">SHA-256 checksum</abbr>: a fingerprint that proves the update file wasn't changed. Signed updates switch on once a signing key is published.</p>
         <label class="check" for="updAuto"><input id="updAuto" type="checkbox"><span>Check for updates when Debrief opens</span></label>
-        <div class="row"><button type="button" class="btn" id="btnUpdCheck">Check now</button><button type="button" class="btn primary" id="btnUpdNow" hidden>Update now</button><button type="submit" class="btn ghost">Save</button><span class="msg" id="updMsg" role="status"></span></div>
+        <div class="row"><button type="button" class="btn" id="btnUpdCheck">Check now</button><button type="button" class="btn primary" id="btnUpdNow" hidden>Update now</button><span class="msg" id="updMsg" role="status"></span></div>
       </form>
 
       <details class="panel xtras" id="pExtras">

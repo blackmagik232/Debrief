@@ -292,7 +292,7 @@ def test_window_today_keys_and_returning_user():
         assert "Zolder · McLaren 570S GT4" in pg.text_content("#tdRace") and "Your laps are steady." in pg.text_content("#tdRace")
         assert "Best 1:34.900" in pg.text_content("#tdPrac") and "11 clean laps" in pg.text_content("#tdPrac")
         # a returning user: no "Getting set up" box and no "New here?" toast; the step left is one quiet line
-        pg.wait_for_function("() => !document.getElementById('tdSetupLine').hidden")
+        pg.wait_for_function("() => document.getElementById('tdSetupLine').classList.contains('quiet')")      # 2.28: always there, filled when quiet
         assert pg.evaluate("() => document.getElementById('firstRun').hidden")
         assert "Test the coach's voice" in pg.text_content("#tdSetupLine")
         pg.wait_for_timeout(300)
@@ -435,7 +435,7 @@ def test_window_before_any_data_shows_the_setup_steps():
         pg.wait_for_function("() => !document.getElementById('vToday').hidden && !document.getElementById('firstRun').hidden")
         assert pg.evaluate("() => document.getElementById('firstRun').closest('#vToday') !== null")
         assert pg.evaluate("() => document.getElementById('tdOne').hidden && document.querySelector('#vToday .tdgrid').hidden")
-        assert pg.text_content("#frPill") == "1 of 5 done" and pg.evaluate("() => document.getElementById('tdSetupLine').hidden")
+        assert pg.text_content("#frPill") == "1 of 5 done" and pg.evaluate("() => document.getElementById('tdSetupLine').textContent.trim() === ''")
         assert "A few steps" in pg.text_content("#tdLede")
         assert not errs, errs
     finally:

@@ -48,6 +48,7 @@ FALLBACK_TOKENS = """:root{
   --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
   --t-xs:11.5px; --t-sm:13px; --t-md:15px; --t-lg:18px; --t-xl:24px; --t-2xl:38px;
+  --fs-11:11px; --fs-13:13px; --fs-14:14px; --fs-16:16px; --fs-21:21px; --fs-46:46px;
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
@@ -553,6 +554,14 @@ JOB_TITLES = {"review": "Reviewing your last race", "check": "Checking the conne
               "scan": "Scanning the replay", "rival": "Reading a rival's lap", "update": "Updating Debrief", "weekly": "Updating this week's team leaderboards",
               "setuplab": "Reading your telemetry files"}
 BACKGROUND_TITLES = {"refresh": "Updating your saved reviews to the new page layout"}
+# 2.28: jobs the Cancel button can stop; they check for it every time they report a step
+CANCELLABLE = ("review", "prep", "team", "teamload", "weekly")
+CANCELLED_MSG = "You stopped it. Nothing was changed."
+
+
+class JobCancelled(SystemExit):
+    """Raised inside a job's progress report when Cancel was pressed (a SystemExit, so the job's own
+    `except Exception` clean-ups let it through and _run ends the job as stopped)."""
 
 
 class Jobs:
@@ -565,6 +574,7 @@ class Jobs:
         self.st = {"state": "idle"}
         self.stop_sync = threading.Event()
         self.stop_scan = threading.Event()
+        self.stop_job = threading.Event()   # 2.28: Cancel for a review, prep, team or weekly job
         self.thread = None
         self.on_update_started = None   # set by the server: close Debrief so the installer can replace it
         self.closing = False            # set while Debrief closes for an update: no new jobs
@@ -678,13 +688,26 @@ class Jobs:
                 self.stop_sync.clear()
             if kind in ("scan", "rival", "setuplab"):
                 self.stop_scan.clear()
+            if kind in CANCELLABLE:
+                self.stop_job.clear()
             self.thread = threading.Thread(target=self._run, args=(kind, jid, dict(params or {})), daemon=True,
                                            name=f"job-{kind}")
             self.thread.start()
         return {"ok": True, "id": jid}
 
+    def cancel(self) -> bool:
+        """Cancel the running review, prep, team or weekly job (it stops at its next step). True if one was running."""
+        with self.lock:
+            if self.st.get("state") != "running" or self.st.get("kind") not in CANCELLABLE:
+                return False
+            self.st["cancelling"] = True
+            self.stop_job.set()
+            return True
+
     def _progress(self, jid):
         def cb(frac, msg):
+            if self.stop_job.is_set() and self.st.get("id") == jid and self.st.get("kind") in CANCELLABLE:
+                raise JobCancelled(CANCELLED_MSG)
             with self.lock:
                 if self.st.get("id") != jid:
                     return
@@ -776,12 +799,16 @@ class Jobs:
         except Exception as e:  # noqa: BLE001
             app.say("ERROR (unexpected):\n" + traceback.format_exc())
             error = friendly(e)
+        cancelled = bool(error) and kind in CANCELLABLE and self.stop_job.is_set()
+        if cancelled:
+            error = CANCELLED_MSG
         if kind == "check":
             _note_token_check(ok=error is None, rejected=rejected)
         with self.lock:
             if self.st.get("id") != jid:
                 return
             self.st["state"] = "error" if error else "done"
+            self.st["cancelled"] = cancelled
             self.st["error"] = error
             self.st["result"] = result
             self.st["frac"] = self.st["frac"] if error else 1.0
@@ -2539,7 +2566,7 @@ class Handler(BaseHTTPRequestHandler):
                  "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand", "api/team-combos",
                  "api/diagnostics", "api/setuplab/combos", "api/setuplab/report", "api/coach/status",
                  "api/sessions-ibt", "api/session-review", "api/corner-coach", "api/plan", "api/plan/history",
-                 "api/firstrun", "api/endurance", "api/live", "api/recording"):
+                 "api/firstrun", "api/endurance", "api/live", "api/recording", "api/last-race"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -2715,6 +2742,68 @@ class Handler(BaseHTTPRequestHandler):
 
     SESSIONS_LIMIT = 60      # default page size of /api/sessions
     SESSIONS_MAX = 5000
+
+    LAST_RACE_KINDS = {3: "Race", 2: "Qualifying", 1: "Practice"}
+
+    def _get_last_race(self, q):
+        """2.28 Instant last review. Without ?check=1 this only reads files: the newest saved review of the kinds Review
+        last race looks at, the newest such session in the synced history, and whether the saved review is at least as
+        new (then "instant": the window opens it at once). With ?check=1 it also asks Garage 61 (a first request that
+        gives up in about 10 s when offline) whether a newer, unreviewed race exists: "newer" says which."""
+        cfg = self._cfg()
+        lib = Path(cfg["library_folder"])
+        want = (1, 2, 3) if cfg.get("include_practice") else (3,)
+        labels = {self.LAST_RACE_KINDS[k] for k in want}
+        from .. import sync
+        saved = None
+        for g in self.server.reviews.list(lib):
+            for r in g.get("reviews") or []:
+                if r.get("session") in labels and r.get("started_at") and (saved is None or (r["started_at"], r["dir"]) > (saved["started_at"], saved["dir"])):
+                    saved = {"dir": r["dir"], "started_at": r["started_at"], "track": g.get("track"), "car": g.get("car")}
+        if saved is not None:
+            try:
+                m = (json.loads((lib / "reviews" / saved["dir"] / "review.json").read_text(encoding="utf-8")).get("meta") or {})
+                saved["event"] = str(m.get("event_id") or "")
+            except (OSError, ValueError, AttributeError):
+                saved["event"] = ""
+        newest = None
+        api = self._cache_api(cfg)
+        if api is not None:
+            try:
+                raw = sync._read_json(sync.Store.for_api(api).root / "sessions.json", {})
+                for x in (raw.get("sessions") or []) if isinstance(raw, dict) else []:
+                    if isinstance(x, dict) and x.get("type") in want and x.get("event") and sync._parse(x.get("start")):
+                        if newest is None or sync._parse(x["start"]) > sync._parse(newest["start"]):
+                            newest = x
+            except Exception:  # noqa: BLE001  (an odd store only means the normal job runs)
+                app.say("Couldn't read the synced sessions for Review last race:\n" + traceback.format_exc())
+        instant = False
+        if saved is not None:
+            if newest is None or (saved.get("event") and saved["event"] == str(newest.get("event"))):
+                instant = True
+            else:
+                a, b = sync._parse(saved["started_at"]), sync._parse(newest["start"])
+                instant = a is not None and b is not None and a >= b
+        out = {"ok": True, "saved": saved, "instant": instant,
+               "newest_synced": ({"event": newest.get("event"), "start": newest.get("start")} if newest else None)}
+        if q.get("check") != "1":
+            return self._json(out)
+        out.update(checked=False, newer=None)
+        if self.server.jobs.running or api is None:
+            return self._json(out)
+        try:
+            ev, track_id, car_id = app.find_last_event(app.make_api(cfg), list(want), cfg["cache_dir"], cfg["library_folder"])
+        except Garage61Error as e:
+            out["error"] = friendly(e)
+            return self._json(out)
+        except SystemExit:      # no race in the last 30 days: nothing newer
+            out["checked"] = True
+            return self._json(out)
+        out["checked"] = True
+        if ev and not any(app.saved_review_dir(cfg["library_folder"], ev, k) for k in want):
+            out["newer"] = {"event": ev, "track_id": track_id if isinstance(track_id, int) else None,
+                            "car_id": car_id if isinstance(car_id, int) else None, "session_type": 3 if 3 in want else None}
+        return self._json(out)
 
     def _get_sessions(self, q):
         """Your synced sessions (races, qualifying, practice), newest first. Never a request.
@@ -3265,6 +3354,11 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self._json({"ok": False, "error": str(e)}, 400)
             return self._json(self.server.jobs.start("scan", {"review_path": str(d)}))
+        if r == "api/job-stop":     # 2.28: Cancel for a review, prep, team or weekly job
+            if self.server.jobs.kind in ("scan", "rival", "setuplab"):
+                self.server.jobs.stop_scan.set()
+                return self._json({"ok": True, "stopping": True})
+            return self._json({"ok": True, "stopping": self.server.jobs.cancel()})
         if r == "api/replay-scan-stop":
             if self.server.jobs.kind in ("scan", "rival"):
                 self.server.jobs.stop_scan.set()

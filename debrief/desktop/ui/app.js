@@ -52,7 +52,7 @@ function banner(msg,bad,ms){msg=plainText(msg)||msg;const b=$('banner');const ba
   if(ms!==0&&!bad)banner.t=setTimeout(()=>b.hidden=true,ms||5000)}
 $('bannerClose').addEventListener('click',()=>{clearTimeout(banner.t);$('banner').hidden=true});
 // 2.18: a banner with one action button (e.g. Rebuild), gone with the next banner
-function bannerAction(msg,label,fn){banner(msg,false,12000);const b=h('button','btn ghost',label);b.type='button';b.id='bannerAct';b.addEventListener('click',()=>{$('banner').hidden=true;fn()});$('bannerClose').before(b)}
+function bannerAction(msg,label,fn,ms){banner(msg,false,ms==null?12000:ms);const b=h('button','btn ghost',label);b.type='button';b.id='bannerAct';b.addEventListener('click',()=>{$('banner').hidden=true;fn()});$('bannerClose').before(b)}
 
 /* ---------- heartbeat (a worker keeps ticking while the window is minimised) */
 const PING=BASE+'api/ping';
@@ -127,7 +127,8 @@ const PAGE_KEYS=[...document.querySelectorAll('.nav .navbtn[data-nav]:not(.sub)'
 const keyOfPage=n=>{const i=PAGE_KEYS.indexOf(n);return i<0?null:'Ctrl+'+(i===9?0:i+1)};
 const KEY_MSG=/^(review|reviewgo|settings|help|prev|next|rebuild|page[0-9])$/;
 let oldKeyShown=false;
-function shortcut(k){if(k==='reviewgo'){startReview();return true}if(k==='rebuild'){if(current.view==='review'&&current.dir)rebuildReview(current.dir);return true}if(k==='settings'){openSettings();return true}
+function shortcut(k){if(/^(reviewgo|prev|next|rebuild|page[0-9])$/.test(k)&&!leaveOk())return true;
+  if(k==='reviewgo'){startReview();return true}if(k==='rebuild'){if(current.view==='review'&&current.dir)rebuildReview(current.dir);return true}if(k==='settings'){openSettings();return true}
   if(k==='review'){if(!oldKeyShown){oldKeyShown=true;banner('Review last race is Ctrl+Enter now (or the button at the top of the sidebar). Ctrl+R does nothing in Debrief.',false,9000)}return true}
   if(k==='help'){if(!$('dlgHelp').open)openHelp('keys');else showHelp('keys');return true}
   if(document.querySelector('dialog[open]'))return false;
@@ -149,7 +150,7 @@ document.addEventListener('keydown',e=>{if(e.key==='F1'&&!e.ctrlKey&&!e.metaKey&
 // the key list (Help > Keyboard keys, F1 or ?), made from the sidebar so it can't drift from it
 function keyList(){const nm=n=>{const b=document.querySelector('.nav .navbtn[data-nav="'+n+'"]');return b?b.textContent.trim():n};
   return [['Ctrl+Enter','Review last race'],['Ctrl+,','Settings']].concat(PAGE_KEYS.map(n=>[keyOfPage(n),nm(n)]),
-    [['F1 or ?','This list of keys'],['J','The review before this one'],['K','The review after this one'],['Tab','Move to the next button or chart'],['Arrow keys','Move along a chart that has focus'],['Esc','Close a window like this one']])}
+    [['F1 or ?','This list of keys'],['J','The review before this one'],['K','The review after this one'],['Tab','Move to the next button or chart'],['Arrow keys','Move along a chart that has focus'],['Esc','Close a window like this one, or leave the driving view']])}
 
 /* ---------- views */
 const VIEWS=['vFrame','vToday','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam','vSessions','vSetupLab','vCoach','vPractice','vRacing','vCars'];
@@ -229,7 +230,7 @@ const SURE={sure:['Sure','ok'],likely:['Likely',''],hint:['A hint','no'],guess:[
 function sureBadge(level,why){const x=SURE[level];if(!x)return null;const b=h('span','pill sure'+(x[1]?' '+x[1]:''),x[0]);b.title=why||'How sure this is';return b}
 let td={j:null,seq:0};
 function openToday(){current={view:'today',dir:null};show('vToday');markNav();loadToday()}
-async function loadToday(){const seq=++td.seq;if(!td.j)$('tdTitle').textContent='Loading...';
+async function loadToday(){const seq=++td.seq;
   let j;try{j=await api('today')}catch(e){connectionLost();return}
   if(seq!==td.seq)return;td.j=j;renderToday();renderFirstRun()}
 function tdGo(a){if(!a)return;
@@ -240,6 +241,7 @@ function tdGo(a){if(!a)return;
   else goNav(a.go)}
 function tdBtn(a,primary){const b=h('button','btn'+(primary?' primary':''),a.label);b.type='button';b.addEventListener('click',()=>tdGo(a));return b}
 function renderToday(){const j=td.j;if(!j)return;
+  $('tdOne').setAttribute('aria-busy','false');
   $('tdEyebrow').textContent=firstName?'Welcome back, '+firstName:'Debrief';
   if(!j.ok){$('tdTitle').textContent=plainText(j.error)||'Today didn\'t load.';$('tdLines').replaceChildren();$('tdActs').replaceChildren();return}
   const O=j.one||{};
@@ -249,6 +251,7 @@ function renderToday(){const j=td.j;if(!j)return;
   $('tdWhy').textContent=O.why||'';$('tdWhyBox').hidden=!O.why;if($('tdWhyBox').dataset.w!==(O.why||'')){$('tdWhyBox').dataset.w=O.why||'';$('tdWhyBox').open=false}
   const pill=$('tdSure'),x=SURE[O.sureness];pill.hidden=!x;if(x){pill.className='pill sure'+(x[1]?' '+x[1]:'');pill.textContent=x[0];pill.title='How sure this is: '+x[0]}
   $('tdLegend').hidden=!x;
+  renderWeekCard(j);
   const acts=[];if(O.action)acts.push(tdBtn(O.action,true));if(O.more)acts.push(tdBtn(O.more,false));$('tdActs').replaceChildren(...acts);
   // last race
   const R=j.last_race,rb=$('tdRaceBody');$('tdRaceWhen').textContent=R?[R.session,fmtDate(R.date)].filter(Boolean).join(' · '):'';
@@ -264,6 +267,24 @@ function renderToday(){const j=td.j;if(!j)return;
     pb.replaceChildren(top,h('p','note',facts||'No timed laps'),row)}
   else pb.replaceChildren(h('p','note','No practice from your telemetry yet. In iRacing, press Alt+L in the car to save telemetry, then drive a few laps.'),
     (()=>{const r=h('div','row');r.append(tdBtn({label:'Open Practice',go:'practice'},false));return r})())}
+/* 2.28 "This week's race": the series you starred (or the one last prepared) and its track this week, with one button that
+   opens Prepare on it. Before anything is known it offers "Pick your series". */
+async function prepareWeek(W){
+  const body={car:W.car||null,series:W.series?W.series.id:null,week:W.week||null,track:W.series?null:(W.track||null),follow_now:true,season:null};
+  try{await post('prepare-choice',body)}catch(e){}
+  pkReady=false;openPrep()}
+function renderWeekCard(j){const W=j&&j.week_race,body=$('tdWeekBody');
+  if(!W){$('tdWeek').hidden=true;return}$('tdWeek').hidden=false;const kids=[];const row=h('div','row');
+  if(W.state==='ready'){const name=[W.series&&W.series.name,W.short||W.track].filter(Boolean).join(' \u00b7 ');
+    $('tdWeekWhen').textContent=W.how==='starred'?'Your starred series':'Last prepared';
+    if(W.track){kids.push(h('p','tdwhat',null));kids[0].append(h('b',null,name));
+      const bits=[ok(W.week)?'Week '+W.week:'',W.start?dayRange(W.start):'',W.car||''].filter(Boolean).join(' \u00b7 ');if(bits)kids.push(h('p','note',bits));
+      const b=h('button','btn primary','Prepare this race');b.type='button';b.id='tdWeekGo';b.addEventListener('click',()=>prepareWeek(W));row.append(b)}
+    else{kids.push(h('p','note',(W.series?W.series.name:'This series')+' has no race this week.'));
+      const b=h('button','btn','Open Prepare');b.type='button';b.id='tdWeekGo';b.addEventListener('click',()=>prepareWeek(W));row.append(b)}}
+  else{$('tdWeekWhen').textContent='';kids.push(h('p','note',W.why==='no_schedule'?'Load the season schedule and pick your series, and this shows the race to prepare for.':'Pick your series once and this shows its race each week, ready to prepare.'));
+    const b=h('button','btn primary','Pick your series');b.type='button';b.id='tdWeekGo';b.addEventListener('click',()=>openPrep());row.append(b)}
+  kids.push(row);body.replaceChildren(...kids)}
 // Practice and Coach show the same plan; when Today's pick is something else they say where it is
 function tdPointer(hostId){const host=$(hostId);if(!host)return;const old=host.querySelector('.tdptr');if(old)old.remove();
   const O=td.j&&td.j.one;if(!O||O.source==='plan'||O.source==='none'||O.source==='setup')return;
@@ -306,6 +327,7 @@ function frameBar(){
   $('fbTeamLap').hidden=v!=='review';
   $('fbMarkers').hidden=v!=='review';$('fbRaceCap').hidden=v!=='review'||!racecapOn;$('fbScan').hidden=v!=='review';$('fbRival').hidden=v!=='review';
   $('fbSampleBack').hidden=v!=='sample';$('fbGoals').hidden=v!=='goalCharts';
+  moreSync();
   const pill=$('fbPill');pill.hidden=true;$('fbBar').hidden=true;
   if(v==='sample'){$('fbText').textContent='This is a made-up race, not your laps. Your own reviews will look like this.';
     pill.hidden=false;pill.className='pill no';pill.textContent='Sample';return}
@@ -326,6 +348,22 @@ function frameBar(){
   if(v==='prepPage')$('fbText').textContent='Track prep page';
   if(v==='teamPage')$('fbText').textContent='Team hub'+(pages.team_updated?' · updated '+fmtWhen(pages.team_updated):'');
 }
+/* 2.28 the frame bar keeps what you use every time ("Add race result") and puts the rest under More: Resolve markers,
+   Scan this race, Read a rival's lap, Link RaceCap, Compare with a teammate's lap, Post to Discord. Keyboard: Enter or
+   Down opens it, arrows move, Esc closes and returns to the button. */
+const moreItems=()=>[...$('fbMoreMenu').querySelectorAll('button')].filter(b=>!b.hidden);
+function moreSet(open,focusFirst){const m=$('fbMoreMenu');m.hidden=!open;$('fbMore').setAttribute('aria-expanded',String(!!open));if(open&&focusFirst){const i=moreItems()[0];if(i)i.focus()}}
+function moreSync(){const any=moreItems().length>0;$('fbMoreWrap').hidden=!any;if(!any)moreSet(false)}
+$('fbMore').addEventListener('click',()=>{const o=$('fbMoreMenu').hidden;moreSet(o,o)});
+$('fbMore').addEventListener('keydown',e=>{if(e.key==='ArrowDown'){e.preventDefault();moreSet(true,true)}});
+$('fbMoreMenu').addEventListener('keydown',e=>{const it=moreItems(),i=it.indexOf(document.activeElement);
+  if(e.key==='Escape'){e.preventDefault();e.stopPropagation();moreSet(false);$('fbMore').focus();return}
+  if(e.key==='Tab'){moreSet(false);return}
+  let j=null;if(e.key==='ArrowDown')j=(i+1)%it.length;else if(e.key==='ArrowUp')j=(i-1+it.length)%it.length;else if(e.key==='Home')j=0;else if(e.key==='End')j=it.length-1;
+  if(j!=null){e.preventDefault();it[j].focus()}});
+$('fbMoreMenu').addEventListener('click',e=>{if(e.target.closest('button'))moreSet(false)});
+document.addEventListener('click',e=>{if(!e.target.closest('#fbMoreWrap'))moreSet(false)});
+window.addEventListener('blur',()=>moreSet(false));  // a click inside the review page (its own document) doesn't reach us, but it takes the focus
 // driver profile summary (api/profile): races with scores, the weakest phase, the saved-review refresh's progress
 const PHASE={braking:'braking',entry:'turn-in to apex',mid:'apex to throttle',exit:'corner exits',overall:'overall'};
 let profileInfo=null;
@@ -414,19 +452,38 @@ const TITLES0={setuplab:'Reading your telemetry files',scan:'Scanning the replay
 const STOPPED={scan:'The scan stopped',rival:'Reading the lap stopped',weekly:'The leaderboard refresh stopped',update:'The update stopped',review:'The review stopped',prep:'The prep page stopped',team:'The team refresh stopped'};
 const TITLES=Object.assign({},TITLES0);   // the review title can change per job; TITLES0 keeps the defaults
 let handled=new Set(),polling=false,lastJob=null,lastStart=null;
-async function startJob(kind,body){
-  if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){
-    if(lastJob.kind===kind&&kind!=='check')openJob();
-    else banner('Debrief is busy: '+(lastJob.title||TITLES[lastJob.kind]||'a job').toLowerCase()+'. Wait for it to finish.',true);
-    return false}
+/* 2.28 Never blocked. Only an action that truly needs the one job slot (a review, prep, team refresh, sync, check,
+   scan...) can wait for the running job; it says why in plain words, looks disabled, and starts by itself when the job
+   ends. Browsing, filters, opening pages and reviews and every settings save never go through here. */
+const FINISH_WORD={review:'the review',prep:'the prep page',team:'the team refresh',teamload:'the team update',weekly:'the leaderboard refresh',scan:'the scan',rival:'the lap read',
+  setuplab:'the telemetry read',check:'the connection check',sync:'the sync',schedule:'the schedule load',update:'the update',teamauto:'the team sync'};
+const QUEUE_WORD={review:'Review',prep:'Prep page',team:'Team refresh',teamload:'Team update',weekly:'Leaderboard refresh',scan:'Scan',rival:'Lap read',check:'Connection check',sync:'Sync',schedule:'Schedule load',setuplab:'Telemetry read',update:'Update'};
+const finishName=s=>FINISH_WORD[s&&s.kind]||'the current job';
+const jobRunning=()=>!!(lastJob&&lastJob.state==='running');
+const conflicting=()=>jobRunning()&&lastJob.kind!=='sync';
+function etaWords(s){if(!s||!ok(s.frac)||s.frac<0.08||!ok(s.started))return '';const el=Date.now()/1000-s.started;if(el<3)return '';
+  const left=el*(1-s.frac)/s.frac;if(left<8)return ' \u2014 a few seconds';if(left<90)return ' \u2014 about '+Math.max(10,Math.round(left/5)*5)+' s';return ' \u2014 about '+Math.round(left/60)+' min'}
+function markWait(el,on,msg){if(!el)return;el.classList.toggle('waiting',!!on);
+  if(on){if(el.dataset.wt==null)el.dataset.wt=el.title||'';el.setAttribute('aria-disabled','true');el.title=msg||''}
+  else{el.removeAttribute('aria-disabled');if(el.dataset.wt!=null){el.title=el.dataset.wt;delete el.dataset.wt}}}
+let queued=null;
+function afterJob(label,fn,el,msgId){const run=lastJob,why='Waiting for '+finishName(run)+' to finish'+etaWords(run),q='Queued: '+label+' starts when '+finishName(run)+' finishes.';
+  if(queued){markWait(queued.el,false);if(queued.msgId)setMsg(queued.msgId,'')}
+  el=el||(document.activeElement&&document.activeElement.closest&&document.activeElement.closest('button'))||null;
+  queued={label,fn,el,msgId};markWait(el,true,why);if(msgId)setMsg(msgId,why);banner(q+etaWords(run),false,0)}
+function drainQueue(){const q=queued;if(!q)return;queued=null;markWait(q.el,false);if(q.msgId)setMsg(q.msgId,'');
+  if(/^Queued:/.test($('bannerText').textContent))$('banner').hidden=true;setTimeout(q.fn,0)}
+async function startJob(kind,body,el){
+  if(conflicting()){
+    if(lastJob.kind===kind&&kind!=='check'){openJob();return false}
+    afterJob(QUEUE_WORD[kind]||'That',()=>startJob(kind,body),el);return false}
   let r;try{r=await post(kind==='scan'?'replay-scan':kind==='rival'?'rival-read':kind==='teamload'?'team-load':kind,body)}catch(e){connectionLost();return false}
   if(!r.ok){banner(r.error||'Could not start.',true);return false}
-  if(lastJob&&lastJob.kind==='sync'&&lastJob.state==='running')banner('History sync paused for this. It carries on next time.');
   lastStart={kind,body};lastJob={state:'running',kind,id:r.id};
   resetJobView(kind);openJob();poll();return true;
 }
 async function startCheck(){
-  if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){banner('Debrief is busy: '+(lastJob.title||'a job').toLowerCase()+'. Wait for it to finish.',true);return}
+  if(conflicting()){if(lastJob.kind==='check')return;afterJob('The connection check',startCheck,$('btnCheck'),'chkMsg');return}
   setMsg('chkMsg','Checking...');setMsg('tokMsg','');$('btnCheck').disabled=true;checkFail=false;
   let r;try{r=await post('check')}catch(e){$('btnCheck').disabled=false;setMsg('chkMsg','');connectionLost();return}
   if(!r.ok){$('btnCheck').disabled=false;setMsg('chkMsg',r.error,'bad');return}
@@ -437,18 +494,37 @@ async function startCheck(){
 // 2.6: Review last race waits for a saved token (aria-disabled, so the tooltip still shows why)
 function reviewGate(){const b=$('btnReview');const off=!g61Ready();b.setAttribute('aria-disabled',String(off));
   b.title=off?'Finish step 3 first.':'Review last race (Ctrl+Enter)';if(off)$('syncStrip').hidden=true;navGate()}
-function startReview(){if(!g61Ready()){current={view:'welcome'};welcome();return}startJob('review')}
+// 2.28: nothing to review with yet: say so where the token goes (scroll to the box, flash it) instead of doing nothing
+function flash(el){if(!el)return;el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),2600)}
+function needToken(){const bad=tokenSaved&&(tokenRejected||checkFail);
+  const msg=bad?'Garage 61 didn\'t accept your token. Paste it again.':'Paste your Garage 61 token first';
+  if(current.view==='settings'&&!bad){const f=$('fToken');if(f.scrollIntoView)f.scrollIntoView({block:'center'});flash(f);$('tok').focus();setMsg('tokMsg',msg,'bad');return}
+  if($('vWelcome').hidden||!guideOn){current={view:'welcome'};welcome()}
+  const g=$('gs3');if(g.scrollIntoView)g.scrollIntoView({block:'center'});flash(g);$('gTok').focus();setMsg('gTokMsg',msg,'bad');banner(msg,false,6000)}
+// 2.28 Instant last review: a saved review that is at least as new as the newest race in the synced history opens at
+// once; Garage 61 is asked in the background and a newer race gets a one-click banner. Otherwise the job runs as before.
+async function startReview(){
+  if(!g61Ready()){needToken();return}
+  if(jobRunning()&&lastJob.kind!=='sync'){startJob('review',undefined,$('btnReview'));return}
+  let j=null;try{j=await api('last-race')}catch(e){}
+  if(j&&j.ok&&j.instant&&j.saved&&j.saved.dir){openReview(j.saved.dir);checkNewerRace();return}
+  startJob('review',undefined,$('btnReview'))}
+let newerSeq=0;
+async function checkNewerRace(){const seq=++newerSeq;let j;try{j=await api('last-race?check=1')}catch(e){return}
+  if(seq!==newerSeq||!j||!j.ok||!j.newer||conflicting())return;const n=j.newer;
+  bannerAction('Newer race found.','Review it',()=>startJob('review',n.track_id&&n.car_id&&n.session_type?{event:n.event,session_type:n.session_type,track_id:n.track_id,car_id:n.car_id}:undefined),0)}
 // 2.18: make a saved review again from Garage 61 (Review last race opens the saved one without downloading)
-function rebuildReview(dir){if(!g61Ready()){current={view:'welcome'};welcome();return}startJob('review',{review:dir,rebuild:true})}
+function rebuildReview(dir){if(!g61Ready()){needToken();return}startJob('review',{review:dir,rebuild:true})}
 $('btnReview').addEventListener('click',startReview);
 
 // 2.8: request counts live in Settings > About. The job's own lines are for the log too, so they keep
 // theirs and the window takes them out here.
 const noCounts=t=>String(t==null?'':t).replace(/\s*\((?:no |about |up to )?\d*\s*(?:Garage 61 )?requests?\)/gi,'');
 const countLine=t=>/^\s*Garage 61 requests\b/i.test(String(t));
+const CANCEL_KINDS=['scan','rival','review','prep','team','teamload','weekly'];   // 2.28: Cancel for review, prep, team and weekly jobs too
 function resetJobView(kind){
   if(kind==='review'&&!(lastJob&&lastJob.title))TITLES.review=TITLES0.review;   // a plain "Review last race" never keeps an earlier job's title
-  $('jobStop').hidden=kind!=='scan'&&kind!=='rival';$('jobStop').disabled=false;
+  $('jobStop').hidden=!CANCEL_KINDS.includes(kind);$('jobStop').disabled=false;$('jobStop').textContent=kind==='scan'||kind==='rival'?'Stop scan':'Cancel';
   $('jobTitle').textContent=TITLES[kind]||'Working';$('jobErrTitle').textContent=STOPPED[kind]||'It stopped';
   $('jobEyebrow').textContent='Working';$('jobErr').hidden=true;$('jobSteps').replaceChildren();delete $('jobSteps').dataset.n;{const d=$('jobDbg');if(d)d.remove()}
   $('jobNow').textContent='Starting...';setBar(0);$('jobBar').parentElement.className='progress';
@@ -461,7 +537,7 @@ async function poll(){
     for(;;){
       let s;try{s=await api('status')}catch(e){connectionLost();break}
       lastJob=s;render(s);
-      if(s.state!=='running')break;
+      if(s.state!=='running'){drainQueue();break}
       await new Promise(r=>setTimeout(r,600));
     }
   }finally{polling=false}
@@ -488,7 +564,11 @@ function render(s){
     if(s.state==='error'&&!handled.has(s.id)){handled.add(s.id);
       $('jobEyebrow').textContent='Stopped';$('jobErrMsg').textContent=plainText(s.error)||s.error;$('jobErr').hidden=false;
       $('jobBar').parentElement.className='progress fail';
-      if(current.view!=='job')banner((STOPPED[s.kind]||'It stopped')+': '+s.error,true,9000)}
+      if(s.cancelled)$('jobErrTitle').textContent='You stopped it';
+      // 2.28: one fix that works offline (the saved reviews), then Try again; Settings only when the token is the problem
+      const hasSaved=!!newestReview();$('jobSaved').hidden=!hasSaved;$('jobErr').querySelector('[data-act=retry]').classList.toggle('primary',!hasSaved);
+      $('jobSettings').hidden=!/token|401/i.test(String(s.error||''))||!!s.cancelled;
+      if(current.view!=='job'&&!s.cancelled)banner((STOPPED[s.kind]||'It stopped')+': '+s.error,true,9000)}
     if(s.state==='done'&&!handled.has(s.id)){handled.add(s.id);
       $('jobEyebrow').textContent='Done';$('jobBar').parentElement.className='progress done';
       const stay=current.view==='job';  // only jump to the result if the person is still watching
@@ -658,7 +738,7 @@ function renderSync(s){
     loadSessions().then(()=>{if(current.view==='sessions')renderSessions()})}
 }
 async function startSync(auto){
-  if(lastJob&&lastJob.state==='running'){if(!auto&&lastJob.kind!=='sync')banner('Debrief is busy: '+(lastJob.title||'a job').toLowerCase()+'. Sync when it\'s done.',true);return}
+  if(lastJob&&lastJob.state==='running'){if(!auto&&lastJob.kind!=='sync')afterJob('Sync',()=>startSync(false),$('btnSync'),'sessMsg');return}
   let r;try{r=await post('sync',{auto:!!auto})}catch(e){if(!auto)connectionLost();return}
   if(!r.ok){if(!auto)setMsg('sessMsg',r.error||'Could not start the sync.','bad');return}
   if(r.skipped)return;
@@ -703,7 +783,7 @@ function renderPrepare(){const j=prepData;if(!j)return;$('prepJoin').hidden=!not
   $('btnSchDl').textContent=sc?'Download latest schedule':'Download official schedule';
   showWarnings('schWarn',sc&&sc.warnings,'Check the schedule:');
   $('prepBar').hidden=!sc;if(!pkReady&&(!sc||sc.out_of_date||(sc.warnings&&sc.warnings.length)))$('prepMore').open=true;
-  if(!sc){renderFocusNone('Load the season schedule to get started','Open More below and download iRacing\'s schedule. It takes a few seconds and only happens once a season.');$('planPanel').hidden=true;return}
+  if(!sc){renderFocusNone('Load the season schedule to get started','Download iRacing\'s schedule once a season; it takes a few seconds.',['Show the schedule options',()=>{$('prepMore').open=true;$('prepMore').scrollIntoView({block:'nearest'})}]);$('planPanel').hidden=true;return}
   if(!pkReady){pkReady=true;initPick()}else checkPick();
   renderPick();renderMissing();renderAllSeries();refreshFocus(true)}
 function renderMissing(){const host=$('prepMissing'),gone=((prepData&&prepData.mine)||[]).filter(s=>s.missing);host.hidden=!gone.length;host.replaceChildren();
@@ -711,7 +791,7 @@ function renderMissing(){const host=$('prepMissing'),gone=((prepData&&prepData.m
     const b=h('button','btn','Remove star');b.type='button';b.addEventListener('click',async()=>{let r;
       try{r=await post('series',{ids:prepData.mine.map(x=>x.id).filter(i=>i!==s.id)})}catch(e){connectionLost();return}
       if(!r.ok){setMsg('pkMsg',r.error,'bad');return}stripFor=null;loadPrepare(true)});li.append(b);host.append(li)})}
-function pickSeriesWeek(id,no){const s=serOf(id);if(!s)return;pk.series=id;pk.track=null;seriesAll=false;const w=s.weeks.find(x=>x.no===no);
+function pickSeriesWeek(id,no){const s=serOf(id);if(!s)return;carsAll=false;pk.series=id;pk.track=null;seriesAll=false;const w=s.weeks.find(x=>x.no===no);
   if(!pk.car||!serUses(s,pk.car)||(w&&!carRuns(s,w,pk.car)))pk.car=(w&&cat().driven.map(x=>x.name).find(n=>weekCars(s,w).includes(n)))||(w&&weekCars(s,w)[0])||bestCarFor(s);
   pk.week=no;pickChanged();$('prepBar').scrollIntoView({block:'nearest'})}
 function renderAllSeries(){const j=prepData,mine=(j.mine||[]).filter(s=>!s.missing),host=$('prepAll');host.hidden=!mine.length;if(!mine.length)return;
@@ -776,7 +856,7 @@ function setCar(name){pk.car=name;seriesAll=false;let s=serOf(pk.series);
   else if(pk.week==null&&!pk.track)pk.week=defaultWeek(s,name);
   else if(pk.week!=null&&!weeksLeft(s).some(w=>w.no===pk.week&&carRuns(s,w,name)))pk.week=defaultWeek(s,name,pk.week);
   pickChanged()}
-function setSeries(id){const s=serOf(id);if(!s)return;pk.series=id;pk.track=null;
+function setSeries(id){const s=serOf(id);if(!s)return;carsAll=false;pk.series=id;pk.track=null;
   if(!pk.car||!serUses(s,pk.car)||!carHasWeek(s,pk.car))pk.car=bestCarFor(s);
   pk.week=defaultWeek(s,pk.car);pickChanged()}
 function setWeek(no){pk.week=no;pk.track=null;pickChanged()}
@@ -816,9 +896,13 @@ function makeCombo(id,getOpts,onPick){const inp=$(id),list=$(id+'List');let isOp
     else if(e.key==='Tab'){if(isOpen){close();inp.value=val}}});
   inp.addEventListener('blur',()=>{if(isOpen)close();inp.value=val});
   return {set(text){val=text||'';if(document.activeElement!==inp||!isOpen)inp.value=val}}}
-function carOpts(){const c=cat(),d=new Set(c.driven.map(x=>x.name)),out=[];
-  c.driven.forEach(x=>out.push({label:x.name,value:x.name,group:'Cars you\'ve driven'}));
-  c.cars.forEach(x=>{if(!d.has(x.name))out.push({label:x.name,value:x.name,group:x.class,find:x.class})});return out}
+// 2.28: with a series chosen the car list is that series' cars (the ones you have driven first); "Show all cars" lists every car
+let carsAll=false;
+function carOpts(){const c=cat(),s=serOf(pk.series),d=new Set(c.driven.map(x=>x.name)),out=[];
+  const lim=!!s&&!carsAll&&(s.cars||[]).length>0,inS=n=>!lim||(s.cars||[]).includes(n);
+  c.driven.filter(x=>inS(x.name)).forEach(x=>out.push({label:x.name,value:x.name,group:'Cars you\'ve driven'}));
+  c.cars.forEach(x=>{if(!d.has(x.name)&&inS(x.name))out.push({label:x.name,value:x.name,group:lim?'Cars in '+s.name:x.class,find:x.class})});
+  if(lim)out.push({label:'Show all cars',action:()=>{carsAll=true}});return out}
 function serWeekText(s){const left=weeksLeft(s),w=left.find(x=>x.no===cat().current_week);return w?'This week: '+w.short:left.length?'':'No race weeks left'}
 function seriesOpts(){const c=cat(),out=[],opt=(s,g)=>({label:s.name,value:s.id,group:g,sub:serWeekText(s),find:(s.category||'')+' '+(s.cars||[]).join(' ')});
   const limit=!!pk.car&&!seriesAll,use=c.series.filter(s=>!limit||serUses(s,pk.car));
@@ -869,7 +953,7 @@ async function refreshFocus(withPlan){const host=$('mySeries');
   if(!d.ok){renderFocusNone('That didn\'t load',d.error||'Try again.');return}
   focusData=d;if(d.plan){stripData=d.plan;stripFor=pk.series}else if(!pk.series){stripData=null;stripFor=null}
   renderFocus(d);renderPlan()}
-function renderFocusNone(title,text){const e=h('div','pvnone');e.append(h('h2','pvtrack',title),h('p','lede',text));$('mySeries').replaceChildren(e)}
+function renderFocusNone(title,text,act){$('mySeries').replaceChildren(emptyState(title,text,act))}
 function pvSection(title,cls){const d=h('section','pvsec'+(cls?' '+cls:''));d.append(h('h3',null,title));return d}
 function weekWhen(d){const w=d.week;if(!w)return '';return (w.now?'This week':w.next?'Next week':'Week '+w.week)+', '+dayRange(w.start)}
 function racePart(d){const box=h('div','pvfacts');const R=d.race,S=d.series;
@@ -994,7 +1078,7 @@ function renderPlan(){const panel=$('planPanel'),P=stripData,s=serOf(pk.series);
     b.title=w.track+(w.flag_reason?'. '+w.flag_reason:'');const row=s.weeks.find(x=>x.no===w.no);
     if(row&&!carRuns(s,row,pk.car)){b.classList.add('off');b.append(h('span','stripoff','Other cars'));b.title='Other cars run this week: '+weekCars(s,row).join(', ')}
     b.addEventListener('click',()=>setWeek(w.no));return b})))}
-$('btnSchDl').addEventListener('click',async()=>{if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){banner('Debrief is busy. Wait for it to finish.',true);return}
+$('btnSchDl').addEventListener('click',async()=>{if(conflicting()){afterJob('The download',()=>$('btnSchDl').click(),$('btnSchDl'),'schMsg');return}
   setMsg('schMsg','Starting...');schBusy(true);let r;try{r=await post('schedule',{action:'download'})}catch(e){connectionLost();return}
   if(!r.ok){schBusy(false);setMsg('schMsg',r.error,'bad');return}lastJob={state:'running',kind:'schedule',id:r.id};poll()});
 $('btnSchLoad').addEventListener('click',()=>$('schFile').click());
@@ -1570,10 +1654,10 @@ $('resCsvWho').addEventListener('change',()=>{const w=$('resCsvWho');if(w.value!
 /* ---------- 2.7.5: RaceCap link, Resolve markers, help */
 $('fRaceCap').addEventListener('submit',async e=>{e.preventDefault();setMsg('rcapMsg','Saving...');let r;
   try{r=await post('settings',{racecap_library:$('rcapFolder').value.trim()})}catch(err){connectionLost();return}
-  if(!r.ok){setMsg('rcapMsg',r.error,'bad');return}fillSettings(r.settings);frameBar();setMsg('rcapMsg','Saved.','ok')});
+  if(!r.ok){setMsg('rcapMsg',r.error,'bad');return}fillSettings(r.settings);textClean();frameBar();savedTick('rcapMsg')});
 $('fTelemetry').addEventListener('submit',async e=>{e.preventDefault();setMsg('telMsg','Saving...');let r;
   try{r=await post('settings',{iracing_folder:$('telFolder').value.trim()})}catch(err){connectionLost();return}
-  if(!r.ok){setMsg('telMsg',r.error,'bad');return}fillSettings(r.settings);setMsg('telMsg','Saved.','ok')});
+  if(!r.ok){setMsg('telMsg',r.error,'bad');return}fillSettings(r.settings);textClean();savedTick('telMsg')});
 function openDlg(d){if(d.showModal)d.showModal();else d.setAttribute('open','')}
 function closeDlg(d){if(d.close)d.close();else d.removeAttribute('open')}
 $('fbScan').addEventListener('click',()=>{setMsg('scanMsg','');openDlg($('dlgScan'))});
@@ -1587,7 +1671,10 @@ $('fbRival').addEventListener('click',async()=>{const dir=current.dir;if(!dir)re
   $('rivalGo').disabled=!cars.length;setMsg('rivalMsg',cars.length?'':'No nearby driver has a clean lap to read in this race.')});
 $('rivalClose').addEventListener('click',()=>closeDlg($('dlgRival')));
 $('fRival').addEventListener('submit',e=>{e.preventDefault();const dir=current.dir,car=$('rivalCar').value;if(!dir||!car)return;closeDlg($('dlgRival'));startJob('rival',{review:dir,car})});
-$('jobStop').addEventListener('click',async()=>{$('jobStop').disabled=true;$('jobNow').textContent='Stopping and putting the replay back...';try{await post('replay-scan-stop')}catch(e){}});
+$('jobStop').addEventListener('click',async()=>{const k=lastJob&&lastJob.kind;$('jobStop').disabled=true;
+  if(k==='scan'||k==='rival'){$('jobNow').textContent='Stopping and putting the replay back...';try{await post('replay-scan-stop')}catch(e){}}
+  else{$('jobNow').textContent='Stopping...';try{await post('job-stop')}catch(e){}}});
+$('jobSaved').addEventListener('click',()=>{const r=newestReview();if(!r){goNav('today');return}openReview(r.dir);const b=document.querySelector('.rev.active');if(b&&b.scrollIntoView)b.scrollIntoView({block:'nearest'})});
 $('fbRaceCap').addEventListener('click',()=>{$('linkSub').value='';setMsg('linkMsg','');openDlg($('dlgLink'));$('linkSub').focus()});
 $('linkClose').addEventListener('click',()=>closeDlg($('dlgLink')));
 $('fLink').addEventListener('submit',async e=>{e.preventDefault();const dir=current.dir;if(!dir)return;setMsg('linkMsg','Looking...');$('linkGo').disabled=true;let r;
@@ -1597,7 +1684,7 @@ $('fbMarkers').addEventListener('click',async()=>{const dir=current.dir;if(!dir)
   if(!j.ok){banner(j.error||'Couldn\'t make the marker file.',true);return}
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([j.edl],{type:'text/plain'}));a.download=j.name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
   banner(j.exact?'Markers saved to Downloads, for a 60 fps timeline. In Resolve, put the green flag at the timeline\'s start.':'Markers saved to Downloads, for a 60 fps timeline. They come from lap times, so they\'re close, not exact. Link RaceCap for exact moments.',false,9000)});
-const HELP={tour:[['Review your race','Press Review last race. Debrief pulls your newest race from Garage 61 and writes the review.'],
+const HELP={tour:[['Review your race','Press Review last race. If your newest race is already reviewed it opens at once, and Debrief checks Garage 61 in the background for a newer one. Otherwise it pulls the race and writes the review. Cancel stops it at any time.'],
   ['Start at the top','What to work on comes first: the corners worth the most time. Every number behind it is further down.'],
   ['Compare two laps','Pick any two laps, or a comparison lap, and see where the time went on the track map and traces.'],
   ['Add the result','On a review, Add race result takes the iRacing results file, so there is little or nothing to type.'],
@@ -1700,14 +1787,14 @@ async function loadSetupLab(withReport){let j;try{j=await api('setuplab/combos')
   renderSlTel();renderSlPick();
   if(j.running&&!polling)poll();
   if(!withReport)return;
-  if(!j.folder_ok)slEmpty('Debrief can\'t find your telemetry folder','iRacing saves telemetry in Documents\\iRacing\\telemetry. If yours is somewhere else, set the folder in Settings > Setup Lab and Coach. '+TEL_HOW);
-  else if(!j.indexed&&j.unread===0&&!j.running)slEmpty('No telemetry files yet',TEL_HOW+' Then press Read my telemetry.');
-  else if(!j.indexed)slEmpty(j.running?'Reading your telemetry...':'Not read yet','Press Read my telemetry. The first time reads every file, so a few hundred files take a few minutes; after that only new ones.');
-  else if(!combos.length)slEmpty('No telemetry files yet',TEL_HOW+' Then press Read my telemetry.');
+  if(!j.folder_ok)slEmpty('Debrief can\'t find your telemetry folder','iRacing saves telemetry in Documents\\iRacing\\telemetry; if yours is somewhere else, set the folder in Settings.',TEL_FIX);
+  else if(!j.indexed&&j.unread===0&&!j.running)slEmpty('No telemetry files yet',TEL_HOW);
+  else if(!j.indexed)slEmpty(j.running?'Reading your telemetry...':'Not read yet','The first time reads every file, so a few hundred files take a few minutes; after that only new ones.',j.running?null:['Read my telemetry',()=>$('slRead').click()]);
+  else if(!combos.length)slEmpty('No telemetry files yet',TEL_HOW);
   else loadSlReport()}
 // 2.18: iRacing records no telemetry until it is turned on; every telemetry page's empty state says so the same way
 const TEL_HOW='iRacing doesn\'t save telemetry until you turn it on: in the car, press Alt+L (or turn on telemetry recording in iRacing\'s settings), then drive a few laps.';
-function slEmpty(title,text){const e=h('div','panel pvnone');e.append(h('h2','pvtrack',title),h('p','lede',text));$('slReport').replaceChildren(e)}
+function slEmpty(title,text,act){$('slReport').replaceChildren(emptyState(title,text,act))}
 function renderSlTel(){const j=sl.data;if(!j)return;const pill=$('slPill'),run=!!j.running||(lastJob&&lastJob.state==='running'&&lastJob.kind==='setuplab');
   $('slPath').textContent=j.folder||'';$('slFolderSet').hidden=!!j.folder_ok;$('slRead').disabled=!j.folder_ok||run;$('slStop').hidden=!run;
   const n=j.combos?j.combos.length:0;
@@ -1715,7 +1802,7 @@ function renderSlTel(){const j=sl.data;if(!j)return;const pill=$('slPill'),run=!
   else if(!j.folder_ok){pill.className='pill no';pill.textContent='Folder not found'}
   else if(!j.indexed){pill.className='pill no';pill.textContent='Not read yet'}
   else{pill.className='pill ok';pill.textContent=plural(j.files,'file')}
-  $('slTelNote').textContent=!j.folder_ok?'Debrief can\'t find this folder. If iRacing saves telemetry somewhere else, set the folder in Settings.':
+  $('slTelNote').textContent=!j.folder_ok?'':
     !j.indexed?(ok(j.unread)?plural(j.unread,'telemetry file')+' to read.':'Not read yet.'):
     plural(j.files,'telemetry file')+' for '+carTracks(n)+'.'+(ok(j.unread)&&j.unread>0?' '+plural(j.unread,'new file')+' since the last read.':'')+slBadText(j);
   $('slProg').hidden=!run;$('slNow').hidden=!run}
@@ -1834,7 +1921,7 @@ function slIdeaLi(i){const li=h('li'),top=h('div','slidea');top.append(h('b',nul
 async function slSaveSeries(v){if(!sl.sel)return;let r;try{r=await post('setuplab/series',{car:sl.sel.car,track:sl.sel.track,setup:v,series:sl.series||undefined})}catch(e){connectionLost();return}
   if(!r.ok){banner(r.error||'That wasn\'t saved.',true);return}loadSlReport()}
 $('slRead').addEventListener('click',async()=>{
-  if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){banner('Debrief is busy: '+(lastJob.title||TITLES[lastJob.kind]||'a job').toLowerCase()+'. Wait for it to finish.',true);return}
+  if(conflicting()){afterJob('Reading your telemetry',()=>$('slRead').click(),$('slRead'),'slMsg');return}
   setMsg('slMsg','');$('slRead').disabled=true;let r;try{r=await post('setuplab/read')}catch(e){connectionLost();return}
   if(!r.ok){$('slRead').disabled=false;setMsg('slMsg',r.error||'Could not start.','bad');return}
   lastJob={state:'running',kind:'setuplab',id:r.id};$('slBar').firstElementChild.style.width='2%';$('slNow').textContent='Starting...';
@@ -1972,6 +2059,9 @@ function coDriveApply(){const on=coDrivePref()&&!$('vCoach').hidden;document.bod
 new MutationObserver(coDriveApply).observe($('vCoach'),{attributes:true,attributeFilter:['hidden']});
 $('coDriveBtn').addEventListener('click',()=>coDriveSet(true));
 $('cdExit').addEventListener('click',()=>coDriveSet(false));
+// 2.28: Esc leaves the driving view (not while a window is open or an open dropdown owns the key)
+document.addEventListener('keydown',e=>{if(e.key!=='Escape'||e.defaultPrevented||!document.body.classList.contains('codriving')||document.querySelector('dialog[open]'))return;
+  e.preventDefault();coDriveSet(false);const b=$('coDriveBtn');if(b&&b.focus)b.focus()});
 $('cdStart').addEventListener('click',()=>$('coStart').click());
 $('cdMute').addEventListener('click',coachMute);
 $('cdRepeat').addEventListener('click',()=>$('coRepeat').click());
@@ -2201,17 +2291,22 @@ function renderPrTel(){const j=pr.data;if(!j)return;const run=!!j.running||(last
   else if(!j.folder_ok){pill.className='pill no';pill.textContent='Folder not found'}
   else if(!j.indexed){pill.className='pill no';pill.textContent='Not read yet'}
   else{pill.className='pill ok';pill.textContent=plural(n,'session')}
-  $('prTelNote').textContent=!j.folder_ok?'Debrief can\'t find your telemetry folder ('+(j.folder||'')+'). If iRacing saves telemetry somewhere else, set the folder in Settings.':
+  $('prTelNote').textContent=!j.folder_ok?'':
     !j.indexed?'Not read yet. The first read goes through every file, then only new ones. Debrief only reads them: it never changes iRacing\'s files.':
     plural(n,'session')+' from your telemetry files.'+(ok(j.unread)&&j.unread>0?' '+plural(j.unread,'new file')+' since the last read: press Read my telemetry to add them.':'');
   $('prNow').hidden=!run}
-function prEmpty(host,title,text){const e=h('div','panel pvnone');e.append(h('h2','pvtrack',title),h('p','lede',text));host.replaceChildren(e)}
+// 2.28: one empty state for every page: a 16 px bold line, one sentence and (when there is a fix) one button
+function emptyState(title,text,act){const e=h('div','emptystate');e.append(h('p','estitle',title),h('p','note',text));
+  if(act){const b=h('button','btn',act[0]);b.type='button';b.addEventListener('click',act[1]);e.append(b)}return e}
+const TEL_FIX=['Open Settings',()=>FR_ACT.settings_folder[1]()];
+function prEmpty(host,title,text,act){host.replaceChildren(emptyState(title,text,act))}
 const PR_NEWEST=3; // 2.19.2: the list shows the newest few sessions; Show all has the rest
 function renderPrList(){const j=pr.data,host=$('prSessions'),ss=(j&&j.sessions)||[];if(!j)return;
-  if(!j.folder_ok){prEmpty(host,'Debrief can\'t find your telemetry folder','iRacing saves telemetry in Documents\\iRacing\\telemetry. If yours is somewhere else, set the folder in Settings > Setup Lab and Coach. '+TEL_HOW);return}
-  if(!j.indexed&&j.unread===0&&!j.running){prEmpty(host,'No telemetry files yet',TEL_HOW+' Then press Read my telemetry.');return}
-  if(!j.indexed){prEmpty(host,j.running?'Reading your telemetry...':'Not read yet','Press Read my telemetry. A few hundred files take a few minutes the first time; after that only new ones are read.');return}
-  if(!ss.length){prEmpty(host,'No telemetry files yet',TEL_HOW+' Then press Read my telemetry.');return}
+  if(!j.folder_ok){prEmpty(host,'Debrief can\'t find your telemetry folder','iRacing saves telemetry in Documents\\iRacing\\telemetry; if yours is somewhere else, set the folder in Settings.',TEL_FIX);return}
+  const READ=['Read my telemetry',()=>$('prRead').click()];
+  if(!j.indexed&&j.unread===0&&!j.running){prEmpty(host,'No telemetry files yet',TEL_HOW,null);return}
+  if(!j.indexed){prEmpty(host,j.running?'Reading your telemetry...':'Not read yet','A few hundred files take a few minutes the first time; after that only new ones are read.',j.running?null:READ);return}
+  if(!ss.length){prEmpty(host,'No telemetry files yet',TEL_HOW,null);return}
   const box=h('div','panel'),top=h('div','phead');top.append(h('h3',null,'Your sessions'),h('span','note','Newest first'));box.append(top);
   const ul=h('ul','prlist');ul.setAttribute('aria-label','Your sessions, newest first');
   (pr.more?ss:ss.slice(0,PR_NEWEST)).forEach(x=>{const li=h('li'),b=h('button','prrow');b.type='button';b.dataset.id=x.id;
@@ -2227,7 +2322,7 @@ function renderPrList(){const j=pr.data,host=$('prSessions'),ss=(j&&j.sessions)|
   // 2.19.2: the one-thing tip first, then the sessions; the telemetry panel (Read my telemetry) moves below them
   const tel=$('prTel');if(tel&&host.parentNode&&tel.nextSibling!==host.nextSibling)host.parentNode.insertBefore(tel,host.nextSibling)}
 $('prRead').addEventListener('click',async()=>{
-  if(lastJob&&lastJob.state==='running'&&lastJob.kind!=='sync'){banner('Debrief is busy: '+(lastJob.title||TITLES[lastJob.kind]||'a job').toLowerCase()+'. Wait for it to finish.',true);return}
+  if(conflicting()){afterJob('Reading your telemetry',()=>$('prRead').click(),$('prRead'),'prMsg');return}
   setMsg('prMsg','');$('prRead').disabled=true;let r;try{r=await post('setuplab/read')}catch(e){connectionLost();return}
   if(!r.ok){$('prRead').disabled=false;setMsg('prMsg',r.error||'Could not start.','bad');return}
   lastJob={state:'running',kind:'setuplab',id:r.id};$('prNow').textContent='Starting...';if(pr.data)pr.data.running=true;renderPrTel();poll()});
@@ -2474,19 +2569,22 @@ function renderFirstRun(){const box=$('firstRun'),j=fr.data;if(!box)return;
   const done=setupDone(j)&&hasData;
   const want=!!(j&&where&&(fr.force||(j.show&&!done)));box.hidden=!want;
   const line=$('tdSetupLine');
-  if(line){const nx=j&&(j.steps||[]).find(x=>x.id===j.next);const quiet=!!(j&&where==='today'&&!want&&j.show&&done&&nx);line.hidden=!quiet;
-    if(quiet){const left=ok(j.left)?j.left:(j.total||0)-(j.done||0);const a=FR_ACT[nx.action];line.className='frline quiet';
+  if(line){const nx=j&&(j.steps||[]).find(x=>x.id===j.next);const quiet=!!(j&&where==='today'&&!want&&j.show&&done&&nx);
+    // 2.28: the strip's height is always reserved on Today, so the cards below never jump when it fills in
+    line.className='frline tdsetup'+(quiet?' quiet':'');if(!quiet)line.replaceChildren();
+    if(quiet){const left=ok(j.left)?j.left:(j.total||0)-(j.done||0);const a=FR_ACT[nx.action];
       line.replaceChildren(h('span','pill','Setup: '+plural(left,'step')+' left'),h('span',null,'Next: '+nx.title+'.'));line.title=nx.text||'';
       if(a){const b=h('button','linkbtn',a[0]);b.type='button';b.addEventListener('click',a[1]);line.append(b)}
       line.append(skipBtn(nx.id));
       const x=h('button','linkbtn','Hide');x.type='button';x.addEventListener('click',()=>$('frHide').click());line.append(x)}}
   // before any data Today is the setup steps: the #1 card and the last race and practice wait for something to show
-  const noData=where==='today'&&td.j&&td.j.ok&&!td.j.has_data;$('tdOne').hidden=!!noData;document.querySelector('#vToday .tdgrid').hidden=!!noData;
+  const noData=where==='today'&&td.j&&td.j.ok&&!td.j.has_data;$('tdOne').hidden=!!noData;document.querySelector('#vToday .tdgrid').hidden=!!noData;if(noData)$('tdWeek').hidden=true;
   $('tdLede').textContent=noData?'A few steps and Debrief is ready. Your #1 thing to work on shows here once you have driven a few laps with telemetry on, or reviewed a race.':'Your one thing to work on, your last race and your last practice.';
   if(!want)return;
   if(where==='wel'){const host=$('vWelcome').querySelector('.col');
-    // with the Garage 61 steps showing, the checklist goes above them and leaves its own Garage 61 step to them
-    if(guideOn){if(box.nextElementSibling!==$('guideHead'))host.insertBefore(box,$('guideHead'))}else if(box.parentNode!==host||box.nextElementSibling)host.append(box)}
+    // with the Garage 61 steps showing, the checklist goes below them and leaves its own Garage 61 step to them
+    // 2.28: the token steps come first (the field shows without scrolling); the telemetry checklist sits under them
+    if(guideOn){if(box.previousElementSibling!==$('guide'))$('guide').after(box)}else if(box.parentNode!==host||box.nextElementSibling)host.append(box)}
   else if(box.parentNode!==$('tdSetupHost'))$('tdSetupHost').append(box);
   const steps=(j.steps||[]).filter(st=>!(where==='wel'&&guideOn&&st.id==='token'));
   const nDone=steps.filter(st=>st.done).length;
@@ -2520,6 +2618,8 @@ function setMsg(id,t,cls){const e=$(id);e.textContent=plainText(t)||t||'';e.clas
 let UNITS='mph';
 const spdLabel=()=>UNITS==='kmh'?'km/h':'mph';
 function spdOf(v,from){if(!ok(+v))return '';const x=+v;const f=from==='kmh'?'kmh':'mph';const y=f===UNITS?x:(f==='mph'?x*1.609344:x/1.609344);return Math.round(y)}
+// 2.28: a typed-in box that wasn't saved yet is never overwritten by a refill (a switch saving elsewhere must not eat it)
+function fillBox(id,val){const e=$(id);if(!e)return;if(e.value!==(e.dataset.orig||''))return;e.value=val;e.dataset.orig=val}
 function fillSettings(v){if(v&&(v.units==='kmh'||v.units==='mph'))UNITS=v.units;
   if(v&&$('unitsSel')&&document.activeElement!==$('unitsSel'))$('unitsSel').value=UNITS;
   tokenSaved=!!v.token_saved;tokenRejected=!!v.token_rejected;reviewGate();
@@ -2537,11 +2637,11 @@ function fillSettings(v){if(v&&(v.units==='kmh'||v.units==='mph'))UNITS=v.units;
   $('refs').value=String(v.max_reference_laps);teamSettingsLoad();$('prac').checked=!!v.include_practice;
   if(v.token_saved&&started)tourHint();
   racecapOn=!!v.racecap_library;$('rcapPill').textContent=racecapOn?'On':'Off';$('rcapPill').className='pill'+(racecapOn?' ok':'');
-  if(document.activeElement!==$('rcapFolder'))$('rcapFolder').value=v.racecap_library||'';
-  if(document.activeElement!==$('telFolder'))$('telFolder').value=v.iracing_folder||'';
+  fillBox('rcapFolder',v.racecap_library||'');
+  fillBox('telFolder',v.iracing_folder||'');
   $('telPath').textContent=v.telemetry_folder?'Reading: '+v.telemetry_folder:'';
   $('telPill').textContent=v.telemetry_folder_ok?'Found':'Not found';$('telPill').className='pill '+(v.telemetry_folder_ok?'ok':'no');
-  if(document.activeElement!==$('salut'))$('salut').value=typeof v.salutation==='string'?v.salutation:'';
+  fillBox('salut',typeof v.salutation==='string'?v.salutation:'');
   $('syncOpen').checked=v.sync_on_open!==false;$('updAuto').checked=v.check_updates!==false;$('syncTel').checked=v.sync_telemetry!=='none';
   $('recOn').checked=v.record_sessions!==false;$('recWin').checked=v.start_with_windows!==false;
   $('recPath').textContent=v.recordings_folder?'Recordings are kept in: '+v.recordings_folder+' (Debrief never deletes them)':'';
@@ -2552,7 +2652,7 @@ function fillSettings(v){if(v&&(v.units==='kmh'||v.units==='mph'))UNITS=v.units;
   $('irIdStatus').textContent='Client ID: '+(idS?'saved':'not saved');$('irIdStatus').className='pill'+(idS?' ok':'');
   $('irSecStatus').textContent='Client secret: '+(seS?'saved':'not saved');$('irSecStatus').className='pill'+(seS?' ok':'');
   $('irClear').hidden=!(idS||seS);
-  if(document.activeElement!==$('cardsFolder'))$('cardsFolder').value=typeof v.team_cards_folder==='string'?v.team_cards_folder:'';
+  fillBox('cardsFolder',typeof v.team_cards_folder==='string'?v.team_cards_folder:'');
   $('cardsShare').checked=!!v.share_my_cards;cardsStatus(v);
   discordSaved=!!v.discord_saved;discordHint=typeof v.discord_hint==='string'?v.discord_hint:null;
   const dUnread=!discordSaved&&!!v.discord_unreadable;$('discordUnread').hidden=!dUnread;
@@ -2569,12 +2669,12 @@ function cardsStatus(v){const p=$('cardsPill'),st=$('cardsStatus');const f=v.tea
 $('fCards').addEventListener('submit',async e=>{e.preventDefault();setMsg('cardsMsg','Saving...');let r;
   try{r=await post('settings',{team_cards_folder:$('cardsFolder').value.trim(),share_my_cards:$('cardsShare').checked})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('cardsMsg',r.error,'bad');return}
-  fillSettings(r.settings);setMsg('cardsMsg','Saved.','ok')});
+  fillSettings(r.settings);textClean();savedTick('cardsMsg')});
 $('fDiscord').addEventListener('submit',async e=>{e.preventDefault();const inp=$('discordHook');const v=inp.value.trim();
   if(!v){setMsg('discordMsg','Paste the webhook address first.','bad');inp.focus();return}
   setMsg('discordMsg','Saving...');let r;try{r=await post('settings',{discord_webhook:v})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('discordMsg',r.error,'bad');return}
-  inp.value='';$('discordWhere').hidden=true;fillSettings(r.settings);setMsg('discordMsg','Saved. Press Check to see where posts go.','ok')});
+  inp.value='';textClean();$('discordWhere').hidden=true;fillSettings(r.settings);setMsg('discordMsg','Saved. Press Check to see where posts go.','ok')});
 $('discordCheck').addEventListener('click',async()=>{setMsg('discordMsg','Checking with Discord...');$('discordCheck').disabled=true;let r;
   try{r=await post('discord-check')}catch(e){connectionLost();return}finally{$('discordCheck').disabled=false}
   if(!r.ok){setMsg('discordMsg',r.error,'bad');return}
@@ -2592,10 +2692,6 @@ function showRecorder(r){if(!r)return;const t=r.text||'Not running';$('recStatus
   if(bad)dk.textContent='iRacing\u2019s own telemetry files (.ibt) are switched off, so no telemetry file is being saved for this session. Debrief only reads that setting and never changes it; turn it on in iRacing if you want those files.'}
 async function refreshLive(){if(current.view!=='settings')return;try{const j=await api('live');if(j&&j.ok)showRecorder(j.recorder)}catch(e){}}
 setInterval(refreshLive,5000);
-$('fLive').addEventListener('submit',async e=>{e.preventDefault();setMsg('recMsg','Saving...');let r;
-  try{r=await post('settings',{record_sessions:$('recOn').checked,start_with_windows:$('recWin').checked})}catch(err){connectionLost();return}
-  if(!r.ok){setMsg('recMsg',r.error,'bad');return}
-  fillSettings(r.settings);setMsg('recMsg','Saved.','ok')});
 async function loadSettings(){try{fillSettings(await api('settings'))}catch(e){connectionLost()}}
 // Settings > Team is a read-only status: the Garage 61 teams you are in (nothing about a team is typed in or built in)
 let teamMember='unknown';
@@ -2624,7 +2720,7 @@ $('fIracing').addEventListener('submit',async e=>{e.preventDefault();
   if(!id&&!sec){setMsg('irMsg','Paste a client ID or secret first.','bad');return}
   setMsg('irMsg','Saving...');let r;try{r=await post('settings',{iracing_client_id:id,iracing_client_secret:sec})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('irMsg',r.error,'bad');return}
-  $('irId').value='';$('irSecret').value='';fillSettings(r.settings);setMsg('irMsg','Saved.','ok')});
+  $('irId').value='';$('irSecret').value='';textClean();fillSettings(r.settings);setMsg('irMsg','Saved.','ok')});
 $('irClear').addEventListener('click',async()=>{const b=$('irClear');
   if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='Confirm remove';setTimeout(()=>{b.dataset.armed='';b.textContent='Remove'},4000);return}
   let r;try{r=await post('settings',{clear_iracing:true})}catch(e){connectionLost();return}
@@ -2638,7 +2734,7 @@ $('fToken').addEventListener('submit',async e=>{e.preventDefault();
   setMsg('tokMsg','Saving...');setMsg('chkMsg','');let r;
   try{r=await post('settings',{token:v})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('tokMsg',r.error,'bad');return}
-  inp.value='';checkOk=false;fillSettings(r.settings);await loadReviews();loadTeams(false);
+  inp.value='';textClean();checkOk=false;fillSettings(r.settings);await loadReviews();loadTeams(false);
   setMsg('tokMsg','Saved.','ok');startCheck();
 });
 $('fGuideToken').addEventListener('submit',async e=>{e.preventDefault();
@@ -2654,17 +2750,36 @@ $('fOpts').addEventListener('submit',async e=>{e.preventDefault();setMsg('optMsg
   const sal=$('salut').value.replace(/\s+/g,' ').trim();
   if(sal.length>20){setMsg('optMsg','Keep how Debrief addresses you to 20 characters or fewer.','bad');$('salut').focus();return}
   if(/[<>]/.test(sal)){setMsg('optMsg','How Debrief addresses you can\'t contain < or >.','bad');$('salut').focus();return}
-  try{r=await post('settings',{max_reference_laps:+$('refs').value,include_practice:$('prac').checked,salutation:sal})}catch(err){connectionLost();return}
+  try{r=await post('settings',{salutation:sal})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('optMsg',r.error,'bad');return}
-  fillSettings(r.settings);setMsg('optMsg','Saved.','ok')});
-$('fUnits').addEventListener('submit',async e=>{e.preventDefault();setMsg('unitsMsg','Saving...');let r;
-  try{r=await post('settings',{units:$('unitsSel').value==='kmh'?'kmh':'mph'})}catch(err){connectionLost();return}
-  if(!r.ok){setMsg('unitsMsg',r.error,'bad');return}
-  fillSettings(r.settings);setMsg('unitsMsg','Saved. Pages and the coach use '+spdLabel()+' from now on; an open review shows it when you open it again.','ok')});
-$('fSync').addEventListener('submit',async e=>{e.preventDefault();setMsg('syncOptMsg','Saving...');let r;
-  try{r=await post('settings',{sync_on_open:$('syncOpen').checked,sync_telemetry:$('syncTel').checked?'best':'none'})}catch(err){connectionLost();return}
-  if(!r.ok){setMsg('syncOptMsg',r.error,'bad');return}
-  fillSettings(r.settings);setMsg('syncOptMsg','Saved.','ok')});
+  fillSettings(r.settings);textClean();savedTick('optMsg')});
+/* 2.28 Settings: switches and choices save the moment they change (a small "Saved" tick says so); only boxes you type in
+   keep a Save button, and leaving with typed text that wasn't saved asks first. */
+const tickT={};
+function savedTick(id,text,keep){setMsg(id,text||'Saved','ok tick');clearTimeout(tickT[id]);if(!keep)tickT[id]=setTimeout(()=>{const e=$(id);if(e&&/\btick\b/.test(e.className))setMsg(id,'')},2600)}
+function autoSave(ids,body,msgId,okText,keep){ids.forEach(id=>$(id).addEventListener('change',async()=>{
+  setMsg(msgId,'Saving...');let r;try{r=await post('settings',body())}catch(err){connectionLost();return}
+  if(!r.ok){setMsg(msgId,r.error||'That wasn\'t saved.','bad');loadSettings();return}
+  fillSettings(r.settings);savedTick(msgId,typeof okText==='function'?okText():okText,keep)}))}
+autoSave(['refs','prac'],()=>({max_reference_laps:+$('refs').value,include_practice:$('prac').checked}),'optMsg');
+autoSave(['unitsSel'],()=>({units:$('unitsSel').value==='kmh'?'kmh':'mph'}),'unitsMsg',()=>'Saved. Pages and the coach use '+spdLabel()+' from now on; an open review shows it when you open it again.',true);
+autoSave(['recOn','recWin'],()=>({record_sessions:$('recOn').checked,start_with_windows:$('recWin').checked}),'recMsg');
+autoSave(['syncOpen','syncTel'],()=>({sync_on_open:$('syncOpen').checked,sync_telemetry:$('syncTel').checked?'best':'none'}),'syncOptMsg');
+autoSave(['updAuto'],()=>({check_updates:$('updAuto').checked}),'updMsg');
+autoSave(['cardsShare'],()=>({share_my_cards:$('cardsShare').checked}),'cardsMsg');
+['fLive','fSync','fUnits','fUpdate'].forEach(id=>$(id).addEventListener('submit',e=>e.preventDefault()));
+// the section links at the top of Settings
+document.querySelectorAll('#setNav [data-jump]').forEach(b=>b.addEventListener('click',()=>{const t=$(b.dataset.jump);if(!t)return;
+  if(t.tagName==='DETAILS')t.open=true;if(t.scrollIntoView)t.scrollIntoView({block:'start'});flash(t)}));
+// typed text that wasn't saved: the boxes you type in, compared with what was there when they were last filled or saved
+const TEXT_BOXES={salut:'How Debrief addresses you',telFolder:'the iRacing folder',rcapFolder:'the RaceCap folder',cardsFolder:'the shared folder',tok:'the Garage 61 token',discordHook:'the Discord webhook',irId:'the iRacing client ID',irSecret:'the iRacing client secret'};
+function textClean(){Object.keys(TEXT_BOXES).forEach(id=>{const e=$(id);if(e)e.dataset.orig=e.value})}
+function dirtyText(){return Object.keys(TEXT_BOXES).filter(id=>{const e=$(id);return e&&e.value!==(e.dataset.orig||'')}).map(id=>TEXT_BOXES[id])}
+function leaveOk(){if($('vSettings').hidden)return true;const d=dirtyText();if(!d.length)return true;
+  const ok2=confirm('You typed in '+d.join(', ')+' but haven\'t saved it. Leave without saving?');if(ok2)textClean();return ok2}
+addEventListener('beforeunload',e=>{if(!$('vSettings').hidden&&dirtyText().length){e.preventDefault();e.returnValue=''}});
+// the sidebar and the page keys ask before leaving Settings with unsaved text
+document.addEventListener('click',e=>{if(!$('vSettings').hidden&&e.target.closest&&e.target.closest('.side button,.side a')&&!e.target.closest('#btnHelp,[data-theme-set],#btnMenu')&&!leaveOk()){e.stopPropagation();e.preventDefault()}},true);
 $('btnFolder').addEventListener('click',async()=>{let r;try{r=await post('open-folder')}catch(e){connectionLost();return}
   setMsg('folderMsg',r.ok?'Opened in File Explorer.':r.error,r.ok?'ok':'')});
 
@@ -2712,9 +2827,6 @@ async function startUpdate(){if(!confirm('Update Debrief to '+(updInfo&&updInfo.
   startJob('update')}
 $('updStrip').addEventListener('click',startUpdate);$('btnUpdNow').addEventListener('click',startUpdate);
 $('btnUpdCheck').addEventListener('click',()=>{setMsg('updMsg','Checking...');checkUpdate('force')});
-$('fUpdate').addEventListener('submit',async e=>{e.preventDefault();setMsg('updMsg','Saving...');let r;
-  try{r=await post('settings',{check_updates:$('updAuto').checked})}catch(err){connectionLost();return}
-  if(!r.ok){setMsg('updMsg',r.error,'bad');return}fillSettings(r.settings);setMsg('updMsg','Saved.','ok')});
 
 /* ---------- start */
 (async function init(){

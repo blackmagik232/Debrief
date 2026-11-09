@@ -650,7 +650,7 @@ def test_firstrun_in_the_window():
         pg.goto(s.url)
         # 2.18: with the token saved and a session of clean laps, setup is done: Debrief opens on Today with no
         # "Getting set up" box, and the step left (the voice) is one quiet line
-        pg.wait_for_selector("#tdSetupLine:not([hidden])")
+        pg.wait_for_selector("#tdSetupLine.quiet")      # 2.28: the strip is always there; "quiet" when it has a step to show
         assert pg.evaluate("() => !document.getElementById('vToday').hidden"), "the start page is Today"
         assert pg.evaluate("() => document.getElementById('firstRun').hidden")
         line = pg.text_content("#tdSetupLine")
@@ -683,7 +683,7 @@ def test_firstrun_in_the_window():
         pg.goto(s.url)
         pg.wait_for_selector("#vToday", state="visible")
         pg.wait_for_timeout(500)
-        assert pg.evaluate("() => document.getElementById('tdSetupLine').hidden && document.getElementById('firstRun').hidden")
+        assert pg.evaluate("() => document.getElementById('tdSetupLine').textContent.trim() === '' && document.getElementById('firstRun').hidden")
         pg.click("#btnHelp")
         pg.click("#helpFirstRun")
         pg.wait_for_selector("#firstRun:not([hidden])")

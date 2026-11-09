@@ -25,6 +25,8 @@
   --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
   --t-xs:11.5px; --t-sm:13px; --t-md:15px; --t-lg:18px; --t-xl:24px; --t-2xl:38px;
+  /* 2.28: the six sizes of the window's type scale (11, 13, 14, 16, 21, 46) */
+  --fs-11:11px; --fs-13:13px; --fs-14:14px; --fs-16:16px; --fs-21:21px; --fs-46:46px;
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
@@ -44,9 +46,11 @@
 html{scroll-behavior:smooth;scroll-padding-top:56px}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:var(--t-md);line-height:1.5}
-.wrap{max-width:1200px;margin:0 auto;padding-block:var(--s5) var(--s7);padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));display:grid;gap:var(--s7)}
+.wrap{max-width:860px;margin:0;padding-block:44px var(--s7);padding-left:max(clamp(20px,4vw,56px),env(safe-area-inset-left,0px));padding-right:max(clamp(20px,4vw,56px),env(safe-area-inset-right,0px));display:grid;gap:var(--s7)}
+/* 2.28: the same page frame as the window around it: 860 px wide, 44 px down, the same side gutter; wider windows get the shell's 1180 px */
+@media (min-width:1500px){.wrap{max-width:1180px;margin-inline:auto}}
 h1,h2,h3{margin:0;line-height:1.1;text-wrap:balance}
-h1{font-family:var(--display);font-weight:700;font-size:var(--t-2xl);letter-spacing:.005em}
+h1{font-family:var(--display);font-weight:700;font-size:var(--fs-46);line-height:1.05;text-transform:uppercase;letter-spacing:.01em}
 h2{font-family:var(--display);font-weight:700;font-size:var(--t-xl);letter-spacing:.01em}
 h3{font-size:var(--t-md);font-weight:600}
 p{margin:0;max-width:72ch}
@@ -349,9 +353,9 @@ a{color:inherit!important;text-decoration:none!important}
 </style>
 <div class="wrap lib">
 <header>
-  <div class="chiprow"><span class="chip">Debrief</span><span class="chip" id="count"></span><span class="chip hidden" id="testchip">Includes test data</span></div>
   <span class="eyebrow">Garage 61 race reviews</span>
   <h1>Progress</h1>
+  <div class="chiprow"><span class="chip">Debrief</span><span class="chip" id="count"></span><span class="chip hidden" id="testchip">Includes test data</span></div>
   <p class="lede" id="lede">Your pace and consistency across every race you've reviewed. Pick a track and car below to see how they have moved.</p>
   <div class="stats" id="totals"></div>
   <label class="incprac" for="incprac"><input type="checkbox" id="incprac"> Include practice and qualifying <span class="note" id="incpracNote"></span></label>

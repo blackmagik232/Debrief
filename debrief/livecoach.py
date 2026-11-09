@@ -63,7 +63,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import cornernotes, engine, ibt, voicepack
+from . import cornernotes, engine, ibt, livedata, voicepack
 
 GRID = 1000                 # reference points around the lap
 KMH = 3.6
@@ -2483,10 +2483,8 @@ def corner_phases(samples, corner, length_m) -> dict | None:
 
 # ---------------------------------------------------------------- sample sources
 
-# only what the coach reads (each live read copies these out of iRacing's buffer)
-CHANNELS = ("SessionTime", "SessionNum", "Lap", "LapDistPct", "LapLastLapTime", "Speed", "Brake", "Throttle",
-            "Gear", "OnPitRoad", "PlayerTrackSurface", "CarLeftRight", "IsOnTrack", "PlayerCarMyIncidentCount",
-            "SteeringWheelAngle")       # 2.14: steering, for the practice focus's trail-braking number
+# only what the coach reads (each live read copies these out of iRacing's buffer); livedata.py owns the list
+CHANNELS = livedata.COACH_CHANNELS       # 2.14 added steering (the practice focus's trail-braking number)
 
 
 class IbtPlaybackSource:
@@ -2547,68 +2545,24 @@ class IbtPlaybackSource:
         self._cols = {}
 
 
-class IrsdkSource:
-    """Live iRacing through pyirsdk (imported only here). read() returns None while iRacing isn't running (and tries
-    to reconnect every couple of seconds); state is 'not_installed', 'not_running' or 'connected'."""
+class IrsdkSource(livedata.LiveReader):
+    """Live iRacing for the coach. Since 2.27 the connection, the channel reads and the session-info thread are
+    livedata.LiveReader's (the background recorder uses the same one). read() returns None while iRacing isn't
+    running (and tries to reconnect every couple of seconds); state is 'not_installed', 'not_running' or 'connected'."""
 
     def __init__(self, rate_hz: float = 20.0, retry_s: float = 2.0):
-        self.interval = 1.0 / max(1.0, rate_hz)
-        self.realtime = True
-        self.done = False
-        self.state = "not_running"
-        self.error = ""
-        self._ir = None
-        self._retry_s = retry_s
-        self._next_try = 0.0
+        super().__init__(rate_hz=rate_hz, retry_s=retry_s, own=CHANNELS)
         self._types: dict = {}
         self._info: dict | None = None
-        self._info_t = 0.0
+        self._info_v = -1
+        self._sync_t = 0.0
 
-    def _connect(self) -> bool:
-        if self._ir is None:
-            try:
-                import irsdk  # pyirsdk: only on the PC
-            except Exception as e:  # noqa: BLE001
-                self.state, self.error = "not_installed", f"pyirsdk is not available ({e.__class__.__name__})"
-                return False
-            try:
-                self._ir = irsdk.IRSDK()
-            except Exception as e:  # noqa: BLE001
-                self.state, self.error = "not_running", str(e)[:120]
-                return False
-        try:
-            if self._ir.is_initialized and self._ir.is_connected:
-                self.state = "connected"
-                return True
-            now = time.monotonic()
-            if now < self._next_try:
-                return False
-            self._next_try = now + self._retry_s
-            try:
-                self._ir.shutdown()
-            except Exception:  # noqa: BLE001
-                pass
-            ok = bool(self._ir.startup()) and bool(self._ir.is_connected)
-        except Exception as e:  # noqa: BLE001
-            self.state, self.error = "not_running", str(e)[:120]
-            return False
-        self.state = "connected" if ok else "not_running"
-        if ok:
-            self._info, self._types = None, {}
-        return ok
-
-    def _get(self, key):
-        try:
-            return self._ir[key]
-        except Exception:  # noqa: BLE001
-            return None
-
-    def _load_info(self):
-        di = self._get("DriverInfo") or {}
+    def _derive(self, sections: dict):
+        di = sections.get("DriverInfo") or {}
         me = next((d for d in di.get("Drivers") or [] if d.get("CarIdx") == di.get("DriverCarIdx")), {})
-        wi = self._get("WeekendInfo") or {}
+        wi = sections.get("WeekendInfo") or {}
         self._types = {s.get("SessionNum"): s.get("SessionType") or s.get("SessionName") or ""
-                       for s in (self._get("SessionInfo") or {}).get("Sessions") or []}
+                       for s in (sections.get("SessionInfo") or {}).get("Sessions") or []}
         km = ibt.number(wi.get("TrackLength"))
         self._info = {"car": {"name": me.get("CarScreenName") or "", "path": me.get("CarPath") or "",
                               "id": me.get("CarID"), "class": me.get("CarClassShortName") or ""},
@@ -2616,37 +2570,27 @@ class IrsdkSource:
                                 "code": wi.get("TrackName") or "", "config": wi.get("TrackConfigName") or "",
                                 "id": wi.get("TrackID")},
                       "length_m": km * 1000.0 if km else None, "driver": me.get("UserName")}
-        self._info_t = time.monotonic()
 
     def info(self) -> dict | None:
         return self._info
 
     def read(self) -> dict | None:
-        if not self._connect():
+        s = self.read_own()
+        if s is None:
             return None
-        ir = self._ir
-        try:
-            ir.freeze_var_buffer_latest()
-            try:
-                s = {nm: self._get(nm) for nm in CHANNELS}
-            finally:
-                ir.unfreeze_var_buffer_latest()
-            if self._info is None or time.monotonic() - self._info_t > 5.0 or s.get("SessionNum") not in self._types:
-                self._load_info()
-        except Exception as e:  # noqa: BLE001
-            self.state, self.error = "not_running", str(e)[:120]
-            return None
-        if s.get("SessionTime") is None:
-            return None
+        v, sections = self.info_sections()
+        if v != self._info_v and sections:
+            self._info_v = v
+            self._derive(sections)
+        if (self._info is None or s.get("SessionNum") not in self._types) and time.monotonic() - self._sync_t > 1.0:
+            # the very first read (or a session the thread hasn't seen yet): read it here once, as before 2.27
+            self._sync_t = time.monotonic()
+            if self.load_info_now():
+                v, sections = self.info_sections()
+                self._info_v = v
+                self._derive(sections)
         s["SessionType"] = self._types.get(s.get("SessionNum"), "")
         return s
-
-    def close(self):
-        try:
-            if self._ir is not None:
-                self._ir.shutdown()
-        except Exception:  # noqa: BLE001
-            pass
 
 
 # ---------------------------------------------------------------- the runner

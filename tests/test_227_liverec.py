@@ -439,7 +439,7 @@ def test_a_failure_in_one_step_does_not_stop_the_recorder():
     rec.lock = lock
     sim.step(1)
     assert rec.start()
-    time.sleep(0.6)
+    time.sleep(1.6)                 # a failed step waits a second before the next
     rec.stop()
     assert rec.errors == 1 and any("ERROR while recording" in m for m in logs) and n["i"] > 3, (rec.errors, n)
 

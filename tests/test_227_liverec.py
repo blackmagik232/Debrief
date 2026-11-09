@@ -150,9 +150,12 @@ def test_session_info_is_read_on_its_own_thread_and_only_when_it_changes():
 
 
 def test_reader_without_pyirsdk_or_iracing_is_quiet():
-    sys.modules.pop("irsdk", None)
-    rd = livedata.LiveReader(own=livedata.COACH_CHANNELS)
-    assert rd.read_own() is None and rd.state == "not_installed"
+    sys.modules["irsdk"] = None      # blocks the import even where the real pyirsdk is installed (Windows CI)
+    try:
+        rd = livedata.LiveReader(own=livedata.COACH_CHANNELS)
+        assert rd.read_own() is None and rd.state == "not_installed"
+    finally:
+        sys.modules.pop("irsdk", None)
     sim = F.Sim()
     sim.connected = False
     _irsdk(sim)

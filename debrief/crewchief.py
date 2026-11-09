@@ -978,7 +978,7 @@ class CrewChief:
         self.burn.add(self.lap, used, ", ".join(sorted(dirty)) if dirty else "")
         # what he REALLY burned on his last full laps, whatever else was going on (a saving shows up here at once)
         if used is not None and used > 0.05 and self.lap > 1 and "pit lap" not in dirty and "lap jump" not in dirty \
-                and "tow or off the world" not in dirty:
+                and "tow or off the world" not in dirty and not self.caution:   # a slow caution lap would hide a shortage at green
             self._ach_hist.append(used)
             del self._ach_hist[:-2]
         ll = _num(own.get("LapLastLapTime"))
@@ -1306,6 +1306,7 @@ class CrewChief:
         ach = self.achieved_burn()
         entry = self.pit_entry_frac()
         no_box = False                  # past the last chance: a box call would be a lie, only saving is left to ask for
+        self._last_crossings = ltg["crossings"] if ltg is not None else None    # for still_valid, right before speaking
         rule_box = rule_save = None
         if ach and F is not None and ltg is not None and self.race and not on_pit:
             k_fuel = int(math.floor(F / ach + self.lap_f - 1 + 1e-9))      # the last lap (counted from now) the fuel lets him pit at the end of
@@ -1487,6 +1488,15 @@ class CrewChief:
         """Asked right before a call is spoken: None while it still holds, else why not."""
         if not isinstance(own, dict) or call.kind in ("data_lost",):
             return None
+        if call.kind in ("box_now", "save_or_box", "caution_box"):
+            # 2.29 review: a box call made before pit entry may wait (a car alongside) and must not be SAID after it
+            pct = _num(own.get("LapDistPct"))
+            if call.kind != "save_or_box" and pct is not None and 0.0 <= pct <= 1.0 and pct >= self.pit_entry_frac() \
+                    and not (own.get("OnPitRoad") or own.get("PlayerCarInPitStall")):
+                return "past pit entry"
+            n = getattr(self, "_last_crossings", None)
+            if isinstance(n, int) and n <= 1:
+                return "final lap"
         if call.kind in ("box_now", "box_soon", "caution_box"):
             if own.get("OnPitRoad") or own.get("PlayerCarInPitStall"):
                 return "already in the pits"

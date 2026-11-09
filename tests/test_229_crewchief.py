@@ -764,6 +764,25 @@ def test_a_call_that_no_longer_holds_is_not_said():
     assert ch.still_valid(cb, {"Lap": 8, "SessionFlags": cc.F_GREEN}) == "the caution is over"
 
 
+def test_a_box_call_made_before_pit_entry_is_never_said_after_it():
+    # 2.29 review round 5: made at 0.80, a car alongside until 0.93, then it would have been said past the entry
+    ch = cc.CrewChief()
+    entry = ch.pit_entry_frac()
+    c = _call("box_now", 8)
+    assert ch.still_valid(c, {"Lap": 8, "LapDistPct": entry - 0.05}) is None
+    assert ch.still_valid(c, {"Lap": 8, "LapDistPct": entry + 0.08}) == "past pit entry"
+    cb = _call("caution_box", 8)
+    assert ch.still_valid(cb, {"Lap": 8, "LapDistPct": 0.95, "SessionFlags": cc.F_CAUTION}) == "past pit entry"
+    sb = _call("save_or_box", 8)      # about NEXT lap: still fine to say past this lap's entry
+    assert ch.still_valid(sb, {"Lap": 8, "LapDistPct": 0.95}) is None
+    ch._last_crossings = 1            # the final lap: no box call of any kind
+    assert ch.still_valid(c, {"Lap": 8, "LapDistPct": 0.10}) == "final lap"
+    assert ch.still_valid(sb, {"Lap": 8, "LapDistPct": 0.10}) == "final lap"
+    # the live runner asks still_valid right before a call plays (livecoach.LiveRunner, crew.still_valid)
+    src = open(os.path.join(os.path.dirname(cc.__file__), "livecoach.py"), encoding="utf-8").read()
+    assert "crew.still_valid(" in src
+
+
 # ------------------------------------------------------------------ 2.29 review fixes
 def test_the_spare_lap_is_not_fuel_you_must_have():
     # the reviewer's race: 10 laps, 32.7 L at 3 L a lap. It finishes with 0.95 lap in the tank: no box call, no fuel critical

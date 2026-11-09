@@ -3451,6 +3451,12 @@
    "ms": 920,
    "role": "whole"
   },
+  "cc_fuel_is_tight": {
+   "file": "cc_fuel_is_tight.wav",
+   "text": "Fuel is tight.",
+   "ms": 970,
+   "role": "whole"
+  },
   "cc_box_in_2": {
    "file": "cc_box_in_2.wav",
    "text": "Box in two laps.",

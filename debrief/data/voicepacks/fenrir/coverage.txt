@@ -1,6 +1,9 @@
-Fenrir (American male) (fenrir): 771 clips, 28.18 MB, 16000 Hz, speed 0.85, comma pause 40 ms
-Coach phrases covered: 5308 of 5308 (100.0%)
+Fenrir (American male) (fenrir): 772 clips, 28.21 MB, 16000 Hz, speed 0.85, comma pause 40 ms
+Coach phrases covered: 5538 of 5538 (100.0%)
 Left to Windows speech by design: Good, 0 .. Good, 19 (20 phrases)
+Takes to listen to: 0 (new lines only)
+
+Earlier lines:
 Takes to listen to: 3 (new lines only)
   line 678 'Car behind closing, three tenths a lap.': spoken as 'Car behind closing. Three tenths a lap.' to get a pause at the comma (listen to the join)
   line 679 'Gaining on the car ahead, four tenths a lap.': spoken as 'Gaining on the car ahead. Four tenths a lap.' to get a pause at the comma (listen to the join)

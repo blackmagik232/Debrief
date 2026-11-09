@@ -66,9 +66,16 @@ def test_laps_to_go_hand_checks():
     # timed: 1800 s left, leader laps 100 s, half way round: crossings at 50, 150 ... 1750 s, then the one after the clock = 19
     r = cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0)
     assert (r["crossings"], r["distance"], r["kind"]) == (19, 18.5, "time")
-    # one 60 s stop still to make: 1740 s of driving -> floor(17.4 + 0.5) + 1 = 18 crossings, 17.5 laps
+    # the same, with the leader's place on his lap known (the docstring's checks B and C, counted by hand there)
+    assert cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0, leader_f=0.8)["crossings"] == 19
+    assert cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0, leader_f=0.2)["crossings"] == 20
+    # one 60 s stop still to make with the leader at 0.2: you cross at 110 ... 1810 s (18) before he finishes at
+    # 1880 s, and the one at 1910 s is yours: 19 crossings
+    r = cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0, leader_f=0.2, stops=1, pit_loss_s=60.0)
+    assert (r["crossings"], r["distance"]) == (19, 18.5)
+    # leader where you are: the stop moves your crossings to 110 ... 1810 s; he finishes at 1850 s; the one at 1910 s
     r = cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0, stops=1, pit_loss_s=60.0)
-    assert (r["crossings"], r["distance"]) == (18, 17.5)
+    assert (r["crossings"], r["distance"]) == (19, 18.5)
     # the clock is zero: one more crossing finishes it
     assert cc.laps_to_go(time_rem=0, lap_f=0.3, leader_lap_s=100.0)["crossings"] == 1
     # no leader time, no timed answer; a lap-limited race with a clock too takes whichever ends first
@@ -84,7 +91,7 @@ def test_pit_window_hand_checks():
     assert w["need_stop"] and w["stops"] == 1
     assert w["k_latest"] == 18 and w["k_earliest"] == 17           # pit at the end of lap n+17 .. n+18
     assert w["add_l"] == 93.0                                      # (50 + 1) * 3 - 60
-    assert abs(w["save_lpl"] - 1.824) < 0.001 and w["save_pct"] > 50   # skip the stop: 60 / 51 = 1.176 L a lap
+    assert abs(w["save_lpl"] - 1.805) < 0.001 and w["save_pct"] > 50   # skip the stop: 60 / 50.2 = 1.195 L a lap
     # one lap earlier than the earliest, a full top-up would not reach the flag; at the earliest it does
     for k, ok in ((16, False), (17, True)):
         fuel_at = 60.0 - (k + 1) * 3.0
@@ -193,7 +200,7 @@ def test_full_race_two_stops_calls_and_numbers():
     last = {}
     for c in calls:
         g = cc.GROUP.get(c.kind, c.kind)
-        if g in last and c.kind not in ("fuel_critical",):
+        if g in last and c.kind not in ("fuel_critical", "box_now"):          # box this lap: once a lap
             lap0, lvl0 = last[g]
             assert c.lap - lap0 >= cc.REPEAT_LAPS or c.level > lvl0, (c.kind, c.lap, lap0, c.level, lvl0)
         last[g] = (c.lap, c.level)
@@ -284,8 +291,8 @@ def test_caution_is_not_a_pit_cycle():
 
 
 def test_caution_with_the_window_open_calls_a_cheap_stop():
-    sim = S.RaceSim(laps=50, tank=60.0, burn=3.0)
-    sim.caution(840.0, 960.0)                                  # laps 15-16: the window opens at lap 15
+    sim = S.RaceSim(laps=50, tank=100.0, burn=3.0)
+    sim.caution(840.0, 1300.0)                                 # one stop left; it can take the race to the flag from lap 18
     ch = chief(sim)
     cheap = []
 
@@ -293,7 +300,7 @@ def test_caution_with_the_window_open_calls_a_cheap_stop():
         for c in got:
             if c.kind == "caution_box":
                 cheap.append((c, dict(ch.last_calc["window"])))
-    calls = drive(sim, ch, seconds=1000, on_frame=watch)
+    calls = drive(sim, ch, seconds=1250, on_frame=watch)
     assert cheap, kinds(calls)
     c, w = cheap[0]
     assert c.say.startswith("Box now, cheap stop. ") and c.say.endswith("litres."), c.say
@@ -363,7 +370,7 @@ def test_rival_tags_catchable_pulling_away_pitting_alongside():
 
     # alongside: closer than half a second
     def close(s):
-        s.cars[3].D = s.cars[S.ME].D - 0.2 / 60.0
+        s.cars[3].D = s.cars[S.ME].D - 0.05 / 60.0
     sim, ch, calls = rival_run(close, seconds=20)
     assert "alongside" in ch.snapshot()["behind"]["tags"]
     assert any(c.kind == "alongside" and c.say == "Car alongside." for c in calls)
@@ -425,9 +432,24 @@ def test_rivals_are_in_your_class_and_the_leader_is_your_class_leader():
 
 
 # ------------------------------------------------------------------ the timed race with stops still to make
+def ref_crossings(T, p, f, fL, s=0.0):
+    """An independent count, clock by clock: the leader (at fL on his lap, laps of p seconds) takes the flag at his first
+    crossing at or after T; you (at f, s seconds late because of your stops) cross the line once for every crossing
+    before that and once more after it."""
+    k = 1
+    while (k - fL) * p < T - 1e-9:
+        k += 1
+    tl = (k - fL) * p
+    n, j = 0, 1
+    while (j - f) * p + s < tl - 1e-9:
+        n += 1
+        j += 1
+    return n + 1
+
+
 def test_timed_race_takes_off_the_pit_time():
     sim = S.RaceSim(laps=0, timed_s=1800.0, tank=60.0, burn=3.0, lap_s=60.0)
-    ch = chief(sim)
+    ch = chief(sim, pit_loss_s=90.0)                           # a stop that costs a lap and a half
     got = {}
 
     def watch(own, f, g):
@@ -437,14 +459,32 @@ def test_timed_race_takes_off_the_pit_time():
             f_ = own["LapDistPct"]
             rem = own["SessionTimeRemain"]
             stops = s["box"]["stops"]
-            loss = ch.pit_loss()[0]
-            got.update(n=s["laps_left"]["n"], stops=stops, loss=loss,
-                       want=int(math.floor(max(0.0, rem - stops * loss) / lead + f_ + 1e-9)) + 1,
-                       without=int(math.floor(rem / lead + f_ + 1e-9)) + 1)
+            fl = ch._leader_f if ch._leader_f is not None else f_
+            got.update(n=s["laps_left"]["n"], stops=stops, want=ref_crossings(rem, lead, f_, fl, stops * 90.0),
+                       without=ref_crossings(rem, lead, f_, fl, 0.0))
     drive(sim, ch, seconds=310, on_frame=watch)
     assert got["stops"] >= 1 and got["n"] == got["want"] and got["n"] < got["without"], got
-    assert ch.pit_loss()[1] == "assumed"                       # no stop yet and no plan: say so
-    assert ch.snapshot()["pit_loss"]["how"] == "assumed"
+    ch2 = chief(S.RaceSim(laps=0, timed_s=1800.0))
+    assert ch2.pit_loss()[1] == "assumed"                      # no stop yet and no plan: say so
+
+
+def test_timed_finish_matches_a_clock_by_clock_count_fuzz():
+    """2.29 review: the first version was one crossing short half of the time (it ignored where the leader is on his lap)."""
+    import random
+    rnd = random.Random(7)
+    wrong = 0
+    for _ in range(20000):
+        p, T = rnd.uniform(40, 200), rnd.uniform(0, 4 * 3600)
+        f, fl = rnd.random(), rnd.random()
+        stops = rnd.choice([0, 0, 1, 2])
+        loss = rnd.uniform(15, 90)
+        want = ref_crossings(T, p, f, fl, stops * loss)
+        got = cc.laps_to_go(time_rem=T, lap_f=f, leader_lap_s=p, stops=stops, pit_loss_s=loss, leader_f=fl)["crossings"]
+        wrong += got != want
+    assert wrong == 0, wrong
+    # the case the reviewer found: 1000 s left, 100 s laps, you at 0.95, and the leader just past the line (0.05)
+    assert cc.laps_to_go(time_rem=1000, lap_f=0.95, leader_lap_s=100, leader_f=0.05)["crossings"] == \
+        ref_crossings(1000, 100, 0.95, 0.05)
 
 
 # ------------------------------------------------------------------ calls: rank, rate limit, escalation
@@ -658,9 +698,9 @@ def test_quiet_zones():
     assert sp.pump(free, 700.0) is None and c.spoken is False and "voice" in c.why
     sp = cc.CallSpeaker()
     sp.muted = True
-    sp.offer([_call("box_now", 5, t=800.0), _call("fuel_critical", 5, t=800.0)])
+    sp.offer([_call("catchable", 5, t=800.0), _call("fuel_critical", 5, t=800.0)])
     assert sp.pump(free, 800.0).kind == "fuel_critical"
-    assert sp.pump(free, 804.0) is None
+    assert sp.pump(free, 804.0) is None and sp.pending == []
 
 
 def test_a_call_that_no_longer_holds_is_not_said():
@@ -672,6 +712,248 @@ def test_a_call_that_no_longer_holds_is_not_said():
     cb = _call("caution_box", 8)
     assert ch.still_valid(cb, {"Lap": 8, "SessionFlags": cc.F_CAUTION}) is None
     assert ch.still_valid(cb, {"Lap": 8, "SessionFlags": cc.F_GREEN}) == "the caution is over"
+
+
+# ------------------------------------------------------------------ 2.29 review fixes
+def test_the_spare_lap_is_not_fuel_you_must_have():
+    # the reviewer's race: 10 laps, 32.7 L at 3 L a lap. It finishes with 0.95 lap in the tank: no box call, no fuel critical
+    sim = S.RaceSim(laps=10, tank=60.0, burn=3.0, start_fuel=32.7, cars=4)
+    ch = chief(sim)
+    calls = drive(sim, ch)
+    assert not [c for c in calls if c.kind in ("box_now", "box_soon", "fuel_critical", "caution_box")], kinds(calls)
+    assert sim.fuel > 2.5                                      # and he did finish with the 0.95 lap
+    # hand checks: 17.8 L, 5 laps to go -> 15.6 L needed: no stop, and not even tight (a 1% saving)
+    w = cc.pit_window(17.8, 3.0, 60.0, 5.0, 0.0)
+    assert not w["need_stop"] and not w["tight"]
+    # 14.5 L: short of 0.2 lap at the flag by 1.1 L, a 7% saving, which is realistic: no stop, but fuel is tight
+    w = cc.pit_window(14.5, 3.0, 60.0, 5.0, 0.0)
+    assert not w["need_stop"] and w["tight"] and abs(w["tight_save_lpl"] - 0.21) < 0.01, w
+    # 14.0 L needs a 10.3% saving: that is a stop
+    w = cc.pit_window(14.0, 3.0, 60.0, 5.0, 0.0)
+    assert w["need_stop"] and w["stops"] == 1
+    # the tight call: said as "Fuel is tight." with the saving in the text, once, not every lap
+    sim = S.RaceSim(laps=12, tank=60.0, burn=3.0, start_fuel=34.8, cars=4)      # short of the flag by a 6-9% saving
+    ch = chief(sim)
+    calls = drive(sim, ch, seconds=360)
+    tight = [c for c in calls if c.kind == "fuel_tight"]
+    assert tight and tight[0].say == "Fuel is tight." and "save" in tight[0].text.lower() and len(tight) <= 2, kinds(calls)
+    assert "fuel_critical" not in kinds(calls) and "box_now" not in kinds(calls)
+    # fuel critical means you really cannot make it: under 2 laps of fuel AND a stop needed
+    sim = S.RaceSim(laps=10, tank=60.0, burn=3.0, start_fuel=21.0, cars=4)
+    assert "fuel_critical" in kinds(drive(sim, chief(sim)))
+
+
+def test_a_dropped_box_call_is_made_again():
+    sim = S.RaceSim(laps=20, tank=60.0, burn=3.0, start_fuel=40.0, cars=4)
+    ch = chief(sim)
+    sp = cc.CallSpeaker()
+    sp.on_drop = ch.forgive
+    said, issued = [], []
+    for own, f in sim.run():
+        # a car alongside for the whole of the first lap on which the box call is made
+        sim.side = 3 if (sim.cars[2].completed + 1 == 12) else 1
+        calls = ch.feed(own, f, now=sim.t)
+        issued += [(own["Lap"], c.kind) for c in calls]
+        sp.offer(calls)
+        c = sp.pump(own, sim.t)
+        if c:
+            said.append((own["Lap"], c.kind))
+        sp.take_events()
+    boxes = [(lap, k) for lap, k in said if k == "box_now"]
+    assert boxes, said
+    # box this lap is made once for every lap it holds, and the one that was held up for the car alongside was not lost
+    laps_issued = [lap for lap, k in issued if k == "box_now"]
+    assert len(laps_issued) == len(set(laps_issued)), laps_issued
+    assert any(lap == 12 for lap, _ in boxes) or any(lap == 13 for lap, _ in boxes), boxes
+    # a dropped call gives its limit back: the same reading may make it again
+    ch2 = cc.CrewChief()
+    ch2.lap = 4
+    c = _call("fuel_tight", 4)
+    ch2._issue(c, 0.0)
+    assert not ch2._allowed("fuel_tight", 1, 1.0)
+    ch2.forgive(c)
+    assert ch2._allowed("fuel_tight", 1, 1.0)
+    sp2 = cc.CallSpeaker()
+    sp2.on_drop = ch2.forgive
+    sp2.offer([c])
+    ch2._issue(c, 0.0)
+    assert sp2.pump({"Brake": 0.6}, 100.0) is None            # too late: dropped for want of a quiet place
+    assert ch2._allowed("fuel_tight", 1, 100.0)
+
+
+def test_box_calls_get_through_mute_and_box_this_lap_is_once_a_lap():
+    sp = cc.CallSpeaker()
+    sp.muted = True
+    free = {"Brake": 0.0, "Throttle": 1.0}
+    for kind in ("box_now", "box_soon", "fuel_critical"):
+        sp.offer([_call(kind, 5, t=10.0)])
+        assert sp.pump(free, 10.0 + 3 * ["box_now", "box_soon", "fuel_critical"].index(kind)).kind == kind
+    ch = cc.CrewChief()
+    ch.lap = 7
+    assert ch._allowed("box_now", 4, 0.0, key=7)
+    ch._issue(_call("box_now", 7, level=4), 0.0, key=7)
+    assert not ch._allowed("box_now", 4, 1.0, key=7) and ch._allowed("box_now", 4, 2.0, key=8)
+
+
+def test_a_caution_stop_that_gains_nothing_is_not_called():
+    # the reviewer's race: 80 laps on a 60 L tank, a caution at lap 19; three stops remain either way
+    sim = S.RaceSim(laps=80, tank=60.0, burn=3.0, cars=4)
+    sim.pit_at(lap=17, add=60.0)
+    sim.caution(19 * 60 + 10, 21 * 60 + 40)
+    ch = chief(sim)
+    calls = drive(sim, ch, seconds=23 * 60)
+    assert "caution_box" not in kinds(calls), [c.text for c in calls if c.kind == "caution_box"]
+    assert ch.last_calc["window"]["stops"] >= 2
+    # ... and when it takes a stop off the count, or the one stop is open now and the amount is real, it is
+    # stopping now only takes a stop off the count when the tank then reaches the flag: 100 L is not 36 laps of 3 L
+    assert cc.stops_needed(60.0, 3.0, 100.0, 36.0, lap_f=0.0) == 1 and cc.stops_if_stop_now(60.0, 3.0, 100.0, 36.0, 0.0) == 2
+    assert cc.stops_needed(30.0, 3.0, 100.0, 30.0, lap_f=0.0) == 1 and cc.stops_if_stop_now(30.0, 3.0, 100.0, 30.0, 0.0) == 1
+
+
+def test_stop_count_and_the_window_agree():
+    """2.29 review: the count ignored the fuel wasted by stopping at a lap end; it now plans the stops lap by lap."""
+    import random
+    rnd = random.Random(11)
+    bad = 0
+    for _ in range(20000):
+        b = rnd.uniform(1.0, 5.0)
+        tank = rnd.uniform(40, 130)
+        F = rnd.uniform(0, tank)
+        f = rnd.random()
+        n = rnd.randint(1, 120)
+        dist = n - f
+        w = cc.pit_window(F, b, tank, dist, f)
+        if not w["need_stop"]:
+            continue
+        # replay the plan lap by lap: every stop reachable with fuel to spare, the flag reached at the end
+        fuel, pos, ok = F, 0.0, True
+        for c in w["stop_laps"]:
+            x = c + 1 - f
+            fuel -= (x - pos) * b
+            ok = ok and fuel >= -1e-6
+            fuel, pos = tank, x
+        ok = ok and fuel - (dist - pos) * b >= -1e-6
+        bad += (not ok) and w["feasible"]
+        assert w["stops"] == len(w["stop_laps"]) or w["stops"] == 1
+        if w["stops"] == 1 and w["feasible"]:
+            assert w["k_earliest"] <= max(0, w["k_latest"]), w
+    assert bad == 0, bad
+    # the first stop of the plan is the window's latest lap
+    w = cc.pit_window(60.0, 3.0, 60.0, 50.0, 0.0)
+    assert w["stops"] == 2 and w["stop_laps"][0] == w["k_latest"] == 18
+    # fuel wasted at lap ends: 23.29 L at 2 L a lap, a 30 L tank, 25 laps to go. The old sum said
+    # ceil((25.4 * 2 - 23.29) / (30 - 2)) = 1 stop; but the stop is at the end of lap 10 with 3.29 L (more than the
+    # spare lap) left in the tank, and 30 L from there is 15 laps of 25 - 10 = 15: 0 spare, so a second stop
+    assert cc.stops_needed(23.29, 2.0, 30.0, 25.0, lap_f=0.0) == 2
+    w = cc.pit_window(23.29, 2.0, 30.0, 25.0, 0.0)
+    assert w["stops"] == 2 and len(w["stop_laps"]) == 2
+
+
+def test_another_car_or_session_starts_fresh():
+    sim = S.RaceSim(laps=30, tank=60.0, burn=3.0, cars=4)
+    ch = chief(sim)
+    drive(sim, ch, seconds=400)
+    assert ch.burn.burn()[1] == "laps"
+    # same car, a new sub-session: the figure is kept as a starting guess only
+    secs = sim.sections()
+    secs["WeekendInfo"]["SubSessionID"] = 111
+    ch.set_info(secs, 2)
+    secs = sim.sections()
+    secs["WeekendInfo"]["SubSessionID"] = 222
+    ch.set_info(secs, 3)
+    ch.feed(sim.own(), sim.field(), now=sim.t + 1)
+    assert ch.burn.burn()[1] == "from the last session" and ch.stops_done == 0
+    # another car in the next session: nothing carries over
+    sim2 = S.RaceSim(laps=30, tank=80.0, burn=4.0, cars=4)
+    sec2 = sim2.sections()
+    sec2["WeekendInfo"]["SubSessionID"] = 333
+    sec2["DriverInfo"]["Drivers"][S.ME]["CarScreenName"] = "Other car"
+    ch.set_info(sec2, 4)
+    o = sim2.own()
+    o["SessionNum"] = 2
+    ch.feed(o, None, now=sim.t + 5)
+    assert ch.burn.burn() == (None, "learning") and abs(ch.tank - 80.0) < 1e-9
+    # a new SessionUniqueID alone is a new session too
+    ch2 = chief(S.RaceSim(laps=30, cars=4))
+    ch2.burn.seed, ch2.burn.seed_why = 2.5, "from the last session"
+    o = dict(S.RaceSim(laps=30, cars=4).own(), SessionUniqueID=5)
+    ch2.feed(o, None, now=1.0)
+    ch2.stops_done = 2
+    ch2.feed(dict(o, SessionTime=2.0, SessionUniqueID=6), None, now=2.0)
+    assert ch2.stops_done == 0
+
+
+def test_alongside_is_the_side_signal_or_a_tenth_of_a_second():
+    def run(gap_s, side=1):
+        sim = S.RaceSim(laps=80, tank=200.0, burn=2.0, cars=6)
+        sim.cars[3].D = sim.cars[S.ME].D - gap_s / 60.0
+        sim.side = side
+        ch = chief(sim)
+        calls = drive(sim, ch, seconds=15)
+        return ch.snapshot()["behind"], kinds(calls)
+    b, k = run(0.3)
+    assert "alongside" not in b["tags"] and "alongside" not in k, (b, k)
+    b, k = run(0.05)
+    assert "alongside" in b["tags"] and "alongside" in k
+    b, k = run(0.3, side=2)
+    assert "alongside" in k
+
+
+def test_the_estimated_time_gap_has_no_jump_across_the_line():
+    """2.29 review: with F2Time unusable the gap came from EstTime, which runs on iRacing's lap, not the race pace, so it
+    jumped when the car ahead was across the line and you were not."""
+    sim = S.RaceSim(laps=80, tank=200.0, burn=2.0, f2=False, cars=6, lap_s=60.0)
+    sec = sim.sections()
+    sec["DriverInfo"]["DriverCarEstLapTime"] = 50.0
+    ch = cc.CrewChief(units="kmh", clock=lambda: sim.t)
+    ch.set_info(sec, 1)
+    last, worst, n = None, 0.0, 0
+    for own, f in sim.run(300):
+        if f is not None:
+            f = dict(f, CarIdxEstTime=[x * 50.0 / 60.0 for x in f["CarIdxEstTime"]])    # iRacing's 50 s lap
+        ch.feed(own, f, now=sim.t)
+        a = ch.snapshot().get("ahead")
+        if a and a["idx"] == 1 and sim.t > 130:
+            if last is not None:
+                worst = max(worst, abs(a["gap_s"] - last))
+            last = a["gap_s"]
+            n += 1
+    assert n > 100 and worst < 0.35, worst
+    assert abs(last - 1.5) < 0.6, last
+
+
+def test_feed_never_raises_on_odd_readings():
+    import random
+    rnd = random.Random(5)
+    junk = [float("nan"), float("inf"), -float("inf"), "x", "", None, [], {}, True, -1, 10 ** 30, 1e300, "3", 2.5]
+    errs = 0
+    for run in range(60):
+        sim = S.RaceSim(laps=rnd.choice([5, 20]), tank=60.0, burn=3.0, cars=rnd.choice([3, 8]),
+                        timed_s=rnd.choice([None, 900.0]), multiclass=rnd.random() < 0.5, f2=rnd.random() < 0.5)
+        ch = chief(sim)
+        sp = cc.CallSpeaker()
+        for own, f in sim.run(rnd.uniform(60, 400)):
+            own = dict(own)
+            for _ in range(rnd.choice([0, 0, 1, 3])):
+                own[rnd.choice(list(own))] = rnd.choice(junk)
+            if f is not None and rnd.random() < 0.3:
+                f = dict(f)
+                for _ in range(rnd.choice([1, 2])):
+                    k = rnd.choice(list(f))
+                    n_ = len(f[k]) if isinstance(f[k], list) else 3
+                    f[k] = rnd.choice(junk + [[rnd.choice(junk) for _ in range(n_)]])
+            calls = ch.feed(own, f, now=sim.t)             # must not raise
+            sp.offer(calls)
+            sp.pump(own, sim.t)
+            ch.snapshot()
+        errs += ch.error_count
+        assert not ch.errors, ch.errors
+    assert errs == 0, errs
+    # nor on junk session text
+    ch = cc.CrewChief()
+    ch.set_info({"DriverInfo": {"DriverCarIdx": float("nan"), "Drivers": [{"CarIdx": "x"}, {"CarIdx": float("inf")}, {}],
+                                "DriverCarFuelMaxLtr": "a"}, "WeekendInfo": {"SubSessionID": [1]}}, 1)
+    assert ch.error_count == 0
 
 
 # ------------------------------------------------------------------ flags are the ones pyirsdk names

@@ -2744,6 +2744,8 @@ class LiveRunner:
         self.crew = crew if crew is not None else (crewchief.CrewChief(units=self.settings.units, clock=clock)
                                                    if mode == "live" else None)
         self.crew_speaker = crewchief.CallSpeaker(voice_on=self.settings.crew_voice)
+        if self.crew is not None:
+            self.crew_speaker.on_drop = self.crew.forgive      # a dropped call may be made again (box this lap)
         self.crew_perf = perfmeter.PerfMeter("crewchief", on_slow=lambda m: self._log("crewchief: " + m))
         self.crew_log = crew_log
         self._crew_plan_for = crew_plan_for

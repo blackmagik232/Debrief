@@ -2,6 +2,8 @@
 
     pythonw -m debrief.desktop              open the Debrief window
     python  -m debrief.desktop --no-browser print the URL instead (for testing)
+    python  -m debrief.desktop --recorder   no window: the background recorder with a tray icon (2.27)
+    python  -m debrief.desktop --stop-recorder   ask a running recorder to quit (the installer does this)
 """
 from __future__ import annotations
 
@@ -12,6 +14,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import traceback
 import webbrowser
 from datetime import datetime
@@ -42,7 +45,9 @@ FEATURE_MODULES = ("race_analysis", "racecap_link", "replay_scan", "results_csv"
                    # 2.17 Coach 2.0: voice packs, sound device, cue log
                    "voicepack", "audioout", "coachvoice", "cuelog",
                    # 2.18 Car vs car
-                   "carcompare")
+                   "carcompare",
+                   # 2.27 Live data: one iRacing reader, the background recorder, recordings in the library, the tray icon
+                   "livedata", "liverec", "recordings", "livetray")
 
 
 _REFRESH_DONE: set = set()
@@ -154,6 +159,83 @@ def _after_update(srv) -> None:
             app.say(f"Removed {n} old update download(s) from the temp folder.")
     except Exception:  # noqa: BLE001
         app.say("ERROR checking the last update:\n" + traceback.format_exc())
+
+
+def open_debrief_window() -> None:
+    """Start the Debrief window as its own process (the tray's "Open Debrief"). A window that is already open is
+    brought up by main() itself."""
+    exe = [sys.executable] if app.FROZEN else [sys.executable, "-m", "debrief.desktop"]
+    flags = 0x08000000 if os.name == "nt" else 0
+    subprocess.Popen(exe, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     close_fds=True, creationflags=flags)
+
+
+def _recorder_mutex() -> None:
+    """Windows: a named mutex that says "the recorder is running" (the installer stops it before replacing files)."""
+    global _REC_MUTEX
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        _REC_MUTEX = ctypes.windll.kernel32.CreateMutexW(None, False, "DebriefRecorderRunning")
+    except Exception:  # noqa: BLE001
+        _REC_MUTEX = None
+
+
+_REC_MUTEX = None
+
+
+def host_recorder():
+    """The window records for itself while it is open, unless a tray recorder is already running (then the window only
+    shows what that one says). Never raises; None when this window isn't the recorder."""
+    try:
+        from .. import liverec, recordings
+        liverec.reconcile_autostart()         # the Run key follows Settings (on by default after the 2.27 update)
+
+        def done(folder):
+            try:
+                recordings.attach_pending(app.load_settings()["library_folder"], log=app.say)
+            except Exception:  # noqa: BLE001
+                pass
+        rec = liverec.Recorder(role="window", on_finished=done)
+        if rec.start():
+            app.say("Recording iRacing sessions from this window.")
+            return rec
+        app.say("A background recorder is already running; this window shows its status.")
+    except Exception:  # noqa: BLE001
+        app.say("ERROR starting the recorder:\n" + traceback.format_exc())
+    return None
+
+
+def run_recorder() -> int:
+    """Debrief.exe --recorder: record in the background with a tray icon, no window. One recorder at a time."""
+    from .. import __version__, liverec, recordings
+    app.say(f"--- {datetime.now().isoformat(timespec='seconds')} recorder start (Debrief {__version__})")
+    _recorder_mutex()
+    liverec.reconcile_autostart()
+
+    def done(folder):
+        try:
+            recordings.attach_pending(app.load_settings()["library_folder"], log=app.say)
+        except Exception:  # noqa: BLE001
+            pass
+    rec = liverec.Recorder(role="recorder", on_finished=done)
+    if not rec.start():
+        return 0
+    try:
+        from .. import livetray
+        livetray.run(rec, open_debrief_window, quit_cb=rec._stop.set)
+    except ImportError:
+        app.say("The tray icon needs pywin32, which isn't here, so the recorder runs without one.")
+        while rec._thread is not None and rec._thread.is_alive():
+            time.sleep(1.0)
+    except Exception:  # noqa: BLE001
+        app.say("ERROR in the tray icon; the recorder carries on without it:\n" + traceback.format_exc())
+        while rec._thread is not None and rec._thread.is_alive():
+            time.sleep(1.0)
+    finally:
+        rec.stop()
+    return 0
 
 
 def find_edge() -> str | None:
@@ -343,6 +425,9 @@ def main(argv=None):
     ap.add_argument("--no-browser", action="store_true", help="don't open a window; print the URL")
     ap.add_argument("--selftest", action="store_true",
                     help="start without a window, check the app loads, write selftest.json and exit")
+    ap.add_argument("--recorder", action="store_true",
+                    help="no window: record iRacing sessions in the background, with a tray icon (2.27)")
+    ap.add_argument("--stop-recorder", action="store_true", help="ask a running background recorder to quit")
     ap.add_argument("--heartbeat-timeout", type=float, default=90.0, help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
 
@@ -355,6 +440,11 @@ def main(argv=None):
     app.ensure_settings()  # installed app only: first start creates settings.toml for first-run setup
     if a.selftest:
         return selftest()
+    if a.stop_recorder:
+        from .. import liverec
+        return 0 if liverec.request_stop(wait_s=20.0) else 1
+    if a.recorder:
+        return run_recorder()
     lock = app.HERE / ".debrief-running"
     if not a.no_browser and lock.exists():
         try:  # already open? bring up the same window instead of starting a second server
@@ -383,6 +473,7 @@ def main(argv=None):
         return 1
     _instance_mutex()
     _after_update(srv)
+    srv.recorder = None if a.no_browser else host_recorder()
     threading.Thread(target=srv.watchdog, daemon=True, name="watchdog").start()
     # tracked, so the watchdog, an update and new jobs wait for it (it rewrites saved reviews)
     _JOBS = srv.jobs
@@ -409,6 +500,12 @@ def main(argv=None):
     except KeyboardInterrupt:
         pass
     finally:
+        rec = getattr(srv, "recorder", None)
+        if rec is not None:
+            try:
+                rec.stop()
+            except Exception:  # noqa: BLE001
+                pass
         srv.server_close()
         try:
             if not a.no_browser and lock.exists() and lock.read_text(encoding="utf-8").strip() == srv.url:

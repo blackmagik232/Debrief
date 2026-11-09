@@ -8,6 +8,7 @@
 ; The uninstaller removes only the program files. It never touches the user's data:
 ;   %LOCALAPPDATA%\Debrief            settings.toml (token), .cache, debrief.log, .edge-profile
 ;   Documents\Debrief Reviews         the review library
+; Recordings made by the background recorder live in the review library (Documents\Debrief Reviews\Recorded) and are kept.
 ; Both are created by Debrief.exe at run time, outside {app}, so Inno Setup doesn't know about them.
 
 #ifndef AppVersion
@@ -71,6 +72,7 @@ Source: "..\dist\Debrief\{#AppExe}"; DestDir: "{app}"; DestName: "{#AppExe}.new"
 Source: "..\dist\Debrief\_internal\*"; DestDir: "{app}\_internal.new"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
+Name: "{autoprograms}\{#AppName} Recorder"; Filename: "{app}\{#AppExe}"; Parameters: "--recorder"; WorkingDir: "{app}"; Comment: "Records your iRacing sessions in the background (tray icon)"
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Comment: "Review your iRacing races from Garage 61"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Comment: "Review your iRacing races from Garage 61"; Tasks: desktopicon
 
@@ -92,6 +94,19 @@ begin
   // The in-app updater starts Setup, then Debrief closes on its own a few seconds later (after any
   // review it is writing is saved). Wait up to 90 s for that instead of force-closing it.
   Result := True;
+  // 2.27: a background recorder (Debrief.exe --recorder) is also Debrief.exe. Ask it to quit first (it finishes the
+  // session it is writing), and wait up to 30 s for its own mutex to go, so the files can be replaced.
+  // ({app} isn't known yet this early, so the per-user install folder from DefaultDirName is spelled out)
+  if FileExists(ExpandConstant('{localappdata}\Programs\{#AppName}\{#AppExe}')) and CheckForMutexes('DebriefRecorderRunning') then
+  begin
+    Exec(ExpandConstant('{localappdata}\Programs\{#AppName}\{#AppExe}'), '--stop-recorder', '', SW_HIDE, ewWaitUntilTerminated, i);
+    i := 0;
+    while CheckForMutexes('DebriefRecorderRunning') and (i < 60) do
+    begin
+      Sleep(500);
+      i := i + 1;
+    end;
+  end;
   i := 0;
   while CheckForMutexes('DebriefRunning') and (i < 180) do
   begin
@@ -167,6 +182,14 @@ begin
   DelTree(AppDir + '\_internal.old', True, True, True);
   DeleteFile(Exe + '.old');
   Result := True;
+end;
+
+// 2.27: "Start with Windows" writes the Run value "Debrief Recorder" for the user. Uninstalling removes it, so nothing
+// is left pointing at a program that is gone. (Recordings in Documents\Debrief Reviews\Recorded are kept.)
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+    RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Debrief Recorder');
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

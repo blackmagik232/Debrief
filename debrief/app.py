@@ -162,6 +162,9 @@ def load_settings() -> dict:
     # history sync: catch up with Garage 61 each time the window opens; telemetry "best" or "none"
     cfg["sync_on_open"] = bool(cfg.get("sync_on_open", True))
     cfg["check_updates"] = bool(cfg.get("check_updates", True))
+    # 2.27 live data: record every iRacing session in the background, and start that recorder with Windows
+    cfg["record_sessions"] = cfg.get("record_sessions") is not False
+    cfg["start_with_windows"] = cfg.get("start_with_windows") is not False
     cfg["sync_telemetry"] = "none" if str(cfg.get("sync_telemetry", "best")).strip().lower() == "none" else "best"
     # optional iRacing data API credentials: only stored here; nothing runs with them by default
     for k in ("iracing_client_id", "iracing_client_secret"):

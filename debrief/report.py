@@ -16,7 +16,7 @@ def _embed(obj) -> str:
             .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
 
 
-LAYOUT = "2.18.0"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
+LAYOUT = "2.27.0"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
 
 # Review-dict extras worked out on every write (so saved reviews get them when refresh_all re-renders them),
 # in this order, before insights.build (which reads them): (key, module, function). Each is guarded: a module
@@ -65,6 +65,21 @@ def _extras(data: dict, log=None) -> None:
             data.pop(key, None)
 
 
+def _from_iracing(out_dir: Path, data: dict, log=None) -> None:
+    """2.27: the "From iRacing" section, when Debrief recorded this session (recordings.py). Only reviews inside a
+    library's reviews folder look; one that finds nothing keeps what it already had (M7)."""
+    try:
+        if out_dir.parent.name != "reviews":
+            return
+        from . import recordings
+        fi = recordings.for_review(data, out_dir.parent.parent)
+        if fi:
+            data["from_iracing"] = fi
+    except Exception as e:  # noqa: BLE001
+        if log:
+            log(f"  Couldn't add the recording to the review: {type(e).__name__}: {e}")
+
+
 def sanitize(obj):
     """obj with every NaN / Infinity float replaced by None (null in JSON), in place for dicts and lists,
     and returned. Strict JSON readers reject NaN/Infinity, and the page treats null as "no value"."""
@@ -87,6 +102,7 @@ def sanitize(obj):
 def write(out_dir: Path, data: dict, log=None) -> Path:
     out_dir = Path(out_dir)
     _extras(data, log)
+    _from_iracing(out_dir, data, log)
     try:   # the coaching summary at the top of the page; never worth losing the review over
         from . import insights
         data["insights"] = insights.build(data)

@@ -463,6 +463,11 @@ def public_view() -> dict:
         "sync_on_open": bool(raw.get("sync_on_open", True)),
         "sync_telemetry": "none" if str(raw.get("sync_telemetry", "best")).lower() == "none" else "best",
         "check_updates": bool(raw.get("check_updates", True)),
+        # 2.27 Settings > Live data (both on unless switched off)
+        "record_sessions": raw.get("record_sessions") is not False,
+        "start_with_windows": raw.get("start_with_windows") is not False,
+        "recordings_folder": None,
+        "recorder": None,
         "salutation": clean_salutation(raw.get("salutation")),
         # 2.18 Settings > Units: speeds in mph (default) or km/h on every page and in the coach's voice
         "units": clean_units(raw.get("units")),
@@ -508,13 +513,25 @@ def public_view() -> dict:
         out["max_reference_laps"] = cfg["max_reference_laps"]
         out["include_practice"] = cfg["include_practice"]
         out["library_folder"] = cfg["library_folder"]
+        out["recordings_folder"] = str(Path(cfg["library_folder"]) / "Recorded")
     except SystemExit:
         try:
             out["max_reference_laps"] = max(0, min(3, int(raw.get("max_reference_laps", 3))))
         except (TypeError, ValueError):
             pass
         out["include_practice"] = bool(raw.get("include_practice", False))
+    try:
+        from .. import liverec
+        out["recorder"] = liverec.status_view()
+    except Exception:  # noqa: BLE001
+        pass
     return out
+
+
+def live_view() -> dict:
+    """The Live data switches and folder, without anything else (the Settings panel refreshes with this)."""
+    v = public_view()
+    return {k: v.get(k) for k in ("record_sessions", "start_with_windows", "recordings_folder")}
 
 
 def clean_units(v) -> str:
@@ -707,6 +724,12 @@ def save(updates: dict) -> dict:
         if not isinstance(v, bool):
             raise ValueError("Check for updates must be on or off.")
         clean["check_updates"] = v
+    for k, label in (("record_sessions", "Record sessions in the background"), ("start_with_windows", "Start with Windows")):
+        if k in updates:
+            v = updates[k]
+            if not isinstance(v, bool):
+                raise ValueError(f"{label} must be on or off.")
+            clean[k] = v
     if "sync_telemetry" in updates:
         v = updates["sync_telemetry"]
         if v not in ("best", "none"):

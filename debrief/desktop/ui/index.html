@@ -774,6 +774,17 @@
         <div class="row"><button type="submit" class="btn">Save units</button><span class="msg" id="unitsMsg" role="status"></span></div>
       </form>
 
+      <form class="panel" id="fLive">
+        <div class="phead"><h3>Live data</h3><span class="pill" id="recPill"></span></div>
+        <p class="note">While you drive, Debrief reads iRacing directly and keeps a record of every session: fuel, driver aids, pit stops, tyres, incidents, and where every car was. Garage 61 stays the source for your teammates, reference laps and history. Debrief only reads iRacing and never changes anything in it.</p>
+        <label class="check" for="recOn"><input id="recOn" type="checkbox"><span>Record sessions in the background</span></label>
+        <label class="check" for="recWin"><input id="recWin" type="checkbox"><span>Start with Windows (a small icon near the clock; right-click it to open Debrief, pause or quit)</span></label>
+        <p class="note">Recorder: <b id="recStatus"></b></p>
+        <p class="note msg bad" id="recDisk" hidden></p>
+        <p class="mono path" id="recPath"></p>
+        <div class="row"><button type="submit" class="btn">Save</button><span class="msg" id="recMsg" role="status"></span></div>
+      </form>
+
       <form class="panel" id="fSync">
         <div class="phead"><h3>History sync</h3></div>
         <p class="note">Debrief keeps a copy of all your Garage 61 laps (races, qualifying and practice). The first sync downloads everything at a gentle pace, so it can take a while; you can keep using Debrief, and it carries on next time if you close it. After that, each sync only asks for new laps.</p>

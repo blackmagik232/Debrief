@@ -583,6 +583,22 @@ async function moreSessions(){if(!sessData)return;const have=sessData.sessions.l
   // an old server answers every session at once (no total): nothing more to ask for
   if(!ok(j.total))sessData.total=sessData.sessions.length;
   renderSessions()}
+// 2.27: "From iRacing" under a session row (recordings.view builds the words; this only draws them)
+function renderFiBlocks(host,v){
+  if(typeof v.lede==='string')host.append(h('p','note',v.lede));
+  (v.blocks||[]).forEach(b=>{const p=h('div','fiblock');p.append(h('h4',null,String(b.h||'')));
+    (b.lines||[]).forEach(l=>p.append(h('p',null,String(l))));
+    if(b.table&&b.table.rows&&b.table.rows.length){const tw=h('div','tablewrap');const t=h('table');const tr0=h('tr');(b.table.cols||[]).forEach(c=>tr0.append(h('th',null,String(c))));
+      const hd=h('thead');hd.append(tr0);t.append(hd);const tb=h('tbody');b.table.rows.forEach(r=>{const tr=h('tr');r.forEach(c=>tr.append(h('td',null,String(c))));tb.append(tr)});t.append(tb);tw.append(t);p.append(tw)}
+    if(b.note)p.append(h('p','note',String(b.note)));host.append(p)});
+  (v.notes||[]).forEach(n=>host.append(h('p','note',String(n))))}
+async function toggleFromIracing(btn,tx,s){
+  const old=tx.querySelector(':scope > .fipanel');
+  if(old){old.remove();btn.setAttribute('aria-expanded','false');return}
+  const box=h('div','fipanel');box.append(h('p','note','Loading...'));tx.append(box);btn.setAttribute('aria-expanded','true');
+  let r;try{r=await api('recording?id='+encodeURIComponent(s.rec.id)+(s.recorded_only?'&alone=1':''))}catch(e){box.replaceChildren(h('p','note','Couldn\u2019t load the recording.'));return}
+  box.replaceChildren();if(!r.ok){box.append(h('p','note',r.error||'Couldn\u2019t load the recording.'));return}
+  renderFiBlocks(box,r.view)}
 function renderSessions(){
   const j=sessData||{},sum=j.summary,busy=lastJob&&lastJob.state==='running'&&lastJob.kind==='sync';
   if(j.token===false){$('sessSyncNote').textContent='Add your Garage 61 token in Settings first.';$('btnSync').disabled=true}
@@ -604,9 +620,15 @@ function renderSessions(){
   all.forEach(s=>{const row=h('div','item sess');const tx=h('div','itx');
     const top=h('span','row');top.append(h('span','when',localWhen(s.start)),h('span','kind '+(KIND[s.type]||''),s.session||'Session'));
     tx.append(top,h('b',null,s.track),h('span','sub2',s.car));
-    const line=h('span','sub2');line.append(document.createTextNode(s.laps+' lap'+(s.laps===1?'':'s')+' · best '),h('b','num',fmtT(s.best)));
-    if(s.best_clean==null&&s.best!=null)line.append(document.createTextNode(' (no clean laps)'));tx.append(line);
+    const src=s.recorded_only?'from iRacing':'from Garage 61';
+    const line=h('span','sub2');line.append(document.createTextNode(s.laps+' lap'+(s.laps===1?'':'s')+' · '+(s.recorded_only?'typical ':'best ')),h('b','num',fmtT(s.recorded_only?s.best_clean:s.best)));
+    if(!s.recorded_only&&s.best_clean==null&&s.best!=null)line.append(document.createTextNode(' (no clean laps)'));
+    line.append(document.createTextNode(' ('+src+')'));tx.append(line);
+    if(s.recorded_only)tx.append(h('span','sub2','Recorded by Debrief. Garage 61 doesn\u2019t have this session.'));
+    if(s.rec&&s.rec.line)tx.append(h('span','sub2','From iRacing: '+s.rec.line));
     const acts=h('span','row');
+    if(s.rec){const b=h('button','btn','From iRacing');b.type='button';b.setAttribute('aria-expanded','false');
+      b.addEventListener('click',()=>toggleFromIracing(b,tx,s));acts.append(b)}
     if(s.review){const b=h('button','btn','Open review');b.type='button';b.addEventListener('click',()=>openReview(s.review));acts.append(b)}
     if(s.event&&[1,2,3].includes(s.type)&&s.track_id!=null&&s.car_id!=null){
       // practice and qualifying get their own review (runs, targets, the qualifying lap strip)
@@ -2519,6 +2541,9 @@ function fillSettings(v){if(v&&(v.units==='kmh'||v.units==='mph'))UNITS=v.units;
   $('telPill').textContent=v.telemetry_folder_ok?'Found':'Not found';$('telPill').className='pill '+(v.telemetry_folder_ok?'ok':'no');
   if(document.activeElement!==$('salut'))$('salut').value=typeof v.salutation==='string'?v.salutation:'';
   $('syncOpen').checked=v.sync_on_open!==false;$('updAuto').checked=v.check_updates!==false;$('syncTel').checked=v.sync_telemetry!=='none';
+  $('recOn').checked=v.record_sessions!==false;$('recWin').checked=v.start_with_windows!==false;
+  $('recPath').textContent=v.recordings_folder?'Recordings are kept in: '+v.recordings_folder+' (Debrief never deletes them)':'';
+  showRecorder(v.recorder);
   $('libPath').textContent=v.library_folder||'Not set yet. It will be Documents\\Debrief Reviews once settings are saved.';
   const fe=$('setFileErr');fe.hidden=!v.error;fe.textContent=v.error||'';fe.className='note msg bad';
   const idS=!!v.iracing_client_id_saved,seS=!!v.iracing_client_secret_saved;
@@ -2559,6 +2584,16 @@ $('discordClear').addEventListener('click',async()=>{const b=$('discordClear');
   let r;try{r=await post('settings',{clear_discord:true})}catch(e){connectionLost();return}
   if(!r.ok){setMsg('discordMsg',r.error,'bad');return}
   b.dataset.armed='';b.textContent='Remove';fillSettings(r.settings);setMsg('discordMsg','Removed.','ok')});
+function showRecorder(r){if(!r)return;const t=r.text||'Not running';$('recStatus').textContent=t;
+  const p=$('recPill');p.textContent=r.running?(r.state==='recording'?'Recording':r.state==='paused'?'Paused':'On'):'Off';p.className='pill'+(r.running&&r.state!=='paused'?' ok':' no');
+  const dk=$('recDisk');const bad=r.running&&r.disk_logging===false;dk.hidden=!bad;
+  if(bad)dk.textContent='iRacing\u2019s own telemetry files (.ibt) are switched off, so no telemetry file is being saved for this session. Debrief only reads that setting and never changes it; turn it on in iRacing if you want those files.'}
+async function refreshLive(){if(current.view!=='settings')return;try{const j=await api('live');if(j&&j.ok)showRecorder(j.recorder)}catch(e){}}
+setInterval(refreshLive,5000);
+$('fLive').addEventListener('submit',async e=>{e.preventDefault();setMsg('recMsg','Saving...');let r;
+  try{r=await post('settings',{record_sessions:$('recOn').checked,start_with_windows:$('recWin').checked})}catch(err){connectionLost();return}
+  if(!r.ok){setMsg('recMsg',r.error,'bad');return}
+  fillSettings(r.settings);setMsg('recMsg','Saved.','ok')});
 async function loadSettings(){try{fillSettings(await api('settings'))}catch(e){connectionLost()}}
 // Settings > Team is a read-only status: the Garage 61 teams you are in (nothing about a team is typed in or built in)
 let teamMember='unknown';

@@ -71,6 +71,8 @@ if _missing:
     print(f"collect_submodules missed {_missing}; adding them by name")
 hiddenimports = sorted(set(hiddenimports) | set(_on_disk) | {"irsdk", "yaml", "winsound", "win32com", "win32com.client",
                                                           "win32com.client.dynamic", "pythoncom", "pywintypes",
+                                                          # 2.27: the recorder's tray icon (pywin32, already bundled for the voice)
+                                                          "win32gui", "win32con", "win32api", "winreg",
                                                           "tkinter", "_tkinter"})
 for _must in ("debrief.prep", "debrief.goals", "debrief.results", "debrief.team", "debrief.sync",
               "debrief.schedule", "debrief.series", "debrief.notes", "debrief.prepare", "debrief.updater", "debrief.insights",
@@ -85,6 +87,7 @@ for _must in ("debrief.prep", "debrief.goals", "debrief.results", "debrief.team"
               "debrief.startreport", "debrief.incidentmap",
               "debrief.voicepack", "debrief.audioout", "debrief.coachvoice", "debrief.cuelog",
               "debrief.audioin", "debrief.cornernotes", "debrief.noterec",
+              "debrief.livedata", "debrief.liverec", "debrief.recordings", "debrief.livetray",
               "debrief.desktop.coach2", "debrief.overlay", "debrief.carcompare", "debrief.desktop.carcompare"):
     if _must not in hiddenimports:
         raise SystemExit(f"Build stopped: {_must} would be left out of Debrief.exe")

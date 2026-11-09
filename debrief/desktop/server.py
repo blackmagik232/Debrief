@@ -1688,6 +1688,7 @@ class DebriefServer(ThreadingHTTPServer):
         # 2.12 live coach: one runner, never a Jobs job (it runs for an hour and must not block reviews)
         self.coach_lock = threading.Lock()
         self.coach = None             # livecoach.LiveRunner while started
+        self.recorder = None          # liverec.Recorder when this window records for itself (2.27)
         self.coach_voice = None
         self.coach_hotkey = None
         self.coach_last = None        # the last status of a stopped runner (what it said stays on the page)
@@ -2538,7 +2539,7 @@ class Handler(BaseHTTPRequestHandler):
                  "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand", "api/team-combos",
                  "api/diagnostics", "api/setuplab/combos", "api/setuplab/report", "api/coach/status",
                  "api/sessions-ibt", "api/session-review", "api/corner-coach", "api/plan", "api/plan/history",
-                 "api/firstrun", "api/endurance"):
+                 "api/firstrun", "api/endurance", "api/live", "api/recording"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -2738,6 +2739,8 @@ class Handler(BaseHTTPRequestHandler):
         all_s = [s for s in (raw.get("sessions") or []) if isinstance(s, dict)]
         summary = self._sync_summary(store, raw)
         total = len(all_s)
+        all_s = self._with_recordings(cfg, all_s)
+        total = len(all_s)
         page = all_s[offset:offset + limit] if limit is not None else all_s[offset:]
         # review folders end with the event's last 6 characters (+ _practice / _qualifying). Every ending a
         # session could look for ("_" + 1..6 characters + suffix) maps to the newest folder with it, so each
@@ -2756,14 +2759,45 @@ class Handler(BaseHTTPRequestHandler):
         for s in page:
             ev = str(s.get("event") or "")
             name = None
-            if ev:
+            if ev and not s.get("recorded_only"):
                 end = "_" + ev[-6:].lower() + {1: "_practice", 2: "_qualifying"}.get(s.get("type"), "")
                 name = by_end.get(end)
             rows.append({k: s.get(k) for k in ("key", "event", "track_id", "car_id", "track", "car", "type", "session",
-                                                 "start", "laps", "clean_laps", "best", "best_clean")} | {"review": name})
+                                                 "start", "laps", "clean_laps", "best", "best_clean")} | {"review": name}
+                        | {k: s[k] for k in ("source", "recorded_only", "rec") if k in s})
         return self._json({"ok": True, "token": True, "summary": summary, "sessions": rows,
                            "sync_on_open": cfg.get("sync_on_open", True), "total": total, "offset": offset,
                            "limit": limit, "more": offset + len(rows) < total})
+
+    @staticmethod
+    def _with_recordings(cfg, all_s: list) -> list:
+        """2.27: the Garage 61 sessions plus Debrief's own recordings, joined where they are the same session (see
+        recordings.py) so nothing shows twice. A problem reading recordings leaves the Garage 61 list as it was."""
+        try:
+            from .. import recordings
+            secs = recordings.sections(cfg["library_folder"])
+            return recordings.merge_rows(all_s, secs) if secs else all_s
+        except Exception:  # noqa: BLE001
+            app.say("ERROR adding recorded sessions to the list:\n" + traceback.format_exc())
+            return all_s
+
+    def _get_live(self, q):
+        """Settings > Live data: what the recorder is doing now (this window's, or the tray recorder's file)."""
+        from .. import liverec
+        rec = getattr(self.server, "recorder", None)
+        st = rec.status() if rec is not None and rec.has_lock else liverec.status_view()
+        if rec is not None and rec.has_lock:
+            st = dict(st, running=True)
+        return self._json({"ok": True, "recorder": st, "settings": settings_io.live_view()})
+
+    def _get_recording(self, q):
+        """One recorded session's "From iRacing" view (for the session list's details)."""
+        from .. import recordings
+        cfg = self._cfg()
+        sec, sm = recordings.find(cfg["library_folder"], q.get("id"))
+        if sec is None:
+            raise ValueError("That recording wasn't found.")
+        return self._json({"ok": True, "view": recordings.standalone_view(sec, sm) if q.get("alone") == "1" else recordings.view(sec, sm)})
 
     @staticmethod
     def _page_int(v, default, what) -> int:
@@ -3003,6 +3037,8 @@ class Handler(BaseHTTPRequestHandler):
             out["memory_mb"] = perfmeter.memory_mb()
             r = getattr(self.server, "coach", None)
             out["coach_perf"] = r.perf.summary() if r is not None and getattr(r, "perf", None) else None
+            rc = getattr(self.server, "recorder", None)
+            out["recorder_perf"] = rc.perf.summary() if rc is not None and getattr(rc, "perf", None) else None
         except Exception:  # noqa: BLE001
             pass
         log = Path(app.LOG_FILE) if app.LOG_FILE else app.HERE / "debrief.log"
@@ -3287,6 +3323,12 @@ class Handler(BaseHTTPRequestHandler):
             except OSError as e:
                 app.say(f"ERROR saving settings: {type(e).__name__}: {e}")   # the detail goes to the log only
                 return self._json({"ok": False, "error": SETTINGS_WRITE_ERROR}, 500)
+            if "start_with_windows" in body:
+                try:      # 2.27: the Run key follows the switch at once
+                    from .. import liverec
+                    liverec.reconcile_autostart()
+                except Exception:  # noqa: BLE001
+                    app.say("ERROR changing the start-with-Windows entry:\n" + traceback.format_exc())
             what = [w + " updated" for w, k in (("token", "token"), ("Discord webhook", "discord_webhook")) if body.get(k)]
             if body.get("clear_discord") is True:
                 what.append("Discord webhook removed")

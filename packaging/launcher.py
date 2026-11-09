@@ -3,6 +3,11 @@
 Debrief.exe                 opens the Debrief window
 Debrief.exe --selftest      checks the app loads, writes selftest.json to the data folder, exits 0/1
 Debrief.exe --no-browser    starts without a window and prints the address (for testing)
+Debrief.exe --recorder      no window: records iRacing sessions in the background, with a tray icon (2.27). The
+                            "Start with Windows" setting runs this at sign-in (Run key "Debrief Recorder").
+Debrief.exe --stop-recorder asks a running recorder to quit (the installer calls it before replacing files)
+
+All of them go through debrief.desktop.main(), which reads the flags.
 """
 import os
 import sys

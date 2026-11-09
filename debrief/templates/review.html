@@ -503,7 +503,7 @@ th,td{white-space:normal!important;overflow-wrap:break-word;max-width:none!impor
 <nav class="jump" id="jump" aria-label="Sections">
   <div class="jumplinks" id="jumpLinks"><a href="#raceTl" id="jumpTl" hidden>Your race</a><a href="#summary">Summary</a><a href="#coach">What to work on</a><a href="#session">Runs</a><a href="#race">Race story</a><a href="#racecraft">Race craft</a><a href="#racelog" id="jumpRaceLog" hidden>Racecraft</a><a href="#rlPace" id="jumpPace" hidden>Pace</a></div>
   <div class="jumpmenu"><button type="button" id="jumpMore" aria-expanded="false" aria-controls="jumpPanel">All the numbers <span aria-hidden="true">▾</span></button>
-    <div class="jumppanel" id="jumpPanel"><a href="#deep">Start of the numbers</a><a href="#compare">Compare laps</a><a href="#depth">Deeper coaching</a><a href="#possible">Best sectors</a><a href="#corners">Corners</a><a href="#technique">Technique</a><a href="#bestworst">Best vs worst</a><a href="#pace">Pace</a><a href="#consistency">Consistency</a><a href="#stint">Stint</a><a href="#habits">Driving style</a><a href="#plan">Practice plan</a></div></div>
+    <div class="jumppanel" id="jumpPanel"><a href="#deep">Start of the numbers</a><a href="#compare">Compare laps</a><a href="#depth">Deeper coaching</a><a href="#fromIracing" id="jumpFi" hidden>From iRacing</a><a href="#possible">Best sectors</a><a href="#corners">Corners</a><a href="#technique">Technique</a><a href="#bestworst">Best vs worst</a><a href="#pace">Pace</a><a href="#consistency">Consistency</a><a href="#stint">Stint</a><a href="#habits">Driving style</a><a href="#plan">Practice plan</a></div></div>
 </nav>
 
 <section id="raceTl" hidden aria-label="Your race">
@@ -580,6 +580,12 @@ th,td{white-space:normal!important;overflow-wrap:break-word;max-width:none!impor
   <div class="sechead"><h2>How your laps link together</h2>
   <p class="lede">Patterns from your own clean laps, shown only when the numbers are strong enough. They show what went together, not proof that one thing caused another.</p></div>
   <div id="depthBody" style="display:grid;gap:var(--s4)"></div>
+</section>
+
+<section id="fromIracing" hidden>
+  <div class="sechead"><h2 id="fiTitle">From iRacing</h2><p class="lede" id="fiLede"></p></div>
+  <div id="fiBody" style="display:grid;gap:var(--s4)"></div>
+  <div id="fiNotes"></div>
 </section>
 
 <details class="deep" id="deep" open>
@@ -1738,6 +1744,18 @@ safe('depth',()=>{const X=isObj(D.depth)?D.depth:null;if(!X)return;const host=$(
   block('Compared with earlier races','Similar means track and air temperature within 8 C and about the same wetness. Other races are left out.',[isObj(X.baseline)&&X.baseline.sentence]);
   block('Your comparison lap',null,[isObj(X.ref_match)&&X.ref_match.sentence]);
   if(host.children.length)$('depth').hidden=false},'depth');
+
+// ---------- 2.27: what Debrief recorded from iRacing while you drove (D.from_iracing; built in recordings.py, all words and numbers are made there)
+safe('from iracing',()=>{const X=isObj(D.from_iracing)?D.from_iracing:null;if(!X||!Array.isArray(X.blocks))return;const host=$('fiBody');
+  $('fiLede').textContent=typeof X.lede==='string'?X.lede:'';
+  X.blocks.filter(isObj).forEach(b=>{const p=h('div','panel');p.append(h('h3',null,String(b.h||'')));
+    (Array.isArray(b.lines)?b.lines:[]).forEach(l=>p.append(h('p',null,String(l))));
+    const T=isObj(b.table)&&Array.isArray(b.table.cols)&&Array.isArray(b.table.rows)&&b.table.rows.length?b.table:null;
+    if(T){const tw=h('div','tablewrap');const t=h('table');const hd=h('thead');const hr=h('tr');T.cols.forEach(c=>hr.append(h('th',null,String(c))));hd.append(hr);t.append(hd);
+      const tb=h('tbody');T.rows.forEach(r=>{const tr=h('tr');(Array.isArray(r)?r:[]).forEach(c=>tr.append(h('td',null,String(c))));tb.append(tr)});t.append(tb);tw.append(t);p.append(tw)}
+    if(typeof b.note==='string'&&b.note)p.append(h('p','note',b.note));host.append(p)});
+  (Array.isArray(X.notes)?X.notes:[]).forEach(n=>$('fiNotes').append(h('p','note',String(n))));
+  $('fromIracing').hidden=false;$('jumpFi').hidden=false},'fiBody');
 
 // Save as PDF: the numbers, the race log and the extra corners are on paper too, with no way to unfold them there.
 // Anything else prints if you opened it. Folds go back to how they were after the print dialog closes.

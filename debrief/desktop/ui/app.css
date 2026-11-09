@@ -782,3 +782,12 @@ body.codriving #vCoach.pad{padding:18px clamp(14px,2.5vw,32px) 24px}
 .hdlfeel{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}
 .hdlfeel .btn.on{outline:2px solid var(--me)}
 .hdlcardtxt{font-weight:600;margin:0 0 6px}
+
+/* 2.27 Live data: the "From iRacing" details under a session row */
+.fipanel{margin-top:var(--s2,8px);padding:var(--s3,12px);border:1px solid var(--line);border-radius:8px;display:grid;gap:var(--s3,12px)}
+.fiblock h4{margin:0 0 4px}
+.fiblock p{margin:2px 0}
+.fipanel .tablewrap{overflow-x:auto}
+.fipanel table{border-collapse:collapse;width:100%;font-size:var(--t-sm,13px)}
+.fipanel th,.fipanel td{padding:3px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+.fipanel th:first-child,.fipanel td:first-child{text-align:left}

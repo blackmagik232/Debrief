@@ -573,6 +573,20 @@ def test_recordings_are_never_deleted_by_debrief():
                     assert "path" in line or "stop_path" in line or "lock" in line.lower(), line
 
 
+def test_recorder_stays_inside_its_resource_budget():
+    """tools/perf_audit.py's budgets for the recorder: idle under 0.1% of one core, recording a 64-car field under 1%,
+    the field log under 15 MB an hour. (The stand-in sim's data compresses better than a real field, which is why the
+    audit also shows how much room is left.)"""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import perf_audit
+    r = perf_audit.recorder_cost(sim_seconds=120)
+    assert r["idle_pct_core"] <= perf_audit.BUDGET["recorder_idle_pct_core"], r
+    assert r["rec_pct_core"] <= perf_audit.BUDGET["recorder_rec_pct_core"], r
+    assert r["field_mb_per_h"] <= perf_audit.BUDGET["recorder_field_mb_per_h"], r
+    res, checks = perf_audit.run()
+    assert [c for c in checks if c[0].startswith("Recorder") and not c[2]] == [], checks
+
+
 if __name__ == "__main__":
     failed = 0
     tests = [(k, v) for k, v in list(globals().items()) if k.startswith("test_") and callable(v)]

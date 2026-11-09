@@ -9,6 +9,9 @@ What it measures (on whatever PC runs it; the numbers on Swazi's Ryzen 5 5600X3D
   planner    endurance.plan for the worst cases it accepts (24 h, 6 drivers)
   racelog    bytes per hour of the planned endurance race log (1 sample a second, 64 cars, gzip)
   memory     Debrief's resident memory after importing its modules (Linux/Windows)
+  recorder   (2.27) the background recorder: idle while waiting for iRacing, recording a 64-car race (its own work,
+             plus the cost of reading ~80 values at 20 Hz and 12 car arrays at 4 Hz estimated like "read"), and the
+             size of its logs per hour
 
 It prints a table with the budget each piece must stay under. Nothing here talks to iRacing or the network.
 """
@@ -39,6 +42,9 @@ BUDGET = {
     "planner_ms": 200.0,          # one plan (on a button press)
     "racelog_mb_per_h": 15.0,     # gzipped race log
     "memory_mb": 400.0,           # whole app resident memory
+    "recorder_idle_pct_core": 0.1,    # waiting for iRacing
+    "recorder_rec_pct_core": 1.0,     # recording a 64-car race, reading included
+    "recorder_field_mb_per_h": 15.0,  # field.jsonl.gz, 64 cars
 }
 
 
@@ -170,6 +176,63 @@ def racelog_cost(seconds=600, cars=64):
     return {"mb_per_hour": per_h, "mb_24h": per_h * 24}
 
 
+def recorder_cost(sim_seconds=600, cars=64):
+    """The recorder (2.27) driven by tests/fake_live.py: a 64-car race with a pit stop. Its own work is the thread's CPU
+    time minus what the stand-in spent building values (a real read is a struct.unpack per value, estimated by
+    read_cost). Idle = the same recorder with iRacing not running, one pass a second like the real waiting loop."""
+    import fake_live as F
+    from debrief import liverec
+    out = {}
+    with tempfile.TemporaryDirectory() as td:
+        os.environ.setdefault("DEBRIEF_SETTINGS", os.path.join(td, "settings.toml"))
+        prefs = {"record_sessions": True, "library_folder": td}
+
+        def make(connected):
+            sim = F.Sim(kind="race", cars=cars, laps=8)
+            sim.connected = connected
+            rd = F.FakeReader(sim)
+            spent = [0.0]
+            for name in ("read_own", "read_field"):
+                orig = getattr(rd, name)
+
+                def timed(*a, _o=orig, **k):
+                    t0 = time.thread_time()
+                    try:
+                        return _o(*a, **k)
+                    finally:
+                        spent[0] += time.thread_time() - t0
+                setattr(rd, name, timed)
+            rec = liverec.Recorder(rd, library_folder=lambda: td, use_lock=False, clock=lambda: sim.now, wall=lambda: sim.wall,
+                                   prefs_fn=lambda: dict(prefs), utc=sim.utc, log=lambda m: None)
+            return sim, rec, spent
+        sim, rec, spent = make(False)
+        n = 2000
+        t0 = time.thread_time()
+        for _ in range(n):
+            sim.step(1.0)
+            rec.tick()
+        per = (time.thread_time() - t0 - spent[0]) / n
+        out["idle_pct_core"] = per * 1.0 * 100           # one pass a second
+        sim, rec, spent = make(True)
+        t0 = time.thread_time()
+        for _ in range(int(sim_seconds * 20)):
+            sim.step(0.05)
+            rec.tick()
+        total = time.thread_time() - t0
+        own = max(0.0, total - spent[0])
+        rec._end_session("audit")
+        folder = rec.finished[0]
+        fsize = (folder / liverec.FIELD).stat().st_size
+        csize = (folder / liverec.CAR).stat().st_size
+        out.update(work_pct_core=own / sim_seconds * 100, standin_pct_core=spent[0] / sim_seconds * 100,
+                   field_mb_per_h=fsize * 3600 / sim_seconds / 1e6, car_mb_per_h=csize * 3600 / sim_seconds / 1e6,
+                   sim_seconds=sim_seconds, cars=cars, slow_steps=rec.perf.summary().get("slow_steps"))
+    r = read_cost(n_scalars=75, n_arrays=12)
+    out["read_pct_core"] = r["pct_core"]
+    out["rec_pct_core"] = out["work_pct_core"] + out["read_pct_core"]
+    return out
+
+
 def memory_now_mb():
     try:
         if os.name == "nt":
@@ -208,7 +271,7 @@ def memory_cost():
 
 def run():
     res = {"coach": coach_cost(), "read": read_cost(), "yaml": yaml_cost(), "planner": planner_cost(),
-           "racelog": racelog_cost(), "memory": memory_cost()}
+           "racelog": racelog_cost(), "memory": memory_cost(), "recorder": recorder_cost()}
     checks = [
         ("Live coach (20 Hz)", f"{res['coach']['pct_core']:.2f}% of a core", res["coach"]["pct_core"] <= BUDGET["coach_pct_core"],
          f"<= {BUDGET['coach_pct_core']}%"),
@@ -220,6 +283,12 @@ def run():
          "skipped" in res["planner"] or res["planner"]["worst_ms"] <= BUDGET["planner_ms"], f"<= {BUDGET['planner_ms']:.0f} ms"),
         ("Race log", f"{res['racelog']['mb_per_hour']:.1f} MB/h ({res['racelog']['mb_24h']:.0f} MB for 24 h)",
          res["racelog"]["mb_per_hour"] <= BUDGET["racelog_mb_per_h"], f"<= {BUDGET['racelog_mb_per_h']:.0f} MB/h"),
+        ("Recorder, waiting for iRacing", f"{res['recorder']['idle_pct_core']:.4f}% of a core",
+         res["recorder"]["idle_pct_core"] <= BUDGET["recorder_idle_pct_core"], f"<= {BUDGET['recorder_idle_pct_core']}%"),
+        ("Recorder, recording 64 cars", f"{res['recorder']['rec_pct_core']:.2f}% of a core (own work {res['recorder']['work_pct_core']:.2f}% + reads {res['recorder']['read_pct_core']:.2f}%)",
+         res["recorder"]["rec_pct_core"] <= BUDGET["recorder_rec_pct_core"], f"<= {BUDGET['recorder_rec_pct_core']}%"),
+        ("Recorder field log", f"{res['recorder']['field_mb_per_h']:.1f} MB/h (car log {res['recorder']['car_mb_per_h']:.1f} MB/h)",
+         res["recorder"]["field_mb_per_h"] <= BUDGET["recorder_field_mb_per_h"], f"<= {BUDGET['recorder_field_mb_per_h']:.0f} MB/h"),
         ("App memory after imports", f"{res['memory']['rss_mb']:.0f} MB" if res["memory"]["rss_mb"] else "unknown",
          (res["memory"]["rss_mb"] or 0) <= BUDGET["memory_mb"], f"<= {BUDGET['memory_mb']:.0f} MB"),
     ]

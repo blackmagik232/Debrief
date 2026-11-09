@@ -3457,6 +3457,12 @@
    "ms": 960,
    "role": "whole"
   },
+  "cc_short_of_the_flag": {
+   "file": "cc_short_of_the_flag.wav",
+   "text": "Short of the flag.",
+   "ms": 980,
+   "role": "whole"
+  },
   "cc_box_in_2": {
    "file": "cc_box_in_2.wav",
    "text": "Box in two laps.",

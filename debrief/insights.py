@@ -113,7 +113,7 @@ def fmt_t1(s) -> str:
 
 def _s1(x) -> str:
     """Seconds on the face of a card: one decimal, or "under 0.1 s" below 0.05 (a smaller figure is noise)."""
-    return f"{x:.1f} s" if x >= 0.05 else "under 0.1 s"
+    return f"{x:.1f} s" if x >= 0.095 else "under 0.1 s"   # 2.28.1: 0.06 never reads as "0.1"
 
 
 def _chg(x) -> str:
@@ -507,7 +507,7 @@ def build(data: dict) -> dict:
 
     def b_lap(per_lap, label=""):
         race = per_lap * race_laps
-        lap_txt = f"{per_lap:.1f} s/lap" if per_lap >= 0.05 else "under 0.1 s/lap"
+        lap_txt = f"{per_lap:.1f} s/lap" if per_lap >= 0.095 else "under 0.1 s/lap"
         return {"kind": "time", "per_lap": round(per_lap, 4), "race_s": round(race, 4),
                 "text": f"~{lap_txt}{label} (~{race:.1f} s over the race)"}
 
@@ -624,7 +624,7 @@ def build(data: dict) -> dict:
         add(bucket, key, title, text, costs + costs_tail,
             ("Try: if it was traffic, plan where to let faster cars by" if look else "Try: plan where to let faster cars by")
             + (f"; the stretch{'es were' if len(places) > 1 else ' was'} {_and(places)}." if places else "."),
-            [num], badge=b_race(lost_sum, f"~{lost_sum:.1f} s lost ({stay})") if td else None, laps=ns)
+            [num], badge=b_race(lost_sum, f"{'up to ' if look else ''}~{lost_sum:.1f} s lost ({stay})") if td else None, laps=ns)
 
     traffic = [n for n in _lap_list(counts.get("traffic")) if not (n == 1 and lap1_item)]
     if traffic:
@@ -697,7 +697,7 @@ def build(data: dict) -> dict:
                 (f"Try: next race, watch {_and(names)} late in the stint, where you slowed most, and compare your first and "
                  "last clean laps there in Compare laps." if names else
                  "Try: open Stint and compare your first and last clean laps to see which corners slow down."),
-                nums, cost=round(trend, 1), badge=b_race(race_s), corners=names)
+                nums, cost=round(trend, 1), badge=b_race(race_s, f"~{race_s:.1f} s over the race (if the slowdown was steady)"), corners=names)
         elif abs(trend) < 0.15 * k:
             chg = "no change" if abs(trend) < 0.005 else f"{trend:+.2f} s"
             add("good", "steady", "Held pace all race",
@@ -770,7 +770,7 @@ def build(data: dict) -> dict:
             ["Most of your clean laps' brake points spanned " + ", ".join(f"{c['iqr_m']:.0f} m in {c['id']}" for c in loose) + "."],
             badge=b_lap(gain) if gain is not None else None, corners=ids, scope="corner")
     if len(spread) >= 2 and len(locked_b) * 2 >= len(spread):
-        still = [cid for cid, _ in vary if cid in locked_b]
+        still = [cid for cid, _ in vary[:3] if cid in locked_b]   # only the corners the "changes" card names
         add("good", "brake_markers", "You brake at the same point every lap",
             f"You braked at the same point lap after lap in {_and(locked_b)}."
             + (f" The time still changes after the braking point in {_and(still)}." if still else ""),
@@ -795,8 +795,9 @@ def build(data: dict) -> dict:
                                and (_f(c["loss"].get(p)) or 0) >= 0.03 * k], key=lambda x: -x[1])[:3]
                 pn = [cid for cid, _ in by_c]
                 share_gap = v["loss_s"] / gap if gap is not None and gap >= v["loss_s"] and gap > 0 else None
-                most = share_gap is not None and share_gap > 0.5
-                lead = "Most of the time" if most else "The biggest part of the time"
+                most = share_gap is not None and share_gap > 0.55
+                half = share_gap is not None and 0.45 <= share_gap <= 0.55
+                lead = "Most of the time" if most else "About half of the time" if half else "The biggest part of the time"
                 text = f"{lead} you lose to your quicker laps in the corners is {PHASE_WORDS[p]}" + \
                        (f", mostly in {_and(pn)}." if pn else ".")
                 how = ("nearly all" if share_gap >= 0.85 else "most" if share_gap > 0.55 else "about half" if share_gap >= 0.45
@@ -831,17 +832,17 @@ def build(data: dict) -> dict:
         if score >= 70 and not (off_n and cn and off_n * 5 > cn):
             add("good", "consistent", "Consistent laps",
                 f"Consistency {score:.0f}/100: your clean laps stayed within about {std:.1f} s of your typical lap.",
-                numbers=[f"Your clean laps typically sit {std:.2f} s from your typical lap"
+                numbers=[f"Lap to lap, your clean laps typically vary by {std:.2f} s"
                          + (f"; {near_typ:.0f}% of them were within {within_s:.1f} s of it." if near_typ is not None else "."),
-                         f"{_f(con.get('within_05')) or 0:.0f}% of {cn or 'your'} clean laps were within {within_s:.1f} s of your best lap.",
+                         f"{_f(con.get('within_05')) or 0:.0f}% of {cn or 'your'} clean laps were within {within_s:.1f} s of your best lap (measured against your best lap, not your typical one).",
                          off_txt])
         elif score < 45:
             add("bad", "scattered", "Lap times all over the place", f"Consistency {score:.0f}/100: your clean laps are all over the place.",
                 "Until the laps are steadier it is hard to tell what any other change does.",
                 f"Try: next race, aim for five laps in a row within {within_s:.1f} s of each other before chasing pace.",
-                [f"Your clean laps typically sit {std:.2f} s from your typical lap"
+                [f"Lap to lap, your clean laps typically vary by {std:.2f} s"
                  + (f"; {near_typ:.0f}% of them were within {within_s:.1f} s of it." if near_typ is not None else "."),
-                 f"{_f(con.get('within_05')) or 0:.0f}% of laps were within {within_s:.1f} s of your best lap.", off_txt],
+                 f"{_f(con.get('within_05')) or 0:.0f}% of laps were within {within_s:.1f} s of your best lap (measured against your best lap, not your typical one).", off_txt],
                 laps=con.get("off_pace") or None)
 
     style = data.get("style") if isinstance(data.get("style"), dict) else {}

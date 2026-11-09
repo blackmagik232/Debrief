@@ -416,6 +416,20 @@ def test_page_folds_open_by_keyboard_and_nothing_overflows():
     pw.stop()
 
 
+def test_small_costs_never_round_up_and_the_brake_card_names_only_flagged_corners():
+    # round 3: 0.06 s must not read as "0.1 s" (that is two thirds more than measured)
+    assert insights._s1(0.06) == "under 0.1 s" and insights._s1(0.094) == "under 0.1 s" and insights._s1(0.1) == "0.1 s"
+    for name, d in cases().items():
+        ins = insights.build(d)
+        g = next((i for i in ins["good"] if i["key"] == "brake_markers"), None)
+        v = next((i for i in ins["bad"] if i["key"] == "vary"), None)
+        if g and "still changes" in g["text"]:
+            named = set((v or {}).get("corners") or [])
+            tail = g["text"].split("still changes after the braking point in", 1)[1]
+            for c in [x.strip(" .") for x in tail.replace(" and ", ", ").split(",") if x.strip(" .")]:
+                assert c in named, (name, c, named)
+
+
 if __name__ == "__main__":
     import traceback
     failed = 0

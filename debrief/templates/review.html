@@ -1697,7 +1697,7 @@ safe('what to work on',()=>{const IN=isObj(D.insights)?D.insights:null;
   fill('goodList',goods.filter(g=>!cornerGood.includes(g)),goods.length?'':'Not enough clean laps to say yet.',false);
   if(!goods.filter(g=>!cornerGood.includes(g)).length&&cornerGood.length)$('keepPanel').hidden=true;
   if(arr(IN.look).length){$('lookPanel').hidden=false;fill('lookList',arr(IN.look),'',false)}
-  if(strip){$('stripPanel').hidden=false;const tb=$('stripTable');tb.replaceChildren();const hd=h('thead');const hr=h('tr');const hasCost=strip.rows.some(r=>isObj(r)&&num(r.cost_s));['Corner','Braking','Mid-corner','Exit'].concat(hasCost?['Time a lap']:[]).forEach((x,i)=>hr.append(h('th',i?'m':null,x)));hd.append(hr);tb.append(hd);
+  if(strip){$('stripPanel').hidden=false;const tb=$('stripTable');tb.replaceChildren();const hd=h('thead');const hr=h('tr');const hasCost=strip.rows.some(r=>isObj(r)&&num(r.cost_s));['Corner','Braking','Mid-corner','Exit'].concat(hasCost?['Cost']:[]).forEach((x,i)=>hr.append(h('th',i?'m':null,x)));hd.append(hr);tb.append(hd);
     const SYM={ok:['✓','nothing flagged'],watch:['!','worth a look'],cost:['✗','costing time']};const body=h('tbody');
     strip.rows.filter(isObj).forEach(r=>{const tr=h('tr');const td=h('td','c');const id=String(r.corner);if(cornerById[id]){const b=h('button',null,id);b.type='button';b.title='Show '+id+' in Compare laps';b.onclick=()=>showCorner(cornerById[id]);td.append(b)}else td.append(document.createTextNode(id));tr.append(td);
       ['braking','mid','exit'].forEach(ph=>{const c=isObj(r[ph])?r[ph]:null;const cell=h('td','m '+(c&&SYM[c.mark]?c.mark:'none'));
@@ -1707,7 +1707,7 @@ safe('what to work on',()=>{const IN=isObj(D.insights)?D.insights:null;
       if(hasCost){const cell=h('td','m '+(num(r.cost_s)?'cost':'none'));if(num(r.cost_s)){const sp=h('span',null,'~'+s1(r.cost_s));sp.setAttribute('aria-hidden','true');cell.append(sp,h('span','sr','costing time: your typical lap loses '+s1(r.cost_s)+' a lap here against your quicker laps'));cell.title='Your typical lap loses about '+r.cost_s.toFixed(2)+' s a lap here against your quicker laps'}else{const sp=h('span',null,'–');sp.setAttribute('aria-hidden','true');cell.append(sp,h('span','sr','no cost measured'))}tr.append(cell)}
       body.append(tr)});tb.append(body);
     const cn=isObj(strip.counts)?strip.counts:{};const cc=num(cn.cost_corners)?cn.cost_corners:(num(cn.cost)?cn.cost:0);$('stripSub').textContent=(cc?plural(cc,'corner')+' costing time':'no corner costing time')+(num(cn.watch)&&cn.watch?' · '+cn.watch+' worth a look':'');
-    const nd=Array.isArray(strip.no_data)?strip.no_data.map(String):[];$('stripLegend').textContent='✓ nothing flagged · ! worth a look · ✗ costing time (flagged, and your typical laps lose time there against your quicker laps) · – no data. Time a lap is the corner’s own gain from Fix first'+(nd.length?'. No data at all for: '+nd.join(', ')+'.':'');
+    const nd=Array.isArray(strip.no_data)?strip.no_data.map(String):[];$('stripLegend').textContent='✓ nothing flagged · ! worth a look · ✗ costing time (flagged, and your typical laps lose time there against your quicker laps) · – no data. Cost is the time a lap the corner loses, from Fix first'+(nd.length?'. No data at all for: '+nd.join(', ')+'.':'');
     const fl=(Array.isArray(strip.lines)?strip.lines.map(String):[]).concat(cornerGood.flatMap(g=>[String(g.text)].concat(lines(g))));const f=foldOf(fl);if(f)$('stripFold').append(f)}
   const pl=$('plan');if(pl)pl.hidden=true;   // "Fix first" replaces the old practice plan
 },'coach');

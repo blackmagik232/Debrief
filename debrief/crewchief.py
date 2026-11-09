@@ -225,7 +225,7 @@ def vocabulary(unit: str | None = None) -> list:
 
 # ---------------------------------------------------------------- the maths (pure)
 def laps_to_go(laps_rem=None, time_rem=None, lap_f=0.0, leader_lap_s=None, stops=0, pit_loss_s=0.0,
-               leader_f=None, my_lap_s=None) -> dict | None:
+               leader_f=None, my_lap_s=None, pace_unknown=False) -> dict | None:
     """How far to the flag. lap_f = how far round the current lap you are (0..1).
 
     crossings: how many more times you cross the line (the lap you are on counts; so does the one that finishes a
@@ -257,12 +257,17 @@ def laps_to_go(laps_rem=None, time_rem=None, lap_f=0.0, leader_lap_s=None, stops
         p = float(leader_lap_s)
         fl = _num(leader_f)
         fl = f if fl is None or not (0.0 <= fl <= 1.0) else fl
-        kl = max(1, int(math.ceil(tr / p + fl - 1e-9)))
-        tl = (kl - fl) * p
         s_ = max(0, _int(stops) or 0) * max(0.0, _num(pit_loss_s) or 0.0)
         pm = _num(my_lap_s)
         pm = p if pm is None or pm <= 5 else pm
-        tr_n = max(1, int(math.ceil((tl - s_) / pm + f - 1e-9)))
+        tr_n = 0
+        # pace_unknown: the overall leader's lap time is not known yet (the start, or a new leader after the stops):
+        # count with the class pace and with a faster class's, and keep the larger (a lap too many is the safe side)
+        for scale in ([1.0 - 0.001 * k for k in range(0, 131)] if pace_unknown else (1.0,)):
+            pl = p * scale
+            kl = max(1, int(math.ceil(tr / pl + fl - 1e-9)))
+            tl = (kl - fl) * pl
+            tr_n = max(tr_n, max(1, int(math.ceil((tl - s_) / pm + f - 1e-9))))
     if lap_n is None and tr_n is None:
         return None
     if lap_n is not None and tr_n is not None:
@@ -274,13 +279,26 @@ def laps_to_go(laps_rem=None, time_rem=None, lap_f=0.0, leader_lap_s=None, stops
     return {"crossings": n, "distance": max(0.0, n - f), "kind": kind}
 
 
-LAST_LAPS = 2.0             # inside this many laps to the flag there is no spare-fuel margin: a stop is only for fuel that is short
+LAST_LAPS = 2.0             # inside this many laps to the flag the margins shrink (smoothly, never in a step)
+
+
+def _ramp(x, lo, hi) -> float:
+    """0 at or below lo, 1 at or above hi, a straight line between."""
+    return min(1.0, max(0.0, (x - lo) / (hi - lo)))
 
 
 def _margin(dist) -> float:
-    """The spare fuel (in laps) wanted at the flag: 0.2 lap, none in the last two laps where it would be a large part of
-    what is left and a stop costs more than it saves."""
-    return 0.0 if dist is not None and dist <= LAST_LAPS else MARGIN_LAPS
+    """The spare fuel (in laps) the STOP-OR-NOT decision asks for: 0.2 lap with three or more laps to go, shrinking in a
+    straight line to none at one lap to go (a stop costs more than it saves when the flag is that close). Smooth, so the
+    advice does not flip at any lap count."""
+    d = 0.0 if dist is None else dist
+    return MARGIN_LAPS * _ramp(d, 1.0, 3.0)
+
+
+def _margin_save(dist) -> float:
+    """The spare fuel the SAVING you are asked for aims at: the 0.2 lap, all the way to the flag. Only the stop-or-not
+    margin above shrinks near the flag; a driver who pushes in the last two laps (or a noisy lap) needs this one."""
+    return MARGIN_LAPS
 
 
 def stop_plan(fuel, burn, tank, dist, lap_f=0.0, reserve=RESERVE_LAPS, stop_now=False):
@@ -364,7 +382,7 @@ def pit_window(fuel, burn, tank, dist, lap_f=0.0, reserve=RESERVE_LAPS) -> dict:
         not even "tight" (keeping the full spare lap would take a 1% saving): the case the first version got wrong."""
     out = {"need_stop": False, "stops": 0, "k_latest": None, "k_earliest": None, "add_l": 0.0, "fill_l": None,
            "margin_l": None, "save_lpl": 0.0, "save_pct": 0.0, "feasible": True, "tight": False,
-           "tight_save_lpl": 0.0, "stop_laps": [], "short": False, "reach_laps": None}
+           "tight_save_lpl": 0.0, "stop_laps": [], "short": False, "reach_laps": None, "tight_call": False}
     if not burn or burn <= 0 or not tank or tank <= 0 or dist is None or fuel is None:
         out["feasible"] = False
         return out
@@ -376,15 +394,15 @@ def pit_window(fuel, burn, tank, dist, lap_f=0.0, reserve=RESERVE_LAPS) -> dict:
     out["reach_laps"] = round(fuel / burn - dist, 2)          # laps spare at the flag (negative: short of it)
     save_fin = burn - fuel / (dist + m)
     if fuel + 1e-9 >= need_min or save_fin <= SAVE_REALISTIC * burn:
-        if fuel < dist * burn:                              # short of the flag: any saving needed is said
-            out["tight"] = out["short"] = True
-            out["tight_save_lpl"] = round(max(0.0, save_fin), 2)
-        else:
-            target = dist + (m if fuel < need_min else reserve)
-            sv = burn - fuel / target
-            if dist > LAST_LAPS and fuel < need_res and sv / burn * 100.0 >= TIGHT_PCT:
-                out["tight"] = True
-                out["tight_save_lpl"] = round(max(0.0, sv), 2)
+        # no stop. How much must be saved to have the spare lap at the flag? (aimed at _margin_save, asked up to 10%)
+        ask = burn - fuel / (dist + _margin_save(dist))
+        if ask >= max(0.01, 0.005 * burn):
+            ask = min(ask, SAVE_REALISTIC * burn)
+            out["tight"] = True
+            out["tight_save_lpl"] = math.ceil(round(ask * 100.0, 6)) / 100.0       # rounded UP: never "save 0.00"
+            out["short"] = fuel < dist * burn
+            # worth a call: short of the flag, or a saving of TIGHT_PCT% or more to have the spare
+            out["tight_call"] = out["short"] or ask / burn * 100.0 >= TIGHT_PCT
         return out
     plan, ok = stop_plan(fuel, burn, tank, dist, f, reserve)
     n = max(1, len(plan))
@@ -602,6 +620,7 @@ class CrewChief:
         self._lost_at = -1e9
         self.seen_rich = False
         self.leader_hist: dict = {}
+        self._best_lap: dict = {}
         self._lap_done: dict = {}
         self._pit_seen: dict = {}
         self._last_caution_t = -1e9
@@ -701,6 +720,8 @@ class CrewChief:
         if level > lvl0:
             return True
         gap = REPEAT_OVERRIDE.get(kind, REPEAT_LAPS)
+        if kind == "fuel_tight" and self._last_dist is not None and self._last_dist <= LAST_LAPS:
+            gap = 1                                    # near the flag the saving is asked for every lap
         if self.lap is not None and lap0 is not None:
             return self.lap - lap0 >= gap
         return now - t0 >= gap * (self.last_lap_s or 100.0)
@@ -820,6 +841,7 @@ class CrewChief:
         self._stall_seen = False
         self._pit_in = None
         self.leader_hist.clear()
+        self._best_lap = {}
         self._lap_done.clear()
         self._pit_seen.clear()
         self.limits.clear()
@@ -1095,10 +1117,13 @@ class CrewChief:
         """Lap times of the cars of your class (clean laps only): the leader's pace sets the length of a timed race."""
         lc, last, pit = field.get("CarIdxLapCompleted") or [], field.get("CarIdxLastLapTime") or [], \
             field.get("CarIdxOnPitRoad") or []
-        watch = set(cars)
-        if self._ov_idx is not None:
-            watch.add(self._ov_idx)
+        # every car of the field, so the pace of whoever becomes the overall leader is known at once
+        watch = [i for i in range(len(lc)) if i not in self.pace_idx] if isinstance(lc, (list, tuple)) else list(cars)
+        best = field.get("CarIdxBestLapTime")
         for i in watch:
+            b = _num(_at(best, i))
+            if b and b > 5.0:
+                self._best_lap[i] = b
             if _at(pit, i):
                 self._pit_seen[i] = True
             n = _at(lc, i)
@@ -1114,12 +1139,19 @@ class CrewChief:
                 self.leader_hist.setdefault(i, deque(maxlen=3)).append(lt)
 
     def flag_lap(self):
-        """(seconds, whose) the recent lap time of the OVERALL leader, who takes the flag; your class leader's when he is
-        the same car or is not known."""
-        h = self.leader_hist.get(self._ov_idx) if self._ov_idx is not None else None
+        """(seconds, how) the recent lap time of the OVERALL leader, who takes the flag: the median of his last clean laps,
+        else his best lap, else your class leader's (how == "unknown": his own pace is not known yet)."""
+        lead = self._ov_idx
+        if lead is None or lead == self._leader_idx:
+            sec, how = self.leader_lap()
+            return sec, ("leader" if how == "leader" else "unknown" if self.multiclass() else how)
+        h = self.leader_hist.get(lead)
         if h:
             return _median(list(h)), "overall leader"
-        return self.leader_lap()
+        b = self._best_lap.get(lead)
+        if b and b > 5.0:
+            return b, "best lap"
+        return self.leader_lap()[0], "unknown"
 
     def leader_lap(self, field_cars=None):
         """(seconds, whose) the recent lap time of your class leader: median of his last 3 clean laps; yours (or the
@@ -1141,6 +1173,7 @@ class CrewChief:
     _ov_t = None
     _tight_ref = None
     _tight_stops = None
+    _last_dist = None
     _leader_f = None
     _uid = None
     _force_new = False
@@ -1168,7 +1201,7 @@ class CrewChief:
         if burn and F is not None:
             res["fuel_laps"] = F / burn
         lead_s = res["leader_lap"][0]
-        flag_s = self.flag_lap()[0]
+        flag_s, flag_how = self.flag_lap()
         # where the leader is NOW: the field arrays are up to a quarter of a second old
         lead_f = self._ov_f if self._ov_f is not None else self._leader_f
         now_t, age = _num(own.get("SessionTime")), None
@@ -1181,7 +1214,7 @@ class CrewChief:
         ltg = None
         for _ in range(3 if self.race else 0):
             ltg = laps_to_go(own.get("SessionLapsRemainEx"), own.get("SessionTimeRemain"), self.lap_f,
-                             flag_s or lead_s, stops, loss, lead_f, lead_s)
+                             flag_s or lead_s, stops, loss, lead_f, lead_s, pace_unknown=(flag_how == "unknown"))
             if ltg is None or not burn or not tank or F is None:
                 break
             n = stops_needed(F, burn, tank, ltg["distance"], self.reserve, self.lap_f)
@@ -1189,14 +1222,15 @@ class CrewChief:
                 break
             stops = n
         res["ltg"], res["stops"] = ltg, stops
+        self._last_dist = ltg["distance"] if ltg else None
         if ltg is not None and burn and tank and F is not None:
             res["window"] = pit_window(F, burn, tank, ltg["distance"], self.lap_f, self.reserve)
             w = res["window"]
-            if (w.get("tight") or w.get("short")) and not w["need_stop"]:
+            if w.get("tight") and not w["need_stop"]:
                 if self._tight_ref is None:
                     self._tight_ref, self._tight_stops = raw_burn, self.stops_done
             elif not w["need_stop"]:
-                self._tight_ref = None
+                self._tight_ref = None             # he has the spare lap now, at the burn he had before he saved
         res["plan"] = self._plan_view(res["window"], ltg)
         return res
 
@@ -1272,17 +1306,18 @@ class CrewChief:
                 c.append(("caution_box", 1, "Box now, cheap stop." + (" " + say_add if say_add else ""),
                           f"Caution: box now, cheap stop. Add {fuel_text(add, unit)}.{full}", None,
                           {"add_l": add, "stops_now": now_n, "stops_after": n}))
-        if win is not None and not win["need_stop"] and win.get("tight") and not on_pit and self.race:
+        if win is not None and not win["need_stop"] and win.get("tight_call") and not on_pit and self.race:
             sv = win["tight_save_lpl"]
             spare = win["reach_laps"] if win.get("reach_laps") is not None else 0.0     # laps spare at the flag
+            sav = save_amount(sv, unit)
             if win.get("short"):
+                how = (f"by {-spare:.1f} lap{'' if abs(spare) == 1 else 's'}" if -spare >= 0.05 else "by a whisker")
                 c.append(("fuel_tight", 3, "Short of the flag.",
-                          f"Short of the flag by {-spare:.1f} lap{'' if abs(spare) == 1 else 's'}: save "
-                          f"{fuel_text(sv, unit, 2)} a lap to make it.", None,
+                          f"Short of the flag {how}: save {sav} a lap to make it.", None,
                           {"save_lpl": sv, "reach_laps": spare, "short": True}))
             else:
                 c.append(("fuel_tight", 2 if spare < MARGIN_LAPS else 1, "Fuel is tight.",
-                          (f"Fuel is tight: {spare:.1f} laps to spare at the flag. Save {fuel_text(sv, unit, 2)} a lap to "
+                          (f"Fuel is tight: {max(0.0, spare):.1f} laps to spare at the flag. Save {sav} a lap to "
                            f"keep a spare lap."), None, {"save_lpl": sv, "reach_laps": spare, "short": False}))
         v = self._rival_view
         b, a = v.get("behind"), v.get("ahead")
@@ -1436,11 +1471,12 @@ class CrewChief:
                            stops=0)
                 if win.get("short"):
                     box.update(text="Short of the flag: save fuel, no stop yet.", tight=True, short=True,
-                               window_text=f"{-spare:.1f} lap{'' if abs(spare) == 1 else 's'} short of the flag.",
-                               save_text=f"Save {fuel_text(win['tight_save_lpl'], unit, 2)} a lap to make it")
+                               window_text=(f"{-spare:.1f} lap{'' if abs(spare) == 1 else 's'} short of the flag." if -spare >= 0.05
+                                            else "Just short of the flag."),
+                               save_text=f"Save {save_amount(win['tight_save_lpl'], unit)} a lap to make it")
                 elif win.get("tight"):
                     box.update(text="No stop needed, but fuel is tight.", tight=True,
-                               save_text=f"Save {fuel_text(win['tight_save_lpl'], unit, 2)} a lap to keep a spare lap")
+                               save_text=f"Save {save_amount(win['tight_save_lpl'], unit)} a lap to keep a spare lap")
             else:
                 kl, ke = win["k_latest"], win["k_earliest"]
                 lap = self.lap
@@ -1495,6 +1531,14 @@ class CrewChief:
         if pl:
             bits.append(pl["short"].replace("plan ", "Plan "))
         return " · ".join(bits)
+
+
+def save_amount(litres, unit) -> str:
+    """'0.12 L' / '0.04 gal' for a saving a lap, rounded UP in the unit shown, so it is never 'save 0.00'."""
+    gal = _units.norm(unit) == "mph"
+    v = (litres / GAL_L) if gal else litres
+    v = max(0.01, math.ceil(round(v * 100.0, 6)) / 100.0)
+    return f"{v:.2f} {'gal' if gal else 'L'}"
 
 
 def fp_text(litres, unit) -> str:

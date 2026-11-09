@@ -777,7 +777,7 @@ def test_the_spare_lap_is_not_fuel_you_must_have():
     assert not w["need_stop"] and not w["tight"]
     # 14.5 L: short of 0.2 lap at the flag by 1.1 L, a 7% saving, which is realistic: no stop, but fuel is tight
     w = cc.pit_window(14.5, 3.0, 60.0, 5.0, 0.0)
-    assert not w["need_stop"] and w["tight"] and abs(w["tight_save_lpl"] - 0.21) < 0.01, w
+    assert not w["need_stop"] and w["tight"] and abs(w["tight_save_lpl"] - 0.21) < 0.02, w
     # 14.0 L needs a 10.3% saving: that is a stop
     w = cc.pit_window(14.0, 3.0, 60.0, 5.0, 0.0)
     assert w["need_stop"] and w["stops"] == 1
@@ -803,7 +803,7 @@ def test_last_two_laps_a_stop_only_for_fuel_that_is_short():
     assert sim.fuel > 0.3
     # the window maths: 1.35 L with 0.3 lap to go is enough (0.9 L)
     w = cc.pit_window(1.35, 3.0, 60.0, 0.3, 0.7)
-    assert not w["need_stop"] and not w["tight"] and not w["short"]
+    assert not w["need_stop"] and not w["short"]
     w = cc.pit_window(1.4, 3.0, 60.0, 0.5, 0.5)
     assert not w["need_stop"] and w["short"] and w["tight"]            # 1.5 L needed, 1.4 L: short by 7%: save, no stop...
     w = cc.pit_window(0.6, 3.0, 60.0, 1.5, 0.5)
@@ -839,6 +839,127 @@ def test_short_of_the_flag_is_said_and_the_saving_is_not_forgotten():
     # the panel says how far short, not the figure with the spare lap taken off
     assert "lap short of the flag" in after["box"]["window_text"] or "laps short of the flag" in after["box"]["window_text"]
     assert "-" not in after["box"]["window_text"]
+
+
+def _comply_race(seed, short, policy, sigma, push, laps):
+    """The reviewer's driver: does what the crew chief asks (up to 10%), maybe pushes in the last two laps; boxes when told."""
+    import random as _r
+    rnd = _r.Random(seed)
+    B = 3.0
+    sim = S.RaceSim(laps=laps, tank=120.0, burn=B, start_fuel=laps * B * (1 - short), cars=3, dt=0.25)
+    ch = chief(sim)
+    last_lap, boxed, save = None, False, 0.0
+    texts = []
+    for own, f in sim.run():
+        for c in ch.feed(own, f, now=sim.t):
+            texts.append(c.text)
+            if c.kind == "box_now" and not boxed and own["LapDistPct"] < 0.9 and own["Lap"] <= laps:
+                boxed = True
+                sim.pit_at(lap=own["Lap"], add=max(c.data.get("add_l") or 0, 3.0))
+        if own["Lap"] != last_lap:
+            last_lap = own["Lap"]
+            w = (ch.last_calc or {}).get("window") or {}
+            if w.get("tight") and not w.get("need_stop"):
+                est = ch.last_calc.get("burn") or B
+                ask = min(w.get("tight_save_lpl", 0.0) / est, 0.10)
+                save = ask if policy == "comply" else max(save, ask)
+            elif policy != "sticky":
+                save = 0.0
+            p = push if own["Lap"] > laps - 2 else 0.0
+            sim.burn = B * (1 + rnd.gauss(0, sigma)) * (1 + p) * (1 - save)
+        if sim.fuel < 0:
+            return "DRY", own["Lap"], texts[-3:]
+    return "ok", boxed, texts
+
+
+def test_a_driver_who_does_as_asked_never_runs_dry():
+    """Round 4: 3% short on 30 laps, he saves what is asked, and pushes 0, 2 or 5% in the last two laps."""
+    for push in (0.0, 0.02, 0.05):
+        r = _comply_race(1, 0.03, "comply", 0.0, push, 30)
+        assert r[0] == "ok", (push, r)
+    # a sample of the reviewer's grid (short x policy x noise x push): nobody who complies or keeps saving runs dry
+    n = 0
+    for short in (0.01, 0.03, 0.06):
+        for policy in ("comply", "sticky"):
+            for sigma, push in ((0.01, 0.0), (0.02, 0.05)):
+                for laps in (12, 30):
+                    n += 1
+                    r = _comply_race(n * 7 + int(short * 1000), short, policy, sigma, push, laps)
+                    assert r[0] == "ok", (short, policy, sigma, push, laps, r)
+                    for t in r[2]:
+                        assert "by 0.0 lap" not in t and "save 0.00" not in t and "0.00 L a lap" not in t, t
+
+
+def test_the_saving_asked_for_is_never_zero_and_aims_at_the_spare():
+    w = cc.pit_window(30.0, 3.0, 120.0, 10.0, 0.0)           # 10.2 laps needed for 0.2 spare: 0.059 L a lap, rounded UP
+    assert w["tight"] and not w["short"] and w["tight_save_lpl"] == 0.06
+    w = cc.pit_window(30.05, 3.0, 120.0, 10.0, 0.0)
+    assert w["tight"] and w["tight_save_lpl"] >= 0.01
+    assert cc.save_amount(0.001, "kmh") == "0.01 L" and cc.save_amount(0.004, "mph") == "0.01 gal"
+    # it is still asked for inside the last two laps (the target there is 0.1 lap, not nothing)
+    w = cc.pit_window(2.0, 3.0, 120.0, 0.6, 0.4)            # 0.667 lap of fuel for 0.6 to go: 0.067 spare, 0.2 wanted
+    assert w["tight"] and not w["short"] and not w["need_stop"] and w["tight_save_lpl"] > 0
+    # the pre-save burn is kept until he has the spare, not until he is merely no longer short
+    sim = S.RaceSim(laps=30, tank=120.0, burn=3.0, start_fuel=30 * 3.0 * 0.97, cars=3, dt=0.25)
+    ch = chief(sim)
+    seen = {}
+    for own, f in sim.run():
+        ch.feed(own, f, now=sim.t)
+        if "ref" not in seen and ch._tight_ref:
+            seen["ref"] = ch._tight_ref
+            sim.burn = 3.0 * 0.96
+        if own["Lap"] == 29 and own["LapDistPct"] > 0.5:
+            seen["late"] = ch._tight_ref
+            break
+    assert seen.get("ref") and seen["late"] is not None and abs(seen["late"] - seen["ref"]) < 1e-9, seen
+
+
+def test_the_stop_or_not_decision_is_continuous_in_the_last_laps():
+    """Round 4: the same deficit said 'box this lap' at 2.3 laps to go and 'save 10%' at 2.0."""
+    flips, prev = 0, None
+    d = 4.0
+    while d > 0.3:
+        w = cc.pit_window(2.1 * 3.0, 3.0, 120.0, d, 0.0)
+        if prev is not None and w["need_stop"] != prev:
+            flips += 1
+        prev = w["need_stop"]
+        d -= 0.02
+    assert flips <= 1, flips                                 # stop -> no stop once, as the flag gets close, never back
+    for fl in (1.6, 2.0, 2.4, 3.0):                          # and for several amounts of fuel
+        seq = [cc.pit_window(fl * 3.0, 3.0, 120.0, x / 100.0, 0.0)["need_stop"] for x in range(400, 30, -2)]
+        assert sum(a != b for a, b in zip(seq, seq[1:])) <= 1, fl
+
+
+def test_every_cars_pace_is_known_so_a_new_overall_leader_needs_no_guess():
+    sim = S.RaceSim(laps=0, timed_s=3000.0, tank=200.0, burn=2.0, multiclass=True, cars=8)
+    sim.set_pace(0, 50.0)
+    for i in sim.cars:
+        sim.cars[i].cls = S.CLASS_B if i % 2 == 1 or i == S.ME else S.CLASS_A
+    ch = chief(sim)
+    early = {}
+
+    def watch(own, f, g):
+        if own["SessionTime"] > 5.0 and "n" not in early:
+            early["n"] = ch.snapshot()["laps_left"]["n"]
+            early["how"] = ch.flag_lap()[1]
+            early["want"] = ref_crossings(own["SessionTimeRemain"], 50.0, own["LapDistPct"], sim.cars[0].pct,
+                                          p_me=60.0)
+    drive(sim, ch, seconds=300, on_frame=watch)
+    assert early["how"] in ("unknown", "best lap") and early["n"] >= early["want"], early     # never a lap short
+    assert len(ch.leader_hist) >= 6, list(ch.leader_hist)                    # every car's clean laps, not just two
+    assert ch.flag_lap()[1] == "overall leader" and abs(ch.flag_lap()[0] - 50.0) < 0.5
+    # the unknown-pace count never undercounts (the reviewer's fuzz: 14% too low before)
+    import random
+    rnd = random.Random(3)
+    low = 0
+    for _ in range(20000):
+        pc = rnd.uniform(80, 130)
+        po = pc * rnd.uniform(0.88, 0.97)
+        T, f, fo = rnd.uniform(0, 7200), rnd.random(), rnd.random()
+        want = ref_crossings(T, po, f, fo, p_me=pc)
+        got = cc.laps_to_go(time_rem=T, lap_f=f, leader_lap_s=pc, leader_f=fo, my_lap_s=pc, pace_unknown=True)["crossings"]
+        low += got < want - 0 and want - got >= 1
+    assert low <= 2, low                                                     # float ties at the very edge only
 
 
 def test_a_dropped_box_call_is_made_again():

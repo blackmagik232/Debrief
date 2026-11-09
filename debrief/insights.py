@@ -514,6 +514,12 @@ def build(data: dict) -> dict:
     def b_race(s, text=None):
         return {"kind": "time", "per_lap": None, "race_s": round(s, 4), "text": text or f"~{s:.1f} s over the race"}
 
+    def b_measure(secs, what):
+        # 2.28.1 (lead): seconds of pedal time are not seconds of lap time, so they are shown but never added up
+        # over the race or ranked against lap-time costs (that would claim a loss nobody measured)
+        return {"kind": "measure", "per_lap": round(secs, 4), "race_s": None,
+                "text": f"~{secs:.1f} s a lap {what} (pedal time, not lap time lost)"}
+
     def b_none(text="no time cost measured"):
         return {"kind": "none", "per_lap": None, "race_s": None, "text": text}
 
@@ -869,7 +875,7 @@ def build(data: dict) -> dict:
                 [f"Off both pedals (both under 5%, anywhere on the lap, lifts included): {mc:.1f} s on a typical clean lap, "
                  f"{bc:.1f} s on lap {bn}. Trail braking is a different thing: brake still on as you turn in. Coasting starts "
                  "once the brake is fully off.", luck_words(pc, "coasted", mc - bc)],
-                cost=round(mc - bc, 1), badge=b_lap(mc - bc, " off the pedals"), laps=[bn], corners=cc)
+                cost=round(mc - bc, 1), badge=b_measure(mc - bc, "more off the pedals"), laps=[bn], corners=cc)
         # 2.18: both pedals at once can be deliberate: it is only a habit when your typical laps do more of it
         # than your best lap, i.e. the laps show it costing time
         mo, bo = med("overlap_s"), _f(b_st.get("overlap_s"))
@@ -880,7 +886,7 @@ def build(data: dict) -> dict:
                 "Some overlap can be deliberate, but your quicker lap did less of it.",
                 f"Try: next race, finish braking before you press the throttle; open lap {bn} in Compare laps to see how it did it.",
                 [f"Both pedals above 10%: {mo:.1f} s on a typical clean lap, {bo:.1f} s on lap {bn}.", luck_words(po, "had both pedals down for", mo - bo)],
-                cost=round(mo - bo, 1), badge=b_lap(mo - bo, " with both pedals down"), laps=[bn])
+                cost=round(mo - bo, 1), badge=b_measure(mo - bo, "more with both pedals down"), laps=[bn])
 
     # ---------- the corner-by-corner strip: braking / mid-corner / exit for each turn, from data already worked out
     out["strip"] = _strip(data, corners, spread, con, sk, k, {cid: f.get("gain") for cid, f in in_fix.items() if _f(f.get("gain"))})

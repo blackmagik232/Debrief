@@ -264,7 +264,7 @@ def test_strip_and_cards_agree_on_what_costs_time():
     assert "loses 0.2 s here" in why["Turn 3"] and "Turn 3 loses about 0.2 s a lap" in vary["costs"]
 
 
-def test_coast_and_overlap_are_ranked_like_every_other_cost():
+def test_coast_and_overlap_show_pedal_time_but_never_claim_lap_time():
     laps = [{"n": i, "t": 90.0 + (0.1 * (i % 3)), "clean": True} for i in range(1, 13)]
     quick = {3, 6, 9, 12}
     style = {str(n): {"coast_s": 1.0 if n in quick else 2.9, "overlap_s": 0.2 if n in quick else 0.9} for n in range(1, 13)}
@@ -278,8 +278,9 @@ def test_coast_and_overlap_are_ranked_like_every_other_cost():
     assert "coast" in keys and "overlap" in keys and "scattered" in keys
     for it, per in ((c, 1.9), (o, 0.7)):
         b = it["badge"]
-        assert b["kind"] == "time" and abs(b["per_lap"] - per) < 0.06 and abs(b["race_s"] - b["per_lap"] * 12) < 0.01, b
-    assert keys.index("coast") < keys.index("overlap") < keys.index("scattered")     # per lap x clean laps, no cost last
+        # seconds on the pedals are not seconds of lap time: shown, never added up over the race or ranked as a loss
+        assert b["kind"] == "measure" and abs(b["per_lap"] - per) < 0.06 and b["race_s"] is None, b
+        assert "not lap time" in b["text"] and "over the race" not in b["text"], b
     assert "luck" in " ".join(c["numbers"]) and "less than your typical lap" in " ".join(c["numbers"]) and "shuffle" not in json.dumps(c)
 
 

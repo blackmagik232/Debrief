@@ -1682,7 +1682,7 @@ safe('what to work on',()=>{const IN=isObj(D.insights)?D.insights:null;
   const arr=a=>Array.isArray(a)?a.filter(isObj):[];
   const lines=it=>Array.isArray(it.numbers)&&it.numbers.length?it.numbers.map(String):(it.detail?[String(it.detail)]:[]);
   function foldOf(ls,label){if(!ls.length)return null;const d=h('details','hfold');d.append(h('summary',null,label||'Show the numbers'));const ul=h('ul');ls.forEach(x=>ul.append(h('li',null,x)));d.append(ul);return d}
-  function badgeOf(it){const b=isObj(it.badge)&&typeof it.badge.text==='string'?it.badge:null;if(b)return h('span','hbadge'+(b.kind==='safety'?' safety':b.kind==='none'?' none':''),b.kind==='safety'?'Safety risk':b.text);
+  function badgeOf(it){const b=isObj(it.badge)&&typeof it.badge.text==='string'?it.badge:null;if(b)return h('span','hbadge'+(b.kind==='safety'?' safety':(b.kind==='none'||b.kind==='measure')?' none':''),b.kind==='safety'?'Safety risk':b.text);
     return num(it.cost)&&it.cost>0?h('span','hbadge','~'+it.cost+' s'):null}
   function habItem(it,card){const li=h('li',card?'hcard':'hrow');
     if(card){const hh=h('div','hh');hh.append(h('b',null,String(it.title||'')));const bg=badgeOf(it);if(bg)hh.append(bg);li.append(hh);li.append(h('p',null,String(it.text||'')))}

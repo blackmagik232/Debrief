@@ -9,6 +9,8 @@ What it measures (on whatever PC runs it; the numbers on Swazi's Ryzen 5 5600X3D
   planner    endurance.plan for the worst cases it accepts (24 h, 6 drivers)
   racelog    bytes per hour of the planned endurance race log (1 sample a second, 64 cars, gzip)
   memory     Debrief's resident memory after importing its modules (Linux/Windows)
+  crew       (2.29) the crew chief: CrewChief.feed on a 64-car scripted race at 20 Hz (field arrays at 4 Hz), plus the
+             voice-queue pump, as share of one core; the cost of reading its extra channels is in "read"
   recorder   (2.27) the background recorder: idle while waiting for iRacing, recording a 64-car race (its own work,
              plus the cost of reading ~80 values at 20 Hz and 12 car arrays at 4 Hz estimated like "read"), and the
              size of its logs per hour
@@ -42,6 +44,7 @@ BUDGET = {
     "planner_ms": 200.0,          # one plan (on a button press)
     "racelog_mb_per_h": 15.0,     # gzipped race log
     "memory_mb": 400.0,           # whole app resident memory
+    "crew_pct_core": 1.0,         # crew chief at 20 Hz with a 64-car field
     "recorder_idle_pct_core": 0.1,    # waiting for iRacing
     "recorder_rec_pct_core": 1.0,     # recording a 64-car race, reading included
     "recorder_field_mb_per_h": 15.0,  # field.jsonl.gz, 64 cars
@@ -77,6 +80,31 @@ def coach_cost():
         coach.feed(s)
     per = (time.perf_counter() - t0) / max(1, len(feed))
     return {"per_sample_us": per * 1e6, "rate_hz": 20, "pct_core": per * 20 * 100}
+
+
+def crew_cost(sim_seconds=900.0, cars=64):
+    """CrewChief.feed over a scripted 64-car race with two stops; own readings 20 Hz, field arrays 4 Hz."""
+    import crew_sim as S
+    from debrief import crewchief as cc
+    sim = S.RaceSim(laps=60, tank=60.0, burn=3.0, cars=cars)
+    sim.pit_at(lap=19, add=48.0)
+    sim.set_pace(3, 59.4)
+    ch = cc.CrewChief(units="mph", clock=lambda: sim.t)
+    ch.set_info(sim.sections(), 1)
+    sp = cc.CallSpeaker()
+    frames = [(o, f) for o, f in sim.run(sim_seconds)]
+    # the sim steps at 10 Hz; the runner reads 20 Hz, so every frame is fed twice (slightly later), the worst case
+    t0 = time.thread_time()
+    n = 0
+    for o, f in frames:
+        for k in range(2):
+            now = o["SessionTime"] + 0.05 * k
+            sp.offer(ch.feed(o, f if k == 0 else None, now=now))
+            sp.pump(o, now)
+            n += 1
+    per = (time.thread_time() - t0) / max(1, n)
+    return {"frames": n, "us_per_frame": per * 1e6, "pct_core": per * 20.0 * 100.0, "calls": len(ch.calls_made)
+            if hasattr(ch, "calls_made") else None}
 
 
 def read_cost(n_scalars=60, n_arrays=14, rate_scalar=20, rate_array=4):
@@ -261,7 +289,7 @@ def memory_now_mb():
 def memory_cost():
     import importlib
     for m in ("debrief.livecoach", "debrief.strategy", "debrief.engine", "debrief.desktop.server", "debrief.setuplab",
-              "debrief.team", "debrief.overlay", "debrief.coachvoice"):
+              "debrief.team", "debrief.overlay", "debrief.coachvoice", "debrief.crewchief"):
         try:
             importlib.import_module(m)
         except Exception:  # noqa: BLE001
@@ -271,12 +299,14 @@ def memory_cost():
 
 def run():
     res = {"coach": coach_cost(), "read": read_cost(), "yaml": yaml_cost(), "planner": planner_cost(),
-           "racelog": racelog_cost(), "memory": memory_cost(), "recorder": recorder_cost()}
+           "racelog": racelog_cost(), "crew": crew_cost(), "memory": memory_cost(), "recorder": recorder_cost()}
     checks = [
         ("Live coach (20 Hz)", f"{res['coach']['pct_core']:.2f}% of a core", res["coach"]["pct_core"] <= BUDGET["coach_pct_core"],
          f"<= {BUDGET['coach_pct_core']}%"),
         ("Telemetry reads", f"{res['read']['pct_core']:.2f}% of a core", res["read"]["pct_core"] <= BUDGET["read_pct_core"],
          f"<= {BUDGET['read_pct_core']}%"),
+        ("Crew chief (20 Hz, 64 cars)", f"{res['crew']['pct_core']:.2f}% of a core ({res['crew']['us_per_frame']:.0f} us a frame)",
+         res["crew"]["pct_core"] <= BUDGET["crew_pct_core"], f"<= {BUDGET['crew_pct_core']}%"),
         ("Session info parse, 60 cars", f"{res['yaml']['parse_ms']:.0f} ms", res["yaml"]["parse_ms"] <= BUDGET["yaml_ms"],
          f"<= {BUDGET['yaml_ms']:.0f} ms, off the reading thread"),
         ("Endurance plan, worst case", ("skipped" if "skipped" in res["planner"] else f"{res['planner']['worst_ms']:.0f} ms"),

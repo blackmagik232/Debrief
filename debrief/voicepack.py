@@ -177,8 +177,51 @@ SECTIONS = {
     "J": "Short lap times, without the minute. Like reading a stopwatch: a short pause at the comma.",
     "K": "One more corner tip. Say the turn, a short natural pause at the comma, then the tip.",
     "L": "Learning the track, against your best so far. Say the turn, a short natural pause at the comma, then the rest.",
+    "M": "Crew chief on the radio. Calm and clear, like an engineer telling you what to do next. Numbers are litres, "
+         "gallons, laps or tenths of a second. A short natural pause at the comma.",
 }
 PACE_WHOLES = ["No clean lap yet", "Down more than two seconds"]      # 2.17.2 answers to "How's my pace?"
+
+
+# ---------------------------------------------------------------- 2.29 crew chief (fixed phrases and numbers)
+CREW_WHOLES = ["Data lost", "Data back", "Fuel critical", "Box this lap", "Box next lap", "Box now, cheap stop",
+               "Car alongside", "Car ahead pitting", "On plan", "Ahead of plan", "Behind plan", "Up a place",
+               "Lost a place"]
+CREW_BOX_IN = (2, 5)         # "Box in three laps"
+CREW_LITRES = (1, 120)       # "Forty-two litres"
+CREW_GALLONS = (1, 32)       # "Eleven gallons"
+CREW_FUEL_LAPS = (1, 2)      # "Two laps of fuel"
+CREW_RATE = (1, 20)          # "three tenths a lap" (a tenth .. two seconds)
+CREW_OFF = (3, 20)           # "three tenths off target"
+CREW_LEADS = ("Car behind closing", "Gaining on the car ahead")
+
+
+def _cap(w: str) -> str:
+    return w[:1].upper() + w[1:]
+
+
+def _unit_words(n: int, one: str, many: str) -> str:
+    return f"{_cap(number_words(n))} {one if n == 1 else many}."
+
+
+def crew_litres_text(n: int) -> str:
+    return _unit_words(n, "litre", "litres")
+
+
+def crew_gallons_text(n: int) -> str:
+    return _unit_words(n, "gallon", "gallons")
+
+
+def crew_laps_fuel_text(n: int) -> str:
+    return f"{_cap(number_words(n))} {'lap' if n == 1 else 'laps'} of fuel."
+
+
+def crew_rate_text(k: int) -> str:
+    return f"{amount_words(k)} a lap"
+
+
+def crew_off_text(k: int) -> str:
+    return f"{_cap(amount_words(k))} off target."
 
 
 def lines() -> list:
@@ -249,6 +292,23 @@ def lines() -> list:
             add("L", f"Turn {number_words(i % MAX_TURN + 1)}, braked {number_words(m)} metres {way}.",
                 [(f"braked_{way}_{m}", "tail")])
     add("L", "Turn five, on your best.", [("on_your_best", "tail")])
+    # 2.29 "Crew chief" (added after everything above, so earlier line numbers never change)
+    for w in CREW_WHOLES:
+        add("M", f"{w}.", [("cc_" + _slug(w), "whole")])
+    for n in range(CREW_BOX_IN[0], CREW_BOX_IN[1] + 1):
+        add("M", f"Box in {number_words(n)} laps.", [(f"cc_box_in_{n}", "whole")])
+    for n in range(CREW_LITRES[0], CREW_LITRES[1] + 1):
+        add("M", crew_litres_text(n), [(f"cc_litres_{n}", "whole")])
+    for n in range(CREW_GALLONS[0], CREW_GALLONS[1] + 1):
+        add("M", crew_gallons_text(n), [(f"cc_gallons_{n}", "whole")])
+    for n in range(CREW_FUEL_LAPS[0], CREW_FUEL_LAPS[1] + 1):
+        add("M", crew_laps_fuel_text(n), [(f"cc_laps_fuel_{n}", "whole")])
+    for k in range(CREW_RATE[0], CREW_RATE[1] + 1):      # the first two lines also give the two lead-ins
+        lead = CREW_LEADS[(k - 1) % 2]
+        clips = ([("cc_" + _slug(lead), "lead")] if k <= 2 else []) + [(f"cc_rate_{k}", "tail")]
+        add("M", f"{lead}, {crew_rate_text(k)}.", clips)
+    for k in range(CREW_OFF[0], CREW_OFF[1] + 1):
+        add("M", crew_off_text(k), [(f"cc_off_{k}", "whole")])
     return out
 
 
@@ -339,12 +399,74 @@ def _lap_keys(words: str):
     return _LAP_KEYS.get(" ".join(words.lower().split()))
 
 
+_CREW_WORDS = None
+_CREW_PHRASES = None
+
+
+def _crew_tables():
+    global _CREW_WORDS, _CREW_PHRASES
+    if _CREW_WORDS is None:
+        _CREW_WORDS = {number_words(n): n for n in range(0, 200)}
+        ph = {w.lower(): "cc_" + _slug(w) for w in CREW_WHOLES}
+        for k in range(CREW_RATE[0], CREW_RATE[1] + 1):
+            ph["rate:" + crew_rate_text(k)] = f"cc_rate_{k}"
+        for k in range(CREW_OFF[0], CREW_OFF[1] + 1):
+            ph[crew_off_text(k).lower().rstrip(".")] = f"cc_off_{k}"
+        _CREW_PHRASES = ph
+    return _CREW_WORDS, _CREW_PHRASES
+
+
+def _crew_sentence(low: str):
+    """One crew chief sentence (lower case, no full stop) -> clip keys, or None."""
+    words, ph = _crew_tables()
+    if low in ph:
+        return [ph[low]]
+    m = re.fullmatch(r"box in ([a-z\- ]+) laps", low)
+    if m and m.group(1) in words and CREW_BOX_IN[0] <= words[m.group(1)] <= CREW_BOX_IN[1]:
+        return [f"cc_box_in_{words[m.group(1)]}"]
+    for noun, one, many, lim, tag in (("litre", "litre", "litres", CREW_LITRES, "litres"),
+                                      ("gallon", "gallon", "gallons", CREW_GALLONS, "gallons")):
+        m = re.fullmatch(r"([a-z\- ]+) (" + one + "|" + many + ")", low)
+        if m and m.group(1) in words:
+            n = words[m.group(1)]
+            if lim[0] <= n <= lim[1] and (m.group(2) == one) == (n == 1):
+                return [f"cc_{tag}_{n}"]
+    m = re.fullmatch(r"([a-z\- ]+) (lap|laps) of fuel", low)
+    if m and m.group(1) in words:
+        n = words[m.group(1)]
+        if CREW_FUEL_LAPS[0] <= n <= CREW_FUEL_LAPS[1] and (m.group(2) == "lap") == (n == 1):
+            return [f"cc_laps_fuel_{n}"]
+    m = re.fullmatch(r"(car behind closing|gaining on the car ahead),\s*(.+)", low)
+    if m and "rate:" + m.group(2) in ph:
+        return ["cc_" + _slug(m.group(1)), ph["rate:" + m.group(2)]]
+    return None
+
+
+def crew_compose(text) -> list | None:
+    """2.29: the clip keys for a crew chief call ("Box this lap. Forty-two litres."), one or more sentences, or None."""
+    if not isinstance(text, str) or len(text) > 140:
+        return None
+    parts = [p.strip().rstrip(".!") for p in re.split(r"(?<=[.!])\s+", " ".join(text.split())) if p.strip()]
+    if not parts:
+        return None
+    out = []
+    for p in parts:
+        k = _crew_sentence(p.lower())
+        if k is None:
+            return None
+        out += k
+    return out
+
+
 def compose(text) -> list | None:
     """The clip keys that say one of the coach's cues, or None when no pack can say it (unknown words, a corner
     past turn 25, a delta over 2 seconds ...). Only reads the text: whether a given pack has every clip is
     VoicePack.compose's job."""
     if not isinstance(text, str):
         return None
+    ck = crew_compose(text)
+    if ck:
+        return ck
     t = " ".join(text.split()).strip().rstrip(".!")
     if not t or len(t) > 80:
         return None

@@ -3372,6 +3372,1272 @@
    "text": "on your best.",
    "ms": 730,
    "role": "tail"
+  },
+  "cc_data_lost": {
+   "file": "cc_data_lost.wav",
+   "text": "Data lost.",
+   "ms": 910,
+   "role": "whole"
+  },
+  "cc_data_back": {
+   "file": "cc_data_back.wav",
+   "text": "Data back.",
+   "ms": 870,
+   "role": "whole"
+  },
+  "cc_fuel_critical": {
+   "file": "cc_fuel_critical.wav",
+   "text": "Fuel critical.",
+   "ms": 1010,
+   "role": "whole"
+  },
+  "cc_box_this_lap": {
+   "file": "cc_box_this_lap.wav",
+   "text": "Box this lap.",
+   "ms": 1070,
+   "role": "whole"
+  },
+  "cc_box_next_lap": {
+   "file": "cc_box_next_lap.wav",
+   "text": "Box next lap.",
+   "ms": 1180,
+   "role": "whole"
+  },
+  "cc_box_now_cheap_stop": {
+   "file": "cc_box_now_cheap_stop.wav",
+   "text": "Box now, cheap stop.",
+   "ms": 1490,
+   "role": "whole"
+  },
+  "cc_car_alongside": {
+   "file": "cc_car_alongside.wav",
+   "text": "Car alongside.",
+   "ms": 1100,
+   "role": "whole"
+  },
+  "cc_car_ahead_pitting": {
+   "file": "cc_car_ahead_pitting.wav",
+   "text": "Car ahead pitting.",
+   "ms": 1100,
+   "role": "whole"
+  },
+  "cc_on_plan": {
+   "file": "cc_on_plan.wav",
+   "text": "On plan.",
+   "ms": 800,
+   "role": "whole"
+  },
+  "cc_ahead_of_plan": {
+   "file": "cc_ahead_of_plan.wav",
+   "text": "Ahead of plan.",
+   "ms": 920,
+   "role": "whole"
+  },
+  "cc_behind_plan": {
+   "file": "cc_behind_plan.wav",
+   "text": "Behind plan.",
+   "ms": 940,
+   "role": "whole"
+  },
+  "cc_up_a_place": {
+   "file": "cc_up_a_place.wav",
+   "text": "Up a place.",
+   "ms": 900,
+   "role": "whole"
+  },
+  "cc_lost_a_place": {
+   "file": "cc_lost_a_place.wav",
+   "text": "Lost a place.",
+   "ms": 970,
+   "role": "whole"
+  },
+  "cc_box_in_2": {
+   "file": "cc_box_in_2.wav",
+   "text": "Box in two laps.",
+   "ms": 1260,
+   "role": "whole"
+  },
+  "cc_box_in_3": {
+   "file": "cc_box_in_3.wav",
+   "text": "Box in three laps.",
+   "ms": 1300,
+   "role": "whole"
+  },
+  "cc_box_in_4": {
+   "file": "cc_box_in_4.wav",
+   "text": "Box in four laps.",
+   "ms": 1280,
+   "role": "whole"
+  },
+  "cc_box_in_5": {
+   "file": "cc_box_in_5.wav",
+   "text": "Box in five laps.",
+   "ms": 1360,
+   "role": "whole"
+  },
+  "cc_litres_1": {
+   "file": "cc_litres_1.wav",
+   "text": "One litre.",
+   "ms": 830,
+   "role": "whole"
+  },
+  "cc_litres_2": {
+   "file": "cc_litres_2.wav",
+   "text": "Two litres.",
+   "ms": 860,
+   "role": "whole"
+  },
+  "cc_litres_3": {
+   "file": "cc_litres_3.wav",
+   "text": "Three litres.",
+   "ms": 900,
+   "role": "whole"
+  },
+  "cc_litres_4": {
+   "file": "cc_litres_4.wav",
+   "text": "Four litres.",
+   "ms": 910,
+   "role": "whole"
+  },
+  "cc_litres_5": {
+   "file": "cc_litres_5.wav",
+   "text": "Five litres.",
+   "ms": 940,
+   "role": "whole"
+  },
+  "cc_litres_6": {
+   "file": "cc_litres_6.wav",
+   "text": "Six litres.",
+   "ms": 950,
+   "role": "whole"
+  },
+  "cc_litres_7": {
+   "file": "cc_litres_7.wav",
+   "text": "Seven litres.",
+   "ms": 1030,
+   "role": "whole"
+  },
+  "cc_litres_8": {
+   "file": "cc_litres_8.wav",
+   "text": "Eight litres.",
+   "ms": 900,
+   "role": "whole"
+  },
+  "cc_litres_9": {
+   "file": "cc_litres_9.wav",
+   "text": "Nine litres.",
+   "ms": 1000,
+   "role": "whole"
+  },
+  "cc_litres_10": {
+   "file": "cc_litres_10.wav",
+   "text": "Ten litres.",
+   "ms": 900,
+   "role": "whole"
+  },
+  "cc_litres_11": {
+   "file": "cc_litres_11.wav",
+   "text": "Eleven litres.",
+   "ms": 1090,
+   "role": "whole"
+  },
+  "cc_litres_12": {
+   "file": "cc_litres_12.wav",
+   "text": "Twelve litres.",
+   "ms": 1030,
+   "role": "whole"
+  },
+  "cc_litres_13": {
+   "file": "cc_litres_13.wav",
+   "text": "Thirteen litres.",
+   "ms": 1080,
+   "role": "whole"
+  },
+  "cc_litres_14": {
+   "file": "cc_litres_14.wav",
+   "text": "Fourteen litres.",
+   "ms": 1110,
+   "role": "whole"
+  },
+  "cc_litres_15": {
+   "file": "cc_litres_15.wav",
+   "text": "Fifteen litres.",
+   "ms": 1120,
+   "role": "whole"
+  },
+  "cc_litres_16": {
+   "file": "cc_litres_16.wav",
+   "text": "Sixteen litres.",
+   "ms": 1150,
+   "role": "whole"
+  },
+  "cc_litres_17": {
+   "file": "cc_litres_17.wav",
+   "text": "Seventeen litres.",
+   "ms": 1200,
+   "role": "whole"
+  },
+  "cc_litres_18": {
+   "file": "cc_litres_18.wav",
+   "text": "Eighteen litres.",
+   "ms": 1140,
+   "role": "whole"
+  },
+  "cc_litres_19": {
+   "file": "cc_litres_19.wav",
+   "text": "Nineteen litres.",
+   "ms": 1130,
+   "role": "whole"
+  },
+  "cc_litres_20": {
+   "file": "cc_litres_20.wav",
+   "text": "Twenty litres.",
+   "ms": 1050,
+   "role": "whole"
+  },
+  "cc_litres_21": {
+   "file": "cc_litres_21.wav",
+   "text": "Twenty-one litres.",
+   "ms": 1190,
+   "role": "whole"
+  },
+  "cc_litres_22": {
+   "file": "cc_litres_22.wav",
+   "text": "Twenty-two litres.",
+   "ms": 1260,
+   "role": "whole"
+  },
+  "cc_litres_23": {
+   "file": "cc_litres_23.wav",
+   "text": "Twenty-three litres.",
+   "ms": 1240,
+   "role": "whole"
+  },
+  "cc_litres_24": {
+   "file": "cc_litres_24.wav",
+   "text": "Twenty-four litres.",
+   "ms": 1240,
+   "role": "whole"
+  },
+  "cc_litres_25": {
+   "file": "cc_litres_25.wav",
+   "text": "Twenty-five litres.",
+   "ms": 1240,
+   "role": "whole"
+  },
+  "cc_litres_26": {
+   "file": "cc_litres_26.wav",
+   "text": "Twenty-six litres.",
+   "ms": 1270,
+   "role": "whole"
+  },
+  "cc_litres_27": {
+   "file": "cc_litres_27.wav",
+   "text": "Twenty-seven litres.",
+   "ms": 1390,
+   "role": "whole"
+  },
+  "cc_litres_28": {
+   "file": "cc_litres_28.wav",
+   "text": "Twenty-eight litres.",
+   "ms": 1240,
+   "role": "whole"
+  },
+  "cc_litres_29": {
+   "file": "cc_litres_29.wav",
+   "text": "Twenty-nine litres.",
+   "ms": 1230,
+   "role": "whole"
+  },
+  "cc_litres_30": {
+   "file": "cc_litres_30.wav",
+   "text": "Thirty litres.",
+   "ms": 950,
+   "role": "whole"
+  },
+  "cc_litres_31": {
+   "file": "cc_litres_31.wav",
+   "text": "Thirty-one litres.",
+   "ms": 1110,
+   "role": "whole"
+  },
+  "cc_litres_32": {
+   "file": "cc_litres_32.wav",
+   "text": "Thirty-two litres.",
+   "ms": 1200,
+   "role": "whole"
+  },
+  "cc_litres_33": {
+   "file": "cc_litres_33.wav",
+   "text": "Thirty-three litres.",
+   "ms": 1210,
+   "role": "whole"
+  },
+  "cc_litres_34": {
+   "file": "cc_litres_34.wav",
+   "text": "Thirty-four litres.",
+   "ms": 1190,
+   "role": "whole"
+  },
+  "cc_litres_35": {
+   "file": "cc_litres_35.wav",
+   "text": "Thirty-five litres.",
+   "ms": 1210,
+   "role": "whole"
+  },
+  "cc_litres_36": {
+   "file": "cc_litres_36.wav",
+   "text": "Thirty-six litres.",
+   "ms": 1240,
+   "role": "whole"
+  },
+  "cc_litres_37": {
+   "file": "cc_litres_37.wav",
+   "text": "Thirty-seven litres.",
+   "ms": 1290,
+   "role": "whole"
+  },
+  "cc_litres_38": {
+   "file": "cc_litres_38.wav",
+   "text": "Thirty-eight litres.",
+   "ms": 1160,
+   "role": "whole"
+  },
+  "cc_litres_39": {
+   "file": "cc_litres_39.wav",
+   "text": "Thirty-nine litres.",
+   "ms": 1230,
+   "role": "whole"
+  },
+  "cc_litres_40": {
+   "file": "cc_litres_40.wav",
+   "text": "Forty litres.",
+   "ms": 970,
+   "role": "whole"
+  },
+  "cc_litres_41": {
+   "file": "cc_litres_41.wav",
+   "text": "Forty-one litres.",
+   "ms": 1200,
+   "role": "whole"
+  },
+  "cc_litres_42": {
+   "file": "cc_litres_42.wav",
+   "text": "Forty-two litres.",
+   "ms": 1150,
+   "role": "whole"
+  },
+  "cc_litres_43": {
+   "file": "cc_litres_43.wav",
+   "text": "Forty-three litres.",
+   "ms": 1230,
+   "role": "whole"
+  },
+  "cc_litres_44": {
+   "file": "cc_litres_44.wav",
+   "text": "Forty-four litres.",
+   "ms": 1180,
+   "role": "whole"
+  },
+  "cc_litres_45": {
+   "file": "cc_litres_45.wav",
+   "text": "Forty-five litres.",
+   "ms": 1250,
+   "role": "whole"
+  },
+  "cc_litres_46": {
+   "file": "cc_litres_46.wav",
+   "text": "Forty-six litres.",
+   "ms": 1190,
+   "role": "whole"
+  },
+  "cc_litres_47": {
+   "file": "cc_litres_47.wav",
+   "text": "Forty-seven litres.",
+   "ms": 1310,
+   "role": "whole"
+  },
+  "cc_litres_48": {
+   "file": "cc_litres_48.wav",
+   "text": "Forty-eight litres.",
+   "ms": 1170,
+   "role": "whole"
+  },
+  "cc_litres_49": {
+   "file": "cc_litres_49.wav",
+   "text": "Forty-nine litres.",
+   "ms": 1230,
+   "role": "whole"
+  },
+  "cc_litres_50": {
+   "file": "cc_litres_50.wav",
+   "text": "Fifty litres.",
+   "ms": 980,
+   "role": "whole"
+  },
+  "cc_litres_51": {
+   "file": "cc_litres_51.wav",
+   "text": "Fifty-one litres.",
+   "ms": 1160,
+   "role": "whole"
+  },
+  "cc_litres_52": {
+   "file": "cc_litres_52.wav",
+   "text": "Fifty-two litres.",
+   "ms": 1210,
+   "role": "whole"
+  },
+  "cc_litres_53": {
+   "file": "cc_litres_53.wav",
+   "text": "Fifty-three litres.",
+   "ms": 1280,
+   "role": "whole"
+  },
+  "cc_litres_54": {
+   "file": "cc_litres_54.wav",
+   "text": "Fifty-four litres.",
+   "ms": 1180,
+   "role": "whole"
+  },
+  "cc_litres_55": {
+   "file": "cc_litres_55.wav",
+   "text": "Fifty-five litres.",
+   "ms": 1250,
+   "role": "whole"
+  },
+  "cc_litres_56": {
+   "file": "cc_litres_56.wav",
+   "text": "Fifty-six litres.",
+   "ms": 1270,
+   "role": "whole"
+  },
+  "cc_litres_57": {
+   "file": "cc_litres_57.wav",
+   "text": "Fifty-seven litres.",
+   "ms": 1330,
+   "role": "whole"
+  },
+  "cc_litres_58": {
+   "file": "cc_litres_58.wav",
+   "text": "Fifty-eight litres.",
+   "ms": 1170,
+   "role": "whole"
+  },
+  "cc_litres_59": {
+   "file": "cc_litres_59.wav",
+   "text": "Fifty-nine litres.",
+   "ms": 1230,
+   "role": "whole"
+  },
+  "cc_litres_60": {
+   "file": "cc_litres_60.wav",
+   "text": "Sixty litres.",
+   "ms": 1060,
+   "role": "whole"
+  },
+  "cc_litres_61": {
+   "file": "cc_litres_61.wav",
+   "text": "Sixty-one litres.",
+   "ms": 1250,
+   "role": "whole"
+  },
+  "cc_litres_62": {
+   "file": "cc_litres_62.wav",
+   "text": "Sixty-two litres.",
+   "ms": 1260,
+   "role": "whole"
+  },
+  "cc_litres_63": {
+   "file": "cc_litres_63.wav",
+   "text": "Sixty-three litres.",
+   "ms": 1300,
+   "role": "whole"
+  },
+  "cc_litres_64": {
+   "file": "cc_litres_64.wav",
+   "text": "Sixty-four litres.",
+   "ms": 1250,
+   "role": "whole"
+  },
+  "cc_litres_65": {
+   "file": "cc_litres_65.wav",
+   "text": "Sixty-five litres.",
+   "ms": 1260,
+   "role": "whole"
+  },
+  "cc_litres_66": {
+   "file": "cc_litres_66.wav",
+   "text": "Sixty-six litres.",
+   "ms": 1270,
+   "role": "whole"
+  },
+  "cc_litres_67": {
+   "file": "cc_litres_67.wav",
+   "text": "Sixty-seven litres.",
+   "ms": 1390,
+   "role": "whole"
+  },
+  "cc_litres_68": {
+   "file": "cc_litres_68.wav",
+   "text": "Sixty-eight litres.",
+   "ms": 1230,
+   "role": "whole"
+  },
+  "cc_litres_69": {
+   "file": "cc_litres_69.wav",
+   "text": "Sixty-nine litres.",
+   "ms": 1280,
+   "role": "whole"
+  },
+  "cc_litres_70": {
+   "file": "cc_litres_70.wav",
+   "text": "Seventy litres.",
+   "ms": 1090,
+   "role": "whole"
+  },
+  "cc_litres_71": {
+   "file": "cc_litres_71.wav",
+   "text": "Seventy-one litres.",
+   "ms": 1360,
+   "role": "whole"
+  },
+  "cc_litres_72": {
+   "file": "cc_litres_72.wav",
+   "text": "Seventy-two litres.",
+   "ms": 1370,
+   "role": "whole"
+  },
+  "cc_litres_73": {
+   "file": "cc_litres_73.wav",
+   "text": "Seventy-three litres.",
+   "ms": 1360,
+   "role": "whole"
+  },
+  "cc_litres_74": {
+   "file": "cc_litres_74.wav",
+   "text": "Seventy-four litres.",
+   "ms": 1340,
+   "role": "whole"
+  },
+  "cc_litres_75": {
+   "file": "cc_litres_75.wav",
+   "text": "Seventy-five litres.",
+   "ms": 1380,
+   "role": "whole"
+  },
+  "cc_litres_76": {
+   "file": "cc_litres_76.wav",
+   "text": "Seventy-six litres.",
+   "ms": 1450,
+   "role": "whole"
+  },
+  "cc_litres_77": {
+   "file": "cc_litres_77.wav",
+   "text": "Seventy-seven litres.",
+   "ms": 1460,
+   "role": "whole"
+  },
+  "cc_litres_78": {
+   "file": "cc_litres_78.wav",
+   "text": "Seventy-eight litres.",
+   "ms": 1330,
+   "role": "whole"
+  },
+  "cc_litres_79": {
+   "file": "cc_litres_79.wav",
+   "text": "Seventy-nine litres.",
+   "ms": 1340,
+   "role": "whole"
+  },
+  "cc_litres_80": {
+   "file": "cc_litres_80.wav",
+   "text": "Eighty litres.",
+   "ms": 960,
+   "role": "whole"
+  },
+  "cc_litres_81": {
+   "file": "cc_litres_81.wav",
+   "text": "Eighty-one litres.",
+   "ms": 1190,
+   "role": "whole"
+  },
+  "cc_litres_82": {
+   "file": "cc_litres_82.wav",
+   "text": "Eighty-two litres.",
+   "ms": 1150,
+   "role": "whole"
+  },
+  "cc_litres_83": {
+   "file": "cc_litres_83.wav",
+   "text": "Eighty-three litres.",
+   "ms": 1270,
+   "role": "whole"
+  },
+  "cc_litres_84": {
+   "file": "cc_litres_84.wav",
+   "text": "Eighty-four litres.",
+   "ms": 1190,
+   "role": "whole"
+  },
+  "cc_litres_85": {
+   "file": "cc_litres_85.wav",
+   "text": "Eighty-five litres.",
+   "ms": 1240,
+   "role": "whole"
+  },
+  "cc_litres_86": {
+   "file": "cc_litres_86.wav",
+   "text": "Eighty-six litres.",
+   "ms": 1220,
+   "role": "whole"
+  },
+  "cc_litres_87": {
+   "file": "cc_litres_87.wav",
+   "text": "Eighty-seven litres.",
+   "ms": 1300,
+   "role": "whole"
+  },
+  "cc_litres_88": {
+   "file": "cc_litres_88.wav",
+   "text": "Eighty-eight litres.",
+   "ms": 1150,
+   "role": "whole"
+  },
+  "cc_litres_89": {
+   "file": "cc_litres_89.wav",
+   "text": "Eighty-nine litres.",
+   "ms": 1200,
+   "role": "whole"
+  },
+  "cc_litres_90": {
+   "file": "cc_litres_90.wav",
+   "text": "Ninety litres.",
+   "ms": 1080,
+   "role": "whole"
+  },
+  "cc_litres_91": {
+   "file": "cc_litres_91.wav",
+   "text": "Ninety-one litres.",
+   "ms": 1250,
+   "role": "whole"
+  },
+  "cc_litres_92": {
+   "file": "cc_litres_92.wav",
+   "text": "Ninety-two litres.",
+   "ms": 1280,
+   "role": "whole"
+  },
+  "cc_litres_93": {
+   "file": "cc_litres_93.wav",
+   "text": "Ninety-three litres.",
+   "ms": 1280,
+   "role": "whole"
+  },
+  "cc_litres_94": {
+   "file": "cc_litres_94.wav",
+   "text": "Ninety-four litres.",
+   "ms": 1260,
+   "role": "whole"
+  },
+  "cc_litres_95": {
+   "file": "cc_litres_95.wav",
+   "text": "Ninety-five litres.",
+   "ms": 1310,
+   "role": "whole"
+  },
+  "cc_litres_96": {
+   "file": "cc_litres_96.wav",
+   "text": "Ninety-six litres.",
+   "ms": 1330,
+   "role": "whole"
+  },
+  "cc_litres_97": {
+   "file": "cc_litres_97.wav",
+   "text": "Ninety-seven litres.",
+   "ms": 1400,
+   "role": "whole"
+  },
+  "cc_litres_98": {
+   "file": "cc_litres_98.wav",
+   "text": "Ninety-eight litres.",
+   "ms": 1230,
+   "role": "whole"
+  },
+  "cc_litres_99": {
+   "file": "cc_litres_99.wav",
+   "text": "Ninety-nine litres.",
+   "ms": 1240,
+   "role": "whole"
+  },
+  "cc_litres_100": {
+   "file": "cc_litres_100.wav",
+   "text": "One hundred litres.",
+   "ms": 1310,
+   "role": "whole"
+  },
+  "cc_litres_101": {
+   "file": "cc_litres_101.wav",
+   "text": "One hundred and one litres.",
+   "ms": 1740,
+   "role": "whole"
+  },
+  "cc_litres_102": {
+   "file": "cc_litres_102.wav",
+   "text": "One hundred and two litres.",
+   "ms": 1700,
+   "role": "whole"
+  },
+  "cc_litres_103": {
+   "file": "cc_litres_103.wav",
+   "text": "One hundred and three litres.",
+   "ms": 1770,
+   "role": "whole"
+  },
+  "cc_litres_104": {
+   "file": "cc_litres_104.wav",
+   "text": "One hundred and four litres.",
+   "ms": 1770,
+   "role": "whole"
+  },
+  "cc_litres_105": {
+   "file": "cc_litres_105.wav",
+   "text": "One hundred and five litres.",
+   "ms": 1770,
+   "role": "whole"
+  },
+  "cc_litres_106": {
+   "file": "cc_litres_106.wav",
+   "text": "One hundred and six litres.",
+   "ms": 1760,
+   "role": "whole"
+  },
+  "cc_litres_107": {
+   "file": "cc_litres_107.wav",
+   "text": "One hundred and seven litres.",
+   "ms": 1810,
+   "role": "whole"
+  },
+  "cc_litres_108": {
+   "file": "cc_litres_108.wav",
+   "text": "One hundred and eight litres.",
+   "ms": 1700,
+   "role": "whole"
+  },
+  "cc_litres_109": {
+   "file": "cc_litres_109.wav",
+   "text": "One hundred and nine litres.",
+   "ms": 1790,
+   "role": "whole"
+  },
+  "cc_litres_110": {
+   "file": "cc_litres_110.wav",
+   "text": "One hundred and ten litres.",
+   "ms": 1720,
+   "role": "whole"
+  },
+  "cc_litres_111": {
+   "file": "cc_litres_111.wav",
+   "text": "One hundred and eleven litres.",
+   "ms": 1900,
+   "role": "whole"
+  },
+  "cc_litres_112": {
+   "file": "cc_litres_112.wav",
+   "text": "One hundred and twelve litres.",
+   "ms": 1800,
+   "role": "whole"
+  },
+  "cc_litres_113": {
+   "file": "cc_litres_113.wav",
+   "text": "One hundred and thirteen litres.",
+   "ms": 1900,
+   "role": "whole"
+  },
+  "cc_litres_114": {
+   "file": "cc_litres_114.wav",
+   "text": "One hundred and fourteen litres.",
+   "ms": 1990,
+   "role": "whole"
+  },
+  "cc_litres_115": {
+   "file": "cc_litres_115.wav",
+   "text": "One hundred and fifteen litres.",
+   "ms": 1900,
+   "role": "whole"
+  },
+  "cc_litres_116": {
+   "file": "cc_litres_116.wav",
+   "text": "One hundred and sixteen litres.",
+   "ms": 1860,
+   "role": "whole"
+  },
+  "cc_litres_117": {
+   "file": "cc_litres_117.wav",
+   "text": "One hundred and seventeen litres.",
+   "ms": 2060,
+   "role": "whole"
+  },
+  "cc_litres_118": {
+   "file": "cc_litres_118.wav",
+   "text": "One hundred and eighteen litres.",
+   "ms": 1820,
+   "role": "whole"
+  },
+  "cc_litres_119": {
+   "file": "cc_litres_119.wav",
+   "text": "One hundred and nineteen litres.",
+   "ms": 1950,
+   "role": "whole"
+  },
+  "cc_litres_120": {
+   "file": "cc_litres_120.wav",
+   "text": "One hundred and twenty litres.",
+   "ms": 1800,
+   "role": "whole"
+  },
+  "cc_gallons_1": {
+   "file": "cc_gallons_1.wav",
+   "text": "One gallon.",
+   "ms": 820,
+   "role": "whole"
+  },
+  "cc_gallons_2": {
+   "file": "cc_gallons_2.wav",
+   "text": "Two gallons.",
+   "ms": 880,
+   "role": "whole"
+  },
+  "cc_gallons_3": {
+   "file": "cc_gallons_3.wav",
+   "text": "Three gallons.",
+   "ms": 910,
+   "role": "whole"
+  },
+  "cc_gallons_4": {
+   "file": "cc_gallons_4.wav",
+   "text": "Four gallons.",
+   "ms": 950,
+   "role": "whole"
+  },
+  "cc_gallons_5": {
+   "file": "cc_gallons_5.wav",
+   "text": "Five gallons.",
+   "ms": 980,
+   "role": "whole"
+  },
+  "cc_gallons_6": {
+   "file": "cc_gallons_6.wav",
+   "text": "Six gallons.",
+   "ms": 980,
+   "role": "whole"
+  },
+  "cc_gallons_7": {
+   "file": "cc_gallons_7.wav",
+   "text": "Seven gallons.",
+   "ms": 1020,
+   "role": "whole"
+  },
+  "cc_gallons_8": {
+   "file": "cc_gallons_8.wav",
+   "text": "Eight gallons.",
+   "ms": 920,
+   "role": "whole"
+  },
+  "cc_gallons_9": {
+   "file": "cc_gallons_9.wav",
+   "text": "Nine gallons.",
+   "ms": 1010,
+   "role": "whole"
+  },
+  "cc_gallons_10": {
+   "file": "cc_gallons_10.wav",
+   "text": "Ten gallons.",
+   "ms": 950,
+   "role": "whole"
+  },
+  "cc_gallons_11": {
+   "file": "cc_gallons_11.wav",
+   "text": "Eleven gallons.",
+   "ms": 1080,
+   "role": "whole"
+  },
+  "cc_gallons_12": {
+   "file": "cc_gallons_12.wav",
+   "text": "Twelve gallons.",
+   "ms": 1010,
+   "role": "whole"
+  },
+  "cc_gallons_13": {
+   "file": "cc_gallons_13.wav",
+   "text": "Thirteen gallons.",
+   "ms": 1090,
+   "role": "whole"
+  },
+  "cc_gallons_14": {
+   "file": "cc_gallons_14.wav",
+   "text": "Fourteen gallons.",
+   "ms": 1110,
+   "role": "whole"
+  },
+  "cc_gallons_15": {
+   "file": "cc_gallons_15.wav",
+   "text": "Fifteen gallons.",
+   "ms": 1120,
+   "role": "whole"
+  },
+  "cc_gallons_16": {
+   "file": "cc_gallons_16.wav",
+   "text": "Sixteen gallons.",
+   "ms": 1130,
+   "role": "whole"
+  },
+  "cc_gallons_17": {
+   "file": "cc_gallons_17.wav",
+   "text": "Seventeen gallons.",
+   "ms": 1190,
+   "role": "whole"
+  },
+  "cc_gallons_18": {
+   "file": "cc_gallons_18.wav",
+   "text": "Eighteen gallons.",
+   "ms": 1100,
+   "role": "whole"
+  },
+  "cc_gallons_19": {
+   "file": "cc_gallons_19.wav",
+   "text": "Nineteen gallons.",
+   "ms": 1160,
+   "role": "whole"
+  },
+  "cc_gallons_20": {
+   "file": "cc_gallons_20.wav",
+   "text": "Twenty gallons.",
+   "ms": 990,
+   "role": "whole"
+  },
+  "cc_gallons_21": {
+   "file": "cc_gallons_21.wav",
+   "text": "Twenty-one gallons.",
+   "ms": 1210,
+   "role": "whole"
+  },
+  "cc_gallons_22": {
+   "file": "cc_gallons_22.wav",
+   "text": "Twenty-two gallons.",
+   "ms": 1270,
+   "role": "whole"
+  },
+  "cc_gallons_23": {
+   "file": "cc_gallons_23.wav",
+   "text": "Twenty-three gallons.",
+   "ms": 1250,
+   "role": "whole"
+  },
+  "cc_gallons_24": {
+   "file": "cc_gallons_24.wav",
+   "text": "Twenty-four gallons.",
+   "ms": 1220,
+   "role": "whole"
+  },
+  "cc_gallons_25": {
+   "file": "cc_gallons_25.wav",
+   "text": "Twenty-five gallons.",
+   "ms": 1310,
+   "role": "whole"
+  },
+  "cc_gallons_26": {
+   "file": "cc_gallons_26.wav",
+   "text": "Twenty-six gallons.",
+   "ms": 1270,
+   "role": "whole"
+  },
+  "cc_gallons_27": {
+   "file": "cc_gallons_27.wav",
+   "text": "Twenty-seven gallons.",
+   "ms": 1380,
+   "role": "whole"
+  },
+  "cc_gallons_28": {
+   "file": "cc_gallons_28.wav",
+   "text": "Twenty-eight gallons.",
+   "ms": 1260,
+   "role": "whole"
+  },
+  "cc_gallons_29": {
+   "file": "cc_gallons_29.wav",
+   "text": "Twenty-nine gallons.",
+   "ms": 1280,
+   "role": "whole"
+  },
+  "cc_gallons_30": {
+   "file": "cc_gallons_30.wav",
+   "text": "Thirty gallons.",
+   "ms": 930,
+   "role": "whole"
+  },
+  "cc_gallons_31": {
+   "file": "cc_gallons_31.wav",
+   "text": "Thirty-one gallons.",
+   "ms": 1150,
+   "role": "whole"
+  },
+  "cc_gallons_32": {
+   "file": "cc_gallons_32.wav",
+   "text": "Thirty-two gallons.",
+   "ms": 1150,
+   "role": "whole"
+  },
+  "cc_laps_fuel_1": {
+   "file": "cc_laps_fuel_1.wav",
+   "text": "One lap of fuel.",
+   "ms": 1170,
+   "role": "whole"
+  },
+  "cc_laps_fuel_2": {
+   "file": "cc_laps_fuel_2.wav",
+   "text": "Two laps of fuel.",
+   "ms": 1210,
+   "role": "whole"
+  },
+  "cc_car_behind_closing": {
+   "file": "cc_car_behind_closing.wav",
+   "text": "Car behind closing,",
+   "ms": 1160,
+   "role": "lead"
+  },
+  "cc_rate_1": {
+   "file": "cc_rate_1.wav",
+   "text": "a tenth a lap.",
+   "ms": 1020,
+   "role": "tail"
+  },
+  "cc_gaining_on_the_car_ahead": {
+   "file": "cc_gaining_on_the_car_ahead.wav",
+   "text": "Gaining on the car ahead,",
+   "ms": 1320,
+   "role": "lead"
+  },
+  "cc_rate_2": {
+   "file": "cc_rate_2.wav",
+   "text": "two tenths a lap.",
+   "ms": 1140,
+   "role": "tail"
+  },
+  "cc_rate_3": {
+   "file": "cc_rate_3.wav",
+   "text": "three tenths a lap.",
+   "ms": 1260,
+   "role": "tail"
+  },
+  "cc_rate_4": {
+   "file": "cc_rate_4.wav",
+   "text": "four tenths a lap.",
+   "ms": 1250,
+   "role": "tail"
+  },
+  "cc_rate_5": {
+   "file": "cc_rate_5.wav",
+   "text": "five tenths a lap.",
+   "ms": 1250,
+   "role": "tail"
+  },
+  "cc_rate_6": {
+   "file": "cc_rate_6.wav",
+   "text": "six tenths a lap.",
+   "ms": 1230,
+   "role": "tail"
+  },
+  "cc_rate_7": {
+   "file": "cc_rate_7.wav",
+   "text": "seven tenths a lap.",
+   "ms": 1300,
+   "role": "tail"
+  },
+  "cc_rate_8": {
+   "file": "cc_rate_8.wav",
+   "text": "eight tenths a lap.",
+   "ms": 1120,
+   "role": "tail"
+  },
+  "cc_rate_9": {
+   "file": "cc_rate_9.wav",
+   "text": "nine tenths a lap.",
+   "ms": 1260,
+   "role": "tail"
+  },
+  "cc_rate_10": {
+   "file": "cc_rate_10.wav",
+   "text": "one second a lap.",
+   "ms": 1170,
+   "role": "tail"
+  },
+  "cc_rate_11": {
+   "file": "cc_rate_11.wav",
+   "text": "one point one seconds a lap.",
+   "ms": 1780,
+   "role": "tail"
+  },
+  "cc_rate_12": {
+   "file": "cc_rate_12.wav",
+   "text": "one point two seconds a lap.",
+   "ms": 1830,
+   "role": "tail"
+  },
+  "cc_rate_13": {
+   "file": "cc_rate_13.wav",
+   "text": "one point three seconds a lap.",
+   "ms": 1890,
+   "role": "tail"
+  },
+  "cc_rate_14": {
+   "file": "cc_rate_14.wav",
+   "text": "one point four seconds a lap.",
+   "ms": 1930,
+   "role": "tail"
+  },
+  "cc_rate_15": {
+   "file": "cc_rate_15.wav",
+   "text": "one point five seconds a lap.",
+   "ms": 1980,
+   "role": "tail"
+  },
+  "cc_rate_16": {
+   "file": "cc_rate_16.wav",
+   "text": "one point six seconds a lap.",
+   "ms": 1900,
+   "role": "tail"
+  },
+  "cc_rate_17": {
+   "file": "cc_rate_17.wav",
+   "text": "one point seven seconds a lap.",
+   "ms": 2000,
+   "role": "tail"
+  },
+  "cc_rate_18": {
+   "file": "cc_rate_18.wav",
+   "text": "one point eight seconds a lap.",
+   "ms": 1850,
+   "role": "tail"
+  },
+  "cc_rate_19": {
+   "file": "cc_rate_19.wav",
+   "text": "one point nine seconds a lap.",
+   "ms": 1880,
+   "role": "tail"
+  },
+  "cc_rate_20": {
+   "file": "cc_rate_20.wav",
+   "text": "two seconds a lap.",
+   "ms": 1090,
+   "role": "tail"
+  },
+  "cc_off_3": {
+   "file": "cc_off_3.wav",
+   "text": "Three tenths off target.",
+   "ms": 1420,
+   "role": "whole"
+  },
+  "cc_off_4": {
+   "file": "cc_off_4.wav",
+   "text": "Four tenths off target.",
+   "ms": 1390,
+   "role": "whole"
+  },
+  "cc_off_5": {
+   "file": "cc_off_5.wav",
+   "text": "Five tenths off target.",
+   "ms": 1490,
+   "role": "whole"
+  },
+  "cc_off_6": {
+   "file": "cc_off_6.wav",
+   "text": "Six tenths off target.",
+   "ms": 1460,
+   "role": "whole"
+  },
+  "cc_off_7": {
+   "file": "cc_off_7.wav",
+   "text": "Seven tenths off target.",
+   "ms": 1540,
+   "role": "whole"
+  },
+  "cc_off_8": {
+   "file": "cc_off_8.wav",
+   "text": "Eight tenths off target.",
+   "ms": 1390,
+   "role": "whole"
+  },
+  "cc_off_9": {
+   "file": "cc_off_9.wav",
+   "text": "Nine tenths off target.",
+   "ms": 1490,
+   "role": "whole"
+  },
+  "cc_off_10": {
+   "file": "cc_off_10.wav",
+   "text": "One second off target.",
+   "ms": 1430,
+   "role": "whole"
+  },
+  "cc_off_11": {
+   "file": "cc_off_11.wav",
+   "text": "One point one seconds off target.",
+   "ms": 1990,
+   "role": "whole"
+  },
+  "cc_off_12": {
+   "file": "cc_off_12.wav",
+   "text": "One point two seconds off target.",
+   "ms": 1950,
+   "role": "whole"
+  },
+  "cc_off_13": {
+   "file": "cc_off_13.wav",
+   "text": "One point three seconds off target.",
+   "ms": 1980,
+   "role": "whole"
+  },
+  "cc_off_14": {
+   "file": "cc_off_14.wav",
+   "text": "One point four seconds off target.",
+   "ms": 2000,
+   "role": "whole"
+  },
+  "cc_off_15": {
+   "file": "cc_off_15.wav",
+   "text": "One point five seconds off target.",
+   "ms": 2050,
+   "role": "whole"
+  },
+  "cc_off_16": {
+   "file": "cc_off_16.wav",
+   "text": "One point six seconds off target.",
+   "ms": 2000,
+   "role": "whole"
+  },
+  "cc_off_17": {
+   "file": "cc_off_17.wav",
+   "text": "One point seven seconds off target.",
+   "ms": 2170,
+   "role": "whole"
+  },
+  "cc_off_18": {
+   "file": "cc_off_18.wav",
+   "text": "One point eight seconds off target.",
+   "ms": 1970,
+   "role": "whole"
+  },
+  "cc_off_19": {
+   "file": "cc_off_19.wav",
+   "text": "One point nine seconds off target.",
+   "ms": 2050,
+   "role": "whole"
+  },
+  "cc_off_20": {
+   "file": "cc_off_20.wav",
+   "text": "Two seconds off target.",
+   "ms": 1430,
+   "role": "whole"
   }
  }
 }

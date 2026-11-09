@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.29.0 "Crew chief"
+
+In a race Debrief now acts as your crew chief. It reads your car and your class live from iRacing and tells you, in a few short words, what matters: fuel, when to box, what a caution means for you, and who is around you.
+
+- **Fuel.** Your fuel use is the middle value of your clean green laps (lap 1, pit laps, caution laps and tows are left out), so one bad lap cannot throw it. The pit board shows laps of fuel left, in litres or gallons as set in **Settings > Units**. The tank is the car's tank times the race's fuel percentage.
+- **Laps to go.** A lap race uses iRacing's own count. A timed race uses the time left and the leader's recent lap time (your class leader in a multi-class race), adds the extra lap after the clock, and takes off the time of the stops still to make. The stop time is what your last stops really cost; until you have made one it uses your saved stint plan (matched by track, not by car), then an assumed 25 seconds, and the board says which.
+- **Pit window.** The earliest lap that still reaches the flag with one more stop, the latest lap before the tank runs dry (always keeping one lap of reserve, the same rule as the stint plan), how much fuel to add, and how much you would have to save per lap to skip the stop. Against your saved stint plan it says on plan, ahead or behind by laps.
+- **Caution.** A full-course caution with the window open, or opening within 3 laps, gives "Box now, cheap stop". A caution is never counted as a pit stop and its laps never count in your fuel use, lap pace or the gaps.
+- **The cars around you** (your class only). Gap, how fast it is closing per lap (smoothed over three laps), laps until contact, and a tag: threat, catchable, pulling away, pitting or alongside. A car is only "pitting" when it is on pit road, never because it was slow.
+- **What it says, most urgent first:** data lost, fuel critical (under 2 laps), box this lap or within 3 laps, caution cheap stop, car closing behind, car alongside, catchable car ahead, car ahead pitting, plan or position changed, a lap well off your target. The same kind of call is not repeated inside 2 laps unless it gets more urgent.
+- **Voice.** It uses your coach voice. It stays silent under braking and while a car is alongside, except for "Car alongside" and fuel critical. One shared queue: fuel critical first, then the crew chief, then the coaching cues. All six voices have the new clips. Mute stops everything except fuel critical. A phrase a voice has no clip for stays on screen and in the log.
+- **Pit board.** The Coach page has a Crew chief panel: the current call, position in class, laps to go, BOX BY (in how many laps, the window, fuel to add), car ahead, car behind and your last lap against target. The overlay has one more line: fuel laps, window and plan. **Settings** has two new switches, **Crew chief calls** and **Crew chief voice**, both on.
+- **Race log.** Every call is saved with the situation that caused it (fuel, laps to go, gaps) into the recorded session, for your review afterwards.
+- **Light on the PC.** In the resource check (tools/perf_audit.py) the crew chief uses about 0.1% of one CPU core at 20 readings a second with 64 cars (limit 1%).
+- Not proven yet: the real iRacing flag and caution bits (checked against pyirsdk's names only where it is installed; stand-in data otherwise); real fuel use over a long race; the voice in a real race (what feels too much or too little); the overlay line on Windows; the multi-class leader pick; the gaps from iRacing's F2Time/EstTime and the car-alongside signal on real traffic.
+
 ## 2.28.1 "Clearer habits"
 
 The habits part of a review ("Driving style / habits") now reads the same way everywhere: what happened, what it costs, what to try next race. Nothing was dropped: the detailed numbers moved into a **Show the numbers** fold on each card.

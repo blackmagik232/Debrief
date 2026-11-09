@@ -1089,7 +1089,7 @@ def _jsonable(o):
 
 
 COACH_FIELDS = {"in_races": bool, "markers": bool, "feedback": bool, "lap_delta": bool, "brake_beep": bool,
-                "notes": bool, "learn_cues": bool,
+                "notes": bool, "learn_cues": bool, "crew_calls": bool, "crew_voice": bool,
                 "top_n": (1, 3, "Focus corners must be 1, 2 or 3."), "volume": (0, 100, "Volume must be 0 to 100."),
                 "rate": (-10, 10, "Speaking speed must be -10 to 10."), "level": lambda v: clean_level(v),
                 "lap_times": lambda v: clean_lap_times(v),
@@ -2130,7 +2130,7 @@ class DebriefServer(ThreadingHTTPServer):
         r = vc = None
         try:
             src = (source_factory() if source_factory else self.coach_source_factory() if self.coach_source_factory
-                   else livecoach.IrsdkSource(rate_hz=settings.sample_hz))
+                   else livecoach.IrsdkSource(rate_hz=settings.sample_hz, crew=(mode == "live")))
             vc = coach2.make_voice(self, settings)
             folder, index_of = None, None
             try:
@@ -2143,11 +2143,12 @@ class DebriefServer(ThreadingHTTPServer):
                 pass
             self.coach_weak_info = None
             given = carsetup.coach_reference(self, settings)     # 2.15: a teammate's lap, when he chose it
+            crew_kw = self._crew_kwargs(mode)
             r = livecoach.LiveRunner(src, vc, settings=settings, telemetry_dir=folder, weak_for=self.coach_weak_for,
                                      log=app.say, reference_index=index_of, focus_for=self.coach_focus_for,
                                      reference=given, keep_given=given is not None, log_dir=coach2.logs_dir(),
                                      mode=mode, log_header=log_header, notes=coach2.notes_store(self),
-                                     mic=coach2.mic_backend_fn(self))
+                                     mic=coach2.mic_backend_fn(self), **crew_kw)
             r.start()
         except Exception:  # noqa: BLE001
             app.say("ERROR starting the coach:\n" + traceback.format_exc())
@@ -2180,6 +2181,20 @@ class DebriefServer(ThreadingHTTPServer):
         coach2.start_wheel(self)              # Coach 2.0: the wheel button for "Repeat that"
         app.say("Coach started." if mode == "live" else "Coach rehearsal started.")
         return {"ok": True}
+
+    def _crew_kwargs(self, mode) -> dict:
+        """2.29 Crew chief: its saved stint plan for the track (Endurance planner) and the race log (into the 2.27
+        recording of the session). Live driving only."""
+        if mode != "live":
+            return {}
+        from .. import crewchief
+        try:
+            lib = app.load_settings()["library_folder"]
+        except (SystemExit, OSError, KeyError):
+            return {}
+        return {"crew_plan_for": lambda track, lib=lib: crewchief.load_plan(lib, track),
+                "crew_log": crewchief.CrewLog(lambda lib=lib: crewchief.recording_folder(lib), coach2.logs_dir(),
+                                              log=app.say)}
 
     @staticmethod
     def _close_coach_parts(runner, hotkey, voice, timeout=3.0) -> bool:
@@ -2239,7 +2254,9 @@ class DebriefServer(ThreadingHTTPServer):
                   "reference": last.get("reference"), "corners": last.get("corners") or 0, "weak": last.get("weak") or [],
                   "last_lap": last.get("last_lap"), "spoken": last.get("spoken") or [], "events": [], "voice": None,
                   "error": "", "errors": 0, "car": last.get("car") or "", "track": last.get("track") or "",
-                  "settings": self.coach_settings().to_dict()}
+                  "settings": self.coach_settings().to_dict(),
+                  "crew": last.get("crew") or {"enabled": bool(self.coach_settings().crew_calls), "state": "off",
+                                               "text": "Start the coach to use the crew chief in a race."}}
         st["hotkey"] = {"key": "Ctrl+Shift+M", "on": bool(hk is not None and getattr(hk, "registered", False))}
         try:
             st["wheel"] = self.wheel_status()

@@ -1,6 +1,9 @@
-George (British male) (engineer): 560 clips, 18.76 MB, 16000 Hz, speed 1.25, comma pause 60 ms
+George (British male) (engineer): 771 clips, 27.65 MB, 16000 Hz, speed 1.25, comma pause 60 ms
 Coach phrases covered: 5308 of 5308 (100.0%)
 Left to Windows speech by design: Good, 0 .. Good, 19 (20 phrases)
+Takes to listen to: 0 (new lines only)
+
+Earlier lines:
 Takes to listen to: 0 (new lines only)
 
 Earlier lines:

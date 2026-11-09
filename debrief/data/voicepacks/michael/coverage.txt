@@ -1,6 +1,9 @@
-Michael (American male) (michael): 560 clips, 19.78 MB, 16000 Hz, speed 1.00, comma pause 40 ms
+Michael (American male) (michael): 771 clips, 28.95 MB, 16000 Hz, speed 1.00, comma pause 40 ms
 Coach phrases covered: 5308 of 5308 (100.0%)
 Left to Windows speech by design: Good, 0 .. Good, 19 (20 phrases)
+Takes to listen to: 0 (new lines only)
+
+Earlier lines:
 Takes to listen to: 4 (new lines only)
   line 445 'Turn four, three down on your best.': spoken as 'Turn four... three down on your best.' to get a pause at the comma (listen to the join)
   line 446 'Turn five, four down on your best.': spoken as 'Turn five. Four down on your best.' to get a pause at the comma (listen to the join)

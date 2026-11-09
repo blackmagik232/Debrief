@@ -221,7 +221,7 @@ for pid in want:
     check(max(jumps) < 0.005, f"{pid}: no clicks at joins ({max(jumps):.4f})")
     secs = [len(x) / pack.rate for x in pack.clips.values()]
     check(0.15 < min(secs) and max(secs) < 4.0, f"{pid}: clip lengths sensible ({min(secs):.2f} .. {max(secs):.2f} s)")
-check(total < 125e6, f"bundled packs total {total / 1e6:.1f} MB (2.20: 560 clips each, about 19 MB a voice)")
+check(total < 185e6, f"bundled packs total {total / 1e6:.1f} MB (2.20: 560 clips each, about 19 MB a voice)")
 
 # ---------------------------------------------------------------- manifest validation
 print("-- manifest checks")

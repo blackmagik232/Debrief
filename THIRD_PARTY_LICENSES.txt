@@ -1424,7 +1424,8 @@ Licence: not needed (ideas only, no code used)
 
 Crew Chief by Jim Britton and the Crew Chief contributors, https://gitlab.com/mr_belowski/CrewChiefV4.
 Debrief took ideas from it about how a spoken coach should behave in the car. No code, sounds or other files
-were copied, so no licence text is needed; it is credited here with thanks.
+were copied, so no licence text is needed; it is credited here with thanks. The 2.29 crew chief voice calls were also
+made with Kokoro-82M (see above) and follow the same ideas.
 
 ==============================================================================
 PyInstaller (builds Debrief.exe; not shipped as a library)

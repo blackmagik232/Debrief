@@ -35,7 +35,8 @@ Every third-party part Debrief uses or ships, who made it, its licence and where
 
 | Name | Author | Licence | Link | What for |
 |---|---|---|---|---|
-| Crew Chief | Jim Britton and the Crew Chief contributors | Not needed: ideas only, no code used | <https://gitlab.com/mr_belowski/CrewChiefV4> | Ideas for how a spoken coach should behave in the car. Ideas only: no code or sounds were taken from it. |
+| Crew Chief | Jim Britton and the Crew Chief contributors | Not needed: ideas only, no code used | <https://gitlab.com/mr_belowski/CrewChiefV4> | Ideas for how a spoken coach should behave in the car. Ideas only: no code or sounds were taken from it. In 2.29 the crew chief's habits (short calls, nothing said twice in a row, quiet moments, a caution is not a pit stop) follow the same spirit. |
+| Debrief's own Race Room and stint plan | Black Magik Studios | Part of Debrief | (this repository) | The pit board layout, the rival gap/closing-rate idea and the pit-window rule (one lap of reserve, as in strategy.py) were reused from Debrief's own earlier work. |
 
 ## Used if already installed
 

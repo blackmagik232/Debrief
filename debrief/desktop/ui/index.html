@@ -516,6 +516,24 @@
         <p class="note" id="coVoiceLine"></p>
         <p class="note warn">Keep Debrief open while you drive.</p>
       </div>
+      <div class="panel crewpanel" id="crPanel">
+        <div class="phead"><h3>Crew chief</h3><span class="pill" id="crPill">Off</span></div>
+        <p class="costatus" id="crText" role="status">Start the coach to use the crew chief in a race.</p>
+        <div class="crgrid" id="crGrid" hidden>
+          <div class="crcard crcall" id="crCallCard"><span class="dlab">Call</span><b id="crCall">Waiting for the race.</b><span class="crsub" id="crCallSub"></span></div>
+          <div class="crcard"><span class="dlab">Position</span><b class="num" id="crPos">--</b><span class="crsub" id="crPosSub"></span></div>
+          <div class="crcard"><span class="dlab">Laps left</span><b class="num" id="crLeft">--</b><span class="crsub" id="crLeftSub"></span></div>
+          <div class="crcard crbox" id="crBoxCard"><span class="dlab">Box by</span><b class="num" id="crBox">--</b><span class="crsub" id="crBoxWin"></span><span class="crsub" id="crBoxAdd"></span><span class="crsub" id="crBoxSave"></span></div>
+          <div class="crcard"><span class="dlab">Fuel</span><b class="num" id="crFuel">--</b><span class="crsub" id="crFuelSub"></span></div>
+          <div class="crcard" id="crAheadCard"><span class="dlab">Car ahead</span><b class="num" id="crAhead">--</b><span class="crsub" id="crAheadSub"></span></div>
+          <div class="crcard" id="crBehindCard"><span class="dlab">Car behind</span><b class="num" id="crBehind">--</b><span class="crsub" id="crBehindSub"></span></div>
+          <div class="crcard"><span class="dlab">Last lap</span><b class="num" id="crLap">--</b><span class="crsub" id="crLapSub"></span></div>
+        </div>
+        <p class="note" id="crPlan" hidden></p>
+        <ul class="cospoken crcalls" id="crCalls" hidden></ul>
+        <p class="note" id="crPerf" hidden></p>
+        <p class="note">Reads iRacing's own numbers while you race: your fuel, the laps to go, when to pit, and the cars right in front of and behind you in your class. It calls out what matters in a few words and writes every call into the recording of the race. Turn the calls or the voice off under Settings.</p>
+      </div>
       <div class="panel" id="cnCoach">
         <div class="phead"><h3>Corner notes and microphone</h3><span class="pill" id="cnPill">Off</span></div>
         <p class="note"><b>Press and hold Ctrl+Shift+V (or your wheel button), say your note, let go.</b></p>
@@ -647,6 +665,8 @@
           <label class="check" for="coMarkers"><input id="coMarkers" type="checkbox"><span>Brake marker before a focus corner</span></label>
           <label class="check" for="coFeedback"><input id="coFeedback" type="checkbox"><span>A word after a focus corner</span></label>
           <label class="check" for="coLapDelta"><input id="coLapDelta" type="checkbox"><span>Your lap against your best</span></label>
+          <label class="check" for="coCrewCalls"><input id="coCrewCalls" type="checkbox"><span>Crew chief calls: fuel, when to pit, and the cars around you in a race</span></label>
+          <label class="check" for="coCrewVoice"><input id="coCrewVoice" type="checkbox"><span>Crew chief voice: say the calls out loud</span></label>
           <label class="check" for="coBeep"><input id="coBeep" type="checkbox"><span>A short beep at a focus corner's brake point</span></label>
           <label class="check" for="coNotes"><input id="coNotes" type="checkbox"><span>Play my corner notes before their corners</span></label>
           <label class="check" for="coLearn"><input id="coLearn" type="checkbox"><span>Learning the track: say how a corner compares with my best so far in this session ("T5, 3 down on your best", "T3, braked 15 metres later", "T4, off track")</span></label>

@@ -358,6 +358,8 @@ def coach_vocabulary() -> list:
         out += [livecoach.learn_on_text(name)]
     for m in ("peak_brake", "brake_point", "trail", "coast", "throttle_point", "min_speed", "corner_time"):
         out += practiceplan.cue_vocabulary({"metric": m})
+    from debrief import crewchief            # 2.29: the crew chief's calls, in litres and in gallons
+    out += crewchief.vocabulary("kmh") + crewchief.vocabulary("mph")
     return list(dict.fromkeys(out))
 
 

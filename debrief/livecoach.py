@@ -63,7 +63,8 @@ from pathlib import Path
 
 import numpy as np
 
-from . import cornernotes, engine, ibt, livedata, voicepack
+from . import cornernotes, crewchief, engine, ibt, livedata, perfmeter, voicepack
+from . import units as _units
 
 GRID = 1000                 # reference points around the lap
 KMH = 3.6
@@ -178,6 +179,9 @@ class Settings:
     learn_cues: bool = True             # Learning the track: words against his own best so far in this session
     note_hotkey: str = "ctrl+shift+v"   # hold to record a corner note
     use_lap_hotkey: str = "ctrl+shift+l"  # "use this lap" as the reference
+    # 2.29 Crew chief (fuel, pit window, rivals): the calls in the window, and the voice for them
+    crew_calls: bool = True
+    crew_voice: bool = True
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -2550,8 +2554,14 @@ class IrsdkSource(livedata.LiveReader):
     livedata.LiveReader's (the background recorder uses the same one). read() returns None while iRacing isn't
     running (and tries to reconnect every couple of seconds); state is 'not_installed', 'not_running' or 'connected'."""
 
-    def __init__(self, rate_hz: float = 20.0, retry_s: float = 2.0):
-        super().__init__(rate_hz=rate_hz, retry_s=retry_s, own=CHANNELS)
+    def __init__(self, rate_hz: float = 20.0, retry_s: float = 2.0, crew: bool = False):
+        """crew (2.29): also read what the crew chief needs: fuel, the race clock, flags, and the CarIdx arrays of
+        the whole field (about 4 times a second; the latest copy is s["_field"])."""
+        super().__init__(rate_hz=rate_hz, retry_s=retry_s,
+                         own=CHANNELS + (crewchief.CREW_OWN if crew else ()),
+                         field=livedata.FIELD_CHANNELS if crew else ())
+        self._field_last = None
+        self._field_next = 0.0
         self._types: dict = {}
         self._info: dict | None = None
         self._info_v = -1
@@ -2590,6 +2600,14 @@ class IrsdkSource(livedata.LiveReader):
                 self._info_v = v
                 self._derive(sections)
         s["SessionType"] = self._types.get(s.get("SessionNum"), "")
+        if self.field:
+            now = time.monotonic()
+            if now >= self._field_next:
+                self._field_next = now + 0.25
+                f = self.read_field()
+                if f:
+                    self._field_last = f
+            s["_field"] = self._field_last
         return s
 
 
@@ -2668,7 +2686,7 @@ class LiveRunner:
     def __init__(self, source, voice, settings: Settings | None = None, reference: Reference | None = None,
                  weak_corners=None, telemetry_dir=None, weak_for=None, log=None, clock=time.monotonic,
                  reference_index=None, focus_for=None, keep_given=False, log_dir=None, mode: str = "live",
-                 log_header: dict | None = None, notes=None, mic=None):
+                 log_header: dict | None = None, notes=None, mic=None, crew=None, crew_plan_for=None, crew_log=None):
         self.source = source
         self.mode = mode                # Coach 2.0: "live" (iRacing) or "rehearsal" (one of his files played back)
         self._log_dir = log_dir         # Coach 2.0 cue log folder (None: no log)
@@ -2698,7 +2716,6 @@ class LiveRunner:
         self._weak_for = weak_for
         self._weak_static = weak_corners
         self._log = log or _LOG.warning
-        from . import perfmeter        # 2.26: how much of the PC this loop uses (Coach page, diagnostics)
         self.perf = perfmeter.PerfMeter("coach", on_slow=lambda m: self._log("livecoach: " + m))
         self._clock = clock
         self._stop = threading.Event()
@@ -2723,6 +2740,18 @@ class LiveRunner:
         self.skipped = 0                # cues made while skipping (never said)
         self._focus_saved = None        # 2.18: the last focus count written to focus-results.json
         self.coach.on_event = self._on_event
+        # 2.29 Crew chief: fuel, pit window, rivals. Only when driving live; it speaks through the same voice.
+        self.crew = crew if crew is not None else (crewchief.CrewChief(units=self.settings.units, clock=clock)
+                                                   if mode == "live" else None)
+        self.crew_speaker = crewchief.CallSpeaker(voice_on=self.settings.crew_voice)
+        self.crew_perf = perfmeter.PerfMeter("crewchief", on_slow=lambda m: self._log("crewchief: " + m))
+        self.crew_log = crew_log
+        self._crew_plan_for = crew_plan_for
+        self._crew_info_v = None
+        self._crew_plan_key = None
+        self._crew_lap_logged = None
+        self._crew_noclip: set = set()
+        self.crew_note = ""
 
     def _voice_duration(self, text):
         fn = getattr(self.voice, "duration", None)
@@ -3131,7 +3160,7 @@ class LiveRunner:
                 "show": show_state(st, self.running(), self.mode, cs["muted"]), "mute": self.mute_state(),
                 "repeat_note": self.repeat_note, "live_delta": self.coach.live_delta, "speed": self.speed,
                 "skipping": (self._skip or {}).get("what"), "skip_note": self.skip_note, "skipped": self.skipped,
-                "perf": self.perf.summary()}
+                "perf": self.perf.summary(), "crew": self.crew_status()}
 
     def _notes_here(self):
         """How many of his notes are for the track he is on (the Coach page says so), or None without a store."""
@@ -3180,6 +3209,7 @@ class LiveRunner:
                     if self._state not in ("error",):
                         self._state = "waiting"
                     self._key = None
+                    self._crew_idle()
                     self._stop.wait(1.0)
                     continue
                 try:
@@ -3210,6 +3240,7 @@ class LiveRunner:
                         cues = []
                     if self.coach.take_cancel():
                         _call(self.voice, "cancel")
+                    self._crew_step(s)                   # 2.29: fuel, pit window, rivals (its own cost is metered)
                     for cue in cues:
                         try:
                             if cue.kind == KIND_BEEP:
@@ -3252,6 +3283,120 @@ class LiveRunner:
                 self.source.close()
             except Exception:  # noqa: BLE001
                 pass
+            if self.crew_log is not None:
+                try:
+                    self.crew_log.close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    # ---- 2.29 the crew chief (its own thread is this one; its cost is metered separately) ----
+    def _crew_on(self) -> bool:
+        return self.crew is not None and bool(self.settings.crew_calls)
+
+    def _crew_context(self):
+        """Hand the crew chief the session text when it changed, and its saved stint plan for the track."""
+        crew = self.crew
+        fn = getattr(self.source, "info_sections", None)
+        if not callable(fn):
+            return
+        ver, secs = fn()
+        if secs and ver != self._crew_info_v:
+            self._crew_info_v = ver
+            crew.set_info(secs, ver)
+        key = crew.track_name
+        if key and key != self._crew_plan_key and self._crew_plan_for is not None:
+            self._crew_plan_key = key
+            try:
+                crew.set_plan(self._crew_plan_for(key))
+            except Exception:  # noqa: BLE001
+                crew.set_plan(None)
+
+    def _crew_step(self, s: dict):
+        if not self._crew_on():
+            return
+        w0, c0 = time.perf_counter(), time.thread_time()
+        try:
+            now = self._clock()
+            crew = self.crew
+            crew.units = _units.norm(self.settings.units)
+            self._crew_context()
+            calls = crew.feed(s, s.get("_field"), now=now)
+            self._crew_deliver(calls, s, now)
+        except Exception as e:  # noqa: BLE001  (the crew chief never stops the coach)
+            self._problem(f"crew chief step failed ({e.__class__.__name__}: {str(e)[:120]})")
+        finally:
+            if self.mode == "live":
+                self.crew_perf._done(w0, c0)
+
+    def _crew_idle(self):
+        """iRacing answered nothing: after a few seconds the crew chief says 'Data lost'."""
+        if not self._crew_on():
+            return
+        try:
+            now = self._clock()
+            calls = self.crew.no_data(now)
+            if calls:
+                self._crew_deliver(calls, self._latest or {}, now)
+        except Exception as e:  # noqa: BLE001
+            self._problem(f"crew chief step failed ({e.__class__.__name__}: {str(e)[:120]})")
+
+    def _crew_deliver(self, calls, s: dict, now: float):
+        crew, sp, lg = self.crew, self.crew_speaker, self.crew_log
+        sp.voice_on = bool(self.settings.crew_voice)
+        sp.muted = bool(self.settings.muted)
+        if lg is not None:
+            if crew.lap is not None and crew.lap != self._crew_lap_logged and crew.snap:
+                self._crew_lap_logged = crew.lap
+                lg.add({"k": "lap", "t": s.get("SessionTime"), "lap": crew.lap, "sit": crewchief.situation(crew)})
+            for c in calls:
+                lg.add(crewchief.call_row(crew, c))
+        sp.offer(calls)
+        c = sp.pump(s, now)
+        for ev in sp.take_events():
+            if lg is not None:
+                lg.add({"k": ev["what"], "call": ev["call"], "t": s.get("SessionTime"), "why": ev.get("why", "")})
+        if c is None:
+            return
+        why = crew.still_valid(c, s)
+        if why:
+            c.spoken, c.why = False, why
+            if lg is not None:
+                lg.add({"k": "dropped", "call": c.id, "t": s.get("SessionTime"), "why": why})
+            return
+        self._say_crew(c)
+
+    def _say_crew(self, c):
+        """One crew chief call to the voice: sound priority 6 for fuel critical, 4 for the rest (coaching is 1 to 3), so
+        they share one queue. A voice pack without the clips falls back to Windows speech; with neither, the call
+        stays text in the window and a line goes to the log (once for each phrase)."""
+        v = self.voice
+        covers = getattr(v, "covers", None)
+        try:
+            has = bool(covers(c.say)) if callable(covers) else True
+        except Exception:  # noqa: BLE001
+            has = True
+        if not has and c.say not in self._crew_noclip:
+            self._crew_noclip.add(c.say)
+            self._log(f"crewchief: the voice pack has no clip for '{c.say}'; Windows speech says it, or it stays text")
+        c.spoken = True
+        if self._takes_check is None:
+            self._takes_check = _accepts(getattr(v, "say", None), "check")
+        crew = self.crew
+        if self._takes_check:
+            v.say(c.say, priority=c.priority, t=c.session_t, check=lambda c=c: crew.still_valid(c, self._latest))
+        else:
+            v.say(c.say, priority=c.priority, t=c.session_t)
+
+    def crew_status(self) -> dict:
+        if self.crew is None:
+            return {"enabled": False, "state": "off", "text": "The crew chief runs when you drive live."}
+        if not self.settings.crew_calls:
+            return {"enabled": False, "state": "off", "text": "Crew chief calls are off in Settings."}
+        d = self.crew.snapshot()
+        d.update(enabled=True, voice_on=bool(self.settings.crew_voice), perf=self.crew_perf.summary(),
+                 log=(self.crew_log.path.name if self.crew_log is not None and self.crew_log.path else None),
+                 plan_note=self.crew.plan_note, no_clip=sorted(self._crew_noclip)[:5])
+        return d
 
     def _problem(self, msg: str):
         self._errors += 1

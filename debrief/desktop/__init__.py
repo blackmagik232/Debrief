@@ -67,6 +67,11 @@ def _refresh_reviews():
                                should_stop=REFRESH_PAUSE.is_set, done=_REFRESH_DONE, progress=progress)
         if n:
             app.say(f"Refreshed {n} saved review(s) to the new page layout.")
+        if not REFRESH_PAUSE.is_set():     # 2.27: reviews made before their recording existed gain "From iRacing"
+            from .. import recordings
+            m = recordings.attach_pending(app.load_settings()["library_folder"], log=app.say)
+            if m:
+                app.say(f"Added the recording from iRacing to {m} saved review(s).")
     except SystemExit:
         pass
     except Exception:  # noqa: BLE001

@@ -16,9 +16,9 @@ Every third-party part Debrief uses or ships, who made it, its licence and where
 | idna | Kim Davies and contributors | BSD-3-Clause | <https://github.com/kjd/idna> | Used by requests. |
 | NumPy | NumPy Developers | BSD-3-Clause (and the licences of the parts it bundles, such as OpenBLAS) | <https://numpy.org> | The number crunching behind the reviews, Practice, Setup Lab and the Coach. |
 | pypdf | Mathieu Fenniak and contributors | BSD-3-Clause | <https://github.com/py-pdf/pypdf> | Reads iRacing's season schedule PDF. |
-| pyirsdk | Mihail Latyshov (kutu) | MIT | <https://github.com/kutu/pyirsdk> | Reads iRacing's live data for the Coach and the replay scan. |
+| pyirsdk | Mihail Latyshov (kutu) | MIT | <https://github.com/kutu/pyirsdk> | Reads iRacing's live data for the Coach, the background recorder and the replay scan. The recorder also follows its idea of re-reading the session text only when iRacing's update counter changes. |
 | PyYAML | Kirill Simonov and Ingy döt Net | MIT | <https://pyyaml.org> | Reads the session details inside telemetry files. |
-| pywin32 | Mark Hammond and contributors | PSF-style (win32 parts: BSD-style) | <https://github.com/mhammond/pywin32> | Windows speech for the rare phrase a voice pack can't say. |
+| pywin32 | Mark Hammond and contributors | PSF-style (win32 parts: BSD-style) | <https://github.com/mhammond/pywin32> | Windows speech for the rare phrase a voice pack can't say, and the background recorder's icon near the clock. |
 | IBM Plex Sans | IBM Corp. | SIL Open Font License 1.1 | <https://github.com/IBM/plex> | The window's text font. |
 | Barlow Condensed | The Barlow Project Authors (Jeremy Tribby) | SIL Open Font License 1.1 | <https://github.com/jpt/barlow> | Headings. |
 | JetBrains Mono | The JetBrains Mono Project Authors | SIL Open Font License 1.1 | <https://github.com/JetBrains/JetBrainsMono> | Numbers and labels. |

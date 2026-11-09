@@ -2156,8 +2156,10 @@ $('coLogCopy').addEventListener('click',async()=>{if(!co2.logName)return;let j;t
   if(!j||!j.ok){setMsg('coLogMsg',(j&&j.error)||'Couldn\'t make the summary.','bad');return}
   const done=await copyText(j.text);setMsg('coLogMsg',done?'Copied. Paste it wherever you\'re asking for help.':'Couldn\'t copy to the clipboard.',done?'ok':'bad')});
 // help: Coach 2.0 and credits
+HELP.tour.push(['Live data','While you drive, Debrief quietly records each iRacing session (fuel, driver aids, pit stops, tyres, incidents, every car\u2019s pit stops). Find it in the All sessions list (From iRacing) and at the top of a race review. Settings > Live data turns it on or off and starts it with Windows; an icon near the clock lets you open Debrief, pause or quit it.']);
 HELP.tour.push(['Coach voice','The coach speaks with a natural voice, through the headset you pick on the Coach page (Voice and sound). Rehearse plays one of your sessions through it first.']);
-HELP.words.push(['Voice pack','The recorded phrases the coach says. Six come with Debrief; you can add your own.'],
+HELP.words.push(['Recorded by Debrief','A session Debrief recorded from iRacing while you drove that Garage 61 does not have. Its numbers are all from iRacing.'],
+  ['Voice pack','The recorded phrases the coach says. Six come with Debrief; you can add your own.'],
   ['Audio delay','How long Windows takes to start a sound. The coach starts each cue that much earlier, so it ends before your brake point.'],
   ['Coach log','Every cue the coach made, said or dropped and why. Copy summary puts a short summary on the clipboard.'],
   ['Fixed corner','A focus corner where you made a mistake and then drove it well twice in a row. The coach stops talking about it until it slips twice in three laps.'],

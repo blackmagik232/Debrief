@@ -43,13 +43,14 @@ CREDITS = [
     {"name": "pypdf", "author": "Mathieu Fenniak and contributors", "licence": "BSD-3-Clause",
      "link": "https://github.com/py-pdf/pypdf", "use": "Reads iRacing's season schedule PDF.", "kind": "bundled"},
     {"name": "pyirsdk", "author": "Mihail Latyshov (kutu)", "licence": "MIT",
-     "link": "https://github.com/kutu/pyirsdk", "use": "Reads iRacing's live data for the Coach and the replay "
-     "scan.", "kind": "bundled"},
+     "link": "https://github.com/kutu/pyirsdk", "use": "Reads iRacing's live data for the Coach, the background "
+     "recorder and the replay scan. The recorder also follows its idea of re-reading the session text only when iRacing's "
+     "update counter changes.", "kind": "bundled"},
     {"name": "PyYAML", "author": "Kirill Simonov and Ingy döt Net", "licence": "MIT",
      "link": "https://pyyaml.org", "use": "Reads the session details inside telemetry files.", "kind": "bundled"},
     {"name": "pywin32", "author": "Mark Hammond and contributors", "licence": "PSF-style (win32 parts: "
      "BSD-style)", "link": "https://github.com/mhammond/pywin32", "use": "Windows speech for the rare phrase a "
-     "voice pack can't say.", "kind": "bundled"},
+     "voice pack can't say, and the background recorder's icon near the clock.", "kind": "bundled"},
     {"name": "IBM Plex Sans", "author": "IBM Corp.", "licence": "SIL Open Font License 1.1",
      "link": "https://github.com/IBM/plex", "use": "The window's text font.", "kind": "bundled"},
     {"name": "Barlow Condensed", "author": "The Barlow Project Authors (Jeremy Tribby)",

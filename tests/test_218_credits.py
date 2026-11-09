@@ -64,7 +64,8 @@ missing = [r for r in req if alias.get(r, r) is not None and r not in lower]
 check(not missing, f"every package in requirements.txt is credited (missing: {missing})")
 # every third-party module the app imports is credited
 STD = set(sys.stdlib_module_names) | {"debrief", "__future__", "irsdk", "win32com", "pythoncom", "pywintypes",
-                                       "winreg", "winsound", "_winapi", "msvcrt"}
+                                       "winreg", "winsound", "_winapi", "msvcrt",
+                                       "win32gui", "win32con", "win32api"}      # 2.27: pywin32's, credited as pywin32
 mods = set()
 for p in (ROOT / "debrief").rglob("*.py"):
     if p.name == "make_icon.py":                         # a build-time helper (Pillow), never in the app

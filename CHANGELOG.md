@@ -27,6 +27,14 @@ Plan a long race with your teammates before it starts, and see that Debrief's li
 - **Resource check.** A new check (tools/perf_audit.py) measures the live coach, telemetry reading, the session information iRacing sends, the stint planner and the planned race log against fixed limits, and runs with the tests. On the test machine: the coach used about 0.02% of one core, reading telemetry about 0.01%, a 24-hour plan took about 1 ms, and Debrief used about 73 MB of memory.
 - Not proven yet: the CPU and memory numbers on your PC (the Coach page and Copy diagnostics will show them), and the planner's numbers against a real team race. Pit lane time and refuelling speed are typed in for now; measuring them from your telemetry comes with the live crew chief.
 
+## 2.25.1
+
+Team sync no longer stops at a teammate with "Invalid drivers parameter".
+
+- Garage 61 refuses a teammate's name as a filter, so Debrief now asks for the whole team's laps on those tracks and sorts them to each teammate itself.
+- If one request still fails, Debrief skips those tracks for this run and carries on with everyone else, instead of stopping the whole sync. They are tried again next time.
+- Not proven yet: tested with a stand-in Garage 61 that refuses names the same way the real one did on your PC.
+
 ## 2.25.0 "Save as picture"
 
 The Team page and the member pages can now save nice information cards as .png pictures, ready to post in Discord or on socials.

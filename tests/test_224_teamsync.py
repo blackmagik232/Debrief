@@ -83,10 +83,12 @@ class Api:
         self._req()
         self.pages.append(kw)
         assert kw.get("tracks") and len(kw["tracks"]) <= 10 and kw["teams"] and "cars" not in kw
+        # real Garage 61 answers 400 "Invalid drivers parameter" for a member slug: never send one
+        assert "drivers" not in kw, kw
         if self.fail429 and len(self.pages) <= self.fail429:
             self.rate_limited += 2
         after = kw["after"][:10]
-        rows = [l for l in self.laps if l["team"] == kw["teams"][0] and l["driver"]["slug"] == kw["drivers"][0]
+        rows = [l for l in self.laps if l["team"] == kw["teams"][0]
                 and l["track"]["id"] in kw["tracks"] and l["startTime"][:10] >= after]
         return [{k: v for k, v in l.items() if k != "team"} for l in rows], len(rows)
 
@@ -142,7 +144,7 @@ def test_first_then_repeat_then_new():
     assert a.min_gap == 1.0 and a.base_gap == 1.0                       # pacing restored
     lap_pages = len(a.pages)
     assert lap_pages == 3, lap_pages                                    # m1 (2 tracks, one request), m2, m3
-    assert all(p["unclean"] is True and p["teams"] and p["drivers"] != ["me-slug"] for p in a.pages)
+    assert all(p["unclean"] is True and p["teams"] and "drivers" not in p for p in a.pages)
     assert len(a.stat_calls) == 2
     root = teamsync.root_for(a)
     ms = teamsync.member_sessions(root, "Mia Tester")
@@ -172,7 +174,7 @@ def test_first_then_repeat_then_new():
     r3 = teamsync.run(a, log=lambda s: None, now=NOW + timedelta(hours=1))
     assert r3["new_laps"] == 1 and len(a.pages) == p0 + 1, (r3, len(a.pages) - p0)
     last = a.pages[-1]
-    assert last["drivers"] == ["m2"] and last["tracks"] == [1] and last["after"][:10] >= day(3)[:10], last
+    assert last["tracks"] == [1] and last["after"][:10] >= day(3)[:10], last
 
 
 def test_429_resume():

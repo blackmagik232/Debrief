@@ -35,6 +35,17 @@ TEL_BUDGET = 25             # telemetry downloads per Refresh (the rest wait for
 POINTER = "teamlib.json"    # <library>/team/teamlib.json says where the team library is (the cache is per account)
 
 
+
+def _is_member_lap(lap, m) -> bool:
+    """True when a team lap belongs to member m (matched by Garage 61 slug, else by name)."""
+    d = lap.get("driver") if isinstance(lap.get("driver"), dict) else None
+    if not d:
+        return False
+    if d.get("slug") and m.get("slug"):
+        return d["slug"] == m["slug"]
+    nm = " ".join(str(x) for x in (d.get("firstName"), d.get("lastName")) if x) or d.get("name") or ""
+    return bool(nm) and nm.strip().lower() == str(m.get("name") or "").strip().lower()
+
 def _safe(s) -> str:
     s = re.sub(r"[^a-z0-9._-]+", "-", str(s or "").strip().lower()).strip("-.")
     return s[:60] or "unknown"
@@ -178,7 +189,7 @@ def sync_team(api, root: Path, team: dict, me_slug: str, log, stop, telemetry: s
                     limited, ok = True, False
                     break
                 try:
-                    page, tot = api.laps_page(teams=[slug], drivers=[m["slug"]], tracks=[t for t, _ in chunk], group="none",
+                    page, tot = api.laps_page(teams=[slug], tracks=[t for t, _ in chunk], group="none",
                                               unclean=True, after=sync._iso(after_dt), age=age, limit=sync.PAGE, offset=offset)
                 except Exception as e:  # noqa: BLE001
                     stt = getattr(e, "status", None)
@@ -210,8 +221,9 @@ def sync_team(api, root: Path, team: dict, me_slug: str, log, stop, telemetry: s
             # keep what arrived, whatever happened (laps are keyed by id: nothing is saved twice)
             by_track: dict = {}
             for l in got:
-                d = l.get("driver") if isinstance(l.get("driver"), dict) else None
-                if d and d.get("slug") and m["slug"] and d["slug"] != m["slug"]:
+                # Garage 61 rejects a member slug as a "drivers" filter, so the team's laps for these
+                # tracks come back for everyone and are sorted to the member here.
+                if not _is_member_lap(l, m):
                     continue
                 by_track.setdefault(sync.lap_track(l), []).append(l)
             for tid, laps in by_track.items():
@@ -226,6 +238,11 @@ def sync_team(api, root: Path, team: dict, me_slug: str, log, stop, telemetry: s
                     st["items"][ik] = {"done": True, "synced_until": run_start}
                     st["fp"][ik] = {**(st["fp"].get(ik) or {}), **{d: fp for d, fp in t["fp"].items() if fp}}
                     res["done"] += 1
+                i += len(chunk)
+            elif not limited:
+                # this request failed for a reason other than "slow down": skip these tracks this time
+                # (they are tried again next Refresh) rather than asking again forever
+                res.setdefault("skipped", []).append(f"{m['name']}: {len(chunk)} track(s)")
                 i += len(chunk)
             _save(tdir, st)
             if not ok:

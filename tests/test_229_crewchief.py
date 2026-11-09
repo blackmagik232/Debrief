@@ -64,25 +64,25 @@ def test_laps_to_go_hand_checks():
     r = cc.laps_to_go(laps_rem=10, lap_f=0.25)
     assert (r["crossings"], r["distance"], r["kind"]) == (10, 9.75, "laps")
     # timed: 1800 s left, leader laps 100 s, half way round: crossings at 50, 150 ... 1750 s, then the one after the clock = 19
-    r = cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0)
+    r = cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0, pace_tol=0.0)
     assert (r["crossings"], r["distance"], r["kind"]) == (19, 18.5, "time")
     # the same, with the leader's place on his lap known (the docstring's checks B and C, counted by hand there)
-    assert cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0, leader_f=0.8)["crossings"] == 19
-    assert cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0, leader_f=0.2)["crossings"] == 20
+    assert cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0, leader_f=0.8, pace_tol=0.0)["crossings"] == 19
+    assert cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0, leader_f=0.2, pace_tol=0.0)["crossings"] == 20
     # one 60 s stop still to make with the leader at 0.2: you cross at 110 ... 1810 s (18) before he finishes at
     # 1880 s, and the one at 1910 s is yours: 19 crossings
-    r = cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0, leader_f=0.2, stops=1, pit_loss_s=60.0)
+    r = cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0, leader_f=0.2, stops=1, pit_loss_s=60.0, pace_tol=0.0)
     assert (r["crossings"], r["distance"]) == (19, 18.5)
     # leader where you are: the stop moves your crossings to 110 ... 1810 s; he finishes at 1850 s; the one at 1910 s
-    r = cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0, stops=1, pit_loss_s=60.0)
+    r = cc.laps_to_go(time_rem=1800, lap_f=0.5, leader_lap_s=100.0, stops=1, pit_loss_s=60.0, pace_tol=0.0)
     assert (r["crossings"], r["distance"]) == (19, 18.5)
     # the clock is zero: one more crossing finishes it
-    assert cc.laps_to_go(time_rem=0, lap_f=0.3, leader_lap_s=100.0)["crossings"] == 1
+    assert cc.laps_to_go(time_rem=0, lap_f=0.3, leader_lap_s=100.0, pace_tol=0.0)["crossings"] == 1
     # no leader time, no timed answer; a lap-limited race with a clock too takes whichever ends first
-    assert cc.laps_to_go(time_rem=1800, lap_f=0.5) is None
+    assert cc.laps_to_go(time_rem=1800, lap_f=0.5, pace_tol=0.0) is None
     r = cc.laps_to_go(laps_rem=5, time_rem=1800, lap_f=0.0, leader_lap_s=100.0)
     assert r["kind"] == "laps" and r["crossings"] == 5
-    assert cc.laps_to_go(laps_rem=32767, time_rem=604800.0, leader_lap_s=90.0) is None      # unlimited
+    assert cc.laps_to_go(laps_rem=32767, time_rem=604800.0, leader_lap_s=90.0, pace_tol=0.0) is None      # unlimited
 
 
 def test_pit_window_hand_checks():
@@ -515,7 +515,7 @@ def test_timed_finish_matches_a_clock_by_clock_count_fuzz():
         stops = rnd.choice([0, 0, 1, 2])
         loss = rnd.uniform(15, 90)
         want = ref_crossings(T, p, f, fl, stops * loss)
-        got = cc.laps_to_go(time_rem=T, lap_f=f, leader_lap_s=p, stops=stops, pit_loss_s=loss, leader_f=fl)["crossings"]
+        got = cc.laps_to_go(time_rem=T, lap_f=f, leader_lap_s=p, stops=stops, pit_loss_s=loss, leader_f=fl, pace_tol=0.0)["crossings"]
         wrong += got != want
     assert wrong == 0, wrong
     # multi-class: the flag falls on the OVERALL leader (a faster class), you lap at your class's pace (round 3 review:
@@ -526,14 +526,14 @@ def test_timed_finish_matches_a_clock_by_clock_count_fuzz():
         po = pc * rnd.uniform(0.88, 0.97)
         T, f, fo = rnd.uniform(0, 7200), rnd.random(), rnd.random()
         want = ref_crossings(T, po, f, fo, p_me=pc)
-        got = cc.laps_to_go(time_rem=T, lap_f=f, leader_lap_s=po, leader_f=fo, my_lap_s=pc)["crossings"]
+        got = cc.laps_to_go(time_rem=T, lap_f=f, leader_lap_s=po, leader_f=fo, my_lap_s=pc, pace_tol=0.0)["crossings"]
         wrong += got != want
     assert wrong == 0, wrong
     # the reviewer's example: 4676.6 s left, class pace 118.7, overall leader 105.1 at 0.528, you at 0.068
-    assert cc.laps_to_go(time_rem=4676.6, lap_f=0.068, leader_lap_s=105.1, leader_f=0.528, my_lap_s=118.7)["crossings"] == 41
-    assert cc.laps_to_go(time_rem=4676.6, lap_f=0.068, leader_lap_s=118.7, leader_f=0.222)["crossings"] == 40
+    assert cc.laps_to_go(time_rem=4676.6, lap_f=0.068, leader_lap_s=105.1, leader_f=0.528, my_lap_s=118.7, pace_tol=0.0)["crossings"] == 41
+    assert cc.laps_to_go(time_rem=4676.6, lap_f=0.068, leader_lap_s=118.7, leader_f=0.222, pace_tol=0.0)["crossings"] == 40
     # the case the reviewer found: 1000 s left, 100 s laps, you at 0.95, and the leader just past the line (0.05)
-    assert cc.laps_to_go(time_rem=1000, lap_f=0.95, leader_lap_s=100, leader_f=0.05)["crossings"] == \
+    assert cc.laps_to_go(time_rem=1000, lap_f=0.95, leader_lap_s=100, leader_f=0.05, pace_tol=0.0)["crossings"] == \
         ref_crossings(1000, 100, 0.95, 0.05)
 
 
@@ -588,9 +588,9 @@ def test_the_top_row_shows_the_most_urgent_true_thing():
 
 
 def test_fuel_critical_is_loud_and_only_when_the_flag_is_too_far():
-    sim = S.RaceSim(laps=30, tank=60.0, burn=3.0, start_fuel=14.0)           # 4.7 laps of fuel, 30 laps to go
+    sim = S.RaceSim(laps=30, tank=60.0, burn=3.0, start_fuel=20.0)           # 6.7 laps of fuel, 30 laps to go
     ch = chief(sim)
-    calls = drive(sim, ch, seconds=250)
+    calls = drive(sim, ch, seconds=420)
     crit = [c for c in calls if c.kind == "fuel_critical"]
     assert crit and crit[0].priority == cc.PRIORITY_FUEL and crit[0].rank == 2
     assert crit[0].say.startswith("Fuel critical.")
@@ -957,7 +957,7 @@ def test_every_cars_pace_is_known_so_a_new_overall_leader_needs_no_guess():
         po = pc * rnd.uniform(0.88, 0.97)
         T, f, fo = rnd.uniform(0, 7200), rnd.random(), rnd.random()
         want = ref_crossings(T, po, f, fo, p_me=pc)
-        got = cc.laps_to_go(time_rem=T, lap_f=f, leader_lap_s=pc, leader_f=fo, my_lap_s=pc, pace_unknown=True)["crossings"]
+        got = cc.laps_to_go(time_rem=T, lap_f=f, leader_lap_s=pc, leader_f=fo, my_lap_s=pc, pace_unknown=True, pace_tol=0.0)["crossings"]
         low += got < want - 0 and want - got >= 1
     assert low <= 2, low                                                     # float ties at the very edge only
 
@@ -1473,6 +1473,139 @@ def test_playback_of_a_telemetry_file_feeds_the_chief_without_a_race():
 
 
 # ------------------------------------------------------------------ cost
+def _never_save_race(seed, short, sigma, push, laps):
+    """Round 5: the reviewer's never-save driver. He ignores every ask to save and boxes only when told to box this lap
+    (and only if that call comes before the pit entry, on a lap that is not the last). Returns (dry?, the box calls)."""
+    import random as _r
+    rnd = _r.Random(seed)
+    B = 3.0
+    sim = S.RaceSim(laps=laps, tank=120.0, burn=B, start_fuel=laps * B * (1 - short), cars=3, dt=0.25)
+    ch = chief(sim)
+    last_lap, boxed = None, False
+    boxes, kinds_seen = [], []
+    for own, f in sim.run():
+        for c in ch.feed(own, f, now=sim.t):
+            kinds_seen.append(c.kind)
+            if c.kind == "box_now":
+                ltg = (ch.last_calc or {}).get("ltg") or {}
+                boxes.append((own["Lap"], own["LapDistPct"], ltg.get("crossings"), laps))
+                if not boxed and own["LapDistPct"] < 0.9 and own["Lap"] <= laps:
+                    boxed = True
+                    sim.pit_at(lap=own["Lap"], add=max(c.data.get("add_l") or 0, 3.0))
+        if own["Lap"] != last_lap:
+            last_lap = own["Lap"]
+            p = push if own["Lap"] > laps - 2 else 0.0
+            sim.burn = B * (1 + rnd.gauss(0, sigma)) * (1 + p)
+        if sim.fuel < 0:
+            return True, boxes, kinds_seen
+    return False, boxes, kinds_seen
+
+
+def test_a_driver_who_never_saves_is_told_to_box_while_he_still_can():
+    """Round 5 (race-losing): 11 of 140 never-save drivers ran dry because 'Box this lap' first came on the final lap. The
+    last pit chance is worked out from what he burned on his last lap; he is told to box at the line that starts it, and
+    never after it."""
+    import random as _r
+    dry = n = 0
+    late = []
+    saw_save_or_box = saw_box = 0
+    for short in (0.0, 0.01, 0.02, 0.03, 0.04, 0.06, 0.08):
+        for sigma, push in ((0.01, 0.0), (0.02, 0.05)):
+            for seed in range(5):
+                laps = _r.Random(seed).choice([12, 20, 30])
+                d, boxes, ks = _never_save_race(seed * 101 + int(short * 1000), short, sigma, push, laps)
+                n += 1
+                dry += d
+                saw_save_or_box += "save_or_box" in ks
+                saw_box += bool(boxes)
+                # never 'box this lap' on the final lap, nor past the pit entry on the lap
+                late += [b for b in boxes if (b[2] is not None and b[2] <= 1) or b[1] >= cc.DEFAULT_PIT_ENTRY - 1e-9]
+    assert not late, late[:5]
+    assert dry <= 1 * n / 140 + 0.5, (dry, n)                 # the reviewer's bar: at most 1 in 140
+    assert saw_box and saw_save_or_box
+
+
+def test_the_last_pit_chance_rule_in_numbers():
+    """Hand check: 3.0 L a lap, 20-lap race, line starting lap 17 (4 laps to go: crossings 4). With 5.4 L he can pit at the
+    end of this lap (5.4 - 3.0 >= 0) but not the next (5.4 - 6.0 < 0): the last chance, and he is short (5.4 < 4 x 3.15 +
+    0.15), so 'Box this lap'. With 8.9 L at the line starting lap 18 (3 to go) the last chance is next lap and no stop is called yet: 'Save X or box next lap'."""
+    def at_line(fuel, laps_left):
+        sim = S.RaceSim(laps=20, tank=120.0, burn=3.0, start_fuel=fuel + 3.0 * (20 - laps_left), cars=3, dt=0.25)
+        ch = chief(sim)
+        seen = []
+        for own, f in sim.run():
+            for c in ch.feed(own, f, now=sim.t):
+                seen.append((own["Lap"], round(own["LapDistPct"], 2), c.kind, c.say))
+            if own["Lap"] > 20 - laps_left + 1:
+                break
+        return [x for x in seen if x[0] == 20 - laps_left + 1]
+    a = at_line(5.4, 4)
+    assert any(k == "box_now" and p < 0.5 for _, p, k, _ in a), a
+    b = at_line(8.9, 3)
+    assert any(k == "save_or_box" and say == "Save fuel or box next lap." for _, _, k, say in b), b
+    assert not any(k == "box_now" for _, _, k, _ in b), b
+    # the final lap: no box call at all, only saving
+    c_ = at_line(2.5, 1)
+    assert not any(k in ("box_now", "box_soon", "fuel_critical") for _, _, k, _ in c_), c_
+    # the achieved burn is what he used last lap (or the last two on average, whichever is more), not the old median
+    ch = cc.CrewChief()
+    ch._ach_hist = [3.0, 2.4]
+    assert abs(ch.achieved_burn() - 2.7) < 1e-9
+    ch._ach_hist = [2.4, 3.0]
+    assert ch.achieved_burn() == 3.0
+    assert ch.pit_entry_frac() == cc.DEFAULT_PIT_ENTRY
+    ch._pit_entry_f = 0.93
+    assert ch.pit_entry_frac() == 0.93
+
+
+def test_the_new_save_or_box_phrase_has_a_clip_in_every_voice():
+    assert "Save fuel or box next lap" in vp.CREW_WHOLES
+    assert cc.RANKS["save_or_box"] == 3 and "save_or_box" in cc.MUTE_OK
+    for pack in ("engineer", "omega", "michael", "kumo", "heart", "fenrir"):
+        assert (ROOT / "debrief" / "data" / "voicepacks" / pack / "cc_save_fuel_or_box_next_lap.wav").exists(), pack
+
+
+def test_pace_errors_of_one_percent_never_count_too_few_laps():
+    """Round 5 (race-losing tail): a pace error of half a percent made the timed-finish count one too low 4.7% of the time.
+    Now the count is the largest over the leader's and your own pace within 1%: never too low (a lap too many is safe)."""
+    import random
+    rnd = random.Random(4)
+    for err, tmax, best in ((0.005, 3600, False), (0.005, 900, False), (0.01, 900, True)):
+        low = 0
+        N = 8000
+        for _ in range(N):
+            pc = rnd.uniform(80, 130)
+            po = pc * rnd.uniform(0.88, 1.0)
+            T, f, fo = rnd.uniform(0, tmax), rnd.random(), rnd.random()
+            want = ref_crossings(T, po, f, fo, p_me=pc)
+            used = po * (1 - rnd.uniform(0, err * 2)) if best else po * (1 + rnd.uniform(-err, err))
+            got = cc.laps_to_go(time_rem=T, lap_f=f, leader_lap_s=used, leader_f=fo,
+                                my_lap_s=pc * (1 + rnd.uniform(-err, err)))["crossings"]
+            low += got < want
+        assert low / N < 0.001, (err, tmax, best, low / N)
+    # exact lap times still give the exact count when asked to (the maths above), and the default is never below it
+    for _ in range(3000):
+        p, T, f, fl = rnd.uniform(40, 200), rnd.uniform(0, 7200), rnd.random(), rnd.random()
+        exact = cc.laps_to_go(time_rem=T, lap_f=f, leader_lap_s=p, leader_f=fl, pace_tol=0.0)["crossings"]
+        wide = cc.laps_to_go(time_rem=T, lap_f=f, leader_lap_s=p, leader_f=fl)["crossings"]
+        assert exact <= wide <= exact + math.ceil(0.03 * exact) + 1, (exact, wide)
+
+
+def test_a_best_lap_is_treated_as_an_unknown_pace():
+    """Round 5: when only the overall leader's best lap is known the pace is not known: the wide scan is used."""
+    sim = S.RaceSim(laps=0, timed_s=1800.0)
+    ch = chief(sim)
+    seen = []
+    real = cc.laps_to_go
+    ch.flag_lap = lambda: (sim.lap_s, "best lap")
+    cc.laps_to_go = lambda *a, **k: (seen.append(k.get("pace_unknown")), real(*a, **k))[1]
+    try:
+        drive(sim, ch, seconds=120)
+    finally:
+        cc.laps_to_go = real
+    assert seen and all(x is True for x in seen), seen
+
+
 def test_a_frame_costs_little():
     sim = S.RaceSim(laps=50, tank=60.0, burn=3.0, cars=64)
     sim.pit_at(lap=17, add=48.0)

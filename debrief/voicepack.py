@@ -186,7 +186,7 @@ PACE_WHOLES = ["No clean lap yet", "Down more than two seconds"]      # 2.17.2 a
 # ---------------------------------------------------------------- 2.29 crew chief (fixed phrases and numbers)
 CREW_WHOLES = ["Data lost", "Data back", "Fuel critical", "Box this lap", "Box next lap", "Box now, cheap stop",
                "Car alongside", "Car ahead pitting", "On plan", "Ahead of plan", "Behind plan", "Up a place",
-               "Lost a place", "Fuel is tight", "Short of the flag"]
+               "Lost a place", "Fuel is tight", "Short of the flag", "Save fuel or box next lap"]
 CREW_BOX_IN = (2, 5)         # "Box in three laps"
 CREW_LITRES = (1, 120)       # "Forty-two litres"
 CREW_GALLONS = (1, 32)       # "Eleven gallons"

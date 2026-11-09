@@ -3463,6 +3463,12 @@
    "ms": 980,
    "role": "whole"
   },
+  "cc_save_fuel_or_box_next_lap": {
+   "file": "cc_save_fuel_or_box_next_lap.wav",
+   "text": "Save fuel or box next lap.",
+   "ms": 1940,
+   "role": "whole"
+  },
   "cc_box_in_2": {
    "file": "cc_box_in_2.wav",
    "text": "Box in two laps.",

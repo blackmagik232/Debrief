@@ -600,199 +600,200 @@ Crew chief on the radio. Calm and clear, like an engineer telling you what to do
 517. Lost a place.
 518. Fuel is tight.
 519. Short of the flag.
-520. Box in two laps.
-521. Box in three laps.
-522. Box in four laps.
-523. Box in five laps.
-524. One litre.
-525. Two litres.
-526. Three litres.
-527. Four litres.
-528. Five litres.
-529. Six litres.
-530. Seven litres.
-531. Eight litres.
-532. Nine litres.
-533. Ten litres.
-534. Eleven litres.
-535. Twelve litres.
-536. Thirteen litres.
-537. Fourteen litres.
-538. Fifteen litres.
-539. Sixteen litres.
-540. Seventeen litres.
-541. Eighteen litres.
-542. Nineteen litres.
-543. Twenty litres.
-544. Twenty-one litres.
-545. Twenty-two litres.
-546. Twenty-three litres.
-547. Twenty-four litres.
-548. Twenty-five litres.
-549. Twenty-six litres.
-550. Twenty-seven litres.
-551. Twenty-eight litres.
-552. Twenty-nine litres.
-553. Thirty litres.
-554. Thirty-one litres.
-555. Thirty-two litres.
-556. Thirty-three litres.
-557. Thirty-four litres.
-558. Thirty-five litres.
-559. Thirty-six litres.
-560. Thirty-seven litres.
-561. Thirty-eight litres.
-562. Thirty-nine litres.
-563. Forty litres.
-564. Forty-one litres.
-565. Forty-two litres.
-566. Forty-three litres.
-567. Forty-four litres.
-568. Forty-five litres.
-569. Forty-six litres.
-570. Forty-seven litres.
-571. Forty-eight litres.
-572. Forty-nine litres.
-573. Fifty litres.
-574. Fifty-one litres.
-575. Fifty-two litres.
-576. Fifty-three litres.
-577. Fifty-four litres.
-578. Fifty-five litres.
-579. Fifty-six litres.
-580. Fifty-seven litres.
-581. Fifty-eight litres.
-582. Fifty-nine litres.
-583. Sixty litres.
-584. Sixty-one litres.
-585. Sixty-two litres.
-586. Sixty-three litres.
-587. Sixty-four litres.
-588. Sixty-five litres.
-589. Sixty-six litres.
-590. Sixty-seven litres.
-591. Sixty-eight litres.
-592. Sixty-nine litres.
-593. Seventy litres.
-594. Seventy-one litres.
-595. Seventy-two litres.
-596. Seventy-three litres.
-597. Seventy-four litres.
-598. Seventy-five litres.
-599. Seventy-six litres.
-600. Seventy-seven litres.
-601. Seventy-eight litres.
-602. Seventy-nine litres.
-603. Eighty litres.
-604. Eighty-one litres.
-605. Eighty-two litres.
-606. Eighty-three litres.
-607. Eighty-four litres.
-608. Eighty-five litres.
-609. Eighty-six litres.
-610. Eighty-seven litres.
-611. Eighty-eight litres.
-612. Eighty-nine litres.
-613. Ninety litres.
-614. Ninety-one litres.
-615. Ninety-two litres.
-616. Ninety-three litres.
-617. Ninety-four litres.
-618. Ninety-five litres.
-619. Ninety-six litres.
-620. Ninety-seven litres.
-621. Ninety-eight litres.
-622. Ninety-nine litres.
-623. One hundred litres.
-624. One hundred and one litres.
-625. One hundred and two litres.
-626. One hundred and three litres.
-627. One hundred and four litres.
-628. One hundred and five litres.
-629. One hundred and six litres.
-630. One hundred and seven litres.
-631. One hundred and eight litres.
-632. One hundred and nine litres.
-633. One hundred and ten litres.
-634. One hundred and eleven litres.
-635. One hundred and twelve litres.
-636. One hundred and thirteen litres.
-637. One hundred and fourteen litres.
-638. One hundred and fifteen litres.
-639. One hundred and sixteen litres.
-640. One hundred and seventeen litres.
-641. One hundred and eighteen litres.
-642. One hundred and nineteen litres.
-643. One hundred and twenty litres.
-644. One gallon.
-645. Two gallons.
-646. Three gallons.
-647. Four gallons.
-648. Five gallons.
-649. Six gallons.
-650. Seven gallons.
-651. Eight gallons.
-652. Nine gallons.
-653. Ten gallons.
-654. Eleven gallons.
-655. Twelve gallons.
-656. Thirteen gallons.
-657. Fourteen gallons.
-658. Fifteen gallons.
-659. Sixteen gallons.
-660. Seventeen gallons.
-661. Eighteen gallons.
-662. Nineteen gallons.
-663. Twenty gallons.
-664. Twenty-one gallons.
-665. Twenty-two gallons.
-666. Twenty-three gallons.
-667. Twenty-four gallons.
-668. Twenty-five gallons.
-669. Twenty-six gallons.
-670. Twenty-seven gallons.
-671. Twenty-eight gallons.
-672. Twenty-nine gallons.
-673. Thirty gallons.
-674. Thirty-one gallons.
-675. Thirty-two gallons.
-676. One lap of fuel.
-677. Two laps of fuel.
-678. Car behind closing, a tenth a lap.
-679. Gaining on the car ahead, two tenths a lap.
-680. Car behind closing, three tenths a lap.
-681. Gaining on the car ahead, four tenths a lap.
-682. Car behind closing, five tenths a lap.
-683. Gaining on the car ahead, six tenths a lap.
-684. Car behind closing, seven tenths a lap.
-685. Gaining on the car ahead, eight tenths a lap.
-686. Car behind closing, nine tenths a lap.
-687. Gaining on the car ahead, one second a lap.
-688. Car behind closing, one point one seconds a lap.
-689. Gaining on the car ahead, one point two seconds a lap.
-690. Car behind closing, one point three seconds a lap.
-691. Gaining on the car ahead, one point four seconds a lap.
-692. Car behind closing, one point five seconds a lap.
-693. Gaining on the car ahead, one point six seconds a lap.
-694. Car behind closing, one point seven seconds a lap.
-695. Gaining on the car ahead, one point eight seconds a lap.
-696. Car behind closing, one point nine seconds a lap.
-697. Gaining on the car ahead, two seconds a lap.
-698. Three tenths off target.
-699. Four tenths off target.
-700. Five tenths off target.
-701. Six tenths off target.
-702. Seven tenths off target.
-703. Eight tenths off target.
-704. Nine tenths off target.
-705. One second off target.
-706. One point one seconds off target.
-707. One point two seconds off target.
-708. One point three seconds off target.
-709. One point four seconds off target.
-710. One point five seconds off target.
-711. One point six seconds off target.
-712. One point seven seconds off target.
-713. One point eight seconds off target.
-714. One point nine seconds off target.
-715. Two seconds off target.
+520. Save fuel or box next lap.
+521. Box in two laps.
+522. Box in three laps.
+523. Box in four laps.
+524. Box in five laps.
+525. One litre.
+526. Two litres.
+527. Three litres.
+528. Four litres.
+529. Five litres.
+530. Six litres.
+531. Seven litres.
+532. Eight litres.
+533. Nine litres.
+534. Ten litres.
+535. Eleven litres.
+536. Twelve litres.
+537. Thirteen litres.
+538. Fourteen litres.
+539. Fifteen litres.
+540. Sixteen litres.
+541. Seventeen litres.
+542. Eighteen litres.
+543. Nineteen litres.
+544. Twenty litres.
+545. Twenty-one litres.
+546. Twenty-two litres.
+547. Twenty-three litres.
+548. Twenty-four litres.
+549. Twenty-five litres.
+550. Twenty-six litres.
+551. Twenty-seven litres.
+552. Twenty-eight litres.
+553. Twenty-nine litres.
+554. Thirty litres.
+555. Thirty-one litres.
+556. Thirty-two litres.
+557. Thirty-three litres.
+558. Thirty-four litres.
+559. Thirty-five litres.
+560. Thirty-six litres.
+561. Thirty-seven litres.
+562. Thirty-eight litres.
+563. Thirty-nine litres.
+564. Forty litres.
+565. Forty-one litres.
+566. Forty-two litres.
+567. Forty-three litres.
+568. Forty-four litres.
+569. Forty-five litres.
+570. Forty-six litres.
+571. Forty-seven litres.
+572. Forty-eight litres.
+573. Forty-nine litres.
+574. Fifty litres.
+575. Fifty-one litres.
+576. Fifty-two litres.
+577. Fifty-three litres.
+578. Fifty-four litres.
+579. Fifty-five litres.
+580. Fifty-six litres.
+581. Fifty-seven litres.
+582. Fifty-eight litres.
+583. Fifty-nine litres.
+584. Sixty litres.
+585. Sixty-one litres.
+586. Sixty-two litres.
+587. Sixty-three litres.
+588. Sixty-four litres.
+589. Sixty-five litres.
+590. Sixty-six litres.
+591. Sixty-seven litres.
+592. Sixty-eight litres.
+593. Sixty-nine litres.
+594. Seventy litres.
+595. Seventy-one litres.
+596. Seventy-two litres.
+597. Seventy-three litres.
+598. Seventy-four litres.
+599. Seventy-five litres.
+600. Seventy-six litres.
+601. Seventy-seven litres.
+602. Seventy-eight litres.
+603. Seventy-nine litres.
+604. Eighty litres.
+605. Eighty-one litres.
+606. Eighty-two litres.
+607. Eighty-three litres.
+608. Eighty-four litres.
+609. Eighty-five litres.
+610. Eighty-six litres.
+611. Eighty-seven litres.
+612. Eighty-eight litres.
+613. Eighty-nine litres.
+614. Ninety litres.
+615. Ninety-one litres.
+616. Ninety-two litres.
+617. Ninety-three litres.
+618. Ninety-four litres.
+619. Ninety-five litres.
+620. Ninety-six litres.
+621. Ninety-seven litres.
+622. Ninety-eight litres.
+623. Ninety-nine litres.
+624. One hundred litres.
+625. One hundred and one litres.
+626. One hundred and two litres.
+627. One hundred and three litres.
+628. One hundred and four litres.
+629. One hundred and five litres.
+630. One hundred and six litres.
+631. One hundred and seven litres.
+632. One hundred and eight litres.
+633. One hundred and nine litres.
+634. One hundred and ten litres.
+635. One hundred and eleven litres.
+636. One hundred and twelve litres.
+637. One hundred and thirteen litres.
+638. One hundred and fourteen litres.
+639. One hundred and fifteen litres.
+640. One hundred and sixteen litres.
+641. One hundred and seventeen litres.
+642. One hundred and eighteen litres.
+643. One hundred and nineteen litres.
+644. One hundred and twenty litres.
+645. One gallon.
+646. Two gallons.
+647. Three gallons.
+648. Four gallons.
+649. Five gallons.
+650. Six gallons.
+651. Seven gallons.
+652. Eight gallons.
+653. Nine gallons.
+654. Ten gallons.
+655. Eleven gallons.
+656. Twelve gallons.
+657. Thirteen gallons.
+658. Fourteen gallons.
+659. Fifteen gallons.
+660. Sixteen gallons.
+661. Seventeen gallons.
+662. Eighteen gallons.
+663. Nineteen gallons.
+664. Twenty gallons.
+665. Twenty-one gallons.
+666. Twenty-two gallons.
+667. Twenty-three gallons.
+668. Twenty-four gallons.
+669. Twenty-five gallons.
+670. Twenty-six gallons.
+671. Twenty-seven gallons.
+672. Twenty-eight gallons.
+673. Twenty-nine gallons.
+674. Thirty gallons.
+675. Thirty-one gallons.
+676. Thirty-two gallons.
+677. One lap of fuel.
+678. Two laps of fuel.
+679. Car behind closing, a tenth a lap.
+680. Gaining on the car ahead, two tenths a lap.
+681. Car behind closing, three tenths a lap.
+682. Gaining on the car ahead, four tenths a lap.
+683. Car behind closing, five tenths a lap.
+684. Gaining on the car ahead, six tenths a lap.
+685. Car behind closing, seven tenths a lap.
+686. Gaining on the car ahead, eight tenths a lap.
+687. Car behind closing, nine tenths a lap.
+688. Gaining on the car ahead, one second a lap.
+689. Car behind closing, one point one seconds a lap.
+690. Gaining on the car ahead, one point two seconds a lap.
+691. Car behind closing, one point three seconds a lap.
+692. Gaining on the car ahead, one point four seconds a lap.
+693. Car behind closing, one point five seconds a lap.
+694. Gaining on the car ahead, one point six seconds a lap.
+695. Car behind closing, one point seven seconds a lap.
+696. Gaining on the car ahead, one point eight seconds a lap.
+697. Car behind closing, one point nine seconds a lap.
+698. Gaining on the car ahead, two seconds a lap.
+699. Three tenths off target.
+700. Four tenths off target.
+701. Five tenths off target.
+702. Six tenths off target.
+703. Seven tenths off target.
+704. Eight tenths off target.
+705. Nine tenths off target.
+706. One second off target.
+707. One point one seconds off target.
+708. One point two seconds off target.
+709. One point three seconds off target.
+710. One point four seconds off target.
+711. One point five seconds off target.
+712. One point six seconds off target.
+713. One point seven seconds off target.
+714. One point eight seconds off target.
+715. One point nine seconds off target.
+716. Two seconds off target.

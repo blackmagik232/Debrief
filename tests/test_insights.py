@@ -47,7 +47,7 @@ def test_fix_first_ranked_with_tips():
     assert any("3 mph more" in t for t in c2["tips"])
     c3 = out["fix"][1]
     assert any("coasting" in t for t in c3["tips"]) and any("gear 3" in t for t in c3["tips"])
-    assert out["time_to_find"] == 0.3 and len(out["verdict"]) == 1 and "matching your better laps through C2 and C3." in out["verdict"][0]
+    assert out["time_to_find"] == 0.3 and len(out["verdict"]) == 1 and "The quickest gain is in C2 and C3." in out["verdict"][0]
 
 
 def test_habits_need_thresholds():

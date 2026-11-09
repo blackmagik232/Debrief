@@ -351,8 +351,8 @@ def test_brake_spread_item_needs_n8_and_varies():
     out = insights.build(d)
     item = next(b for b in out["bad"] if b["key"] == "brake_spread")
     assert item["corners"] == ["C4", "C3"]                            # worst IQR first; steady/locked left out
-    assert item["text"].startswith("Your brake point moved around in C4 (about ") and "m between laps) and C3." in item["text"]
-    assert item["detail"].startswith("Middle half of your clean laps' brake points spanned")
+    assert item["text"] == "Your brake point moves from lap to lap in C4 and C3."
+    assert item["numbers"][0].startswith("Most of your clean laps' brake points spanned") and " m in C4" in item["numbers"][0]
     d["brake_spread"] = {"corners": [{"id": "C3", "n": 7, "iqr_m": 30.0, "label": "all over"},
                                      {"id": "C4", "n": 12, "iqr_m": 11.0, "label": "steady"}]}
     assert not any(b["key"] == "brake_spread" for b in insights.build(d)["bad"])
@@ -381,7 +381,8 @@ def test_phase_item_threshold():
     d = _ins_base()
     d["skills"] = _skills(0.21, 0.465)
     it = next(b for b in insights.build(d)["bad"] if b["key"] == "phase")
-    assert it["text"] == "Most of the gap between your typical and better laps was on corner exits (about 0.21 s a lap)."
+    assert it["text"].startswith("The biggest part of the time you lose to your quicker laps in the corners is on corner exits")
+    assert it["costs"] == "About 0.2 s a lap, against your quicker laps in the corners."   # no zone gap in this stand-in
     assert it["cost"] == 0.21
     d["skills"] = _skills(0.15, 0.465)                 # 1.76 per-mille: under 2.0
     assert not any(b["key"] == "phase" for b in insights.build(d)["bad"])
@@ -437,16 +438,16 @@ def test_old_review_unchanged_except_new_items():
         d = mfl.fake_review(combo, started, gain, v2, season, ir, res, rng)
         a = insights.build(copy.deepcopy(d))
         b = insights.build({**copy.deepcopy(d), "brake_spread": {"corners": []}})   # new items switched off
-        strip = lambda o: {**o, "bad": [x for x in o["bad"] if x["key"] not in NEW_KEYS],
+        strip = lambda o: {**{k: v for k, v in o.items() if k != "strip"}, "bad": [x for x in o["bad"] if x["key"] not in NEW_KEYS],
                            "good": [x for x in o["good"] if x["key"] not in NEW_KEYS]}
-        assert strip(a) == b
+        assert strip(a) == {k: v for k, v in b.items() if k != "strip"}      # (2.28.1: the strip is built from the spread too)
     d = old_review()
     a = insights.build(copy.deepcopy(d))
     assert any(x["key"] == "brake_spread" for x in a["bad"])
     b = insights.build({**copy.deepcopy(d), "brake_spread": {"corners": []}})
-    strip = lambda o: {**o, "bad": [x for x in o["bad"] if x["key"] not in NEW_KEYS],
+    strip = lambda o: {**{k: v for k, v in o.items() if k != "strip"}, "bad": [x for x in o["bad"] if x["key"] not in NEW_KEYS],
                        "good": [x for x in o["good"] if x["key"] not in NEW_KEYS]}
-    assert strip(a) == b
+    assert strip(a) == {k: v for k, v in b.items() if k != "strip"}
 
 
 # ---------------------------------------------------------------- request budget: 0

@@ -1,0 +1,946 @@
+{
+ "rich_unknown_start": {
+  "fix": [
+   {
+    "corner": "Turn 6",
+    "why": "Your typical lap loses 0.20 s here compared with your better laps.",
+    "gain": 0.2,
+    "detail": "Typical 8.20 s through here; your quicker quarter of laps 8.10 s."
+   },
+   {
+    "corner": "Turn 3",
+    "why": "Your typical lap loses 0.18 s here compared with your better laps.",
+    "gain": 0.18,
+    "detail": "Typical 8.18 s through here; your quicker quarter of laps 8.10 s."
+   },
+   {
+    "corner": "Turn 5",
+    "why": "Your typical lap loses 0.12 s here compared with your better laps.",
+    "gain": 0.12,
+    "detail": "Typical 8.12 s through here; your quicker quarter of laps 8.10 s."
+   }
+  ],
+  "habits": [
+   {
+    "section": "bad",
+    "key": "unclean",
+    "title": "Incidents or track limits",
+    "text": "Garage 61 flagged laps 3, 12. Each one is a lap you can't use, and a safety-rating risk.",
+    "detail": "2 of 16 full laps flagged.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "offpace",
+    "title": "Off-pace laps",
+    "text": "Laps 5, 9 were more than 1.0 s off your typical lap without an incident flag: lap 5 lost it in one short stretch, possibly traffic; the rest look like mistakes. Open them in Compare to see where.",
+    "detail": "Together they were 23.6 s slower than 2 typical laps.",
+    "cost": 23.6
+   },
+   {
+    "section": "bad",
+    "key": "traffic",
+    "title": "Traffic (multi-class)",
+    "text": "Lap 7 lost time in one short stretch, most likely to traffic. They're left out of your pace numbers; plan where to let faster cars by.",
+    "detail": "lap 7: ~1.20 s around 2500 m.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "fade",
+    "title": "Fading late in the race",
+    "text": "Your clean laps got about 2.5 s slower from start to finish (fuel-corrected: about 0.147 s a lap of fuel-weight estimate added back). Tyres play a part; check the corners that slowed most under Stint.",
+    "detail": "Trend line over 10 clean laps: +2.51 s from first to last (fuel-corrected: about 0.147 s a lap of fuel-weight estimate added back).",
+    "cost": 2.5
+   },
+   {
+    "section": "bad",
+    "key": "vary",
+    "title": "Corners you drive differently every lap",
+    "text": "Turn 3 (\u00b10.17 s). Your brake marker there is already the same every lap, so the difference comes after it: pick one turn-in point and one place to get back on the throttle, and repeat them.",
+    "detail": "Middle half of your clean laps through Turn 3 spread over 0.35 s. This is the time through the whole corner, not the brake point.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "brake_spread",
+    "title": "Brake point moves around",
+    "text": "Your brake point moved around in Turn 5 (about 30 m between laps) and Turn 4.",
+    "detail": "Middle half of your clean laps' brake points spanned 30 m in Turn 5, 16 m in Turn 4.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "phase",
+    "title": "Where in the corner",
+    "text": "Most of the gap between your typical and better laps was on corner exits (about 0.28 s a lap).",
+    "detail": "About 76% of where the time goes in the corners (0.28 s, each part's middle loss added up corner by corner) against your better laps (your quickest quarter of clean laps). Through the corners your typical lap (middle of your clean laps) was 0.50 s slower than your better laps.",
+    "cost": 0.28
+   },
+   {
+    "section": "bad",
+    "key": "scattered",
+    "title": "Lap times all over the place",
+    "text": "Consistency 40/100. Before chasing pace, aim to put five laps in a row within 0.5 s of each other.",
+    "detail": "Spread \u00b11.10 s; 20% of laps within 0.5 s of your best. 2 of 10 laps were more than 1.0 s off your typical lap.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "locked",
+    "title": "Repeatable corners",
+    "text": "You hit the same time lap after lap in Turn 1, Turn 2, Turn 4, Turn 7, Turn 8.",
+    "detail": "Middle half of your clean laps within 0.09 s in 5 corner(s).",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "brake_markers",
+    "title": "Same brake marker every lap",
+    "text": "You braked at the same marker lap after lap in Turn 1, Turn 3 and Turn 6. Your time through Turn 3 still varies (see Corners you drive differently every lap): that part comes after the brake point.",
+    "detail": "Middle half of your clean laps' brake points within 5 m in 3 of 6 braking corners.",
+    "cost": null
+   },
+   {
+    "section": "look",
+    "key": "lap1",
+    "title": "Lap 1",
+    "text": "Lap 1 was 8.1 s slower than your typical lap (that includes the start). Debrief doesn't know what kind of start it was, so this isn't counted as a habit.",
+    "detail": "Lap 1 2:26.712 against a typical 2:18.601. Most of it was in Turn 1 (3.2 s) and Turn 2 (1.1 s) (that includes the start).",
+    "cost": 8.1
+   },
+   {
+    "section": "look",
+    "key": "traffic",
+    "title": "Possibly traffic",
+    "text": "Lap 5 lost time in one short stretch that your other laps didn't: possibly a lapped or slower car, possibly a mistake. Still counted as off-pace; check where in Compare laps.",
+    "detail": "lap 5: ~0.83 s around 1500 m; lap 1: ~0.90 s around 150 m.",
+    "cost": null
+   }
+  ]
+ },
+ "rich_rolling": {
+  "fix": [
+   {
+    "corner": "Turn 6",
+    "why": "Your typical lap loses 0.20 s here compared with your better laps.",
+    "gain": 0.2,
+    "detail": "Typical 8.20 s through here; your quicker quarter of laps 8.10 s."
+   },
+   {
+    "corner": "Turn 3",
+    "why": "Your typical lap loses 0.18 s here compared with your better laps.",
+    "gain": 0.18,
+    "detail": "Typical 8.18 s through here; your quicker quarter of laps 8.10 s."
+   },
+   {
+    "corner": "Turn 5",
+    "why": "Your typical lap loses 0.12 s here compared with your better laps.",
+    "gain": 0.12,
+    "detail": "Typical 8.12 s through here; your quicker quarter of laps 8.10 s."
+   }
+  ],
+  "habits": [
+   {
+    "section": "bad",
+    "key": "unclean",
+    "title": "Incidents or track limits",
+    "text": "Garage 61 flagged laps 3, 12. Each one is a lap you can't use, and a safety-rating risk.",
+    "detail": "2 of 16 full laps flagged.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "lap1",
+    "title": "Lap 1",
+    "text": "Lap 1 was 8.1 s slower than your typical lap (that includes the rolling start).",
+    "detail": "Lap 1 2:26.712 against a typical 2:18.601. Most of it was in Turn 1 (3.2 s) and Turn 2 (1.1 s) (that includes the start).",
+    "cost": 8.1
+   },
+   {
+    "section": "bad",
+    "key": "offpace",
+    "title": "Off-pace laps",
+    "text": "Laps 5, 9 were more than 1.0 s off your typical lap without an incident flag: lap 5 lost it in one short stretch, possibly traffic; the rest look like mistakes. Open them in Compare to see where.",
+    "detail": "Together they were 23.6 s slower than 2 typical laps.",
+    "cost": 23.6
+   },
+   {
+    "section": "bad",
+    "key": "traffic",
+    "title": "Traffic (multi-class)",
+    "text": "Lap 7 lost time in one short stretch, most likely to traffic. They're left out of your pace numbers; plan where to let faster cars by.",
+    "detail": "lap 7: ~1.20 s around 2500 m.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "fade",
+    "title": "Fading late in the race",
+    "text": "Your clean laps got about 2.5 s slower from start to finish (fuel-corrected: about 0.147 s a lap of fuel-weight estimate added back). Tyres play a part; check the corners that slowed most under Stint.",
+    "detail": "Trend line over 10 clean laps: +2.51 s from first to last (fuel-corrected: about 0.147 s a lap of fuel-weight estimate added back).",
+    "cost": 2.5
+   },
+   {
+    "section": "bad",
+    "key": "vary",
+    "title": "Corners you drive differently every lap",
+    "text": "Turn 3 (\u00b10.17 s). Your brake marker there is already the same every lap, so the difference comes after it: pick one turn-in point and one place to get back on the throttle, and repeat them.",
+    "detail": "Middle half of your clean laps through Turn 3 spread over 0.35 s. This is the time through the whole corner, not the brake point.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "brake_spread",
+    "title": "Brake point moves around",
+    "text": "Your brake point moved around in Turn 5 (about 30 m between laps) and Turn 4.",
+    "detail": "Middle half of your clean laps' brake points spanned 30 m in Turn 5, 16 m in Turn 4.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "phase",
+    "title": "Where in the corner",
+    "text": "Most of the gap between your typical and better laps was on corner exits (about 0.28 s a lap).",
+    "detail": "About 76% of where the time goes in the corners (0.28 s, each part's middle loss added up corner by corner) against your better laps (your quickest quarter of clean laps). Through the corners your typical lap (middle of your clean laps) was 0.50 s slower than your better laps.",
+    "cost": 0.28
+   },
+   {
+    "section": "bad",
+    "key": "scattered",
+    "title": "Lap times all over the place",
+    "text": "Consistency 40/100. Before chasing pace, aim to put five laps in a row within 0.5 s of each other.",
+    "detail": "Spread \u00b11.10 s; 20% of laps within 0.5 s of your best. 2 of 10 laps were more than 1.0 s off your typical lap.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "locked",
+    "title": "Repeatable corners",
+    "text": "You hit the same time lap after lap in Turn 1, Turn 2, Turn 4, Turn 7, Turn 8.",
+    "detail": "Middle half of your clean laps within 0.09 s in 5 corner(s).",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "brake_markers",
+    "title": "Same brake marker every lap",
+    "text": "You braked at the same marker lap after lap in Turn 1, Turn 3 and Turn 6. Your time through Turn 3 still varies (see Corners you drive differently every lap): that part comes after the brake point.",
+    "detail": "Middle half of your clean laps' brake points within 5 m in 3 of 6 braking corners.",
+    "cost": null
+   },
+   {
+    "section": "look",
+    "key": "traffic",
+    "title": "Possibly traffic",
+    "text": "Lap 5 lost time in one short stretch that your other laps didn't: possibly a lapped or slower car, possibly a mistake. Still counted as off-pace; check where in Compare laps.",
+    "detail": "lap 5: ~0.83 s around 1500 m; lap 1: ~0.90 s around 150 m.",
+    "cost": null
+   }
+  ]
+ },
+ "rich_nofuel": {
+  "fix": [
+   {
+    "corner": "Turn 6",
+    "why": "Your typical lap loses 0.20 s here compared with your better laps.",
+    "gain": 0.2,
+    "detail": "Typical 8.20 s through here; your quicker quarter of laps 8.10 s."
+   },
+   {
+    "corner": "Turn 3",
+    "why": "Your typical lap loses 0.18 s here compared with your better laps.",
+    "gain": 0.18,
+    "detail": "Typical 8.18 s through here; your quicker quarter of laps 8.10 s."
+   },
+   {
+    "corner": "Turn 5",
+    "why": "Your typical lap loses 0.12 s here compared with your better laps.",
+    "gain": 0.12,
+    "detail": "Typical 8.12 s through here; your quicker quarter of laps 8.10 s."
+   }
+  ],
+  "habits": [
+   {
+    "section": "bad",
+    "key": "unclean",
+    "title": "Incidents or track limits",
+    "text": "Garage 61 flagged laps 3, 12. Each one is a lap you can't use, and a safety-rating risk.",
+    "detail": "2 of 16 full laps flagged.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "offpace",
+    "title": "Off-pace laps",
+    "text": "Laps 5, 9 were more than 1.0 s off your typical lap without an incident flag: lap 5 lost it in one short stretch, possibly traffic; the rest look like mistakes. Open them in Compare to see where.",
+    "detail": "Together they were 23.6 s slower than 2 typical laps.",
+    "cost": 23.6
+   },
+   {
+    "section": "bad",
+    "key": "traffic",
+    "title": "Traffic (multi-class)",
+    "text": "Lap 7 lost time in one short stretch, most likely to traffic. They're left out of your pace numbers; plan where to let faster cars by.",
+    "detail": "lap 7: ~1.20 s around 2500 m.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "fade",
+    "title": "Fading late in the race",
+    "text": "Your clean laps got about 0.9 s slower from start to finish (not fuel-corrected: these laps have no fuel data, so some of this is the car getting lighter). Tyres play a part; check the corners that slowed most under Stint.",
+    "detail": "Trend line over 10 clean laps: +0.90 s from first to last (not fuel-corrected: these laps have no fuel data, so some of this is the car getting lighter).",
+    "cost": 0.9
+   },
+   {
+    "section": "bad",
+    "key": "vary",
+    "title": "Corners you drive differently every lap",
+    "text": "Turn 3 (\u00b10.17 s). Your brake marker there is already the same every lap, so the difference comes after it: pick one turn-in point and one place to get back on the throttle, and repeat them.",
+    "detail": "Middle half of your clean laps through Turn 3 spread over 0.35 s. This is the time through the whole corner, not the brake point.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "brake_spread",
+    "title": "Brake point moves around",
+    "text": "Your brake point moved around in Turn 5 (about 30 m between laps) and Turn 4.",
+    "detail": "Middle half of your clean laps' brake points spanned 30 m in Turn 5, 16 m in Turn 4.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "phase",
+    "title": "Where in the corner",
+    "text": "Most of the gap between your typical and better laps was on corner exits (about 0.28 s a lap).",
+    "detail": "About 76% of where the time goes in the corners (0.28 s, each part's middle loss added up corner by corner) against your better laps (your quickest quarter of clean laps). Through the corners your typical lap (middle of your clean laps) was 0.50 s slower than your better laps.",
+    "cost": 0.28
+   },
+   {
+    "section": "bad",
+    "key": "scattered",
+    "title": "Lap times all over the place",
+    "text": "Consistency 40/100. Before chasing pace, aim to put five laps in a row within 0.5 s of each other.",
+    "detail": "Spread \u00b11.10 s; 20% of laps within 0.5 s of your best. 2 of 10 laps were more than 1.0 s off your typical lap.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "locked",
+    "title": "Repeatable corners",
+    "text": "You hit the same time lap after lap in Turn 1, Turn 2, Turn 4, Turn 7, Turn 8.",
+    "detail": "Middle half of your clean laps within 0.09 s in 5 corner(s).",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "brake_markers",
+    "title": "Same brake marker every lap",
+    "text": "You braked at the same marker lap after lap in Turn 1, Turn 3 and Turn 6. Your time through Turn 3 still varies (see Corners you drive differently every lap): that part comes after the brake point.",
+    "detail": "Middle half of your clean laps' brake points within 5 m in 3 of 6 braking corners.",
+    "cost": null
+   },
+   {
+    "section": "look",
+    "key": "lap1",
+    "title": "Lap 1",
+    "text": "Lap 1 was 8.1 s slower than your typical lap (that includes the start). Debrief doesn't know what kind of start it was, so this isn't counted as a habit.",
+    "detail": "Lap 1 2:26.712 against a typical 2:18.601. Most of it was in Turn 1 (3.2 s) and Turn 2 (1.1 s) (that includes the start).",
+    "cost": 8.1
+   },
+   {
+    "section": "look",
+    "key": "traffic",
+    "title": "Possibly traffic",
+    "text": "Lap 5 lost time in one short stretch that your other laps didn't: possibly a lapped or slower car, possibly a mistake. Still counted as off-pace; check where in Compare laps.",
+    "detail": "lap 5: ~0.83 s around 1500 m; lap 1: ~0.90 s around 150 m.",
+    "cost": null
+   }
+  ]
+ },
+ "clean_race": {
+  "fix": [],
+  "habits": [
+   {
+    "section": "good",
+    "key": "clean",
+    "title": "Clean race",
+    "text": "No laps flagged for incidents or track limits.",
+    "detail": "0 of 12 full laps flagged by Garage 61.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "lap1",
+    "title": "Strong first lap",
+    "text": "Lap 1 was as quick as your typical lap, start included.",
+    "detail": "Lap 1 1:30.100 against a typical 1:30.100.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "steady",
+    "title": "Held pace all race",
+    "text": "Your clean laps held steady from start to finish (not fuel-corrected: these laps have no fuel data, so some of this is the car getting lighter).",
+    "detail": "Trend line over 12 clean laps: +0.05 s from first to last (not fuel-corrected: these laps have no fuel data, so some of this is the car getting lighter).",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "locked",
+    "title": "Repeatable corners",
+    "text": "You hit the same time lap after lap in every corner.",
+    "detail": "Middle half of your clean laps within 0.06 s in 3 corner(s).",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "brake_markers",
+    "title": "Same brake marker every lap",
+    "text": "You braked at the same marker lap after lap in C1 and C2.",
+    "detail": "Middle half of your clean laps' brake points within 5 m in 2 of 2 braking corners.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "consistent",
+    "title": "Consistent laps",
+    "text": "Consistency 80/100: your clean laps stayed within about \u00b10.10 s.",
+    "detail": "90% of 12 clean laps within 0.5 s of your best.",
+    "cost": null
+   }
+  ]
+ },
+ "flat_fuel": {
+  "fix": [],
+  "habits": [
+   {
+    "section": "good",
+    "key": "clean",
+    "title": "Clean race",
+    "text": "No laps flagged for incidents or track limits.",
+    "detail": "0 of 12 full laps flagged by Garage 61.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "lap1",
+    "title": "Strong first lap",
+    "text": "Lap 1 was as quick as your typical lap, start included.",
+    "detail": "Lap 1 1:30.100 against a typical 1:30.100.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "steady",
+    "title": "Held pace all race",
+    "text": "Your clean laps held steady from start to finish (fuel-corrected: about 0.000 s a lap of fuel-weight estimate added back).",
+    "detail": "Trend line over 12 clean laps: -0.00 s from first to last (fuel-corrected: about 0.000 s a lap of fuel-weight estimate added back).",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "locked",
+    "title": "Repeatable corners",
+    "text": "You hit the same time lap after lap in every corner.",
+    "detail": "Middle half of your clean laps within 0.06 s in 3 corner(s).",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "brake_markers",
+    "title": "Same brake marker every lap",
+    "text": "You braked at the same marker lap after lap in C1 and C2.",
+    "detail": "Middle half of your clean laps' brake points within 5 m in 2 of 2 braking corners.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "consistent",
+    "title": "Consistent laps",
+    "text": "Consistency 80/100: your clean laps stayed within about \u00b10.10 s.",
+    "detail": "90% of 12 clean laps within 0.5 s of your best.",
+    "cost": null
+   }
+  ]
+ },
+ "oval_n12": {
+  "fix": [],
+  "habits": [
+   {
+    "section": "good",
+    "key": "clean",
+    "title": "Clean race",
+    "text": "No laps flagged for incidents or track limits.",
+    "detail": "0 of 12 full laps flagged by Garage 61.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "lap1",
+    "title": "Strong first lap",
+    "text": "Lap 1 was 0.07 s quicker than your typical lap, start included.",
+    "detail": "Lap 1 0:28.000 against a typical 0:28.067.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "steady",
+    "title": "Held pace all race",
+    "text": "Your clean laps held steady from start to finish (not fuel-corrected: these laps have no fuel data, so some of this is the car getting lighter).",
+    "detail": "Trend line over 12 clean laps: -0.00 s from first to last (not fuel-corrected: these laps have no fuel data, so some of this is the car getting lighter).",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "consistent",
+    "title": "Consistent laps",
+    "text": "Consistency 73/100: your clean laps stayed within about \u00b10.07 s.",
+    "detail": "58% of 12 clean laps within 0.2 s of your best.",
+    "cost": null
+   }
+  ]
+ },
+ "street_n12": {
+  "fix": [
+   {
+    "corner": "C6",
+    "why": "Your typical lap loses 0.10 s here compared with your better laps.",
+    "gain": 0.1,
+    "detail": "Typical 8.92 s through here; your quicker quarter of laps 8.82 s."
+   },
+   {
+    "corner": "C8",
+    "why": "Your typical lap loses 0.07 s here compared with your better laps.",
+    "gain": 0.07,
+    "detail": "Typical 9.57 s through here; your quicker quarter of laps 9.50 s."
+   },
+   {
+    "corner": "C9",
+    "why": "Your typical lap loses 0.06 s here compared with your better laps.",
+    "gain": 0.06,
+    "detail": "Typical 7.46 s through here; your quicker quarter of laps 7.40 s."
+   }
+  ],
+  "habits": [
+   {
+    "section": "bad",
+    "key": "vary",
+    "title": "Corners you drive differently every lap",
+    "text": "C8 (\u00b10.10 s) and C6 (\u00b10.08 s) and C5 (\u00b10.07 s). Your brake marker there is already the same every lap, so the difference comes after it: pick one turn-in point and one place to get back on the throttle, and repeat them.",
+    "detail": "Middle half of your clean laps through C8 spread over 0.19 s, C6 spread over 0.16 s, C5 spread over 0.15 s. This is the time through the whole corner, not the brake point.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "phase",
+    "title": "Where in the corner",
+    "text": "Most of the gap between your typical and better laps was in the braking zones (about 0.20 s a lap).",
+    "detail": "About 67% of where the time goes in the corners (0.20 s, each part's middle loss added up corner by corner) against your better laps (your quickest quarter of clean laps). Through the corners your typical lap (middle of your clean laps) was 0.39 s slower than your better laps.",
+    "cost": 0.2
+   },
+   {
+    "section": "good",
+    "key": "clean",
+    "title": "Clean race",
+    "text": "No laps flagged for incidents or track limits.",
+    "detail": "0 of 12 full laps flagged by Garage 61.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "lap1",
+    "title": "Strong first lap",
+    "text": "Lap 1 was 0.4 s quicker than your typical lap, start included.",
+    "detail": "Lap 1 1:13.000 against a typical 1:13.400.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "brake_markers",
+    "title": "Same brake marker every lap",
+    "text": "You braked at the same marker lap after lap in C1, C2, C3, C4, C5, C6, C7, C8 and C9. Your time through C8, C6 and C5 still varies (see Corners you drive differently every lap): that part comes after the brake point.",
+    "detail": "Middle half of your clean laps' brake points within 5 m in 9 of 9 braking corners.",
+    "cost": null
+   }
+  ]
+ },
+ "long_n10": {
+  "fix": [],
+  "habits": [
+   {
+    "section": "good",
+    "key": "clean",
+    "title": "Clean race",
+    "text": "No laps flagged for incidents or track limits.",
+    "detail": "0 of 10 full laps flagged by Garage 61.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "lap1",
+    "title": "Strong first lap",
+    "text": "Lap 1 was 0.7 s quicker than your typical lap, start included.",
+    "detail": "Lap 1 7:24.500 against a typical 7:25.167.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "steady",
+    "title": "Held pace all race",
+    "text": "Your clean laps held steady from start to finish (not fuel-corrected: these laps have no fuel data, so some of this is the car getting lighter).",
+    "detail": "Trend line over 10 clean laps: +0.23 s from first to last (not fuel-corrected: these laps have no fuel data, so some of this is the car getting lighter).",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "locked",
+    "title": "Repeatable corners",
+    "text": "You hit the same time lap after lap in C1, C2, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14, C15, C16, C17.",
+    "detail": "Middle half of your clean laps within 0.30 s in 16 corner(s).",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "brake_markers",
+    "title": "Same brake marker every lap",
+    "text": "You braked at the same marker lap after lap in C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14, C15, C16 and C17.",
+    "detail": "Middle half of your clean laps' brake points within 5 m in 17 of 17 braking corners.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "consistent",
+    "title": "Consistent laps",
+    "text": "Consistency 97/100: your clean laps stayed within about \u00b10.26 s.",
+    "detail": "100% of 10 clean laps within 2.5 s of your best.",
+    "cost": null
+   }
+  ]
+ },
+ "street_n12_fuel": {
+  "fix": [
+   {
+    "corner": "C6",
+    "why": "Your typical lap loses 0.10 s here compared with your better laps.",
+    "gain": 0.1,
+    "detail": "Typical 8.92 s through here; your quicker quarter of laps 8.82 s."
+   },
+   {
+    "corner": "C8",
+    "why": "Your typical lap loses 0.07 s here compared with your better laps.",
+    "gain": 0.07,
+    "detail": "Typical 9.57 s through here; your quicker quarter of laps 9.50 s."
+   },
+   {
+    "corner": "C9",
+    "why": "Your typical lap loses 0.06 s here compared with your better laps.",
+    "gain": 0.06,
+    "detail": "Typical 7.46 s through here; your quicker quarter of laps 7.40 s."
+   }
+  ],
+  "habits": [
+   {
+    "section": "bad",
+    "key": "fade",
+    "title": "Fading late in the race",
+    "text": "Your clean laps got about 0.5 s slower from start to finish (fuel-corrected: about 0.035 s a lap of fuel-weight estimate added back). Tyres play a part; check the corners that slowed most under Stint.",
+    "detail": "Trend line over 12 clean laps: +0.54 s from first to last (fuel-corrected: about 0.035 s a lap of fuel-weight estimate added back).",
+    "cost": 0.5
+   },
+   {
+    "section": "bad",
+    "key": "vary",
+    "title": "Corners you drive differently every lap",
+    "text": "C8 (\u00b10.10 s) and C6 (\u00b10.08 s) and C5 (\u00b10.07 s). Your brake marker there is already the same every lap, so the difference comes after it: pick one turn-in point and one place to get back on the throttle, and repeat them.",
+    "detail": "Middle half of your clean laps through C8 spread over 0.19 s, C6 spread over 0.16 s, C5 spread over 0.15 s. This is the time through the whole corner, not the brake point.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "phase",
+    "title": "Where in the corner",
+    "text": "Most of the gap between your typical and better laps was in the braking zones (about 0.20 s a lap).",
+    "detail": "About 67% of where the time goes in the corners (0.20 s, each part's middle loss added up corner by corner) against your better laps (your quickest quarter of clean laps). Through the corners your typical lap (middle of your clean laps) was 0.39 s slower than your better laps.",
+    "cost": 0.2
+   },
+   {
+    "section": "good",
+    "key": "clean",
+    "title": "Clean race",
+    "text": "No laps flagged for incidents or track limits.",
+    "detail": "0 of 12 full laps flagged by Garage 61.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "lap1",
+    "title": "Strong first lap",
+    "text": "Lap 1 was 0.4 s quicker than your typical lap, start included.",
+    "detail": "Lap 1 1:13.000 against a typical 1:13.400.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "brake_markers",
+    "title": "Same brake marker every lap",
+    "text": "You braked at the same marker lap after lap in C1, C2, C3, C4, C5, C6, C7, C8 and C9. Your time through C8, C6 and C5 still varies (see Corners you drive differently every lap): that part comes after the brake point.",
+    "detail": "Middle half of your clean laps' brake points within 5 m in 9 of 9 braking corners.",
+    "cost": null
+   }
+  ]
+ },
+ "street_fade_nofuel": {
+  "fix": [
+   {
+    "corner": "C4",
+    "why": "Your typical lap loses 0.33 s here compared with your better laps.",
+    "gain": 0.33,
+    "detail": "Typical 7.66 s through here; your quicker quarter of laps 7.34 s."
+   },
+   {
+    "corner": "C6",
+    "why": "Your typical lap loses 0.10 s here compared with your better laps.",
+    "gain": 0.1,
+    "detail": "Typical 8.92 s through here; your quicker quarter of laps 8.82 s."
+   },
+   {
+    "corner": "C8",
+    "why": "Your typical lap loses 0.07 s here compared with your better laps.",
+    "gain": 0.07,
+    "detail": "Typical 9.57 s through here; your quicker quarter of laps 9.50 s."
+   },
+   {
+    "corner": "C9",
+    "why": "Your typical lap loses 0.06 s here compared with your better laps.",
+    "gain": 0.06,
+    "detail": "Typical 7.46 s through here; your quicker quarter of laps 7.40 s."
+   }
+  ],
+  "habits": [
+   {
+    "section": "bad",
+    "key": "fade",
+    "title": "Fading late in the race",
+    "text": "Your clean laps got about 1.3 s slower from start to finish (not fuel-corrected: these laps have no fuel data, so some of this is the car getting lighter). Tyres play a part; check the corners that slowed most under Stint.",
+    "detail": "Trend line over 12 clean laps: +1.26 s from first to last (not fuel-corrected: these laps have no fuel data, so some of this is the car getting lighter).",
+    "cost": 1.3
+   },
+   {
+    "section": "bad",
+    "key": "vary",
+    "title": "Corners you drive differently every lap",
+    "text": "C4 (\u00b10.28 s) and C8 (\u00b10.10 s) and C6 (\u00b10.08 s). Your brake marker there is already the same every lap, so the difference comes after it: pick one turn-in point and one place to get back on the throttle, and repeat them.",
+    "detail": "Middle half of your clean laps through C4 spread over 0.56 s, C8 spread over 0.19 s, C6 spread over 0.16 s. This is the time through the whole corner, not the brake point.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "phase",
+    "title": "Where in the corner",
+    "text": "Most of the gap between your typical and better laps was in the braking zones (about 0.37 s a lap).",
+    "detail": "About 61% of where the time goes in the corners (0.37 s, each part's middle loss added up corner by corner) against your better laps (your quickest quarter of clean laps). Through the corners your typical lap (middle of your clean laps) was 0.74 s slower than your better laps.",
+    "cost": 0.37
+   },
+   {
+    "section": "bad",
+    "key": "scattered",
+    "title": "Lap times all over the place",
+    "text": "Consistency 40/100. Before chasing pace, aim to put five laps in a row within 0.4 s of each other.",
+    "detail": "Spread \u00b10.49 s; 25% of laps within 0.4 s of your best.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "clean",
+    "title": "Clean race",
+    "text": "No laps flagged for incidents or track limits.",
+    "detail": "0 of 12 full laps flagged by Garage 61.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "lap1",
+    "title": "Strong first lap",
+    "text": "Lap 1 was 1.0 s quicker than your typical lap, start included.",
+    "detail": "Lap 1 1:13.000 against a typical 1:14.050.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "brake_markers",
+    "title": "Same brake marker every lap",
+    "text": "You braked at the same marker lap after lap in C1, C2, C3, C4, C5, C6, C7, C8 and C9. Your time through C4, C8 and C6 still varies (see Corners you drive differently every lap): that part comes after the brake point.",
+    "detail": "Middle half of your clean laps' brake points within 5 m in 9 of 9 braking corners.",
+    "cost": null
+   }
+  ]
+ },
+ "street_fade_fuel": {
+  "fix": [
+   {
+    "corner": "C4",
+    "why": "Your typical lap loses 0.33 s here compared with your better laps.",
+    "gain": 0.33,
+    "detail": "Typical 7.66 s through here; your quicker quarter of laps 7.34 s."
+   },
+   {
+    "corner": "C6",
+    "why": "Your typical lap loses 0.10 s here compared with your better laps.",
+    "gain": 0.1,
+    "detail": "Typical 8.92 s through here; your quicker quarter of laps 8.82 s."
+   },
+   {
+    "corner": "C8",
+    "why": "Your typical lap loses 0.07 s here compared with your better laps.",
+    "gain": 0.07,
+    "detail": "Typical 9.57 s through here; your quicker quarter of laps 9.50 s."
+   },
+   {
+    "corner": "C9",
+    "why": "Your typical lap loses 0.06 s here compared with your better laps.",
+    "gain": 0.06,
+    "detail": "Typical 7.46 s through here; your quicker quarter of laps 7.40 s."
+   }
+  ],
+  "habits": [
+   {
+    "section": "bad",
+    "key": "fade",
+    "title": "Fading late in the race",
+    "text": "Your clean laps got about 1.6 s slower from start to finish (fuel-corrected: about 0.035 s a lap of fuel-weight estimate added back). Tyres play a part; check the corners that slowed most under Stint.",
+    "detail": "Trend line over 12 clean laps: +1.65 s from first to last (fuel-corrected: about 0.035 s a lap of fuel-weight estimate added back).",
+    "cost": 1.6
+   },
+   {
+    "section": "bad",
+    "key": "vary",
+    "title": "Corners you drive differently every lap",
+    "text": "C4 (\u00b10.28 s) and C8 (\u00b10.10 s) and C6 (\u00b10.08 s). Your brake marker there is already the same every lap, so the difference comes after it: pick one turn-in point and one place to get back on the throttle, and repeat them.",
+    "detail": "Middle half of your clean laps through C4 spread over 0.56 s, C8 spread over 0.19 s, C6 spread over 0.16 s. This is the time through the whole corner, not the brake point.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "phase",
+    "title": "Where in the corner",
+    "text": "Most of the gap between your typical and better laps was in the braking zones (about 0.37 s a lap).",
+    "detail": "About 61% of where the time goes in the corners (0.37 s, each part's middle loss added up corner by corner) against your better laps (your quickest quarter of clean laps). Through the corners your typical lap (middle of your clean laps) was 0.74 s slower than your better laps.",
+    "cost": 0.37
+   },
+   {
+    "section": "bad",
+    "key": "scattered",
+    "title": "Lap times all over the place",
+    "text": "Consistency 40/100. Before chasing pace, aim to put five laps in a row within 0.4 s of each other.",
+    "detail": "Spread \u00b10.49 s; 25% of laps within 0.4 s of your best.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "clean",
+    "title": "Clean race",
+    "text": "No laps flagged for incidents or track limits.",
+    "detail": "0 of 12 full laps flagged by Garage 61.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "lap1",
+    "title": "Strong first lap",
+    "text": "Lap 1 was 1.0 s quicker than your typical lap, start included.",
+    "detail": "Lap 1 1:13.000 against a typical 1:14.050.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "brake_markers",
+    "title": "Same brake marker every lap",
+    "text": "You braked at the same marker lap after lap in C1, C2, C3, C4, C5, C6, C7, C8 and C9. Your time through C4, C8 and C6 still varies (see Corners you drive differently every lap): that part comes after the brake point.",
+    "detail": "Middle half of your clean laps' brake points within 5 m in 9 of 9 braking corners.",
+    "cost": null
+   }
+  ]
+ },
+ "street_flags": {
+  "fix": [
+   {
+    "corner": "C6",
+    "why": "Your typical lap loses 0.14 s here compared with your better laps.",
+    "gain": 0.14,
+    "detail": "Typical 8.95 s through here; your quicker quarter of laps 8.81 s."
+   },
+   {
+    "corner": "C8",
+    "why": "Your typical lap loses 0.07 s here compared with your better laps.",
+    "gain": 0.07,
+    "detail": "Typical 9.59 s through here; your quicker quarter of laps 9.52 s."
+   },
+   {
+    "corner": "C9",
+    "why": "Your typical lap loses 0.05 s here compared with your better laps.",
+    "gain": 0.05,
+    "detail": "Typical 7.45 s through here; your quicker quarter of laps 7.40 s."
+   }
+  ],
+  "habits": [
+   {
+    "section": "bad",
+    "key": "unclean",
+    "title": "Incidents or track limits",
+    "text": "Garage 61 flagged laps 6, 7. Each one is a lap you can't use, and a safety-rating risk.",
+    "detail": "2 of 12 full laps flagged.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "vary",
+    "title": "Corners you drive differently every lap",
+    "text": "C6 (\u00b10.13 s) and C8 (\u00b10.11 s) and C1 (\u00b10.07 s). Your brake marker there is already the same every lap, so the difference comes after it: pick one turn-in point and one place to get back on the throttle, and repeat them.",
+    "detail": "Middle half of your clean laps through C6 spread over 0.25 s, C8 spread over 0.22 s, C1 spread over 0.14 s. This is the time through the whole corner, not the brake point.",
+    "cost": null
+   },
+   {
+    "section": "bad",
+    "key": "scattered",
+    "title": "Lap times all over the place",
+    "text": "Consistency 20/100. Before chasing pace, aim to put five laps in a row within 0.4 s of each other.",
+    "detail": "Spread \u00b10.85 s; 30% of laps within 0.4 s of your best. 1 of 10 laps were more than 0.9 s off your typical lap.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "lap1",
+    "title": "Strong first lap",
+    "text": "Lap 1 was 0.4 s quicker than your typical lap, start included.",
+    "detail": "Lap 1 1:13.000 against a typical 1:13.442.",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "steady",
+    "title": "Held pace all race",
+    "text": "Your clean laps held steady from start to finish (not fuel-corrected: these laps have no fuel data, so some of this is the car getting lighter).",
+    "detail": "Trend line over 9 clean laps: +0.08 s from first to last (not fuel-corrected: these laps have no fuel data, so some of this is the car getting lighter).",
+    "cost": null
+   },
+   {
+    "section": "good",
+    "key": "brake_markers",
+    "title": "Same brake marker every lap",
+    "text": "You braked at the same marker lap after lap in C1, C2, C3, C4, C5, C6, C7, C8 and C9. Your time through C6, C8 and C1 still varies (see Corners you drive differently every lap): that part comes after the brake point.",
+    "detail": "Middle half of your clean laps' brake points within 5 m in 9 of 9 braking corners.",
+    "cost": null
+   },
+   {
+    "section": "look",
+    "key": "traffic",
+    "title": "Possibly traffic",
+    "text": "Lap 4 lost time in one short stretch that your other laps didn't: possibly a lapped or slower car, possibly a mistake. Still counted as off-pace; check where in Compare laps.",
+    "detail": "lap 4: ~2.83 s around 1050 m.",
+    "cost": null
+   }
+  ]
+ }
+}

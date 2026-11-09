@@ -63,19 +63,20 @@ out = insights.build(base(brake_spread=spread))
 v, m = keyed(out, "bad", "vary"), keyed(out, "good", "brake_markers")
 check(v is not None and m is not None, "both habits are there (corner time varies, brake marker steady)")
 if v and m:
-    check("brake marker there is already the same every lap" in v["text"] and "Pick one braking marker" not in v["text"],
-          f"the varying corners say the brake marker is fine and the difference comes after it: {v['text']}")
+    check("keep your brake marker in C1 and C2" in v["try"] and "pick one braking marker" not in v["try"],
+          f"the varying corners say keep the brake marker and fix turn-in and throttle: {v['try']}")
     check("not the brake point" in v["detail"], f"detail says it's corner time, not the brake point: {v['detail']}")
-    check("still varies" in m["text"] and "C1" in m["text"].split("still varies")[0], f"brake-marker habit names the exception: {m['text']}")
+    check("C1" in m["text"] and v["scope"] == "corner" and m["scope"] == "corner",
+          f"2.28.1: both habits are corner habits and the strip shows them side by side: {m['text']}")
 # one varying corner with a steady brake marker, one with a moving one
 spread2 = {"corners": [{"id": "C1", "iqr_m": 3.0, "n": 12, "label": "locked"}, {"id": "C2", "iqr_m": 12.0, "n": 12, "label": "ok"},
                        {"id": "C3", "iqr_m": 3.0, "n": 12, "label": "locked"}]}
 v = keyed(insights.build(base(brake_spread=spread2)), "bad", "vary")
-check(v and "In C1 your brake marker is already the same" in v["text"] and "elsewhere pick one braking marker" in v["text"],
-      f"mixed: says which corner is which: {v and v['text']}")
+check(v and "in C1 keep your brake marker" in v["try"] and "pick one braking marker" in v["try"],
+      f"mixed: says which corner is which: {v and v['try']}")
 # no brake-point data: the old advice
 v = keyed(insights.build(base(brake_spread={"corners": []})), "bad", "vary")
-check(v and "Pick one braking marker and one turn-in point" in v["text"], "no brake-point data: pick a braking marker")
+check(v and "pick one braking marker and one turn-in point" in v["try"], "no brake-point data: pick a braking marker")
 
 # ---------------------------------------------------------------- 2. lap 1 praise only when it was really as quick
 for t1, want in ((90.1, "as quick as"), (89.7, "0.4 s quicker"), (90.5, None), (90.14, "as quick as"), (90.04, "0.06 s quicker")):
@@ -153,7 +154,7 @@ out = insights.build(d)
 order = [f["corner"] for f in out["fix"]]
 check(order == ["C2", "C3", "C1"], f"corners with a tip first, biggest first; the biggest without one last: {order}")
 c1 = out["fix"][-1]
-check(not c1["tips"] and c1.get("watch") and "Next time watch" in c1["watch"] and "lap 3" in c1["watch"],
+check(not c1["tips"] and c1.get("watch") and "Try:" in c1["watch"] and c1["try"].startswith("Try:") and "lap 3" in c1["watch"],
       f"a corner without a tip says what to watch: {c1.get('watch')}")
 check(all("watch" not in f for f in out["fix"] if f["tips"]), "corners with tips have no watch line")
 check(out["time_to_find"] == 0.8, f"time to find still adds every corner ({out['time_to_find']})")

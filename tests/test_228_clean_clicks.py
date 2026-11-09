@@ -1277,12 +1277,12 @@ def test_review_page_order_and_nothing_removed():
         assert order["story"] is not None and order["story"] < order["fix"], order
         assert pg.evaluate("() => document.getElementById('verdict').closest('header') !== null"), "the 'what to work on' sentence belongs under the title"
         assert pg.evaluate("() => document.getElementById('verdict').textContent.length > 10")
-        # the same sentence on every card is said once above them, the full text stays in each card's fold
+        # 2.28.1: the same sentence on every card is said once above them; each card has only its own Try line
         shared = pg.evaluate("() => document.getElementById('fixSame').hidden ? '' : document.getElementById('fixSame').textContent")
-        cards = pg.evaluate("() => [...document.querySelectorAll('#fixList .fix')].map(c => ({head: c.querySelector('h3').textContent, folds: c.querySelectorAll('details.fsame p').length, nums: /look about the same on quicker/.test(c.textContent)}))")
+        cards = pg.evaluate("() => [...document.querySelectorAll('#fixList .fix')].map(c => ({head: c.querySelector('h3').textContent, folds: c.querySelectorAll('p.try').length, nums: !/look about the same on quicker/.test(c.textContent) && c.querySelector('p.try').textContent.includes(c.querySelector('h3').textContent.split(' ')[0])}))")
         assert shared and "spread thin" in shared, shared
         assert len(cards) >= 3 and all(c["folds"] == 1 and c["nums"] for c in cards), cards
-        full = pg.evaluate("() => (document.getElementById('fixList').textContent.match(/keeping one turn-in point/g) || []).length")
+        full = pg.evaluate("() => (document.getElementById('fixList').textContent.match(/spread thin here/g) || []).length")
         assert full == len(cards), (full, len(cards))
         assert not errs, errs
     finally:
@@ -1351,12 +1351,12 @@ def test_review_page_keeps_every_section_and_number():
 
 def test_layout_is_bumped_and_saved_reviews_are_refreshed_once():
     from debrief import report
-    assert report.LAYOUT == "2.28.0"
+    assert report.LAYOUT == "2.28.1"
     lib = TMP / "layoutlib"
     MFL.main(str(lib))
     (lib / ".layout").write_text("2.18.0", encoding="utf-8")
     n = report.refresh_all(str(lib))
-    assert n >= 1 and (lib / ".layout").read_text(encoding="utf-8").strip() == "2.28.0"
+    assert n >= 1 and (lib / ".layout").read_text(encoding="utf-8").strip() == "2.28.1"
     assert (lib / ".backup").is_dir() or any(lib.glob(".backup*")), "reviews are backed up before the re-render"
     assert report.refresh_all(str(lib)) == 0           # once per layout
 

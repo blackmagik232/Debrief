@@ -257,10 +257,10 @@ def test_fade_says_whether_it_is_fuel_corrected():
     base = {"laps": [{"n": i, "t": 90.0, "clean": True} for i in range(1, 13)], "best": {"n": 1, "t": 90.0},
             "median": 90.0, "counts": {"clean": 12}, "trend_total": 0.6, "corners": []}
     it = next(i for i in insights.build(base)["bad"] if i["key"] == "fade")
-    assert "not fuel-corrected" in it["text"] and "0.6 s" in it["text"]
+    assert "no fuel data" in it["text"] and "0.6 s" in it["text"] and "Measured" not in it["text"]
     with_fuel = dict(base, stint={"fuel_s_per_lap": 0.04}, trend_fuel={"total": 1.04, "fuel_s_per_lap": 0.04, "corrected": True})
     it = next(i for i in insights.build(with_fuel)["bad"] if i["key"] == "fade")
-    assert "fuel-corrected" in it["text"] and "not fuel-corrected" not in it["text"] and "1.0 s" in it["text"]
+    assert it["text"].startswith("Measured: your clean laps got about 0.6 s slower") and "no fuel data" not in it["text"] and "about 1.0 s" in it["text"]
     # a review whose raw trend is flat but whose fuel-corrected trend fades still gets the item
     flat = dict(base, trend_total=0.05, stint={"fuel_s_per_lap": 0.04}, trend_fuel={"total": 0.45, "fuel_s_per_lap": 0.04, "corrected": True})
     assert any(i["key"] == "fade" for i in insights.build(flat)["bad"])
@@ -274,14 +274,14 @@ def test_lap1_is_a_habit_only_when_the_start_type_is_known():
     ins = insights.build(d)
     assert not any(i["key"] == "lap1" for i in ins["bad"])
     it = next(i for i in ins["look"] if i["key"] == "lap1")
-    assert "doesn't know what kind of start" in it["text"] and it["laps"] == [1]
+    assert "doesn't know what kind of start" in it["costs"] and it["laps"] == [1]
     for word in ("standing", "rolling"):
         assert word not in it["text"]
     d["result"] = {"finish_pos": 3, "start_type": "Rolling"}
     d["racecraft"] = racecraft.build(d)
     assert d["racecraft"]["lap1"]["start_type"] == "rolling"
     it = next(i for i in insights.build(d)["bad"] if i["key"] == "lap1")
-    assert "rolling start" in it["text"]
+    assert "rolling start" in it["text"] and "doesn't know" not in (it["costs"] or "")
     d["result"]["start_type"] = "no idea"
     assert racecraft.build(d)["lap1"]["start_type"] is None
 

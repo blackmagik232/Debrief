@@ -177,7 +177,7 @@ tfoot td{border-top:1px solid var(--axis);border-bottom:none;font-weight:600}
 .fixes{display:grid;gap:var(--s3)}
 .fix{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--b);border-radius:6px;padding:var(--s4);display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:var(--s1) var(--s4);align-items:start}
 .fix .rk{font-family:var(--display);font-size:34px;font-weight:700;line-height:1;color:var(--bt)}
-.fix h3{font-size:var(--t-md)}.fix .why{color:var(--ink2);font-size:var(--t-sm)}
+.fix h3{font-size:var(--t-md)}.fix .why{color:var(--ink2);font-size:var(--t-sm)}.fix p.try{margin:0;font-size:var(--t-sm)}.fix p.try b{font-weight:600}
 .fix ul{margin:4px 0 0;padding-left:18px;display:grid;gap:2px}
 .fix .gain{font-family:var(--mono);font-weight:600;white-space:nowrap;text-align:right}
 .fix .gain small{display:block;font-weight:400;color:var(--muted);font-size:11px}
@@ -216,9 +216,6 @@ tfoot td{border-top:1px solid var(--axis);border-bottom:none;font-weight:600}
 .ftimes{display:flex;flex-wrap:wrap;gap:2px var(--s4);font-size:var(--t-sm);color:var(--ink2)}
 .ftimes b{font-family:var(--mono);color:var(--ink);font-weight:600}
 .fspark .note{margin-bottom:2px}
-.hab li .det{display:block;color:var(--ink2);font-size:var(--t-sm);margin-top:2px}
-.hab li .src{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:5px;font-size:var(--t-xs);color:var(--muted)}
-.hab li .src button{font-family:var(--mono);font-size:var(--t-xs);padding:1px 7px;border-radius:999px;line-height:1.5}
 .secfail{margin:0}
 #failNote{margin:0}
 .chart[tabindex]:focus-visible{outline:2px solid var(--a);outline-offset:2px}
@@ -226,11 +223,35 @@ rect.kf,circle.kf{stroke:var(--ink)!important;stroke-width:2.5px!important}
 g.kf>:first-child{stroke:var(--ink);stroke-width:1.5px}
 .split.kf,.drow.kf,.irow.kf,.ribbon div.kf{outline:2px solid var(--a);outline-offset:-2px}
 .sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.hab{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:var(--s4)}
-.hab .panel{border-top:3px solid var(--line)}.hab .bad{border-top-color:var(--bad)}.hab .good{border-top-color:var(--good)}.hab .look{border-top-color:var(--muted)}
-.hab ul{margin:0;padding:0;list-style:none;display:grid;gap:var(--s3)}
-.hab li b{display:block}.hab li span{color:var(--ink2);font-size:var(--t-sm)}
-.hab .none{color:var(--muted);font-size:var(--t-sm)}
+/* 2.28.1 habits: Fix these (ranked cards), a corner-by-corner strip, then slim rows. Rows never stretch to a taller sibling. */
+.hab2{display:grid;gap:var(--s4);align-items:start}
+.hab2>*,.hab2 .hrows>*{min-width:0;align-self:start}
+.hab2 .panel{border-top:3px solid var(--line)}
+.hab2 .hfix{border-top-color:var(--bad)}.hab2 .good{border-top-color:var(--good)}.hab2 .look{border-top-color:var(--muted)}.hab2 .hstrip{border-top-color:var(--a)}
+.hab2 h3{font-size:var(--fs-16)}.hab2 .note{font-size:var(--fs-13)}
+.hab2 ul{margin:0;padding:0;list-style:none;display:grid;gap:var(--s3)}
+.hab2 .none{color:var(--muted);font-size:var(--fs-14)}
+.hcard{border:1px solid var(--line);border-radius:6px;padding:var(--s3) var(--s4);display:grid;gap:var(--s1);background:var(--panel)}
+.hcard .hh{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s3);align-items:baseline;justify-content:space-between}
+.hcard .hh b{font-size:var(--fs-16)}
+.hbadge{font-family:var(--mono);font-size:var(--fs-13);font-weight:600;border:1px solid var(--axis);border-radius:999px;padding:2px 10px;max-width:100%;overflow-wrap:anywhere}
+.hbadge.safety{border-color:var(--bad);color:var(--bad)}.hbadge.none{font-weight:400;color:var(--muted)}
+.hcard p{margin:0;font-size:var(--fs-14);color:var(--ink2);max-width:90ch}
+.hcard p.try{color:var(--ink)}.hcard p.try b{font-weight:600}
+.hab2 details>summary{cursor:pointer;font-size:var(--fs-13);color:var(--ink2);min-height:24px;padding:2px 0}
+.hab2 details ul{margin-top:var(--s1);gap:var(--s1);list-style:disc;padding-left:18px}.hab2 details li{font-size:var(--fs-13);color:var(--ink2)}
+.hab2 .src{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s2);align-items:center;font-size:var(--fs-13);color:var(--muted)}
+.hab2 .src button{font-family:var(--mono);font-size:var(--fs-13);padding:0 8px;min-height:24px;min-width:24px;border-radius:999px;line-height:1.4}
+.hrows{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:var(--s4);align-items:start}
+.hrow{display:grid;gap:2px;padding:var(--s2) 0;border-top:1px solid var(--line)}.hrow:first-child{border-top:none;padding-top:0}
+.hrow b{font-size:var(--fs-14)}.hrow span.t{font-size:var(--fs-14);color:var(--ink2)}
+.hstrip table{border-collapse:collapse;width:100%;font-size:var(--fs-14)}
+.hstrip th{text-align:left;font-family:var(--mono);font-size:var(--fs-11);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
+.hstrip td{padding:4px 8px;border-bottom:1px solid var(--line)}.hstrip td.m{text-align:center;font-family:var(--mono);font-weight:700;font-size:var(--fs-16)}
+.hstrip .m.ok{color:var(--good)}.hstrip .m.watch{color:var(--warn)}.hstrip .m.cost{color:var(--bad)}.hstrip .m.none{color:var(--muted);font-weight:400}
+.hstrip td.c button{font-family:var(--mono);font-size:var(--fs-13);min-height:24px;padding:0 8px}
+.hstrip th.m{text-align:center}.hstrip td.c,.hstrip th:first-child{width:34%}.hstrip .legend{margin-top:var(--s2)}
+#habits th{font-size:var(--fs-11)}#ggChart svg text{font-size:var(--fs-13)}#habits h2{font-size:var(--fs-21)}#habits h3{font-size:var(--fs-16)}#habits .lede{font-size:var(--fs-14)}#habits .two{align-items:start}#habits .tablewrap:focus-visible{outline:2px solid var(--a);outline-offset:2px}
 .ctab{width:100%;border-collapse:collapse;font-size:var(--t-sm)}
 .ctab th{text-align:left;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
 .ctab td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -532,10 +553,13 @@ th,td{white-space:normal!important;overflow-wrap:break-word;max-width:none!impor
     <div id="storyHere"></div>
     <div><div class="subhead"><b>Fix first</b><span id="fixSub">ranked by time per lap</span></div><p class="note fixsame" id="fixSame" hidden></p><div class="fixes" id="fixList"></div></div>
     <div class="panel wic" id="wicPanel" hidden><h3>Where in the corner <span class="note" id="wicSub"></span></h3><p class="lede" id="wicLede">How close your typical laps are to your own better laps in each part of the corner. 100 means no difference.</p><div class="wicrows" id="wicRows"></div><div class="wicfoot" id="wicFoot"></div></div>
-    <div class="hab">
-      <div class="panel bad"><h3>Bad habits</h3><ul id="badList"></ul></div>
-      <div class="panel good"><h3>Good habits</h3><ul id="goodList"></ul></div>
-      <div class="panel look" id="lookPanel" hidden><h3>Worth a look <span class="note">cost time, but the data can’t call it a habit</span></h3><ul id="lookList"></ul></div>
+    <div class="hab2">
+      <div class="panel hfix" id="fixHab"><h3>Fix these <span class="note" id="fixHabSub">biggest cost first</span></h3><ul id="badList"></ul></div>
+      <div class="panel hstrip" id="stripPanel" hidden><h3>Corner by corner <span class="note" id="stripSub"></span></h3><div class="tablewrap" id="stripWrap" role="region" aria-label="Corner by corner: braking, mid-corner and exit for each turn" tabindex="0"><table id="stripTable"></table></div><p class="note legend" id="stripLegend"></p><div id="stripFold"></div></div>
+      <div class="hrows">
+        <div class="panel good" id="keepPanel"><h3>Keep doing</h3><ul id="goodList"></ul></div>
+        <div class="panel look" id="lookPanel" hidden><h3>Worth a look <span class="note">cost time, but the data can’t call it a habit</span></h3><ul id="lookList"></ul></div>
+      </div>
     </div>
   </div>
 </section>
@@ -704,9 +728,9 @@ th,td{white-space:normal!important;overflow-wrap:break-word;max-width:none!impor
   <div class="sechead"><h2>Driving style</h2><p class="lede" id="styleLede"></p></div>
   <div class="two">
     <div class="panel"><h3>Grip used</h3><div class="ggwrap" id="ggChart"></div><p class="note">Each dot is a moment on the lap. Sideways is cornering, up is accelerating, down is braking. Bigger dots mean more time spent there.</p></div>
-    <div class="panel"><h3>Side by side</h3><div class="tablewrap"><table id="styleTable"></table></div></div>
+    <div class="panel"><h3>Side by side</h3><div class="tablewrap" role="region" aria-label="Side by side: your best lap against your typical lap" tabindex="0"><table id="styleTable"></table></div></div>
   </div>
-  <div class="panel" id="trendPanel"><h3>Early race against late race</h3><div class="tablewrap"><table id="trendTable"></table></div></div>
+  <div class="panel" id="trendPanel"><h3>Early race against late race</h3><div class="tablewrap" role="region" aria-label="Early race against late race" tabindex="0"><table id="trendTable"></table></div></div>
 </section>
 
 <section id="plan">
@@ -1240,7 +1264,7 @@ safe('driving style',()=>{if(!HAS_TEL)return;const me=D.style[String(D.best.n)];
     const s=el('svg',{viewBox:`0 0 ${W} ${W}`,role:'img','aria-label':'Grip diagram, '+nm});s.style.width='100%';s.style.maxWidth='260px';s.style.height='auto';[0.5,1,1.5,2].forEach(gv=>s.append(el('circle',{cx:c,cy:c,r:gv*sc,fill:'none',stroke:'var(--line)'})));
     s.append(el('line',{x1:X2(-2),x2:X2(2),y1:c,y2:c,stroke:'var(--axis)'}));s.append(el('line',{x1:c,x2:c,y1:Y2(2),y2:Y2(-2),stroke:'var(--axis)'}));
     const mxn=Math.max(...arr.map(p=>p.n));arr.forEach(p=>s.append(el('circle',{cx:X2(p.la),cy:Y2(p.lo),r:1.4+Math.sqrt(p.n/mxn)*3.6,fill:col,'fill-opacity':.5})));
-    s.append(T(c+4,Y2(2)+11,'accel',{'font-size':12}));s.append(T(c+4,Y2(-2)-4,'braking',{'font-size':12}));s.append(T(X2(1)+3,c-4,'1 g',{'font-size':12}));
+    s.append(T(c+4,Y2(2)+11,'accel',{'font-size':13}));s.append(T(c+4,Y2(-2)-4,'braking',{'font-size':13}));s.append(T(X2(1)+3,c-4,'1 g',{'font-size':12}));
     const b=h('div');b.style.display='grid';b.style.gap='4px';b.append(h('div','note',nm),s);wrap.append(b)});
   const T3=isObj(D.style_trend)?D.style_trend:null;const tt=$('trendTable');if(!T3){$('trendPanel').replaceChildren(h('h3',null,'Early race against late race'),h('p','note','Not enough clean laps to compare the start and end of the race.'));return}
   const hd=h('thead');const hr=h('tr');['Measure','First third','Last third','Change'].forEach((x,i)=>hr.append(h('th',i?'n':null,x)));hd.append(hr);tt.append(hd);const b2=h('tbody');
@@ -1595,6 +1619,7 @@ const tipsOf=f=>Array.isArray(f.tips)?f.tips:((isObj(D.insights)&&isObj(D.insigh
 const OWN_SAME=/^Your brake point, slowest speed, throttle and gear in .+? look about the same on quicker and slower laps, so the time is spread thin\./;
 const isSame=f=>!tipsOf(f).length&&(f.watch?OWN_SAME.test(String(f.watch)):true);
 const GENERIC_N=FIXES.filter(isSame).length;
+function tryLine(t){t=String(t);const p=h('p','try');if(/^Try:/.test(t)){p.append(h('b',null,'Try:'),document.createTextNode(t.slice(4)))}else p.append(document.createTextNode(t));return p}
 function fixCard(f,i){const d=h('div','fix');d.append(h('span','rk',String(i+1)));const mid=h('div');const {c,nums,times,refName}=fixData(f);
   const gear=f.gear!=null?f.gear:(nums.typical&&nums.typical.gear);
   const fh=h('h3',null,String(f.corner)+(gear!=null?' · gear '+gear:''));const cx=isObj(D.racecap)&&isObj(D.racecap.corner_context)?D.racecap.corner_context[f.corner]:null;
@@ -1603,8 +1628,8 @@ function fixCard(f,i){const d=h('div','fix');d.append(h('span','rk',String(i+1))
   mid.append(h('p','why',f.why?String(f.why):(f.basis==='ref'?firstName(refName)+' is '+f.gain.toFixed(2)+' s quicker here on a good lap.':'Your typical lap loses '+f.gain.toFixed(2)+' s here compared with your better laps.')));
   const tips=tipsOf(f);
   if(tips.length){const ul=h('ul');tips.forEach(t=>{t=String(t);ul.append(h('li',null,t.charAt(0).toUpperCase()+t.slice(1).replace(/\.+$/,'')+'.'))});mid.append(ul)}
-  else if(!isSame(f)||GENERIC_N<2)mid.append(h('p','why',f.watch?String(f.watch):GENERIC_WHY));
-  else{mid.append(h('p','why','The time is spread thin here.'));const fd=h('details','fnumbers fsame');fd.append(h('summary',null,'What to watch'),h('p','why',f.watch?String(f.watch):GENERIC_WHY));mid.append(fd)}
+  else if(!isSame(f)||GENERIC_N<2){const w=f.watch?String(f.watch):GENERIC_WHY;const ix=w.indexOf(' Try:');if(ix>0){mid.append(h('p','why',w.slice(0,ix)),tryLine(w.slice(ix+1)))}else mid.append(h('p','why',w))}
+  else{mid.append(h('p','why','The time is spread thin here.'));if(f['try'])mid.append(tryLine(f['try']));else{const fd=h('details','fnumbers fsame');fd.append(h('summary',null,'What to watch'),h('p','why',f.watch?String(f.watch):GENERIC_WHY));mid.append(fd)}}
   const lf=learnFor(f.corner);if(lf)mid.append(learnLine(lf,f.corner));
   const ftop=h('div','ftop');const ftx=h('div');ftx.append(...mid.childNodes);ftop.append(ftx);const fm=safe('corner map '+f.corner,()=>cornerMap(f,nums,c));if(fm)ftop.append(fm);mid.append(ftop);
   const body=h('div','fbody');
@@ -1650,12 +1675,37 @@ safe('what to work on',()=>{const IN=isObj(D.insights)?D.insights:null;
   // insights v2 (2.2.2) lists up to 5 fixes and counts the rest itself; v1 listed 3, so "more" overlapped the cards
   const more=IN&&typeof IN.more_corners==='number'?(num(IN.version)&&IN.version>=2?IN.more_corners:IN.more_corners-Math.max(0,fx.length-(Array.isArray(IN.fix)?Math.min(IN.fix.length,3):0))):Math.max(0,D.corners.filter(c=>num0(c.avail)>=0.05).length-fx.length);
   $('fixSub').textContent='ranked by time per lap'+(more>0?' · '+more+' more under Corners':'');
-  if(!IN){$('coach').querySelector('.hab').hidden=true;return}
-  const list=(id,items,none)=>{const ul=$(id);items=Array.isArray(items)?items.filter(isObj):[];if(!items.length){ul.append(h('li','none',none));return}
-    items.forEach(it=>{const li=h('li');li.append(h('b',null,String(it.title||'')),h('span',null,String(it.text||'')));if(it.detail)li.append(h('span','det',String(it.detail)));lapLinks(li,it);ul.append(li)})};
-  list('badList',IN.bad,'Nothing repeated that cost you time. Keep it up.');
-  list('goodList',IN.good,'Not enough clean laps to say yet.');
-  if(Array.isArray(IN.look)&&IN.look.filter(isObj).length){$('lookPanel').hidden=false;list('lookList',IN.look,'')}
+  if(!IN){$('coach').querySelector('.hab2').hidden=true;return}
+  // 2.28.1: Fix these = ranked cards (what happened / what it costs / Try:), the numbers in a fold; then a corner-by-corner
+  // strip; then slim rows. Older saved insights (no costs / try / numbers) still draw: their "detail" goes in the fold.
+  const arr=a=>Array.isArray(a)?a.filter(isObj):[];
+  const lines=it=>Array.isArray(it.numbers)&&it.numbers.length?it.numbers.map(String):(it.detail?[String(it.detail)]:[]);
+  function foldOf(ls,label){if(!ls.length)return null;const d=h('details','hfold');d.append(h('summary',null,label||'Show the numbers'));const ul=h('ul');ls.forEach(x=>ul.append(h('li',null,x)));d.append(ul);return d}
+  function badgeOf(it){const b=isObj(it.badge)&&typeof it.badge.text==='string'?it.badge:null;if(b)return h('span','hbadge'+(b.kind==='safety'?' safety':b.kind==='none'?' none':''),b.kind==='safety'?'Safety risk':b.text);
+    return num(it.cost)&&it.cost>0?h('span','hbadge','~'+it.cost+' s'):null}
+  function habItem(it,card){const li=h('li',card?'hcard':'hrow');
+    if(card){const hh=h('div','hh');hh.append(h('b',null,String(it.title||'')));const bg=badgeOf(it);if(bg)hh.append(bg);li.append(hh);li.append(h('p',null,String(it.text||'')))}
+    else{const hh=h('div','hh');hh.style.display='flex';hh.style.flexWrap='wrap';hh.style.gap='4px 12px';hh.append(h('b',null,String(it.title||'')));const bg=it.cost!=null||it.costs?badgeOf(it):null;if(bg&&isObj(it.badge)&&it.badge.kind==='time')hh.append(bg);li.append(hh);li.append(h('span','t',String(it.text||'')))}
+    if(it.costs){if(card)li.append(h('p',null,String(it.costs)));else li.append(h('span','t',String(it.costs)))}
+    if(it['try']){if(card)li.append(tryLine(it['try']));else{const t=tryLine(it['try']);t.style.margin='0';li.append(t)}}
+    lapLinks(li,it);const f=foldOf(lines(it));if(f)li.append(f);return li}
+  const fill=(id,items,none,card)=>{const ul=$(id);if(!items.length){if(none)ul.append(h('li','none',none));return}items.forEach(it=>ul.append(habItem(it,card)))};
+  const strip=isObj(IN.strip)&&Array.isArray(IN.strip.rows)&&IN.strip.rows.filter(isObj).length?IN.strip:null;
+  const goods=arr(IN.good);const cornerGood=strip?goods.filter(g=>g.scope==='corner'):[];
+  fill('badList',arr(IN.bad),'Nothing repeated that cost you time. Keep it up.',true);
+  fill('goodList',goods.filter(g=>!cornerGood.includes(g)),goods.length?'':'Not enough clean laps to say yet.',false);
+  if(!goods.filter(g=>!cornerGood.includes(g)).length&&cornerGood.length)$('keepPanel').hidden=true;
+  if(arr(IN.look).length){$('lookPanel').hidden=false;fill('lookList',arr(IN.look),'',false)}
+  if(strip){$('stripPanel').hidden=false;const tb=$('stripTable');tb.replaceChildren();const hd=h('thead');const hr=h('tr');['Corner','Braking','Mid-corner','Exit'].forEach((x,i)=>hr.append(h('th',i?'m':null,x)));hd.append(hr);tb.append(hd);
+    const SYM={ok:['✓','nothing flagged'],watch:['!','worth a look'],cost:['✗','costing time']};const body=h('tbody');
+    strip.rows.filter(isObj).forEach(r=>{const tr=h('tr');const td=h('td','c');const id=String(r.corner);if(cornerById[id]){const b=h('button',null,id);b.type='button';b.title='Show '+id+' in Compare laps';b.onclick=()=>showCorner(cornerById[id]);td.append(b)}else td.append(document.createTextNode(id));tr.append(td);
+      ['braking','mid','exit'].forEach(ph=>{const c=isObj(r[ph])?r[ph]:null;const cell=h('td','m '+(c&&SYM[c.mark]?c.mark:'none'));
+        if(c&&SYM[c.mark]){const sp=h('span',null,SYM[c.mark][0]);sp.setAttribute('aria-hidden','true');cell.append(sp,h('span','sr',SYM[c.mark][1]+(c.note?': '+c.note:'')));cell.title=c.note||SYM[c.mark][1]}
+        else{const sp=h('span',null,'–');sp.setAttribute('aria-hidden','true');cell.append(sp,h('span','sr','no data'));cell.title='No data for this part of the corner'}
+        tr.append(cell)});body.append(tr)});tb.append(body);
+    const cn=isObj(strip.counts)?strip.counts:{};$('stripSub').textContent=(num(cn.cost)?cn.cost+' costing time':'nothing costing time')+(num(cn.watch)&&cn.watch?' · '+cn.watch+' worth a look':'');
+    const nd=Array.isArray(strip.no_data)?strip.no_data.map(String):[];$('stripLegend').textContent='✓ nothing flagged · ! worth a look · ✗ costing time (flagged, and your typical laps lose time there against your quicker laps) · – no data'+(nd.length?'. No data at all for: '+nd.join(', ')+'.':'');
+    const fl=(Array.isArray(strip.lines)?strip.lines.map(String):[]).concat(cornerGood.flatMap(g=>[String(g.text)].concat(lines(g))));const f=foldOf(fl);if(f)$('stripFold').append(f)}
   const pl=$('plan');if(pl)pl.hidden=true;   // "Fix first" replaces the old practice plan
 },'coach');
 // ---------- 2.3: where in the corner (D.skills): typical laps against your own better laps, phase by phase

@@ -236,7 +236,7 @@ def test_review_page_template_has_the_section_and_draws_only_text():
     chunk = t[mark:mark + 2500]
     assert "innerHTML" not in chunk and "textContent" in chunk or "h('" in chunk
     assert t.index('id="fromIracing"') < t.index('<details class="deep"'), "up front, not folded away"
-    assert report.LAYOUT == "2.28.0", "2.28 re-renders saved reviews once (review.html changed); reviews with a recording are rewritten by attach_pending; the rest need no re-render"
+    assert report.LAYOUT == "2.28.1", "2.28.1 re-renders saved reviews once (review.html changed); reviews with a recording are rewritten by attach_pending; the rest need no re-render"
 
 
 # ================================================================ endpoints

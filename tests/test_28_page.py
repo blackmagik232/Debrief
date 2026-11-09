@@ -96,7 +96,7 @@ def test_verdict_is_one_sentence_without_figures():
     d = base()
     v = insights.build(d)["verdict"]
     assert len(v) == 1 and v[0].endswith(".") and _no_figures(v[0]), v
-    assert v[0].count(". ") == 0, v
+    assert v[0].count(". ") <= 1, v      # 2.28.1: "Your laps are steady. The quickest gain is in C6 and C1."
 
 
 def test_verdict_words_follow_consistency_and_phase():
@@ -104,11 +104,11 @@ def test_verdict_words_follow_consistency_and_phase():
     d["consistency"] = {"label": "Scattered", "score": 12}
     d["skills"] = {"phases": {"braking": {"loss_s": 0.4}, "entry": {"loss_s": 0.05}, "mid": {"loss_s": None}, "exit": {"loss_s": 0.1}}}
     v = insights.build(d)["verdict"][0]
-    assert v.startswith("Your laps vary a lot, so") and "under braking" in v and _no_figures(v), v
+    assert v.startswith("Your laps vary a lot. The quickest gain is in") and "under braking" in v and _no_figures(v), v
     d["skills"]["phases"] = {"braking": {"loss_s": 0.1}, "exit": {"loss_s": 0.1}, "mid": {"loss_s": 0.1}}
     assert "most of the time" not in insights.build(d)["verdict"][0]
     d["consistency"] = {"label": "Very consistent"}
-    assert insights.build(d)["verdict"][0].startswith("Your laps are very steady, so")
+    assert insights.build(d)["verdict"][0].startswith("Your laps are very steady. The quickest gain")
 
 
 def test_verdict_with_nothing_to_fix():

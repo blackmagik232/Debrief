@@ -559,7 +559,7 @@ def test_l5_lap1_insight_wording():
         out = insights.build(data)
         assert not [i for i in out["bad"] if i["key"] == "lap1"]
         it = next(i for i in out["look"] if i["key"] == "lap1")
-        assert re.match(r"Lap 1 was \d+\.\d s slower than your typical lap \(that includes the start\)\. ", it["text"]), it
+        assert re.match(r"Lap 1 was \d+:\d\d\.\d against your typical \d+:\d\d\.\d, start included\.$", it["text"]), it
         for word in ("standing", "rolling", "caution", "moment", "because"):
             assert word not in it["text"].lower(), it["text"]
     # with the start type typed in with the result, race craft passes it on and lap 1 becomes a habit
@@ -568,7 +568,7 @@ def test_l5_lap1_insight_wording():
     d["racecraft"] = racecraft.build(d)
     assert d["racecraft"]["lap1"]["start_type"] == "standing"
     it = next(i for i in insights.build(d)["bad"] if i["key"] == "lap1")
-    assert "standing start" in it["text"] and not [i for i in insights.build(d)["look"] if i["key"] == "lap1"]
+    assert "the standing start included" in it["text"] and not [i for i in insights.build(d)["look"] if i["key"] == "lap1"]
     assert "Some of that is the standing" not in (ROOT / "debrief" / "insights.py").read_text(encoding="utf-8")
 
 

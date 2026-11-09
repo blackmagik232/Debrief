@@ -212,8 +212,40 @@ def _drop_server(mode):
     return ls, held
 
 
+def test_slow_first_answer_is_not_called_offline():
+    """A Garage 61 that accepts but is slow to answer (busy, a heavy first /laps call) is up, not offline: the
+    quick first timeout must not turn that into "can't reach Garage 61". Once it really goes away, the review
+    still ends with the offline message."""
+    ls, held = _drop_server("hole")
+    port = ls.getsockname()[1]
+    write_settings(api_base=f"http://127.0.0.1:{port}/api/v1/")
+    os.environ["DEBRIEF_CACHE_DIR"] = str(TMP / "cache-offline-slow")
+    try:
+        srv()
+        code, r = call("api/review", {})
+        assert code == 200 and r["ok"], r
+        time.sleep(9)   # past the 6 s quick read timeout
+        st = wait_state(lambda x: True, 5)
+        assert st.get("state") == "running", f"a slow (not offline) Garage 61 was given up on: {st}"
+        ls.close()
+        for c in held:
+            c.close()
+        st = wait_state(lambda x: x.get("state") != "running", 60)
+        assert st["state"] == "error" and "can't reach Garage 61" in st["error"], st
+    finally:
+        try:
+            ls.close()
+        except OSError:
+            pass
+        for c in held:
+            c.close()
+        write_settings()
+        os.environ["DEBRIEF_CACHE_DIR"] = str(TMP / "cache")
+    idle()
+
+
 def test_offline_review_fails_fast_with_open_saved_reviews():
-    for mode, limit in (("drop", 12.0), ("hole", 12.0)):
+    for mode, limit in (("drop", 12.0),):
         ls, held = _drop_server(mode)
         port = ls.getsockname()[1]
         write_settings(api_base=f"http://127.0.0.1:{port}/api/v1/")
@@ -240,7 +272,7 @@ def test_offline_review_fails_fast_with_open_saved_reviews():
     idle()
 
 
-def test_a_slow_first_answer_is_given_up_but_a_later_slow_one_is_not():
+def test_the_quick_first_timeout_is_only_for_the_app_jobs():
     from debrief.g61 import Garage61
     assert Garage61.FIRST_TIMEOUT == (4, 6)
     api = app.make_api({"token": "t-1234567890", "cache_dir": str(TMP / "c2"), "api_base": "http://127.0.0.1:9/api/v1/"})

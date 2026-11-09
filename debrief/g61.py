@@ -284,6 +284,11 @@ class Garage61:
             try:
                 r = self.s.get(url, timeout=self.FIRST_TIMEOUT if first else 30)
             except requests.RequestException as e:
+                if first and isinstance(e, requests.ReadTimeout):
+                    # connected but slow: Garage 61 is up and busy (a heavy first /laps call when /me is cached),
+                    # not offline. Drop to the normal timeout and backoff; the Cancel button covers the wait.
+                    self.first_pending = False
+                    first = False
                 if first:
                     # 2.28: the very first request of a run: a refused connection or a name that won't resolve
                     # gets the one quick retry below; anything else (a drop, a timeout, a proxy error) means

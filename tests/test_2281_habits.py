@@ -144,6 +144,10 @@ def test_fade_only_over_the_line_because_of_the_estimate_says_so():
     d["trend_fuel"] = {"total": 0.05 + 0.147 * 13, "fuel_s_per_lap": 0.147, "per10": 0.5, "corrected": True}
     f = next(i for i in insights.build(d)["bad"] if i["key"] == "fade")
     assert "most of that is the estimate, not measured" in f["text"], f["text"]
+    # ranked on the measured part only: an estimate must not push the card to the top of Fix these
+    n = d["counts"]["clean"]
+    assert abs(f["badge"]["race_s"] - 0.05 * n / 2.0) < 0.01, f["badge"]
+    assert "if the fuel estimate is right" in f["costs"], f["costs"]
 
 
 def test_fade_without_fuel_data_says_so_plainly():

@@ -661,10 +661,17 @@ def build(data: dict) -> dict:
                 nums.append(f"Trend line over {n_clean} clean laps: {trend:+.2f} s from first to last ({corr}).")
             nums += [f"{z['id']}: {_f(z.get('early_t')) or 0:.2f} s early, {_f(z.get('late_t')) or 0:.2f} s late "
                      f"({z['delta_t']:+.2f} s)." for z in drift]
-            race_s = trend * n_clean / 2.0
+            # 2.28.1 (lead): rank on what was measured, not on the fuel estimate, so a mostly-estimated fade
+            # can't jump to the top of Fix these; the estimate is still said in plain words
+            measured = raw_trend if (fuel_fixed and raw_trend is not None) else trend
+            race_s = max(measured, 0.0) * n_clean / 2.0
+            est_s = trend * n_clean / 2.0
+            cost_line = (f"If the slowdown was steady, the measured part costs about {race_s:.1f} s over the {n_clean} clean "
+                         f"laps (about {est_s:.1f} s if the fuel estimate is right). "
+                         if fuel_fixed and raw_trend is not None and abs(est_s - race_s) >= 0.05 else
+                         f"If the slowdown was steady, that costs about {race_s:.1f} s over the {n_clean} clean laps. ")
             add("bad", "fade", "Fading late in the race", text,
-                f"If the slowdown was steady, that costs about {race_s:.1f} s over the {n_clean} clean laps. "
-                "The loss may be in the tyres or in the driving.",
+                cost_line + "The loss may be in the tyres or in the driving.",
                 (f"Try: next race, watch {_and(names)} late in the stint, where you slowed most, and compare your first and "
                  "last clean laps there in Compare laps." if names else
                  "Try: open Stint and compare your first and last clean laps to see which corners slow down."),

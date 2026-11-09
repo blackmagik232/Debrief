@@ -111,6 +111,11 @@ def fmt_t1(s) -> str:
     return f"{tenths // 600}:{(tenths % 600) / 10:04.1f}"
 
 
+def _s1(x) -> str:
+    """Seconds on the face of a card: one decimal, or "under 0.1 s" below 0.05 (a smaller figure is noise)."""
+    return f"{x:.1f} s" if x >= 0.05 else "under 0.1 s"
+
+
 def _chg(x) -> str:
     """"got about 0.6 s slower" / "got about 0.3 s quicker" / "did not change" for a first-to-last change in seconds."""
     if x is None or abs(x) < 0.05:
@@ -325,7 +330,7 @@ def watch_text(it: dict) -> str:
                  "lap's, so the time is in something these numbers don't show.")
     else:
         first = (f"Your brake point, slowest speed, throttle and gear in {cid} look about the same on quicker and slower "
-                 "laps, so the time is spread thin.")
+                 "laps, so no single number explains the loss.")
     return first + " " + try_text(it)
 
 
@@ -341,13 +346,14 @@ def _loss_level(x, k):
     return 2 if x >= STRIP_COST * k else 1 if x >= STRIP_WATCH * k else 0
 
 
-def _strip(data: dict, corners: list, spread: list, con: dict, sk, k: float) -> dict | None:
+def _strip(data: dict, corners: list, spread: list, con: dict, sk, k: float, fix_gain: dict | None = None) -> dict | None:
     """2.28.1: one row per corner with braking / mid-corner / exit marked ok (nothing flagged), watch (worth a look) or
     cost (flagged AND the typical laps lose time there against the quicker laps). Built only from numbers the analysis
     already has: brake-point spread, corner-time spread (consistency.by_corner) and the per-corner phase losses
     (skills.corners). A phase with no data is None (shown as a dash), never a guess.
-    {"rows": [{"corner", "braking", "mid", "exit"}], "no_data": [ids], "counts": {...}, "lines": [str]}; a cell is
-    {"mark": ok|watch|cost, "note": str} or None."""
+    {"rows": [{"corner", "braking", "mid", "exit", "cost_s"}], "no_data": [ids], "counts": {...}, "lines": [str]};
+    a cell is {"mark": ok|watch|cost, "note": str} or None. "cost_s" is the corner's own gain from Fix first (your typical
+    lap loses that much there against your quicker laps), so the strip never says nothing costs time while a card does."""
     sk_c = {c["id"]: c for c in (sk or {}).get("corners") or [] if isinstance(c, dict) and c.get("id")
             and isinstance(c.get("loss"), dict)} if isinstance(sk, dict) and not sk.get("reason") else {}
     sp = {c["id"]: c for c in spread if _f(c.get("iqr_m")) is not None and c.get("n", 0) >= SPREAD_MIN_N}
@@ -364,7 +370,8 @@ def _strip(data: dict, corners: list, spread: list, con: dict, sk, k: float) -> 
         if s_:
             lab = s_.get("label")
             lv.append(0 if lab in ("locked", "steady") else 1)
-            notes.append(f"brake point spread {s_['iqr_m']:.0f} m ({lab})")
+            notes.append("brake point the same every lap" if lab == "locked" else
+                         f"brake point spread {s_['iqr_m']:.0f} m ({lab})")
         b_loss = _f(loss.get("braking"))
         if b_loss is not None:
             lv.append(_loss_level(b_loss, k))
@@ -385,16 +392,20 @@ def _strip(data: dict, corners: list, spread: list, con: dict, sk, k: float) -> 
         x_loss = _f(loss.get("exit"))
         cells["exit"] = ({"mark": _MARK[_loss_level(x_loss, k)], "note": f"exit loses {x_loss:.2f} s a lap"}
                          if x_loss is not None else None)
-        if not any(cells.values()):
+        cost_s = (fix_gain or {}).get(cid)
+        if not any(cells.values()) and cost_s is None:
             no_data.append(cid)
             continue
-        rows.append({"corner": cid, **cells})
+        rows.append({"corner": cid, **cells, "cost_s": cost_s})
     if not rows:
         return None
     cnt = {m: sum(1 for r in rows for ph in ("braking", "mid", "exit") if r[ph] and r[ph]["mark"] == m) for m in _MARK.values()}
+    cnt["cost_corners"] = sum(1 for r in rows if r["cost_s"] is not None or any(r[ph] and r[ph]["mark"] == "cost" for ph in ("braking", "mid", "exit")))
     lines = []
     for r in rows:
         bits = [f"{lab}: {r[ph]['note']}" for ph, lab in (("braking", "braking"), ("mid", "mid-corner"), ("exit", "exit")) if r[ph]]
+        if r["cost_s"] is not None:
+            bits.append(f"your typical lap loses {r['cost_s']:.2f} s a lap here against your quicker laps")
         lines.append(f"{r['corner']}: " + "; ".join(bits) + ".")
     return {"rows": rows, "no_data": no_data, "counts": cnt, "lines": lines}
 
@@ -432,11 +443,11 @@ def build(data: dict) -> dict:
         who = (main_ref or {}).get("name") or "The comparison driver"
         who = who.split(" ")[0]
         if basis == "own":
-            why = f"Your typical lap loses {own:.2f} s here compared with your quicker laps."
+            why = f"Your typical lap loses {_s1(own)} here compared with your quicker laps."
             detail = (f"Typical {typ_t:.2f} s through here; your quicker laps {p25:.2f} s."
                       if typ_t is not None and p25 is not None else None)
         else:
-            why = f"{who} is {ref:.2f} s quicker here on a good lap."
+            why = f"{who} is {_s1(ref)} quicker here on a good lap."
             detail = (f"Your quicker laps {p25:.2f} s through here; {who} {ref_t:.2f} s."
                       if p25 is not None and ref_t is not None else None)
         summ = c.get("summary") if isinstance(c.get("summary"), dict) else {}
@@ -494,14 +505,14 @@ def build(data: dict) -> dict:
         ahead = (nxt[0] - m) % Lm if Lm > 0 else nxt[0] - m
         return f"just after {prev[2]}" if back <= 120 and ahead > 120 else f"between {prev[2]} and {nxt[2]}"
 
-    def b_lap(per_lap):
+    def b_lap(per_lap, label=""):
         race = per_lap * race_laps
         lap_txt = f"{per_lap:.1f} s/lap" if per_lap >= 0.05 else "under 0.1 s/lap"
-        return {"kind": "time", "per_lap": round(per_lap, 3), "race_s": round(race, 2),
-                "text": f"~{lap_txt} (~{race:.1f} s over the race)"}
+        return {"kind": "time", "per_lap": round(per_lap, 4), "race_s": round(race, 4),
+                "text": f"~{lap_txt}{label} (~{race:.1f} s over the race)"}
 
     def b_race(s, text=None):
-        return {"kind": "time", "per_lap": None, "race_s": round(s, 2), "text": text or f"~{s:.1f} s over the race"}
+        return {"kind": "time", "per_lap": None, "race_s": round(s, 4), "text": text or f"~{s:.1f} s over the race"}
 
     def b_none(text="no time cost measured"):
         return {"kind": "none", "per_lap": None, "race_s": None, "text": text}
@@ -533,8 +544,8 @@ def build(data: dict) -> dict:
         flagged_share = len(unclean) / total_full if total_full else 0.0
         add("bad", "unclean", "Incidents or track limits", f"Garage 61 flagged {_laps(unclean)}.",
             "Each one is a lap you can't use, and a safety-rating risk.",
-            f"Try: next race, open {_laps(unclean)} in Compare laps, find where it went wrong, and give up a little pace "
-            "at that spot until the lap is clean.",
+            f"Try: next race, open {_laps(unclean)} in Compare laps, find where it went wrong, and take that spot a touch "
+            "more carefully until the lap is clean.",
             [f"{len(unclean)} of {total_full} full laps flagged."], badge=SAFETY, laps=unclean)
     elif not unclean and len(laps) >= 5 and not hidden_spins:
         add("good", "clean", "Clean race", "No laps flagged for incidents or track limits.",
@@ -569,8 +580,7 @@ def build(data: dict) -> dict:
             lap1_item = True
         elif d <= LAP1_GOOD * k and len(laps) >= 5:
             # 2.18: praise only a lap 1 that was really as quick as a typical lap or quicker, and say which
-            said = (f"Lap 1 was {-d:.1f} s quicker than your typical lap, start included." if d <= -0.095 else
-                    f"Lap 1 was {-d:.2f} s quicker than your typical lap, start included." if d <= -0.05 else
+            said = (f"Lap 1 was {-d:.1f} s quicker than your typical lap, start included." if d <= -0.05 else
                     "Lap 1 was as quick as your typical lap, start included.")
             add("good", "lap1", "Strong first lap", said,
                 numbers=[f"Lap 1 {fmt_t(lap1['t'])} against a typical {fmt_t(median)}."], laps=[1])
@@ -597,16 +607,18 @@ def build(data: dict) -> dict:
              if lost else None),
             cost=round(tot_lost, 1) if lost else None, badge=b_race(tot_lost) if lost else None, laps=slow)
 
-    def traffic_item(bucket, key, title, text, ns, td, costs_tail):
+    def traffic_item(bucket, key, title, text, ns, td, costs_tail, look=False):
         td = [t for t in td if isinstance(t, dict) and t.get("n") in ns]
         lost_sum = sum(_f(t.get("lost")) or 0.0 for t in td)
         places = [f"lap {t.get('n')} {place(t.get('at_m'))}" for t in td if place(t.get("at_m"))]
         num = ("; ".join(f"lap {t.get('n')}: ~{_f(t.get('lost')) or 0:.2f} s around {_f(t.get('at_m')) or 0:.0f} m"
                          for t in td[:4]) + ".") if td else None
         costs = (f"About {lost_sum:.1f} s lost in all." if td else "Debrief didn't measure how much time that was.")
+        stay = "they stay in your pace numbers" if look else "not counted against you"
         add(bucket, key, title, text, costs + costs_tail,
-            "Try: plan where to let faster cars by" + (f"; here that was {_and(places)}." if places else "."),
-            [num], badge=b_race(lost_sum, f"~{lost_sum:.1f} s lost (not counted against you)") if td else None, laps=ns)
+            ("Try: if it was traffic, plan where to let faster cars by" if look else "Try: plan where to let faster cars by")
+            + (f"; the stretch{'es were' if len(places) > 1 else ' was'} {_and(places)}." if places else "."),
+            [num], badge=b_race(lost_sum, f"~{lost_sum:.1f} s lost ({stay})") if td else None, laps=ns)
 
     traffic = [n for n in _lap_list(counts.get("traffic")) if not (n == 1 and lap1_item)]
     if traffic:
@@ -618,7 +630,7 @@ def build(data: dict) -> dict:
         traffic_item("look", "traffic", "Possibly traffic",
                      f"{_laps(poss).capitalize()} lost time in one short stretch that your other laps didn't: possibly a "
                      "lapped or slower car, possibly a mistake.", poss, [t for t in counts.get("traffic_possible_detail") or []],
-                     " Debrief can't tell which, so these laps stay in your pace numbers.")
+                     " Debrief can't tell which, so these laps stay in your pace numbers.", look=True)
 
     # 2.7: the fuel-corrected trend when the stint summary has one (fuel burning off hides tyre fade), and the
     # text says when it isn't corrected. 2.28.1: the measured change and the fuel estimate are shown separately.
@@ -638,13 +650,13 @@ def build(data: dict) -> dict:
             names = [z["id"] for z in drift]
             if fuel_fixed and raw_trend is not None:
                 if raw_trend < FADE_BAD * k:   # only the fuel estimate pushes it over the line: say so
-                    text = (f"Allowing for the fuel burning off (an estimate), your clean laps got about {trend:.1f} s slower "
+                    text = (f"Including the fuel estimate, your clean laps got about {trend:.1f} s slower "
                             f"from first to last, but most of that is the estimate, not measured: the laps themselves {_chg(raw_trend)}.")
                 else:
-                    text = (f"Measured: your clean laps {_chg(raw_trend)} from first to last. Allowing for the fuel burning "
-                            f"off (an estimate), the real slowdown is about {trend:.1f} s.")
+                    text = (f"Measured: your clean laps {_chg(raw_trend)} from first to last. Including the fuel burning "
+                            f"off (an estimate), the slowdown is about {trend:.1f} s.")
             elif fuel_fixed:
-                text = f"Allowing for the fuel burning off (an estimate), your clean laps got about {trend:.1f} s slower from first to last."
+                text = f"Including the fuel estimate, your clean laps got about {trend:.1f} s slower from first to last."
             else:
                 text = (f"Your clean laps got about {trend:.1f} s slower from first to last. These laps have no fuel data, so "
                         "this is the measured change; the car getting lighter hides some of the fade.")
@@ -653,9 +665,13 @@ def build(data: dict) -> dict:
                 if raw_trend is not None:
                     nums.append(f"Trend line over {n_clean} clean laps: {raw_trend:+.2f} s from first to last (measured).")
                     if fx:
-                        span = round((trend - raw_trend) / fx)
-                        nums.append(f"Fuel-weight estimate added back: about {fx:.3f} s a lap over {span} laps (first to last clean "
-                                    f"lap) = {trend - raw_trend:.2f} s. This is an estimate, not a measurement.")
+                        # the span the trend is measured over: first to last lap number (engine: max(nums) - min(nums))
+                        ln = [l.get("n") for l in laps if isinstance(l.get("n"), int)]
+                        t10 = _f(data.get("trend_per10"))
+                        span = (max(ln) - min(ln)) if ln else (round(raw_trend / (t10 / 10.0)) if t10 else None)
+                        nums.append(f"Fuel-weight estimate added back: about {fx:.3f} s a lap"
+                                    + (f" over {span} laps (from the first lap to the last)" if span else "")
+                                    + f" = {trend - raw_trend:.2f} s. This is an estimate, not a measurement.")
                 nums.append(f"Fuel-corrected: {trend:+.2f} s from first to last.")
             else:
                 nums.append(f"Trend line over {n_clean} clean laps: {trend:+.2f} s from first to last ({corr}).")
@@ -723,7 +739,7 @@ def build(data: dict) -> dict:
         gain, got = corner_cost(top)
         add("bad", "vary", "Corners where your time changes lap to lap",
             f"Your time through {_and(per)} changes from lap to lap.",
-            (f"{_and(got)} lose{'s' if len(got) == 1 else ''} about {gain:.1f} s a lap on a typical lap against your quicker laps."
+            (f"{_and(got)} lose{'s' if len(got) == 1 else ''} about {_s1(gain)} a lap on a typical lap against your quicker laps."
              if gain is not None else None), tr,
             [f"{cid}: most of your clean laps spread over {iqr:.2f} s ({iqr / 2:.2f} s either side of the middle)." for cid, iqr in vary[:3]]
             + ["This is the time through the whole corner, not the brake point."],
@@ -742,14 +758,16 @@ def build(data: dict) -> dict:
         ids = [c["id"] for c in loose]
         gain, got = corner_cost(ids)
         add("bad", "brake_spread", "Brake point moves around", f"Your brake point moves from lap to lap in {_and(ids)}.",
-            (f"{_and(got)} lose{'s' if len(got) == 1 else ''} about {gain:.1f} s a lap on a typical lap against your quicker laps."
+            (f"{_and(got)} lose{'s' if len(got) == 1 else ''} about {_s1(gain)} a lap on a typical lap against your quicker laps."
              if gain is not None else None),
             f"Try: next race, pick one braking marker (a sign, a bridge, a distance board) in {_and(ids)} and brake at it every lap.",
             ["Most of your clean laps' brake points spanned " + ", ".join(f"{c['iqr_m']:.0f} m in {c['id']}" for c in loose) + "."],
             badge=b_lap(gain) if gain is not None else None, corners=ids, scope="corner")
     if len(spread) >= 2 and len(locked_b) * 2 >= len(spread):
-        add("good", "brake_markers", "Same brake marker every lap",
-            f"You braked at the same marker lap after lap in {_and(locked_b)}.",
+        still = [cid for cid, _ in vary if cid in locked_b]
+        add("good", "brake_markers", "You brake at the same point every lap",
+            f"You braked at the same point lap after lap in {_and(locked_b)}."
+            + (f" The time still changes after the braking point in {_and(still)}." if still else ""),
             numbers=[f"Most of your clean laps' brake points were within {5} m in {len(locked_b)} of {len(spread)} braking corners."],
             corners=locked_b, scope="corner")
 
@@ -770,22 +788,27 @@ def build(data: dict) -> dict:
                                if isinstance(c, dict) and c.get("id") and isinstance(c.get("loss"), dict)
                                and (_f(c["loss"].get(p)) or 0) >= 0.03 * k], key=lambda x: -x[1])[:3]
                 pn = [cid for cid, _ in by_c]
-                most = gap is not None and gap > 0 and v["loss_s"] / gap > 0.5
+                share_gap = v["loss_s"] / gap if gap is not None and gap >= v["loss_s"] and gap > 0 else None
+                most = share_gap is not None and share_gap > 0.5
                 lead = "Most of the time" if most else "The biggest part of the time"
                 text = f"{lead} you lose to your quicker laps in the corners is {PHASE_WORDS[p]}" + \
                        (f", mostly in {_and(pn)}." if pn else ".")
-                costs = (f"About {v['loss_s']:.1f} s of the {gap:.1f} s a lap your typical laps lose to your quicker laps in the corners."
-                         if gap is not None and gap >= v["loss_s"] else
-                         f"About {v['loss_s']:.1f} s a lap, against your quicker laps in the corners.")
+                how = ("nearly all" if share_gap >= 0.85 else "most" if share_gap > 0.55 else "about half" if share_gap >= 0.45
+                       else "about a third" if share_gap >= 0.28 else "a smaller part") if share_gap is not None else None
+                costs = (f"About {_s1(v['loss_s'])} of the {_s1(gap)} a lap your typical laps lose to your quicker laps in the corners "
+                         f"({how})." if share_gap is not None else
+                         f"About {_s1(v['loss_s'])} a lap, against your quicker laps in the corners.")
                 where = _and(pn) if pn else _and([f["corner"] for f in out["fix"][:2]]) or "your slowest corners"
-                tries = {"braking": f"brake at the same marker and let go of the brake the same way in {where}",
+                tries = {"braking": f"brake at the same marker and ease off the brake the same way every lap in {where}",
                          "entry": f"pick one turn-in point in {where} and use it every lap",
                          "mid": f"hold one line and the same speed at the slowest point in {where}",
                          "exit": f"get back on the throttle at the same point every lap out of {where}, a touch earlier if the car allows"}
-                nums = [f"Each part's loss added up corner by corner comes to {tot:.2f} s a lap; this part is {v['loss_s']:.2f} s "
-                        f"of that ({share * 100:.0f}%), against your quicker laps (the fastest quarter of clean laps)."]
+                nums = [f"This part is {v['loss_s']:.2f} s a lap against your quicker laps (the fastest quarter of clean laps)."]
                 if gap is not None:
-                    nums.append(f"Through the corners your typical lap was {gap:.2f} s slower than your quicker laps.")
+                    nums.append(f"Through the corners your typical lap was {gap:.2f} s slower than your quicker laps"
+                                + (f"; this part is {share_gap * 100:.0f}% of that." if share_gap is not None else "."))
+                else:
+                    nums.append(f"That is {share * 100:.0f}% of the {tot:.2f} s a lap the four parts lose added up corner by corner.")
                 nums += [f"{cid}: {x:.2f} s a lap." for cid, x in by_c]
                 add("bad", "phase", "Where in the corner", text, costs, f"Try: next race, {tries[p]}.", nums,
                     cost=round(v["loss_s"], 2), badge=b_lap(v["loss_s"]), corners=pn, scope="corner")
@@ -796,18 +819,24 @@ def build(data: dict) -> dict:
     off_txt = f"{off_n} of {cn} laps were more than {cut:.1f} s off your typical lap." if off_n and cn else None
     within_s = _f(con.get("within_s")) or 0.5   # 2.7: the window scales with lap length (analysis_plus)
     std = _f(con.get("std")) or 0
+    cl_t = [_f(l.get("t")) for l in laps if l.get("clean") and _f(l.get("t")) is not None]
+    near_typ = (100.0 * sum(1 for t in cl_t if abs(t - median) <= within_s) / len(cl_t)) if cl_t and median else None
     if score is not None:
         if score >= 70 and not (off_n and cn and off_n * 5 > cn):
             add("good", "consistent", "Consistent laps",
-                f"Consistency {score:.0f}/100: your clean laps stayed within about {std:.1f} s of your middle lap.",
-                numbers=[f"Your clean laps typically sit {std:.2f} s from the middle lap; "
-                         f"{_f(con.get('within_05')) or 0:.0f}% of {cn or 'your'} clean laps were within {within_s:.1f} s of your best.", off_txt])
+                f"Consistency {score:.0f}/100: your clean laps stayed within about {std:.1f} s of your typical lap.",
+                numbers=[f"Your clean laps typically sit {std:.2f} s from your typical lap"
+                         + (f"; {near_typ:.0f}% of them were within {within_s:.1f} s of it." if near_typ is not None else "."),
+                         f"{_f(con.get('within_05')) or 0:.0f}% of {cn or 'your'} clean laps were within {within_s:.1f} s of your best lap.",
+                         off_txt])
         elif score < 45:
             add("bad", "scattered", "Lap times all over the place", f"Consistency {score:.0f}/100: your clean laps are all over the place.",
                 "Until the laps are steadier it is hard to tell what any other change does.",
                 f"Try: next race, aim for five laps in a row within {within_s:.1f} s of each other before chasing pace.",
-                [f"Your clean laps typically sit {std:.2f} s from the middle lap; {_f(con.get('within_05')) or 0:.0f}% of laps were "
-                 f"within {within_s:.1f} s of your best.", off_txt], laps=con.get("off_pace") or None)
+                [f"Your clean laps typically sit {std:.2f} s from your typical lap"
+                 + (f"; {near_typ:.0f}% of them were within {within_s:.1f} s of it." if near_typ is not None else "."),
+                 f"{_f(con.get('within_05')) or 0:.0f}% of laps were within {within_s:.1f} s of your best lap.", off_txt],
+                laps=con.get("off_pace") or None)
 
     style = data.get("style") if isinstance(data.get("style"), dict) else {}
     bn = best.get("n")
@@ -826,9 +855,9 @@ def build(data: dict) -> dict:
             ok = [(t, v) for t, v in zip(ts, vs) if t is not None and v is not None]
             return luck_p([t for t, _v in ok], [v for _t, v in ok])
 
-        def luck_words(p, what):
-            return (f"Luck check: shuffle your {len(clean_ns)} clean laps at random and your quickest laps {what} this much less "
-                    f"than the rest only about {p * 100:.1f}% of the time, so it is unlikely to be luck.")
+        def luck_words(p, what, amt):
+            return (f"Luck check: your best lap {what} {amt:.1f} s less than your typical lap; with your {len(clean_ns)} clean laps "
+                    f"mixed up at random, your quick laps look this good only about {p * 100:.1f}% of the time, so this is unlikely to be luck.")
         mc, bc = med("coast_s"), _f(b_st.get("coast_s"))
         pc = luck("coast_s") if mc is not None and bc is not None and mc - bc >= COAST_BAD * k else None
         if pc is not None and pc <= LUCK_ALPHA:
@@ -839,8 +868,8 @@ def build(data: dict) -> dict:
                 f"{bn} in Compare laps to see where it did."),
                 [f"Off both pedals (both under 5%, anywhere on the lap, lifts included): {mc:.1f} s on a typical clean lap, "
                  f"{bc:.1f} s on lap {bn}. Trail braking is a different thing: brake still on as you turn in. Coasting starts "
-                 "once the brake is fully off.", luck_words(pc, "coasted")],
-                cost=round(mc - bc, 1), badge=b_none(f"{mc - bc:.1f} s/lap more off the pedals"), laps=[bn], corners=cc)
+                 "once the brake is fully off.", luck_words(pc, "coasted", mc - bc)],
+                cost=round(mc - bc, 1), badge=b_lap(mc - bc, " off the pedals"), laps=[bn], corners=cc)
         # 2.18: both pedals at once can be deliberate: it is only a habit when your typical laps do more of it
         # than your best lap, i.e. the laps show it costing time
         mo, bo = med("overlap_s"), _f(b_st.get("overlap_s"))
@@ -850,11 +879,11 @@ def build(data: dict) -> dict:
                 f"On a typical lap you have both pedals pressed for {mo - bo:.1f} s more than on your best lap.",
                 "Some overlap can be deliberate, but your quicker lap did less of it.",
                 f"Try: next race, finish braking before you press the throttle; open lap {bn} in Compare laps to see how it did it.",
-                [f"Both pedals above 10%: {mo:.1f} s on a typical clean lap, {bo:.1f} s on lap {bn}.", luck_words(po, "overlapped")],
-                cost=round(mo - bo, 1), badge=b_none(f"{mo - bo:.1f} s/lap more with both pedals down"), laps=[bn])
+                [f"Both pedals above 10%: {mo:.1f} s on a typical clean lap, {bo:.1f} s on lap {bn}.", luck_words(po, "had both pedals down for", mo - bo)],
+                cost=round(mo - bo, 1), badge=b_lap(mo - bo, " with both pedals down"), laps=[bn])
 
     # ---------- the corner-by-corner strip: braking / mid-corner / exit for each turn, from data already worked out
-    out["strip"] = _strip(data, corners, spread, con, sk, k)
+    out["strip"] = _strip(data, corners, spread, con, sk, k, {cid: f.get("gain") for cid, f in in_fix.items() if _f(f.get("gain"))})
 
     # ---------- order: biggest cost first (per-lap costs times the clean laps, so they compare with race totals);
     # a safety card goes to the top when a quarter of the laps were flagged, otherwise right after the first time card

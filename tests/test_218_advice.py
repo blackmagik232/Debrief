@@ -79,7 +79,7 @@ v = keyed(insights.build(base(brake_spread={"corners": []})), "bad", "vary")
 check(v and "pick one braking marker and one turn-in point" in v["try"], "no brake-point data: pick a braking marker")
 
 # ---------------------------------------------------------------- 2. lap 1 praise only when it was really as quick
-for t1, want in ((90.1, "as quick as"), (89.7, "0.4 s quicker"), (90.5, None), (90.14, "as quick as"), (90.04, "0.06 s quicker")):
+for t1, want in ((90.1, "as quick as"), (89.7, "0.4 s quicker"), (90.5, None), (90.14, "as quick as"), (90.04, "0.1 s quicker")):
     laps = [{"n": 1, "t": t1, "clean": True}] + [{"n": i, "t": 90.1, "clean": True} for i in range(2, 13)]
     out = insights.build(base(laps=laps))
     g = keyed(out, "good", "lap1")

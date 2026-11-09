@@ -1280,9 +1280,9 @@ def test_review_page_order_and_nothing_removed():
         # 2.28.1: the same sentence on every card is said once above them; each card has only its own Try line
         shared = pg.evaluate("() => document.getElementById('fixSame').hidden ? '' : document.getElementById('fixSame').textContent")
         cards = pg.evaluate("() => [...document.querySelectorAll('#fixList .fix')].map(c => ({head: c.querySelector('h3').textContent, folds: c.querySelectorAll('p.try').length, nums: !/look about the same on quicker/.test(c.textContent) && c.querySelector('p.try').textContent.includes(c.querySelector('h3').textContent.split(' ')[0])}))")
-        assert shared and "spread thin" in shared, shared
+        assert shared and "no single number" in shared, shared
         assert len(cards) >= 3 and all(c["folds"] == 1 and c["nums"] for c in cards), cards
-        full = pg.evaluate("() => (document.getElementById('fixList').textContent.match(/spread thin here/g) || []).length")
+        full = pg.evaluate("() => (document.getElementById('fixList').textContent.match(/No single number stands out here/g) || []).length")
         assert full == len(cards), (full, len(cards))
         assert not errs, errs
     finally:

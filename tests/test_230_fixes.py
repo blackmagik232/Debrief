@@ -307,7 +307,7 @@ def test_phase_insight_wording():
             sk["phases"][p].update(loss_s=0.05, loss_pm=0.6)
     sk["overall"]["loss_s"] = 0.37
     it = next(b for b in insights.build(d)["bad"] if b["key"] == "phase")
-    assert "added up corner by corner" in it["detail"], it["detail"]
+    assert "against your quicker laps" in it["detail"], it["detail"]
     assert "0.37 s slower than your quicker laps" in it["detail"], it["detail"]
     for w in ("will", "costing", "because", "causes"):
         assert f" {w} " not in f" {it['text']} {it['detail']} ", w

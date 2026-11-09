@@ -33,7 +33,7 @@ def rich(start_type=None, fuel=True, trend_raw=0.6):
                     "traffic_detail": [{"n": 7, "lost": 1.2, "at_m": 2500.0}],
                     "traffic_possible_detail": [{"n": 5, "lost": 0.83, "at_m": 1500.0}, {"n": 1, "lost": 0.9, "at_m": 150.0}],
                     "clean": 10, "analysed": 16, "excluded": 0, "pit": []},
-         "slow_cut": 1.0, "trend_total": trend_raw, "trend_per10": trend_raw / 13.0 * 10.0,
+         "slow_cut": 1.0, "trend_total": trend_raw, "trend_per10": trend_raw / 15.0 * 10.0,
          "consistency": {"score": 40, "label": "Scattered", "std": 1.1, "within_05": 20.0, "within_s": 0.5, "n": 10,
                          "off_pace_n": 2, "off_pace": [5, 9],
                          "by_corner": [{"id": "Turn 1", "iqr": 0.04}, {"id": "Turn 2", "iqr": 0.05}, {"id": "Turn 3", "iqr": 0.35},

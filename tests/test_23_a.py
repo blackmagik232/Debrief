@@ -364,7 +364,7 @@ def test_brake_markers_good_item():
                                      {"id": "C2", "n": 12, "iqr_m": 4.0, "label": "locked"},
                                      {"id": "C5", "n": 12, "iqr_m": 18.0, "label": "varies"}]}
     g = next(x for x in insights.build(d)["good"] if x["key"] == "brake_markers")
-    assert g["text"] == "You braked at the same marker lap after lap in C1 and C2." and g["corners"] == ["C1", "C2"]
+    assert g["text"] == "You braked at the same point lap after lap in C1 and C2." and g["corners"] == ["C1", "C2"]
     d["brake_spread"]["corners"][1]["label"] = "steady"
     assert not any(x["key"] == "brake_markers" for x in insights.build(d)["good"])
 

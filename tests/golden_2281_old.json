@@ -49,9 +49,9 @@
     "section": "bad",
     "key": "fade",
     "title": "Fading late in the race",
-    "text": "Your clean laps got about 2.5 s slower from start to finish (fuel-corrected: about 0.147 s a lap of fuel-weight estimate added back). Tyres play a part; check the corners that slowed most under Stint.",
-    "detail": "Trend line over 10 clean laps: +2.51 s from first to last (fuel-corrected: about 0.147 s a lap of fuel-weight estimate added back).",
-    "cost": 2.5
+    "text": "Your clean laps got about 2.8 s slower from start to finish (fuel-corrected: about 0.147 s a lap of fuel-weight estimate added back). Tyres play a part; check the corners that slowed most under Stint.",
+    "detail": "Trend line over 10 clean laps: +2.81 s from first to last (fuel-corrected: about 0.147 s a lap of fuel-weight estimate added back).",
+    "cost": 2.8
    },
    {
     "section": "bad",
@@ -177,9 +177,9 @@
     "section": "bad",
     "key": "fade",
     "title": "Fading late in the race",
-    "text": "Your clean laps got about 2.5 s slower from start to finish (fuel-corrected: about 0.147 s a lap of fuel-weight estimate added back). Tyres play a part; check the corners that slowed most under Stint.",
-    "detail": "Trend line over 10 clean laps: +2.51 s from first to last (fuel-corrected: about 0.147 s a lap of fuel-weight estimate added back).",
-    "cost": 2.5
+    "text": "Your clean laps got about 2.8 s slower from start to finish (fuel-corrected: about 0.147 s a lap of fuel-weight estimate added back). Tyres play a part; check the corners that slowed most under Stint.",
+    "detail": "Trend line over 10 clean laps: +2.81 s from first to last (fuel-corrected: about 0.147 s a lap of fuel-weight estimate added back).",
+    "cost": 2.8
    },
    {
     "section": "bad",

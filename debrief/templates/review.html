@@ -224,7 +224,7 @@ g.kf>:first-child{stroke:var(--ink);stroke-width:1.5px}
 .split.kf,.drow.kf,.irow.kf,.ribbon div.kf{outline:2px solid var(--a);outline-offset:-2px}
 .sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 /* 2.28.1 habits: Fix these (ranked cards), a corner-by-corner strip, then slim rows. Rows never stretch to a taller sibling. */
-.hab2{display:grid;gap:var(--s4);align-items:start}
+.coach>*{min-width:0}.hab2{display:grid;gap:var(--s4);align-items:start;min-width:0;max-width:100%}.hstrip .tablewrap{max-width:100%;position:relative}
 .hab2>*,.hab2 .hrows>*{min-width:0;align-self:start}
 .hab2 .panel{border-top:3px solid var(--line)}
 .hab2 .hfix{border-top-color:var(--bad)}.hab2 .good{border-top-color:var(--good)}.hab2 .look{border-top-color:var(--muted)}.hab2 .hstrip{border-top-color:var(--a)}
@@ -238,7 +238,7 @@ g.kf>:first-child{stroke:var(--ink);stroke-width:1.5px}
 .hbadge.safety{border-color:var(--bad);color:var(--bad)}.hbadge.none{font-weight:400;color:var(--muted)}
 .hcard p{margin:0;font-size:var(--fs-14);color:var(--ink2);max-width:90ch}
 .hcard p.try{color:var(--ink)}.hcard p.try b{font-weight:600}
-.hab2 details>summary{cursor:pointer;font-size:var(--fs-13);color:var(--ink2);min-height:24px;padding:2px 0}
+.hab2 details>summary:focus-visible{outline:2px solid var(--a);outline-offset:2px;border-radius:3px}.hab2 details>summary{cursor:pointer;font-size:var(--fs-13);color:var(--ink2);min-height:24px;padding:2px 0}
 .hab2 details ul{margin-top:var(--s1);gap:var(--s1);list-style:disc;padding-left:18px}.hab2 details li{font-size:var(--fs-13);color:var(--ink2)}
 .hab2 .src{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s2);align-items:center;font-size:var(--fs-13);color:var(--muted)}
 .hab2 .src button{font-family:var(--mono);font-size:var(--fs-13);padding:0 8px;min-height:24px;min-width:24px;border-radius:999px;line-height:1.4}
@@ -1614,27 +1614,28 @@ function cornerMap(f,nums,c){const box=h('div','fmapbox');const id=String(f.corn
   const key=marks.map(mk=>mk.k+' '+MARK_WORDS[mk.k]).join(' · ');const nt=(MAP?'':'No GPS in this review, so this is the lap as a straight line. ')+key;if(nt)box.append(h('p','note',nt));return box}
 // 2.28: when several corner cards have nothing specific to add they all carry the same explanation: it is said once above
 // the cards (#fixSame) and each of those cards keeps its own header line and numbers, with the full text in its fold
-const GENERIC_WHY='Your brake point, slowest speed, throttle and gear here look about the same on quicker and slower laps, so the time is spread thin. Next time watch your line and where you turn in: compare your best lap with a typical one in Compare laps.';
+const GENERIC_WHY='Your brake point, slowest speed, throttle and gear here look about the same on quicker and slower laps, so no single number explains the loss.';
 const tipsOf=f=>Array.isArray(f.tips)?f.tips:((isObj(D.insights)&&isObj(D.insights.tips)&&D.insights.tips[f.corner])||[]);
-const OWN_SAME=/^Your brake point, slowest speed, throttle and gear in .+? look about the same on quicker and slower laps, so the time is spread thin\./;
+const OWN_SAME=/^Your brake point, slowest speed, throttle and gear in .+? look about the same on quicker and slower laps, so no single number explains the loss\./;
 const isSame=f=>!tipsOf(f).length&&(f.watch?OWN_SAME.test(String(f.watch)):true);
 const GENERIC_N=FIXES.filter(isSame).length;
+const s1=x=>x>=0.05?x.toFixed(1)+' s':'under 0.1 s';
 function tryLine(t){t=String(t);const p=h('p','try');if(/^Try:/.test(t)){p.append(h('b',null,'Try:'),document.createTextNode(t.slice(4)))}else p.append(document.createTextNode(t));return p}
 function fixCard(f,i){const d=h('div','fix');d.append(h('span','rk',String(i+1)));const mid=h('div');const {c,nums,times,refName}=fixData(f);
   const gear=f.gear!=null?f.gear:(nums.typical&&nums.typical.gear);
   const fh=h('h3',null,String(f.corner)+(gear!=null?' · gear '+gear:''));const cx=isObj(D.racecap)&&isObj(D.racecap.corner_context)?D.racecap.corner_context[f.corner]:null;
   if(isObj(cx)&&(cx.kind==='racecraft'||cx.kind==='driving')){const b=h('span','ctxbadge '+cx.kind,cx.kind==='racecraft'?'Mostly when near other cars':'In clear air too');b.title=cx.kind==='racecraft'?'You were '+Math.abs(cx.busy_vs_clear).toFixed(2)+' s slower here near other cars than in clear air.':'This corner is about as slow in clear air, so it looks like driving more than traffic.';fh.append(b)}
   mid.append(fh);
-  mid.append(h('p','why',f.why?String(f.why):(f.basis==='ref'?firstName(refName)+' is '+f.gain.toFixed(2)+' s quicker here on a good lap.':'Your typical lap loses '+f.gain.toFixed(2)+' s here compared with your better laps.')));
+  mid.append(h('p','why',f.why?String(f.why):(f.basis==='ref'?firstName(refName)+' is '+s1(f.gain)+' quicker here on a good lap.':'Your typical lap loses '+s1(f.gain)+' here compared with your quicker laps.')));
   const tips=tipsOf(f);
   if(tips.length){const ul=h('ul');tips.forEach(t=>{t=String(t);ul.append(h('li',null,t.charAt(0).toUpperCase()+t.slice(1).replace(/\.+$/,'')+'.'))});mid.append(ul)}
   else if(!isSame(f)||GENERIC_N<2){const w=f.watch?String(f.watch):GENERIC_WHY;const ix=w.indexOf(' Try:');if(ix>0){mid.append(h('p','why',w.slice(0,ix)),tryLine(w.slice(ix+1)))}else mid.append(h('p','why',w))}
-  else{mid.append(h('p','why','The time is spread thin here.'));if(f['try'])mid.append(tryLine(f['try']));else{const fd=h('details','fnumbers fsame');fd.append(h('summary',null,'What to watch'),h('p','why',f.watch?String(f.watch):GENERIC_WHY));mid.append(fd)}}
+  else{mid.append(h('p','why','No single number stands out here.'));if(f['try'])mid.append(tryLine(f['try']));else{const fd=h('details','fnumbers fsame');fd.append(h('summary',null,'What to watch'),h('p','why',f.watch?String(f.watch):GENERIC_WHY));mid.append(fd)}}
   const lf=learnFor(f.corner);if(lf)mid.append(learnLine(lf,f.corner));
   const ftop=h('div','ftop');const ftx=h('div');ftx.append(...mid.childNodes);ftop.append(ftx);const fm=safe('corner map '+f.corner,()=>cornerMap(f,nums,c));if(fm)ftop.append(fm);mid.append(ftop);
   const body=h('div','fbody');
   // times strip
-  const tl=h('div','ftimes');const tadd=(k,v)=>{if(v==null)return;const sp=h('span');sp.append(document.createTextNode(k+' '),h('b',null,v.toFixed(2)+' s'));tl.append(sp)};
+  const tl=h('div','ftimes');const tadd=(k,v)=>{if(v==null)return;const sp=h('span');sp.append(document.createTextNode(k+' '),h('b',null,v.toFixed(1)+' s'));tl.append(sp)};
   tadd('Best',times.best);tadd('Typical',times.typical);tadd('Better laps',times.p25);if(times.ref!=null)tadd(firstName(refName),times.ref);
   // numbers table: target = the comparison lap when the gain is measured against it, otherwise your best lap
   const left=h('div');left.style.display='grid';left.style.gap='6px';if(tl.children.length)left.append(tl);
@@ -1653,7 +1654,7 @@ function fixCard(f,i){const d=h('div','fix');d.append(h('span','rk',String(i+1))
   const sp=h('div','fspark');sp.append(h('p','note','Time through '+f.corner+', lap by lap'));const sh=h('div','spark');sp.append(sh);
   if(c&&isObj(c.per_lap)){body.append(sp);sparkFns.push(()=>safe('sparkline',()=>renderSpark(sh,c)))}
   if(body.children.length&&(left.children.length||body.children.length>1))mid.append(body);
-  const g=h('span','gain');g.append(document.createTextNode('~'+f.gain.toFixed(2)+' s'),h('small',null,'per lap'));
+  const g=h('span','gain');g.append(document.createTextNode('~'+s1(f.gain)),h('small',null,'per lap'));
   const b=h('button',null,'Show me in Compare');b.type='button';b.onclick=()=>showCorner(cornerById[f.corner]);if(!cornerById[f.corner])b.hidden=true;
   d.append(mid,g,b);return d}
 function lapLinks(li,it){const ls=Array.isArray(it.laps)?it.laps.filter(n=>typeof n==='number'):[];const cs=Array.isArray(it.corners)?it.corners.map(String):[];if(!ls.length&&!cs.length)return;
@@ -1665,7 +1666,7 @@ safe('what to work on',()=>{const IN=isObj(D.insights)?D.insights:null;
   $('coach').hidden=false;
   const v=$('verdict');(IN&&Array.isArray(IN.verdict)?IN.verdict:[]).forEach(t=>v.append(h('p',null,String(t))));
   const fl=$('fixList');const fx=FIXES;
-  if(GENERIC_N>=2){const fs=$('fixSame');fs.hidden=false;fs.textContent='Where a card says the time is spread thin: '+GENERIC_WHY.charAt(0).toLowerCase()+GENERIC_WHY.slice(1)}
+  if(GENERIC_N>=2){const fs=$('fixSame');fs.hidden=false;fs.textContent='Where a card says no single number stands out: '+GENERIC_WHY.charAt(0).toLowerCase()+GENERIC_WHY.slice(1)}
   // 2.28: the one-sentence "what to work on" sits right under the title, where it is read first
   if(v.children.length&&$('title')){const hv=v;hv.classList.add('verdictTop');$('title').after(hv)}
   if(!fx.length)fl.append(h('p','note',NO_LAPS?NO_LAPS_TXT:'Nothing big to fix: your typical laps are already close to your best in every corner.'));
@@ -1696,15 +1697,17 @@ safe('what to work on',()=>{const IN=isObj(D.insights)?D.insights:null;
   fill('goodList',goods.filter(g=>!cornerGood.includes(g)),goods.length?'':'Not enough clean laps to say yet.',false);
   if(!goods.filter(g=>!cornerGood.includes(g)).length&&cornerGood.length)$('keepPanel').hidden=true;
   if(arr(IN.look).length){$('lookPanel').hidden=false;fill('lookList',arr(IN.look),'',false)}
-  if(strip){$('stripPanel').hidden=false;const tb=$('stripTable');tb.replaceChildren();const hd=h('thead');const hr=h('tr');['Corner','Braking','Mid-corner','Exit'].forEach((x,i)=>hr.append(h('th',i?'m':null,x)));hd.append(hr);tb.append(hd);
+  if(strip){$('stripPanel').hidden=false;const tb=$('stripTable');tb.replaceChildren();const hd=h('thead');const hr=h('tr');const hasCost=strip.rows.some(r=>isObj(r)&&num(r.cost_s));['Corner','Braking','Mid-corner','Exit'].concat(hasCost?['Time a lap']:[]).forEach((x,i)=>hr.append(h('th',i?'m':null,x)));hd.append(hr);tb.append(hd);
     const SYM={ok:['✓','nothing flagged'],watch:['!','worth a look'],cost:['✗','costing time']};const body=h('tbody');
     strip.rows.filter(isObj).forEach(r=>{const tr=h('tr');const td=h('td','c');const id=String(r.corner);if(cornerById[id]){const b=h('button',null,id);b.type='button';b.title='Show '+id+' in Compare laps';b.onclick=()=>showCorner(cornerById[id]);td.append(b)}else td.append(document.createTextNode(id));tr.append(td);
       ['braking','mid','exit'].forEach(ph=>{const c=isObj(r[ph])?r[ph]:null;const cell=h('td','m '+(c&&SYM[c.mark]?c.mark:'none'));
         if(c&&SYM[c.mark]){const sp=h('span',null,SYM[c.mark][0]);sp.setAttribute('aria-hidden','true');cell.append(sp,h('span','sr',SYM[c.mark][1]+(c.note?': '+c.note:'')));cell.title=c.note||SYM[c.mark][1]}
         else{const sp=h('span',null,'–');sp.setAttribute('aria-hidden','true');cell.append(sp,h('span','sr','no data'));cell.title='No data for this part of the corner'}
-        tr.append(cell)});body.append(tr)});tb.append(body);
-    const cn=isObj(strip.counts)?strip.counts:{};$('stripSub').textContent=(num(cn.cost)?cn.cost+' costing time':'nothing costing time')+(num(cn.watch)&&cn.watch?' · '+cn.watch+' worth a look':'');
-    const nd=Array.isArray(strip.no_data)?strip.no_data.map(String):[];$('stripLegend').textContent='✓ nothing flagged · ! worth a look · ✗ costing time (flagged, and your typical laps lose time there against your quicker laps) · – no data'+(nd.length?'. No data at all for: '+nd.join(', ')+'.':'');
+        tr.append(cell)});
+      if(hasCost){const cell=h('td','m '+(num(r.cost_s)?'cost':'none'));if(num(r.cost_s)){const sp=h('span',null,'~'+s1(r.cost_s));sp.setAttribute('aria-hidden','true');cell.append(sp,h('span','sr','costing time: your typical lap loses '+s1(r.cost_s)+' a lap here against your quicker laps'));cell.title='Your typical lap loses about '+r.cost_s.toFixed(2)+' s a lap here against your quicker laps'}else{const sp=h('span',null,'–');sp.setAttribute('aria-hidden','true');cell.append(sp,h('span','sr','no cost measured'))}tr.append(cell)}
+      body.append(tr)});tb.append(body);
+    const cn=isObj(strip.counts)?strip.counts:{};const cc=num(cn.cost_corners)?cn.cost_corners:(num(cn.cost)?cn.cost:0);$('stripSub').textContent=(cc?plural(cc,'corner')+' costing time':'no corner costing time')+(num(cn.watch)&&cn.watch?' · '+cn.watch+' worth a look':'');
+    const nd=Array.isArray(strip.no_data)?strip.no_data.map(String):[];$('stripLegend').textContent='✓ nothing flagged · ! worth a look · ✗ costing time (flagged, and your typical laps lose time there against your quicker laps) · – no data. Time a lap is the corner’s own gain from Fix first'+(nd.length?'. No data at all for: '+nd.join(', ')+'.':'');
     const fl=(Array.isArray(strip.lines)?strip.lines.map(String):[]).concat(cornerGood.flatMap(g=>[String(g.text)].concat(lines(g))));const f=foldOf(fl);if(f)$('stripFold').append(f)}
   const pl=$('plan');if(pl)pl.hidden=true;   // "Fix first" replaces the old practice plan
 },'coach');

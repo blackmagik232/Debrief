@@ -80,6 +80,7 @@ def test_no_number_lost_against_2_28_0():
             old = (h["text"] or "") + " " + (h["detail"] or "")
             old = re.sub(r"\b\d+(?:\.\d+)?/100\b", "", old)
             old = old.replace("lap 1: ~0.90 s around 150 m", "")   # lap 1 is on its own Lap 1 card now, not twice
+            old = re.sub(r"About \d+% of where the time goes in the corners ", "", old)   # 2.28.1: one base, the gap
             old = old.replace("-0.00 s", "no change")      # 2.28.0 printed a negative zero; now it says "no change"
             for n in set(NUM.findall(old)):
                 assert n in pool_nums, (name, h["key"], n, old)
@@ -125,16 +126,17 @@ def test_fade_shows_measured_change_and_fuel_estimate_apart_and_the_arithmetic_h
     ins = insights.build(d)
     f = next(i for i in ins["bad"] if i["key"] == "fade")
     raw, fx, total = d["trend_total"], d["stint"]["fuel_s_per_lap"], tf["total"]
-    span = round((total - raw) / fx)
-    assert abs(raw + fx * span - total) < 0.02, (raw, fx, span, total)           # raw + fuel per lap x laps = corrected
-    assert abs(span - raw / (d["trend_per10"] / 10.0)) < 0.6                       # the span is first-to-last, not the lap count
+    ln = [l["n"] for l in d["laps"]]
+    span = max(ln) - min(ln)                                                       # the engine's span: first to last lap number
+    assert span == 15 and abs(raw + fx * span - total) < 0.02, (raw, fx, span, total)   # raw + fuel per lap x laps = corrected
+    assert abs(span - raw / (d["trend_per10"] / 10.0)) < 0.01
     assert f["text"].startswith(f"Measured: your clean laps got about {raw:.1f} s slower")
-    assert f"the real slowdown is about {total:.1f} s" in f["text"] and "estimate" in f["text"]
+    assert f"the slowdown is about {total:.1f} s" in f["text"] and "estimate" in f["text"] and "real slowdown" not in f["text"]
     assert "Tyres play a part" not in json.dumps(f) and "tyres or in the driving" in f["costs"]
     fold = " ".join(f["numbers"])
-    assert f"{raw:+.2f}" in fold and f"{fx:.3f}" in fold and f"{total:+.2f}" in fold and f"{span} laps" in fold
+    assert f"{raw:+.2f}" in fold and f"{fx:.3f}" in fold and f"{total:+.2f}" in fold and f"over {span} laps (from the first lap to the last)" in fold
     assert f["corners"] == ["Turn 6", "Turn 3"] and "Turn 6 and Turn 3" in f["try"]   # from the Stint section, 0.05 s or more
-    assert f["text"].count("2.5") == 1
+    assert f["text"].count(f"{total:.1f}") == 1
 
 
 def test_fade_only_over_the_line_because_of_the_estimate_says_so():
@@ -226,15 +228,117 @@ def test_strip_never_shows_a_mark_without_data():
     d["brake_spread"] = {"corners": []}
     d["consistency"]["by_corner"] = [{"id": "Turn 3", "iqr": 0.35}]
     s2 = insights.build(d)["strip"]
-    assert [r["corner"] for r in s2["rows"]] == ["Turn 3"] and s2["rows"][0]["braking"] is None and s2["rows"][0]["exit"] is None
-    assert len(s2["no_data"]) == 7
+    assert all(r["braking"] is None and r["exit"] is None for r in s2["rows"])
+    assert next(r for r in s2["rows"] if r["corner"] == "Turn 3")["mid"]["mark"] == "watch"
+    assert all(r["mid"] or r["cost_s"] is not None for r in s2["rows"])       # a row with nothing in it is not drawn
+    assert set(s2["no_data"]) | {r["corner"] for r in s2["rows"]} == {c["id"] for c in d["corners"]}
     d["consistency"]["by_corner"] = []
+    d["corners"] = [dict(c, avail=0.0) for c in d["corners"]]
     assert insights.build(d)["strip"] is None
 
 
 def test_corner_specific_good_habits_are_marked_by_scope():
     ins = insights.build(cases()["rich_unknown_start"])
     assert {g["key"]: g["scope"] for g in ins["good"]} == {"locked": "corner", "brake_markers": "corner"}
+
+
+# ---------------------------------------------------------------- lead's re-check (2.28.1)
+def test_strip_and_cards_agree_on_what_costs_time():
+    d = cases()["rich_unknown_start"]
+    ins = insights.build(d)
+    gains = {f["corner"]: f["gain"] for f in ins["fix"]}
+    rows = {r["corner"]: r for r in ins["strip"]["rows"]}
+    vary = next(i for i in ins["bad"] if i["key"] == "vary")
+    assert vary["badge"]["kind"] == "time" and "Turn 3" in vary["costs"]
+    for cid, g in gains.items():                       # every corner a card says costs time is marked in the strip
+        assert rows[cid]["cost_s"] == g, (cid, rows.get(cid))
+    assert ins["strip"]["counts"]["cost_corners"] >= len(gains)
+    # no phase flagged at all, yet a card has a cost: the strip still says so through the corner's own gain
+    d["skills"] = {"reason": "not_enough_clean_laps"}
+    d["brake_spread"] = {"corners": []}
+    d["consistency"]["by_corner"] = []
+    s2 = insights.build(d)["strip"]
+    assert s2["counts"]["cost"] == 0 and s2["counts"]["cost_corners"] >= 1 and all(r["cost_s"] is not None for r in s2["rows"])
+    # and the same corner reads the same rounded figure on the card and in the Fix first line
+    why = {f["corner"]: f["why"] for f in ins["fix"]}
+    assert "loses 0.2 s here" in why["Turn 3"] and "Turn 3 loses about 0.2 s a lap" in vary["costs"]
+
+
+def test_coast_and_overlap_are_ranked_like_every_other_cost():
+    laps = [{"n": i, "t": 90.0 + (0.1 * (i % 3)), "clean": True} for i in range(1, 13)]
+    quick = {3, 6, 9, 12}
+    style = {str(n): {"coast_s": 1.0 if n in quick else 2.9, "overlap_s": 0.2 if n in quick else 0.9} for n in range(1, 13)}
+    d = {"laps": laps, "best": {"n": 3, "t": 90.0, "clean": True}, "median": 90.1, "refs": [], "style": style,
+         "counts": {"unclean": [], "slow": [], "traffic": [], "clean": 12}, "trend_total": 0.0, "corners": [],
+         "consistency": {"score": 30, "label": "Scattered", "std": 1.0, "within_05": 20.0, "n": 12, "by_corner": []}}
+    ins = insights.build(d)
+    keys = [i["key"] for i in ins["bad"]]
+    c = next(i for i in ins["bad"] if i["key"] == "coast")
+    o = next(i for i in ins["bad"] if i["key"] == "overlap")
+    assert "coast" in keys and "overlap" in keys and "scattered" in keys
+    for it, per in ((c, 1.9), (o, 0.7)):
+        b = it["badge"]
+        assert b["kind"] == "time" and abs(b["per_lap"] - per) < 0.06 and abs(b["race_s"] - b["per_lap"] * 12) < 0.01, b
+    assert keys.index("coast") < keys.index("overlap") < keys.index("scattered")     # per lap x clean laps, no cost last
+    assert "luck" in " ".join(c["numbers"]) and "less than your typical lap" in " ".join(c["numbers"]) and "shuffle" not in json.dumps(c)
+
+
+def test_fade_words_and_span_come_from_the_data():
+    d = cases()["rich_unknown_start"]
+    f = next(i for i in insights.build(d)["bad"] if i["key"] == "fade")
+    assert "Including the fuel burning off (an estimate), the slowdown is about" in f["text"] and "real slowdown" not in f["text"]
+    d["trend_per10"] = d["trend_total"] / 13.0 * 10.0         # a ratio that would back-calculate to 13: the data says 15
+    f = next(i for i in insights.build(d)["bad"] if i["key"] == "fade")
+    assert "over 15 laps (from the first lap to the last)" in " ".join(f["numbers"]), f["numbers"]
+
+
+def test_phase_card_quotes_one_base():
+    ph = next(i for i in insights.build(cases()["rich_unknown_start"])["bad"] if i["key"] == "phase")
+    face = ph["text"] + " " + ph["costs"] + " " + ph["try"]
+    assert "%" not in face and len(re.findall(r"\d\.\d s", ph["costs"])) == 2, face     # this part, and the gap: nothing else
+    assert re.search(r"\((nearly all|most|about half|about a third|a smaller part)\)\.$", ph["costs"]), ph["costs"]
+    assert "ease off the brake" not in ph["try"] and "get back on the throttle" in ph["try"]
+    d = cases()["rich_unknown_start"]
+    d["skills"]["phases"] = {p: dict(v, loss_s=0.28 if p == "braking" else 0.03, loss_pm=2.0 if p == "braking" else 0.2)
+                             for p, v in d["skills"]["phases"].items()}
+    ph = next(i for i in insights.build(d)["bad"] if i["key"] == "phase")
+    assert "ease off the brake the same way every lap" in ph["try"]
+    assert sum(ph["numbers"][1].count(x) for x in ("%",)) == 1                          # the share is on the gap, in the fold
+
+
+def test_possibly_traffic_says_what_is_true():
+    t = next(i for i in insights.build(cases()["rich_unknown_start"])["look"] if i["key"] == "traffic")
+    assert "stay in your pace numbers" in t["badge"]["text"] and "not counted against you" not in json.dumps(t)
+    assert t["try"].startswith("Try: if it was traffic, plan where to let faster cars by")
+    b = next(i for i in insights.build(cases()["rich_unknown_start"])["bad"] if i["key"] == "traffic")
+    assert "not counted against you" in b["badge"]["text"]
+
+
+def test_brake_point_habit_names_the_corners_that_still_change():
+    g = next(i for i in insights.build(cases()["rich_unknown_start"])["good"] if i["key"] == "brake_markers")
+    assert g["title"] == "You brake at the same point every lap" and g["text"].endswith("The time still changes after the braking point in Turn 3.")
+
+
+def test_no_two_decimals_on_the_face_of_a_card():
+    for name, d in cases().items():
+        ins = insights.build(d)
+        faces = [f["why"] for f in ins["fix"]]
+        for _s, it in items(ins):
+            faces += [it["text"], it.get("costs") or "", it.get("try") or "", it["badge"]["text"]]
+        for t in faces:
+            assert not re.search(r"\b\d+\.\d\d s\b", t), (name, t)
+    g = next(i for i in insights.build(cases()["clean_race"])["good"] if i["key"] == "lap1")
+    assert "0.07" not in g["text"]
+    d = cases()["clean_race"]
+    d["laps"][0]["t"] = 90.1 - 0.07
+    g = next(i for i in insights.build(d)["good"] if i["key"] == "lap1")
+    assert g["text"] == "Lap 1 was 0.1 s quicker than your typical lap, start included."
+
+
+def test_consistency_uses_one_reference_in_text_and_numbers():
+    c = next(i for i in insights.build(cases()["clean_race"])["good"] if i["key"] == "consistent")
+    assert "of your typical lap" in c["text"] and "middle lap" not in json.dumps(c)
+    assert "of it" in c["numbers"][0] and "of your best lap" in c["numbers"][1]
 
 
 # ---------------------------------------------------------------- the page
@@ -290,13 +394,14 @@ def test_page_folds_open_by_keyboard_and_nothing_overflows():
                 const over=q('.hab2 *').filter(e=>e.getBoundingClientRect().right>box.right+1&&!e.closest('.tablewrap')).length;
                 const rows=q('.hab2>*').map(e=>e.getBoundingClientRect().height);
                 return {cards,over,docw:document.documentElement.scrollWidth,vw:innerWidth,chips:q('.hab2 .src button').map(b=>b.getBoundingClientRect().height),
-                        strip:q('#stripTable tbody tr').length,marks:q('#stripTable td.m').map(x=>x.className),
+                        strip:q('#stripTable tbody tr').length,sub:document.getElementById('stripSub').textContent,costcol:q('#stripTable th').length,marks:q('#stripTable td.m').map(x=>x.className),
                         titles:[...document.querySelectorAll('.hab2 h3')].map(h=>h.textContent.trim())}}""")
             assert r["cards"] and all(c["try"] and c["fold"] and c["badge"] for c in r["cards"]), r["cards"]
             assert r["over"] == 0 and r["docw"] <= r["vw"], (width, r)
             assert all(h >= 24 for h in r["chips"]), r["chips"]
             assert r["strip"] == 8 and any("cost" in m for m in r["marks"]) and any("none" in m for m in r["marks"]), r
             assert r["titles"][0].startswith("Fix these"), r["titles"]
+            assert "no corner costing time" not in r["sub"] and "costing time" in r["sub"] and r["costcol"] == 5, r
             # a fold opens with the keyboard (Tab to the summary, Space opens it)
             pg.evaluate("document.querySelector('#badList .hcard summary').focus()")
             pg.keyboard.press("Space")

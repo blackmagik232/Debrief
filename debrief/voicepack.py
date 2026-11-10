@@ -179,6 +179,7 @@ SECTIONS = {
     "L": "Learning the track, against your best so far. Say the turn, a short natural pause at the comma, then the rest.",
     "M": "Crew chief on the radio. Calm and clear, like an engineer telling you what to do next. Numbers are litres, "
          "gallons, laps or tenths of a second. A short natural pause at the comma.",
+    "N": "Race Room, to a teammate who is next in the car. Calm and clear, a helpful heads-up.",
 }
 PACE_WHOLES = ["No clean lap yet", "Down more than two seconds"]      # 2.17.2 answers to "How's my pace?"
 
@@ -187,6 +188,7 @@ PACE_WHOLES = ["No clean lap yet", "Down more than two seconds"]      # 2.17.2 a
 CREW_WHOLES = ["Data lost", "Data back", "Fuel critical", "Box this lap", "Box next lap", "Box now, cheap stop",
                "Car alongside", "Car ahead pitting", "On plan", "Ahead of plan", "Behind plan", "Up a place",
                "Lost a place", "Fuel is tight", "Short of the flag", "Save fuel or box next lap"]
+SWAP_WHOLES = ["Your stint starts in about fifteen minutes", "Your stint starts in about five minutes"]   # 2.30 Race Room
 CREW_BOX_IN = (2, 5)         # "Box in three laps"
 CREW_LITRES = (1, 120)       # "Forty-two litres"
 CREW_GALLONS = (1, 32)       # "Eleven gallons"
@@ -309,6 +311,9 @@ def lines() -> list:
         add("M", f"{lead}, {crew_rate_text(k)}.", clips)
     for k in range(CREW_OFF[0], CREW_OFF[1] + 1):
         add("M", crew_off_text(k), [(f"cc_off_{k}", "whole")])
+    # 2.30 "Race Room" (added after everything above, so earlier line numbers never change)
+    for w in SWAP_WHOLES:
+        add("N", f"{w}.", [("cc_" + _slug(w), "whole")])
     return out
 
 
@@ -407,7 +412,7 @@ def _crew_tables():
     global _CREW_WORDS, _CREW_PHRASES
     if _CREW_WORDS is None:
         _CREW_WORDS = {number_words(n): n for n in range(0, 200)}
-        ph = {w.lower(): "cc_" + _slug(w) for w in CREW_WHOLES}
+        ph = {w.lower(): "cc_" + _slug(w) for w in CREW_WHOLES + SWAP_WHOLES}
         for k in range(CREW_RATE[0], CREW_RATE[1] + 1):
             ph["rate:" + crew_rate_text(k)] = f"cc_rate_{k}"
         for k in range(CREW_OFF[0], CREW_OFF[1] + 1):

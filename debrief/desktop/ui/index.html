@@ -30,6 +30,7 @@
     <span class="navgroup" aria-hidden="true">Before you drive</span>
     <button type="button" class="navbtn" data-nav="prep" title="Prepare: this week's race (Ctrl+2)" aria-keyshortcuts="Control+2">Prepare</button>
     <button type="button" class="navbtn" data-nav="coach" title="Coach: spoken cues while you drive (Ctrl+3)" aria-keyshortcuts="Control+3">Coach</button>
+    <button type="button" class="navbtn sub" data-nav="room" title="Race Room: the pit board, stints and strategy of a team race">Race Room</button>
     <span class="navgroup" aria-hidden="true">After you drive</span>
     <button type="button" class="navbtn" data-nav="sessions" title="All sessions: every session Garage 61 has for you (Ctrl+4)" aria-keyshortcuts="Control+4">All sessions</button>
     <button type="button" class="navbtn" data-nav="practice" title="Practice: every time you drove, from iRacing's telemetry files on this PC (Ctrl+5)" aria-keyshortcuts="Control+5">Practice</button>
@@ -136,6 +137,7 @@
       <nav class="tdlinks" aria-label="More pages"><span class="eyebrow">More</span>
         <button type="button" class="linkbtn" data-nav="prep">Prepare this week</button>
         <button type="button" class="linkbtn" data-nav="coach">Coach</button>
+        <button type="button" class="linkbtn" data-nav="room">Race Room</button>
         <button type="button" class="linkbtn" data-nav="practice">Practice</button>
         <button type="button" class="linkbtn" data-nav="racing">Racing</button>
         <button type="button" class="linkbtn" data-nav="library">Progress</button>
@@ -426,6 +428,54 @@
     </div>
   </section>
 
+  <section id="vRoom" class="view pad" hidden>
+    <div class="col slcol">
+      <div class="prwrap">
+        <span class="eyebrow">Team races and long races</span>
+        <h1>Race Room</h1>
+        <p class="lede">The pit board for you and your team. The driver sees it from the car; a teammate in the same race sees it too. Fuel on a teammate's screen is always marked "estimated".</p>
+        <div class="row rrtop"><span class="pill" id="rrPill">Waiting</span><span class="note" id="rrRole"></span>
+          <label class="rriam" id="rrIamWrap" hidden><span>I am</span><select id="rrIam" aria-label="Which driver in the plan are you"></select></label>
+          <button type="button" class="btn" id="rrStart" hidden>Start the coach</button></div>
+        <div class="rrtabs" role="tablist" aria-label="Race Room"><button type="button" role="tab" class="btn rrtab on" id="rrTabLive" aria-selected="true">Live</button><button type="button" role="tab" class="btn rrtab" id="rrTabRev" aria-selected="false">Race review</button></div>
+        <div id="rrLive">
+          <p class="note" id="rrText" role="status"></p>
+          <div class="rralert" id="rrAlert" role="alert" hidden></div>
+          <div class="crgrid" id="rrBoard" hidden>
+            <div class="crcard crcall" id="rrCallCard"><span class="eyebrow">Crew chief</span><b id="rrCall">--</b><small id="rrCallSub"></small></div>
+            <div class="crcard"><span class="eyebrow">Class position</span><b id="rrPos">--</b><small id="rrPosSub"></small></div>
+            <div class="crcard"><span class="eyebrow">Left in the race</span><b id="rrLeft">--</b><small id="rrLeftSub"></small></div>
+            <div class="crcard" id="rrBoxCard"><span class="eyebrow">Box by</span><b id="rrBox">--</b><small id="rrBoxWin"></small><small id="rrBoxAdd"></small></div>
+            <div class="crcard" id="rrFuelCard"><span class="eyebrow" id="rrFuelLbl">Fuel</span><b id="rrFuel">--</b><small id="rrFuelSub"></small></div>
+            <div class="crcard" id="rrAheadCard"><span class="eyebrow">Car ahead</span><b id="rrAhead">--</b><small id="rrAheadSub"></small></div>
+            <div class="crcard" id="rrBehindCard"><span class="eyebrow">Car behind</span><b id="rrBehind">--</b><small id="rrBehindSub"></small></div>
+            <div class="crcard"><span class="eyebrow">Last lap</span><b id="rrLap">--</b><small id="rrLapSub"></small></div>
+            <div class="crcard"><span class="eyebrow">Time left</span><b id="rrTime">--</b><small id="rrTimeSub"></small></div>
+          </div>
+          <div id="rrBody" hidden>
+            <div class="panel"><div class="phead"><h3>Stint</h3></div><div class="crgrid" id="rrStint"></div><p class="note" id="rrStintNote"></p>
+              <div id="rrNoPlan" class="row" hidden><span class="note" id="rrNoPlanText">No saved stint plan for this track.</span><button type="button" class="btn" id="rrMake">Make a plan</button></div>
+              <div class="tblwrap"><table class="maptbl" id="rrFairTbl" hidden><caption class="sr">Fair share of driving</caption><thead><tr><th>Driver</th><th>Laps</th><th>Fair share</th><th>Status</th></tr></thead><tbody id="rrFair"></tbody></table></div></div>
+            <div class="panel" id="rrHand" hidden><div class="phead"><h3>Driver swap</h3><span class="pill" id="rrHandPill"></span></div><div class="crgrid" id="rrHandGrid"></div></div>
+            <div class="panel"><div class="phead"><h3>Rest of the race</h3><span class="pill" id="rrRePill"></span></div><p class="note" id="rrReText"></p>
+              <div class="tblwrap"><table class="maptbl" id="rrReTbl" hidden><caption class="sr">Options for the rest of the race</caption><thead><tr><th>Option</th><th>Stops</th><th>Finish in</th><th>Against the plan</th></tr></thead><tbody id="rrReRows"></tbody></table></div>
+              <div class="tblwrap"><table class="maptbl" id="rrReStints" hidden><caption class="sr">Stints still to drive</caption><thead><tr><th>Stint</th><th>Driver</th><th>Laps</th><th>Starts in</th></tr></thead><tbody id="rrReStintRows"></tbody></table></div>
+              <div class="row"><label class="field rrdelay"><span>A driver is late</span><select id="rrDelayWho" aria-label="Which driver is late"></select></label><label class="field rrdelay"><span>Minutes</span><input id="rrDelayMin" type="number" min="0" max="600" step="1" value="10"></label><button type="button" class="btn" id="rrDelayGo">Tell the plan</button><button type="button" class="btn" id="rrReGo">Work it out again</button><span class="msg" id="rrReMsg" role="status"></span></div></div>
+            <div class="panel"><div class="phead"><h3>Rivals in your class</h3></div><div class="tblwrap"><table class="maptbl"><caption class="sr">Rivals in your class</caption><thead><tr><th>Car</th><th>Pos</th><th>Gap</th><th>Last lap</th><th>Stops</th><th>Notes</th></tr></thead><tbody id="rrRivals"></tbody></table></div></div>
+            <div class="panel"><div class="phead"><h3>Positions over the laps</h3></div><div id="rrChart" class="rrchart" role="img" aria-label="Class positions lap by lap"></div></div>
+            <div class="panel"><div class="phead"><h3>Our laps, by driver</h3></div><div class="tblwrap"><table class="maptbl"><caption class="sr">Our laps</caption><thead><tr><th>Lap</th><th>Driver</th><th>Time</th><th>Notes</th></tr></thead><tbody id="rrLaps"></tbody></table></div></div>
+            <div class="panel"><div class="phead"><h3>Every stop in the class</h3></div><div class="tblwrap"><table class="maptbl"><caption class="sr">Pit stops in the class</caption><thead><tr><th>Car</th><th>Pos</th><th>Stops</th><th>Last stop</th><th>Stop laps</th></tr></thead><tbody id="rrStops"></tbody></table></div></div>
+            <p class="note" id="rrPerf"></p>
+          </div>
+        </div>
+        <div id="rrReview" hidden>
+          <p class="note">Each team race writes a log on this PC. Put a teammate's log file in the same folder and the review joins them.</p>
+          <div class="row"><label class="field"><span>Race</span><select id="rrRevPick" aria-label="Which race to review"></select></label><button type="button" class="btn" id="rrRevGo">Open</button><span class="msg" id="rrRevMsg" role="status"></span></div>
+          <div id="rrRevBody"></div>
+        </div>
+      </div>
+    </div>
+  </section>
   <section id="vRacing" class="view pad" hidden>
     <div class="col slcol">
       <div class="prwrap">
@@ -1092,4 +1142,5 @@
   </div>
 </dialog>
 <script src="static/app.js"></script>
+<script src="static/raceroom.js"></script>
 </body></html>

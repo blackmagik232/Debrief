@@ -841,3 +841,22 @@ body.codriving #vCoach.pad{padding:18px clamp(14px,2.5vw,32px) 24px}
 .crsub{font-size:var(--fs-13);color:var(--fg2);line-height:1.35}
 .crsub:empty{display:none}
 @media (max-width:700px){.crcard.crcall{grid-column:auto}}
+
+/* 2.30 Race Room */
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.rrtop{align-items:center;flex-wrap:wrap;gap:10px}
+.rriam{display:flex;align-items:center;gap:6px}
+.rrtabs{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap}
+.rrtab.on{border-color:var(--fg);font-weight:700}
+.rralert{border:2px solid var(--good);border-radius:8px;padding:12px 14px;font-weight:700;margin:10px 0;overflow-wrap:anywhere}
+.rralert.hot{border-color:var(--bad)}
+#vRoom .panel{margin-top:14px}
+#vRoom .tblwrap{overflow-x:auto;max-width:100%}
+#vRoom .rrdelay{max-width:200px}
+.rrchart{width:100%;max-width:100%;overflow:hidden}
+.rrsvg{width:100%;height:auto;display:block}
+.rrgrid{stroke:var(--axis);stroke-width:.5;opacity:.5}
+.rrtick{fill:var(--muted);font-size:var(--fs-11);font-family:var(--mono)}
+.rrline{fill:none;stroke:var(--muted);stroke-width:1;opacity:.55}
+.rrline.me{stroke:var(--fg);stroke-width:2.6;opacity:1}
+@media (max-width:640px){#vRoom .crcard.crcall{grid-column:auto}#vRoom .crgrid{grid-template-columns:1fr 1fr}}

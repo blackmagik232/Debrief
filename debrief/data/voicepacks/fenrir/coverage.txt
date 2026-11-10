@@ -1,6 +1,9 @@
-Fenrir (American male) (fenrir): 774 clips, 28.30 MB, 16000 Hz, speed 0.85, comma pause 40 ms
-Coach phrases covered: 5540 of 5540 (100.0%)
+Fenrir (American male) (fenrir): 776 clips, 28.45 MB, 16000 Hz, speed 0.85, comma pause 40 ms
+Coach phrases covered: 5542 of 5542 (100.0%)
 Left to Windows speech by design: Good, 0 .. Good, 19 (20 phrases)
+Takes to listen to: 0 (new lines only)
+
+Earlier lines:
 Takes to listen to: 0 (new lines only)
 
 Earlier lines:

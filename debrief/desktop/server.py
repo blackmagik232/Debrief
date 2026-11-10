@@ -2192,9 +2192,15 @@ class DebriefServer(ThreadingHTTPServer):
             lib = app.load_settings()["library_folder"]
         except (SystemExit, OSError, KeyError):
             return {}
+        from .. import endurance, endurancelog, raceroom
         return {"crew_plan_for": lambda track, lib=lib: crewchief.load_plan(lib, track),
                 "crew_log": crewchief.CrewLog(lambda lib=lib: crewchief.recording_folder(lib), coach2.logs_dir(),
-                                              log=app.say)}
+                                              log=app.say),
+                # 2.30 Race Room: the saved stint plan, who this PC's user is in it, and the team-race log
+                "room_plan_for": lambda track, lib=lib: endurance.load_inputs(lib, track),
+                "room_iam": lambda lib=lib: raceroom.load_iam(lib),
+                "room_log": endurancelog.RaceLog(library_fn=lambda lib=lib: lib,
+                                                 recording_fn=lambda lib=lib: crewchief.recording_folder(lib), log=app.say)}
 
     @staticmethod
     def _close_coach_parts(runner, hotkey, voice, timeout=3.0) -> bool:
@@ -2557,7 +2563,7 @@ class Handler(BaseHTTPRequestHandler):
             name = r[len("static/"):]
             if name == "tokens.css":
                 return self._send(200, design_tokens().encode("utf-8"), "text/css; charset=utf-8")
-            if name in ("app.css", "app.js"):
+            if name in ("app.css", "app.js", "raceroom.js"):
                 return self._file(UI / name)
             if name == "icon.png" and ICON_PNG.exists():
                 return self._file(ICON_PNG)
@@ -2583,7 +2589,8 @@ class Handler(BaseHTTPRequestHandler):
                  "api/notes", "api/update", "api/profile", "api/strategy", "api/weekly", "api/brand", "api/team-combos",
                  "api/diagnostics", "api/setuplab/combos", "api/setuplab/report", "api/coach/status",
                  "api/sessions-ibt", "api/session-review", "api/corner-coach", "api/plan", "api/plan/history",
-                 "api/firstrun", "api/endurance", "api/live", "api/recording", "api/last-race"):
+                 "api/firstrun", "api/endurance", "api/live", "api/recording", "api/last-race", "api/raceroom",
+                 "api/endurance-review"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -3412,7 +3419,7 @@ class Handler(BaseHTTPRequestHandler):
                  "api/discord-check", "api/setuplab/read", "api/setuplab/stop", "api/setuplab/series", "api/coach/start",
                  "api/coach/stop", "api/coach/mute", "api/coach/settings", "api/coach/test-voice", "api/plan/new",
                  "api/plan/score", "api/coach/wheel-learn", "api/coach/wheel-clear", "api/firstrun/dismiss", "api/firstrun/skip",
-                 "api/endurance"):
+                 "api/endurance", "api/raceroom"):
             try:
                 return getattr(self, "_post_" + r[4:].replace("-", "_").replace("/", "_"))(body)
             except ValueError as e:
@@ -3599,6 +3606,72 @@ class Handler(BaseHTTPRequestHandler):
             saved = strategy.save_car(cfg["library_folder"], car, tank_l=tank, pit_loss_s=loss, track=track)
             return self._json({"ok": True, "car": saved})
         raise ValueError("Bad request.")
+
+    # ---------- 2.30 Race Room
+    def _room_runner(self):
+        with self.server.coach_lock:
+            r = self.server.coach
+        return r if r is not None and r.running() and getattr(r, "room", None) is not None else None
+
+    def _get_raceroom(self, q):
+        """The Race Room page's picture: the live runner's room, or a 'start the coach' answer. Never a request."""
+        from .. import raceroom
+        r = self._room_runner()
+        lib = self._library_folder()
+        iam = raceroom.load_iam(lib) if lib else ""
+        if r is None:
+            return self._json({"ok": True, "running": False, "iam": iam,
+                               "room": {"state": "waiting", "text": "Start the coach to open the Race Room in a race."}})
+        return self._json({"ok": True, "running": True, "iam": iam, "room": r.room_state()})
+
+    def _post_raceroom(self, body):
+        """Race Room: action "iam" (which plan driver you are), "delay" (a driver is late), "replan" (work it out again now)."""
+        from .. import raceroom
+        act = body.get("action")
+        r = self._room_runner()
+        if act == "iam":
+            lib = self._library_folder()
+            if lib is None:
+                raise ValueError("Set the library folder first.")
+            name = raceroom.save_iam(lib, body.get("name"))
+            if r is not None:
+                r.room.set_iam(name)
+            return self._json({"ok": True, "iam": name})
+        if r is None:
+            raise ValueError("Start the coach first.")
+        if act == "delay":
+            try:
+                minutes = float(body.get("minutes") or 0)
+            except (TypeError, ValueError):
+                raise ValueError("Type the minutes as a number.")
+            n = r.room.set_delay(str(body.get("driver") or ""), min(max(minutes, 0.0), 600.0))
+            if not n:
+                raise ValueError("That driver isn't in the saved plan.")
+            return self._json({"ok": True, "driver": n, "minutes": minutes})
+        if act == "replan":
+            r.room.force_replan()
+            return self._json({"ok": True})
+        raise ValueError("Unknown Race Room action.")
+
+    def _get_endurance_review(self, q):
+        """The Endurance review: the team races that have logs (no id), or one race's review (id = its folder under the library)."""
+        from pathlib import Path
+        from .. import endureview
+        lib = self._library_folder()
+        if lib is None:
+            return self._json({"ok": True, "races": []})
+        rid = q.get("id")
+        if not rid:
+            return self._json({"ok": True, "races": endureview.find_races(lib)})
+        base = Path(lib).resolve()
+        folder = (base / rid).resolve()
+        try:
+            folder.relative_to(base)
+        except ValueError:
+            raise ValueError("That race isn't in your library.")
+        if not folder.is_dir():
+            raise ValueError("That race wasn't found.")
+        return self._json({"ok": True, "review": endureview.review_folder(folder), "id": rid})
 
     def _get_endurance(self, q):
         """2.26 endurance planner: the inputs saved for a track (if any). Never a request."""

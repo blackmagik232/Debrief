@@ -153,9 +153,9 @@ function keyList(){const nm=n=>{const b=document.querySelector('.nav .navbtn[dat
     [['F1 or ?','This list of keys'],['J','The review before this one'],['K','The review after this one'],['Tab','Move to the next button or chart'],['Arrow keys','Move along a chart that has focus'],['Esc','Close a window like this one, or leave the driving view']])}
 
 /* ---------- views */
-const VIEWS=['vFrame','vToday','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam','vSessions','vSetupLab','vCoach','vPractice','vRacing','vCars'];
+const VIEWS=['vFrame','vToday','vWelcome','vJob','vSettings','vPrep','vGoals','vTeam','vSessions','vSetupLab','vCoach','vPractice','vRacing','vCars','vRoom'];
 const FRAME_VIEWS=['review','library','season','skills','goalCharts','prepPage','teamPage','sample'];
-const NAV_OF={today:'today',weekly:'team',sync:'sessions',sessions:'sessions',library:'library',season:'season',skills:'skills',goals:'goals',goalCharts:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings',setuplab:'setuplab',coach:'coach',practice:'practice',racing:'racing',cars:'cars'};
+const NAV_OF={today:'today',weekly:'team',sync:'sessions',sessions:'sessions',library:'library',season:'season',skills:'skills',goals:'goals',goalCharts:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings',setuplab:'setuplab',coach:'coach',practice:'practice',racing:'racing',cars:'cars',room:'room'};
 let current={view:null,dir:null};
 function show(view){VIEWS.forEach(v=>$(v).hidden=(v!==view));if(view!=='vFrame')document.title=appTitle()}
 function markNav(){
@@ -413,7 +413,7 @@ function navGate(){const off=onboarding();
 function goNav(name){
   if(G61_NAV.has(name)&&onboarding()){current={view:'welcome'};welcome();banner('Finish the setup steps first: this page needs Garage 61. Practice, Setup Lab, the Coach and Racing work now, from your telemetry.');return}
   ({today:openToday,sessions:openSessions,library:openLibrary,season:openSeason,skills:openSkills,goals:openGoals,prep:openPrep,team:openTeam,settings:openSettings,
-    setuplab:()=>openSetupLab(),coach:()=>openCoach(),practice:()=>openPractice(),racing:()=>openRacing(),cars:()=>openCars()})[name]()}
+    setuplab:()=>openSetupLab(),coach:()=>openCoach(),practice:()=>openPractice(),racing:()=>openRacing(),cars:()=>openCars(),room:()=>openRoom()})[name]()}
 $('btnSample').addEventListener('click',openSample);
 $('fbSampleBack').addEventListener('click',()=>{current={view:'welcome'};welcome()});
 $('btnGoalCharts').addEventListener('click',openGoalCharts);
@@ -2283,6 +2283,7 @@ $('coLogCopy').addEventListener('click',async()=>{if(!co2.logName)return;let j;t
   const done=await copyText(j.text);setMsg('coLogMsg',done?'Copied. Paste it wherever you\'re asking for help.':'Couldn\'t copy to the clipboard.',done?'ok':'bad')});
 // help: Coach 2.0 and credits
 HELP.tour.push(['Live data','While you drive, Debrief quietly records each iRacing session (fuel, driver aids, pit stops, tyres, incidents, every car\u2019s pit stops). Find it in the All sessions list (From iRacing) and at the top of a race review. Settings > Live data turns it on or off and starts it with Windows; an icon near the clock lets you open Debrief, pause or quit it.']);
+HELP.tour.push(['Race Room','Under Coach, the Race Room is the pit board for a team or long race: who is driving and for how long, the next driver and when their stint starts in their own time, the box call, fuel, the cars around you, every stop in your class and the rest of the race worked out again after a caution or a long stop. A teammate who is not driving sees it too; their fuel is always marked estimated, with no spoken fuel calls. If you are the next driver, Debrief tells you aloud and on screen about fifteen and five minutes before your stint. After the race, Race review shows pace by stint and driver, every stop against the plan and what your class rivals did.']);
 HELP.tour.push(['Coach voice','The coach speaks with a natural voice, through the headset you pick on the Coach page (Voice and sound). Rehearse plays one of your sessions through it first.']);
 HELP.tour.push(['Crew chief','In a race the Coach page shows a pit board and a voice calls what matters: fuel laps left, laps to go, when to box and how much to add, the cheap stop under a caution, a car closing behind or alongside and a car ahead pitting. It reads your car and your class only, never makes a caution a pit stop, and says short things only where it is quiet (never under braking, never with a car alongside). Turn the calls or the voice off in Settings on the Coach page.']);
 HELP.words.push(['Recorded by Debrief','A session Debrief recorded from iRacing while you drove that Garage 61 does not have. Its numbers are all from iRacing.'],
@@ -3231,6 +3232,7 @@ const RC_CONTACT={contact_4x:['Contact (4x)','badc'],possibly:['Possibly',''],no
 const rcAvgPlaces=a=>{const r=Math.round(a*10)/10;return r>0?'+'+r+' (gained '+plural(r,'place')+')':r<0?'\u2212'+Math.abs(r)+' (lost '+plural(Math.abs(r),'place')+')':'0 (held your place)'};
 const rcSigned=n=>ok(n)?(n>0?'+'+n:n<0?'−'+Math.abs(n):'0'):'';
 const rcPts=n=>ok(n)?n+'x':'';
+function openRoom(){if(window.DebriefRoom)window.DebriefRoom.open()}
 async function openRacing(){current={view:'racing',dir:null};show('vRacing');markNav();await loadRacing()}
 async function loadRacing(){const seq=++rc.seq;setMsg('rcMsg','Working it out...');$('rcAgain').disabled=true;
   ['rcStarts','rcInc'].forEach(id=>$(id).classList.add('busy'));
@@ -3528,6 +3530,7 @@ async function cnWatch(){clearTimeout(cn.poll);let j;try{j=await api('coach/mic'
   if(M.rerecord_note)setMsg('cnMsg',M.rerecord_note,/Re-recorded/.test(M.rerecord_note)?'ok':'bad');cnLoad()}
 $('cnCopy').addEventListener('click',async()=>{let j;try{j=await api('cornernotes')}catch(e){connectionLost();return}if(!j||!j.ok)return;
   try{await navigator.clipboard.writeText(j.summary||'');setMsg('cnMsg','Copied: one line per note.','ok')}catch(e){setMsg('cnMsg','Couldn\'t copy. Select the text yourself: '+(j.summary||'').split('\n')[0],'bad')}});
+window.DebriefHost={$,api,post,h,ok,fmtT,show,markNav,goNav,plainText,connectionLost,setMsg,setView:v=>{current={view:v,dir:null}},view:()=>current.view};
 })();
 
 

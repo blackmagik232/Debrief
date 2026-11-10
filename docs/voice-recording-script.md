@@ -797,3 +797,10 @@ Crew chief on the radio. Calm and clear, like an engineer telling you what to do
 714. One point eight seconds off target.
 715. One point nine seconds off target.
 716. Two seconds off target.
+
+## Section N (from line 717)
+
+Race Room, to a teammate who is next in the car. Calm and clear, a helpful heads-up.
+
+717. Your stint starts in about fifteen minutes.
+718. Your stint starts in about five minutes.

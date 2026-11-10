@@ -62,6 +62,9 @@ def signed(d) -> str:
     return ("+" if x > 0 and float(s) else "−" if x < 0 and float(s) else "") + s
 
 
+FUEL_KINDS = ("box_now", "box_soon", "caution_box", "fuel_critical", "fuel_tight", "save_or_box")
+
+
 def view_model(status, unit="mph", edit=False) -> dict:
     """What the overlay shows for the coach's status (None when no coach has been started).
 
@@ -76,7 +79,7 @@ def view_model(status, unit="mph", edit=False) -> dict:
     if state not in STATE_WORDS:
         state = "coaching" if running else "off"
     word, tone = STATE_WORDS[state]
-    thing = count = cue = delta = sub = crew = ""
+    thing = count = cue = delta = sub = crew = room = ""
     delta_tone = crew_tone = "dim"
     if running and state != "off":
         F = st.get("focus") if isinstance(st.get("focus"), dict) else None
@@ -90,6 +93,7 @@ def view_model(status, unit="mph", edit=False) -> dict:
         if d is not None:
             delta = signed(d) + " s"
             delta_tone = "bad" if d > 0.005 else "ok" if d < -0.005 else "dim"
+        rm = st.get("room") if isinstance(st.get("room"), dict) else {}
         cr = st.get("crew") if isinstance(st.get("crew"), dict) else {}
         if cr.get("enabled") and cr.get("overlay") and cr.get("state") in ("racing", "lost"):
             # 2.29: one line, "Fuel 13.4 laps · Box L17-18 · Plan +1" (the call itself when it is urgent)
@@ -97,15 +101,23 @@ def view_model(status, unit="mph", edit=False) -> dict:
             crew = ("DATA LOST" if cr.get("state") == "lost" else str(cr["overlay"]))
             if call and call.get("rank", 99) <= 4 and cr.get("state") != "lost":
                 crew = str(call.get("text") or crew)[:60]
+            if cr.get("fuel_estimated") and cr.get("state") != "lost":
+                # 2.30: a crew PC's fuel is always an estimate. The flag comes from the crew chief (no guessing from the words);
+                # only a call that is about fuel or the stop carries it, a car alongside does not
+                if not (call and call.get("rank", 99) <= 4) or call.get("kind") in FUEL_KINDS:
+                    crew += " (est.)"
             crew_tone = "bad" if cr.get("state") == "lost" or (call and call.get("rank", 99) <= 3) else "dim"
+        if rm.get("enabled") and rm.get("overlay") and rm.get("state") == "racing":
+            room = str(rm["overlay"])[:80]       # 2.30 Race Room: "Stint 41:02 · next Ben 02:15 · BOX L29 (est.)"
         if state == "muted":
             m = st.get("mute") if isinstance(st.get("mute"), dict) else {}
             ql = _num(m.get("quiet_left"))
             sub = f"Quiet for {int(math.ceil(ql))} s more" if ql is not None and ql > 0 else "Unmute to hear cues"
     vm = {"state": state, "word": word, "tone": tone, "thing": thing, "count": count, "cue": cue, "delta": delta,
-          "delta_tone": delta_tone, "sub": sub, "crew": crew, "crew_tone": crew_tone}
+          "delta_tone": delta_tone, "sub": sub, "crew": crew, "crew_tone": crew_tone, "room": room if not sub else ""}
     if edit:
         vm["sub"] = EDIT_HINT
+        vm["room"] = ""
     return {k: _units.convert_text(v, unit) if isinstance(v, str) else v for k, v in vm.items()}
 
 
@@ -436,11 +448,12 @@ class OverlayWindow:
         self.w_word, self.w_delta = L(text=""), L(text="")
         self.w_thing, self.w_count, self.w_cue, self.w_sub = L(text=""), L(text=""), L(text=""), L(text="")
         self.w_crew = L(text="")
+        self.w_room = L(text="")
         self.w_grip = tk.Label(r, text="◢", bg=COLORS["bg"], fg=COLORS["dim"])
         # the bar shown only while editing: "Drag to move · Done"
         self.w_bar = tk.Label(r, text="Drag to move  ·  ", bg=EDIT_BORDER, fg="#0b1220", anchor="w")
         self.w_done = tk.Label(r, text="Done", bg="#ffffff", fg="#0b1220", cursor="hand2")
-        self.widgets = [self.w_word, self.w_delta, self.w_thing, self.w_count, self.w_cue, self.w_sub, self.w_crew]
+        self.widgets = [self.w_word, self.w_delta, self.w_thing, self.w_count, self.w_cue, self.w_sub, self.w_crew, self.w_room]
         self._layout()
         for w in [r] + self.widgets + [self.w_bar]:
             w.bind("<ButtonPress-1>", self._press)
@@ -480,6 +493,7 @@ class OverlayWindow:
         self.w_cue.configure(font=f(10), wraplength=w - 20)
         self.w_sub.configure(font=f(9))
         self.w_crew.configure(font=f(10, True))
+        self.w_room.configure(font=f(9, True))
         self.w_bar.configure(font=("Segoe UI", 9, "bold"))
         self.w_done.configure(font=("Segoe UI", 9, "bold"))
         pad = 10
@@ -491,6 +505,7 @@ class OverlayWindow:
         self.w_cue.place(x=pad, y=oy + int(120 * k), width=w - 2 * pad)
         self.w_crew.place(x=pad, y=oy + int(134 * k), width=w - 2 * pad)      # 2.29 crew chief: fuel laps · window · plan
         self.w_sub.place(x=pad, y=oy + int(150 * k), width=w - 2 * pad)
+        self.w_room.place(x=pad, y=oy + int(150 * k), width=w - 2 * pad)      # 2.30 Race Room: stint · next driver · box (shares the sub line)
         if self.edit:
             self._place_bar()
 
@@ -675,6 +690,7 @@ class OverlayWindow:
         self.w_count.configure(text=vm["count"])
         self.w_cue.configure(text=("Last cue: " + vm["cue"]) if vm["cue"] else "")
         self.w_sub.configure(text=vm["sub"])
+        self.w_room.configure(text=vm.get("room", ""))
         self.w_crew.configure(text=vm.get("crew", ""), fg=COLORS["bad"] if vm.get("crew_tone") == "bad" else COLORS["dim"])
 
     def interval(self) -> float:

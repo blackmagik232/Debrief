@@ -63,7 +63,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import cornernotes, crewchief, engine, ibt, livedata, perfmeter, voicepack
+from . import cornernotes, crewchief, engine, ibt, livedata, perfmeter, raceroom, voicepack
 from . import units as _units
 
 GRID = 1000                 # reference points around the lap
@@ -2686,7 +2686,8 @@ class LiveRunner:
     def __init__(self, source, voice, settings: Settings | None = None, reference: Reference | None = None,
                  weak_corners=None, telemetry_dir=None, weak_for=None, log=None, clock=time.monotonic,
                  reference_index=None, focus_for=None, keep_given=False, log_dir=None, mode: str = "live",
-                 log_header: dict | None = None, notes=None, mic=None, crew=None, crew_plan_for=None, crew_log=None):
+                 log_header: dict | None = None, notes=None, mic=None, crew=None, crew_plan_for=None, crew_log=None,
+                 room=None, room_plan_for=None, room_iam=None, room_log=None):
         self.source = source
         self.mode = mode                # Coach 2.0: "live" (iRacing) or "rehearsal" (one of his files played back)
         self._log_dir = log_dir         # Coach 2.0 cue log folder (None: no log)
@@ -2754,6 +2755,14 @@ class LiveRunner:
         self._crew_lap_logged = None
         self._crew_noclip: set = set()
         self.crew_note = ""
+        # 2.30 Race Room: the team-race page (driver and crew). It reads the same samples; on a crew PC it also gives the
+        # crew chief a sample made from the team car's field data, and the crew chief's calls there stay text.
+        self.room_log = room_log
+        self.room = room if room is not None else (
+            raceroom.RaceRoom(units=self.settings.units, plan_for=room_plan_for, iam=room_iam,
+                              log=(room_log.add if room_log is not None else None)) if mode == "live" else None)
+        self.room_perf = perfmeter.PerfMeter("raceroom", on_slow=lambda m: self._log("raceroom: " + m))
+        self._room_noclip: set = set()
 
     def _voice_duration(self, text):
         fn = getattr(self.voice, "duration", None)
@@ -3162,7 +3171,7 @@ class LiveRunner:
                 "show": show_state(st, self.running(), self.mode, cs["muted"]), "mute": self.mute_state(),
                 "repeat_note": self.repeat_note, "live_delta": self.coach.live_delta, "speed": self.speed,
                 "skipping": (self._skip or {}).get("what"), "skip_note": self.skip_note, "skipped": self.skipped,
-                "perf": self.perf.summary(), "crew": self.crew_status()}
+                "perf": self.perf.summary(), "crew": self.crew_status(), "room": self.room_brief()}
 
     def _notes_here(self):
         """How many of his notes are for the track he is on (the Coach page says so), or None without a store."""
@@ -3290,21 +3299,28 @@ class LiveRunner:
                     self.crew_log.close()
                 except Exception:  # noqa: BLE001
                     pass
+            if self.room_log is not None:
+                try:
+                    self.room_log.close()
+                except Exception:  # noqa: BLE001
+                    pass
 
     # ---- 2.29 the crew chief (its own thread is this one; its cost is metered separately) ----
     def _crew_on(self) -> bool:
         return self.crew is not None and bool(self.settings.crew_calls)
 
     def _crew_context(self):
-        """Hand the crew chief the session text when it changed, and its saved stint plan for the track."""
+        """Hand the crew chief the session text when it changed, and its saved stint plan for the track. Returns the session
+        text (version, sections) for Race Room."""
         crew = self.crew
         fn = getattr(self.source, "info_sections", None)
         if not callable(fn):
-            return
+            return None, None
         ver, secs = fn()
         if secs and ver != self._crew_info_v:
             self._crew_info_v = ver
             crew.set_info(secs, ver)
+            self._room_info = (ver, secs)
         key = crew.track_name
         if key and key != self._crew_plan_key and self._crew_plan_for is not None:
             self._crew_plan_key = key
@@ -3312,23 +3328,68 @@ class LiveRunner:
                 crew.set_plan(self._crew_plan_for(key))
             except Exception:  # noqa: BLE001
                 crew.set_plan(None)
+        return ver, secs
+
+    _room_info = (None, None)
 
     def _crew_step(self, s: dict):
-        if not self._crew_on():
+        if self.crew is None:
             return
         w0, c0 = time.perf_counter(), time.thread_time()
+        own = s
         try:
             now = self._clock()
             crew = self.crew
             crew.units = _units.norm(self.settings.units)
-            self._crew_context()
-            calls = crew.feed(s, s.get("_field"), now=now)
-            self._crew_deliver(calls, s, now)
+            ver, secs = self._crew_context()
+            room = self.room
+            if room is not None:
+                room.units = crew.units
+                rw, rc = time.perf_counter(), time.thread_time()
+                try:
+                    own = room.pre(s, s.get("_field"), secs if secs and ver != room.info_v else None, ver, now)
+                except Exception as e:  # noqa: BLE001
+                    own = s
+                    self._problem(f"race room step failed ({e.__class__.__name__}: {str(e)[:120]})")
+            if room is not None:
+                room.bind(crew)
+            calls = crew.feed(own, s.get("_field"), now=now)
+            if room is not None:
+                try:
+                    room.post(crew, now, s)
+                    self._room_deliver(s, now)
+                except Exception as e:  # noqa: BLE001
+                    self._problem(f"race room step failed ({e.__class__.__name__}: {str(e)[:120]})")
+                finally:
+                    if self.mode == "live":
+                        self.room_perf._done(rw, rc)       # Race Room pre to post (the crew chief step sits between them, so this is an upper bound)
+            if self._crew_on():
+                self._crew_deliver(calls, own, now)
         except Exception as e:  # noqa: BLE001  (the crew chief never stops the coach)
             self._problem(f"crew chief step failed ({e.__class__.__name__}: {str(e)[:120]})")
         finally:
             if self.mode == "live":
                 self.crew_perf._done(w0, c0)
+
+    def _room_deliver(self, s: dict, now: float):
+        """Race Room's spoken swap alerts (a teammate who is the next driver). Text always; voice unless it is off or muted."""
+        room = self.room
+        for a in room.take_alerts():
+            if not self.settings.crew_voice or self.settings.muted:
+                continue
+            v = self.voice
+            covers = getattr(v, "covers", None)
+            try:
+                has = bool(covers(a["say"])) if callable(covers) else True
+            except Exception:  # noqa: BLE001
+                has = True
+            if not has and a["say"] not in self._room_noclip:
+                self._room_noclip.add(a["say"])
+                self._log(f"raceroom: the voice pack has no clip for '{a['say']}'; Windows speech says it, or it stays text")
+            try:
+                v.say(a["say"], priority=crewchief.PRIORITY_CREW, t=crewchief._num(s.get("SessionTime")))
+            except Exception as e:  # noqa: BLE001
+                self._problem(f"speaking the swap alert failed ({e.__class__.__name__})")
 
     def _crew_idle(self):
         """iRacing answered nothing: after a few seconds the crew chief says 'Data lost'."""
@@ -3344,6 +3405,15 @@ class LiveRunner:
 
     def _crew_deliver(self, calls, s: dict, now: float):
         crew, sp, lg = self.crew, self.crew_speaker, self.crew_log
+        if self.room is not None and self.room.role.get("role") == "crew":
+            # 2.30: on a crew PC the fuel is an estimate. Every crew chief call stays text there (no spoken box or fuel call
+            # from a number nobody measured); the swap alerts are the only thing a crew PC says.
+            for c in calls:
+                c.spoken, c.why = False, raceroom.CREW_NO_VOICE
+                if lg is not None:
+                    lg.add(crewchief.call_row(crew, c))
+            sp.pending = []
+            return
         sp.voice_on = bool(self.settings.crew_voice)
         sp.muted = bool(self.settings.muted)
         if lg is not None:
@@ -3388,6 +3458,26 @@ class LiveRunner:
             v.say(c.say, priority=c.priority, t=c.session_t, check=lambda c=c: crew.still_valid(c, self._latest))
         else:
             v.say(c.say, priority=c.priority, t=c.session_t)
+
+    def room_brief(self) -> dict:
+        """What the coach status says about Race Room (the overlay line and the role); the page gets all of it from room_state()."""
+        r = self.room
+        if r is None:
+            return {"enabled": False, "overlay": "", "role": "none"}
+        st = r.state() or {}
+        return {"enabled": True, "overlay": st.get("overlay") or "", "role": (st.get("role") or {}).get("role", "none"),
+                "state": st.get("state"), "alert": (st.get("swap") or {}).get("alert"),
+                "perf": self.room_perf.summary()}
+
+    def room_state(self) -> dict:
+        r = self.room
+        if r is None:
+            return {"state": "waiting", "text": "The Race Room runs when you drive or crew live."}
+        d = dict(r.state() or {})
+        d["perf"] = self.room_perf.summary()
+        d["log"] = (self.room_log.path.name if self.room_log is not None and self.room_log.path else None)
+        d["log_dir"] = (str(self.room_log.path.parent) if self.room_log is not None and self.room_log.path else None)
+        return d
 
     def crew_status(self) -> dict:
         if self.crew is None:

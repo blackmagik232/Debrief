@@ -4656,6 +4656,18 @@
    "text": "Two seconds off target.",
    "ms": 1420,
    "role": "whole"
+  },
+  "cc_your_stint_starts_in_about_fifteen_minutes": {
+   "file": "cc_your_stint_starts_in_about_fifteen_minutes.wav",
+   "text": "Your stint starts in about fifteen minutes.",
+   "ms": 2540,
+   "role": "whole"
+  },
+  "cc_your_stint_starts_in_about_five_minutes": {
+   "file": "cc_your_stint_starts_in_about_five_minutes.wav",
+   "text": "Your stint starts in about five minutes.",
+   "ms": 2380,
+   "role": "whole"
   }
  }
 }

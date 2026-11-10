@@ -214,7 +214,12 @@ def _pick(cfg, order_i, t, est) -> tuple:
     return order_i % n, f"No driver is free at {clock(t)}: {ds[order_i % n]['name']} is planned anyway."
 
 
-def simulate(cfg: dict, target_laps: int | None = None) -> dict:
+def simulate(cfg: dict, target_laps: int | None = None, start: dict | None = None) -> dict:
+    """start (2.30, for the live re-plan; None = the race from the grid, exactly as before): the race as it is now.
+    {"driver": index of the driver in the car, "fuel": litres as at the line (fuel now + the part of this lap already
+    driven x the burn), "t": seconds on the plan's clock (negative: minus the part of the lap already driven, so the
+    first crossing is (1 - fraction) of a lap away), "rot": rotation position, "tyre_age": stints on these tyres}.
+    The first stint then runs on that fuel (0 laps when it cannot reach the line with the spare: pit now)."""
     ds = cfg["drivers"]
     target = target_laps if target_laps is not None else cfg["laps"]
     tank, res = cfg["tank"], cfg["reserve"]
@@ -223,6 +228,12 @@ def simulate(cfg: dict, target_laps: int | None = None) -> dict:
     rot = 0                 # rotation position (counts stints in row)
     tyre_age, sets, stops = 0, 1, 0
     cur = None
+    if start:
+        cur = int(start["driver"]) % len(ds)
+        fuel = float(start["fuel"])
+        t = float(start.get("t", 0.0))
+        rot = int(start.get("rot", cur * cfg["in_row"]))
+        tyre_age = int(start.get("tyre_age", 0))
     pit_total = 0.0
     how_seen = set()
     while len(stints) < MAX_STINTS:
@@ -241,7 +252,10 @@ def simulate(cfg: dict, target_laps: int | None = None) -> dict:
         can = _laps_on(fuel, res, d["burn"])
         n = min(rem, can)
         if n < 1:                     # can't happen with a valid tank; never loop forever
-            raise ValueError("The tank is too small for one lap at this fuel use.")
+            if start and not stints:  # the live re-plan: not enough fuel to reach the line with the spare: pit now
+                n = 0
+            else:
+                raise ValueError("The tank is too small for one lap at this fuel use.")
         st = {"n": len(stints) + 1, "driver": d["name"], "from_lap": lap + 1, "to_lap": lap + n, "laps": n,
               "start_s": round(t, 1), "fuel_start_l": round(fuel, 1)}
         t += n * d["lap_t"]

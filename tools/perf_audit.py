@@ -11,6 +11,8 @@ What it measures (on whatever PC runs it; the numbers on Swazi's Ryzen 5 5600X3D
   memory     Debrief's resident memory after importing its modules (Linux/Windows)
   crew       (2.29) the crew chief: CrewChief.feed on a 64-car scripted race at 20 Hz (field arrays at 4 Hz), plus the
              voice-queue pump, as share of one core; the cost of reading its extra channels is in "read"
+  room       (2.30) Race Room: RaceRoom.pre/post on a 64-car scripted team race at 20 Hz (its own work, without the crew
+             chief), the live re-plan for 24 h x 6 drivers, and the size of the team-race log per hour
   recorder   (2.27) the background recorder: idle while waiting for iRacing, recording a 64-car race (its own work,
              plus the cost of reading ~80 values at 20 Hz and 12 car arrays at 4 Hz estimated like "read"), and the
              size of its logs per hour
@@ -45,6 +47,9 @@ BUDGET = {
     "racelog_mb_per_h": 15.0,     # gzipped race log
     "memory_mb": 400.0,           # whole app resident memory
     "crew_pct_core": 1.0,         # crew chief at 20 Hz with a 64-car field
+    "room_pct_core": 1.0,         # Race Room at 20 Hz with a 64-car field (the crew chief is measured separately)
+    "replan_ms": 200.0,           # one live re-plan, 24 h and 6 drivers
+    "roomlog_mb_per_h": 15.0,     # the team-race log (race.jsonl.gz)
     "recorder_idle_pct_core": 0.1,    # waiting for iRacing
     "recorder_rec_pct_core": 1.0,     # recording a 64-car race, reading included
     "recorder_field_mb_per_h": 15.0,  # field.jsonl.gz, 64 cars
@@ -105,6 +110,66 @@ def crew_cost(sim_seconds=900.0, cars=64):
     per = (time.thread_time() - t0) / max(1, n)
     return {"frames": n, "us_per_frame": per * 1e6, "pct_core": per * 20.0 * 100.0, "calls": len(ch.calls_made)
             if hasattr(ch, "calls_made") else None}
+
+
+def room_cost(sim_seconds=900.0, cars=64):
+    """RaceRoom.pre + post over a scripted 64-car team race (3 drivers, 2 swaps); own readings 20 Hz, field arrays 4 Hz.
+    The crew chief is fed outside the timed part (crew_cost measures it). Also: the log it writes, per hour."""
+    import endu_sim as ES
+    from debrief import crewchief as cc, endurancelog, raceroom as RR
+    sim = ES.EnduSim(pc_user=1, cars=cars, timed_s=5400.0)
+    sim.stop(14, 30, to=1)
+    sim.stop(28, 30, to=2)
+    saved = {"inputs": ES.plan_inputs(), "title": "audit", "saved": "now"}
+    tmp = tempfile.mkdtemp(prefix="debrief-audit-")
+    log = endurancelog.RaceLog(library_fn=lambda: tmp)
+    room = RR.RaceRoom(units="mph", plan_for=lambda track: saved, iam=lambda: ES.DRIVERS[1], wall=lambda: 1_800_000_000.0 + sim.t,
+                       log=log.add)
+    chief = cc.CrewChief(units="mph", clock=lambda: sim.t)
+    frames = [(o, f, sim.t, sim.info_version, sim.sections() if sim.info_version else None) for o, f in sim.run(sim_seconds)]
+    spent, n, ver = 0.0, 0, None
+    for o, f, t, v, _s in frames:
+        secs = None
+        if v != ver:
+            ver, secs = v, sim.sections()
+            chief.set_info(secs, v)
+        for k in range(2):
+            now = t + 0.05 * k
+            t0 = time.thread_time()
+            o2 = room.pre(o, f if k == 0 else None, secs if k == 0 else None, ver, now)
+            spent += time.thread_time() - t0
+            chief.feed(o2, f if k == 0 else None, now=now)
+            t0 = time.thread_time()
+            room.post(chief, now, o)
+            room.state()
+            spent += time.thread_time() - t0
+            n += 1
+    log.close()
+    size = log.bytes
+    per = spent / max(1, n)
+    mb_h = size * 3600.0 / max(1.0, frames[-1][2]) / 1e6 if frames else 0.0
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+    return {"frames": n, "us_per_frame": per * 1e6, "pct_core": per * 20.0 * 100.0, "log_mb_per_hour": mb_h}
+
+
+def replan_cost():
+    """One live re-plan: 24 h, 6 drivers, from the middle of the race (worst of 5)."""
+    try:
+        from debrief import replan
+    except Exception:  # noqa: BLE001
+        return {"skipped": "replan.py not present"}
+    drivers = [{"name": f"Driver {k}", "lap_t": 98 + k * 0.4, "burn_l": 3.1 + k * 0.05, "tz": k} for k in range(6)]
+    inp = {"minutes": 1440, "tank_l": 120, "pit_lane_s": 32, "fuel_rate_lps": 2.6, "tyre_s": 22, "tyre_stints": 1,
+           "drivers": drivers, "reserve_laps": 1, "fair_share": True}
+    st = {"time_left_s": 12 * 3600.0, "elapsed_s": 12 * 3600.0, "driver": "Driver 2", "fuel_l": 60.0, "lap_f": 0.4,
+          "pace_ratio": 1.01, "burn_ratio": 1.02, "stints_on_tyres": 1, "delays": {"Driver 3": 20}}
+    worst = 0.0
+    for _ in range(5):
+        t0 = time.perf_counter()
+        replan.replan(inp, st)
+        worst = max(worst, time.perf_counter() - t0)
+    return {"worst_ms": worst * 1000, "case": "24 h, 6 drivers, options included"}
 
 
 def read_cost(n_scalars=60, n_arrays=14, rate_scalar=20, rate_array=4):
@@ -299,7 +364,7 @@ def memory_cost():
 
 def run():
     res = {"coach": coach_cost(), "read": read_cost(), "yaml": yaml_cost(), "planner": planner_cost(),
-           "racelog": racelog_cost(), "crew": crew_cost(), "memory": memory_cost(), "recorder": recorder_cost()}
+           "racelog": racelog_cost(), "crew": crew_cost(), "room": room_cost(), "replan": replan_cost(), "memory": memory_cost(), "recorder": recorder_cost()}
     checks = [
         ("Live coach (20 Hz)", f"{res['coach']['pct_core']:.2f}% of a core", res["coach"]["pct_core"] <= BUDGET["coach_pct_core"],
          f"<= {BUDGET['coach_pct_core']}%"),
@@ -307,6 +372,12 @@ def run():
          f"<= {BUDGET['read_pct_core']}%"),
         ("Crew chief (20 Hz, 64 cars)", f"{res['crew']['pct_core']:.2f}% of a core ({res['crew']['us_per_frame']:.0f} us a frame)",
          res["crew"]["pct_core"] <= BUDGET["crew_pct_core"], f"<= {BUDGET['crew_pct_core']}%"),
+        ("Race Room (20 Hz, 64 cars)", f"{res['room']['pct_core']:.2f}% of a core ({res['room']['us_per_frame']:.0f} us a frame)",
+         res["room"]["pct_core"] <= BUDGET["room_pct_core"], f"<= {BUDGET['room_pct_core']}%"),
+        ("Live re-plan, 24 h x 6 drivers", ("skipped" if "skipped" in res["replan"] else f"{res['replan']['worst_ms']:.0f} ms"),
+         "skipped" in res["replan"] or res["replan"]["worst_ms"] <= BUDGET["replan_ms"], f"<= {BUDGET['replan_ms']:.0f} ms"),
+        ("Team-race log", f"{res['room']['log_mb_per_hour']:.2f} MB/h", res["room"]["log_mb_per_hour"] <= BUDGET["roomlog_mb_per_h"],
+         f"<= {BUDGET['roomlog_mb_per_h']:.0f} MB/h"),
         ("Session info parse, 60 cars", f"{res['yaml']['parse_ms']:.0f} ms", res["yaml"]["parse_ms"] <= BUDGET["yaml_ms"],
          f"<= {BUDGET['yaml_ms']:.0f} ms, off the reading thread"),
         ("Endurance plan, worst case", ("skipped" if "skipped" in res["planner"] else f"{res['planner']['worst_ms']:.0f} ms"),

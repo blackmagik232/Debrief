@@ -49,7 +49,9 @@ FEATURE_MODULES = ("race_analysis", "racecap_link", "replay_scan", "results_csv"
                    # 2.27 Live data: one iRacing reader, the background recorder, recordings in the library, the tray icon
                    "livedata", "liverec", "recordings", "livetray",
                    # 2.29 Crew chief: fuel, pit window, rivals, calls
-                   "crewchief")
+                   "crewchief",
+                   # 2.30 Endurance Race Room: pit board for the team, live re-plan, team-race log and review
+                   "raceroom", "replan", "endurancelog", "endureview")
 
 
 _REFRESH_DONE: set = set()

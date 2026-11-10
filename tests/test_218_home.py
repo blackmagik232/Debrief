@@ -173,7 +173,7 @@ def test_sidebar_groups_and_keys_in_order():
     assert [p for p, _ in pages] == ["today", "prep", "coach", "sessions", "practice", "racing", "setuplab", "cars", "library", "team"], pages
     assert [k for _, k in pages] == list("1234567890"), pages
     subs = re.findall(r'class="navbtn sub" data-nav="([a-z]+)"', nav)
-    assert subs == ["season", "skills", "goals"], subs
+    assert subs == ["room", "season", "skills", "goals"], subs
     groups = re.findall(r'<span class="navgroup"[^>]*>([^<]+)</span>', nav)
     assert groups == ["Before you drive", "After you drive", "Car", "Over time", "Team"], groups
     # Settings, Help and the theme stay outside the part that scrolls

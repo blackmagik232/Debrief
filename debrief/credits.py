@@ -72,7 +72,7 @@ CREDITS = [
     # ---------------------------------------------------------------- ideas only
     {"name": "Crew Chief", "author": "Jim Britton and the Crew Chief contributors", "licence": "Not needed: ideas only, no code used",
      "link": "https://gitlab.com/mr_belowski/CrewChiefV4", "use": "Ideas for how a spoken coach should behave in "
-     "the car. Ideas only: no code or sounds were taken from it.", "kind": "ideas"},
+     "the car. Ideas only: no code or sounds were taken from it. The 2.29 crew chief and the 2.30 Race Room swap heads-ups follow the same spirit.", "kind": "ideas"},
     # ---------------------------------------------------------------- used only if already installed
     {"name": "comtypes", "author": "Thomas Heller and the comtypes developers", "licence": "MIT",
      "link": "https://github.com/enthought/comtypes", "use": "A fallback for Windows speech, used only when it is "

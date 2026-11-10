@@ -35,8 +35,8 @@ Every third-party part Debrief uses or ships, who made it, its licence and where
 
 | Name | Author | Licence | Link | What for |
 |---|---|---|---|---|
-| Crew Chief | Jim Britton and the Crew Chief contributors | Not needed: ideas only, no code used | <https://gitlab.com/mr_belowski/CrewChiefV4> | Ideas for how a spoken coach should behave in the car. Ideas only: no code or sounds were taken from it. In 2.29 the crew chief's habits (short calls, nothing said twice in a row, quiet moments, a caution is not a pit stop) follow the same spirit. |
-| Debrief's own Race Room and stint plan | Black Magik Studios | Part of Debrief | (this repository) | The pit board layout, the rival gap/closing-rate idea and the pit-window rule (one lap of reserve, as in strategy.py) were reused from Debrief's own earlier work. |
+| Crew Chief | Jim Britton and the Crew Chief contributors | Not needed: ideas only, no code used | <https://gitlab.com/mr_belowski/CrewChiefV4> | Ideas for how a spoken coach should behave in the car. Ideas only: no code or sounds were taken from it. In 2.29 the crew chief's habits (short calls, nothing said twice in a row, quiet moments, a caution is not a pit stop) follow the same spirit. In 2.30 the Race Room's driver-swap heads-ups ("your stint starts in about five minutes") and its handover card follow the same spirit of short, useful calls. |
+| Debrief's own Race Room and stint plan | Black Magik Studios | Part of Debrief | (this repository) | The pit board layout, the rival gap/closing-rate idea and the pit-window rule (one lap of reserve, as in strategy.py) were reused from Debrief's own earlier work. The 2.30 Race Room's stint timer, plan delta, live re-plan and Endurance review are Debrief's own, built on the 2.26 stint planner (endurance.py); the idea of reading every car's pit stops from the pit-road flag and of merging teammates' logs is Debrief's own. |
 
 ## Used if already installed
 

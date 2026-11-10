@@ -215,7 +215,7 @@ def rate_text(rate) -> str:
 
 def vocabulary(unit: str | None = None) -> list:
     """Every sentence a crew chief call can be made of (for the voice pack coverage report)."""
-    out = [f"{w}." for w in vp.CREW_WHOLES]
+    out = [f"{w}." for w in vp.CREW_WHOLES + vp.SWAP_WHOLES]
     out += [f"Box in {vp.number_words(n)} laps." for n in range(vp.CREW_BOX_IN[0], vp.CREW_BOX_IN[1] + 1)]
     out += [vp.crew_litres_text(n) for n in range(vp.CREW_LITRES[0], vp.CREW_LITRES[1] + 1)]
     out += [vp.crew_gallons_text(n) for n in range(vp.CREW_GALLONS[0], vp.CREW_GALLONS[1] + 1)]
@@ -228,7 +228,7 @@ def vocabulary(unit: str | None = None) -> list:
 
 # ---------------------------------------------------------------- the maths (pure)
 def laps_to_go(laps_rem=None, time_rem=None, lap_f=0.0, leader_lap_s=None, stops=0, pit_loss_s=0.0,
-               leader_f=None, my_lap_s=None, pace_unknown=False, pace_tol=None) -> dict | None:
+               leader_f=None, my_lap_s=None, pace_unknown=False, pace_tol=None, slow_tol=None) -> dict | None:
     """How far to the flag. lap_f = how far round the current lap you are (0..1).
 
     crossings: how many more times you cross the line (the lap you are on counts; so does the one that finishes a
@@ -254,7 +254,13 @@ def laps_to_go(laps_rem=None, time_rem=None, lap_f=0.0, leader_lap_s=None, stops
 
     Lap times are never known exactly: unless pace_tol=0 the count is the LARGEST over every leader pace within PACE_TOL (1%)
     of the one given (further on the slow side, and down to a faster class's when pace_unknown) and over your own pace 1%
-    quicker. A lap too many is the safe side; one too few can leave you dry. The hand checks above are with pace_tol=0."""
+    quicker. A lap too many is the safe side; one too few can leave you dry. The hand checks above are with pace_tol=0.
+
+    slow_tol (2.30): how far on the slow side of the leader's pace the count looks when his pace is known. None (the
+    default) is twice pace_tol, which is the wide band 0.99 .. 1.02 of his pace used for the saving calls and the
+    last-pit-chance rule. The STOP-or-not decision passes slow_tol=PACE_TOL: the band 0.99 .. 1.01 (and your own pace
+    x0.99), which is what a lap time that is read to within 1% really needs; the wide band made it call a precautionary
+    stop in about 7 of 100 close finishes. With the pace not known (pace_unknown) the wide scan is always used."""
     f = min(1.0, max(0.0, _num(lap_f) or 0.0))
     lr, tr = _num(laps_rem), _num(time_rem)
     lap_n = tr_n = None
@@ -277,7 +283,8 @@ def laps_to_go(laps_rem=None, time_rem=None, lap_f=0.0, leader_lap_s=None, stops
             scales = [1.0 + tol - 0.001 * k for k in range(0, 131 + int(round(tol * 1000)))]
         else:
             n_ = int(round(tol * 1000))
-            scales = [1.0 - tol + 0.001 * k for k in range(0, 3 * n_ + 1)]      # a best lap is quicker than the race pace: look further on the slow side
+            up = 2 * n_ if slow_tol is None else int(round(max(0.0, float(slow_tol)) * 1000))
+            scales = [1.0 - tol + 0.001 * k for k in range(0, n_ + up + 1)]      # a best lap is quicker than the race pace: look further on the slow side
         for scale in scales:
             pl = p * scale
             kl = max(1, int(math.ceil(tr / pl + fl - 1e-9)))
@@ -368,6 +375,25 @@ def stops_if_stop_now(fuel, burn, tank, dist, lap_f=0.0, reserve=RESERVE_LAPS):
     return len(plan) if ok or len(plan) > 1 else None
 
 
+def save_view(fuel, burn, dist) -> dict:
+    """The saving asked for when no stop is called: {"tight", "tight_save_lpl", "short", "tight_call"} (all False / 0
+    when the fuel reaches the flag with the spare). Aimed at _margin_save, asked up to SAVE_REALISTIC of the burn.
+    2.30: the STOP-or-not decision uses the narrow pace band, this saving is worked out on the WIDE band's distance, so
+    a leader who turns out slower than the narrow band still gets a "save fuel" call instead of a stop he did not need."""
+    out = {"tight": False, "tight_save_lpl": 0.0, "short": False, "tight_call": False}
+    if not burn or burn <= 0 or fuel is None or dist is None:
+        return out
+    ask = burn - fuel / (dist + _margin_save(dist))
+    if ask >= max(0.01, 0.005 * burn):
+        ask = min(ask, SAVE_REALISTIC * burn)
+        out["tight"] = True
+        out["tight_save_lpl"] = math.ceil(round(ask * 100.0, 6)) / 100.0       # rounded UP: never "save 0.00"
+        out["short"] = fuel < dist * burn
+        # worth a call: short of the flag, or a saving of TIGHT_PCT% or more to have the spare
+        out["tight_call"] = out["short"] or ask / burn * 100.0 >= TIGHT_PCT
+    return out
+
+
 def pit_window(fuel, burn, tank, dist, lap_f=0.0, reserve=RESERVE_LAPS) -> dict:
     """The pit window with fuel in litres, burn in litres a lap, dist = laps of driving to the flag (laps_to_go
     'distance'), lap_f = how far round this lap you are.
@@ -410,14 +436,7 @@ def pit_window(fuel, burn, tank, dist, lap_f=0.0, reserve=RESERVE_LAPS) -> dict:
     save_fin = burn - fuel / (dist + m)
     if fuel + 1e-9 >= need_min or save_fin <= SAVE_REALISTIC * burn:
         # no stop. How much must be saved to have the spare lap at the flag? (aimed at _margin_save, asked up to 10%)
-        ask = burn - fuel / (dist + _margin_save(dist))
-        if ask >= max(0.01, 0.005 * burn):
-            ask = min(ask, SAVE_REALISTIC * burn)
-            out["tight"] = True
-            out["tight_save_lpl"] = math.ceil(round(ask * 100.0, 6)) / 100.0       # rounded UP: never "save 0.00"
-            out["short"] = fuel < dist * burn
-            # worth a call: short of the flag, or a saving of TIGHT_PCT% or more to have the spare
-            out["tight_call"] = out["short"] or ask / burn * 100.0 >= TIGHT_PCT
+        out.update(save_view(fuel, burn, dist))
         return out
     plan, ok = stop_plan(fuel, burn, tank, dist, f, reserve)
     n = max(1, len(plan))
@@ -619,6 +638,7 @@ class CrewChief:
         self._pit_in = None
         self._pit_entry_f = None
         self._ach_hist: list = []
+        self.fuel_estimated = False      # 2.30: the fuel is Race Room's estimate (a crew PC): nothing is learned from it
         self._pit_stall_t = 0.0
         self.caution = False
         self.caution_laps = 0
@@ -958,6 +978,15 @@ class CrewChief:
             self._dirty.add("lap jump")                  # a tow, a reset, a rejoin: nothing learned from that lap
         self._begin_lap(lap, own)
 
+    def fuel_source_changed(self):
+        """2.30: the fuel now comes from a different place (a teammate's estimate, then the car's own tank, or back): what was
+        learned from the old one is dropped, and the lap in progress is left out. The plan's figure stands in until three clean laps."""
+        self.burn.laps.clear()
+        self.burn.skipped.clear()
+        self._ach_hist = []
+        self._dirty.add("fuel source changed")
+        self.lap_start_fuel = None
+
     def _begin_lap(self, lap, own):
         self.lap = lap
         self.lap_start_fuel = self.fuel
@@ -973,11 +1002,13 @@ class CrewChief:
             used = self.lap_start_fuel - self.fuel
             if used < -0.05:
                 dirty.add("fuel went up")
+        if self.fuel_estimated:
+            dirty.add("estimated fuel")            # 2.30: a crew PC's fuel is a guess made from the plan: never learned from
         if self.caution:
             self.caution_laps += 1
         self.burn.add(self.lap, used, ", ".join(sorted(dirty)) if dirty else "")
         # what he REALLY burned on his last full laps, whatever else was going on (a saving shows up here at once)
-        if used is not None and used > 0.05 and self.lap > 1 and "pit lap" not in dirty and "lap jump" not in dirty \
+        if used is not None and used > 0.05 and self.lap > 1 and "pit lap" not in dirty and "estimated fuel" not in dirty and "lap jump" not in dirty \
                 and "tow or off the world" not in dirty and not self.caution:   # a slow caution lap would hide a shortage at green
             self._ach_hist.append(used)
             del self._ach_hist[:-2]
@@ -1236,21 +1267,34 @@ class CrewChief:
                 lead_f = (lead_f + age / flag_s) % 1.0
         loss = res["pit_loss"][0]
         stops = 0
-        ltg = None
+        ltg = ltg_stop = None
+        unknown = flag_how in ("unknown", "best lap")
         for _ in range(3 if self.race else 0):
-            ltg = laps_to_go(own.get("SessionLapsRemainEx"), own.get("SessionTimeRemain"), self.lap_f,
-                             flag_s or lead_s, stops, loss, lead_f, lead_s, pace_unknown=(flag_how in ("unknown", "best lap")))
-            if ltg is None or not burn or not tank or F is None:
+            # 2.30: the STOP-or-not decision counts with the leader's pace within 1% (PACE_TOL) and your own 1% quicker;
+            # the wide band (up to 2% slower) is kept for the saving calls and the last-pit-chance rule below
+            ltg_stop = laps_to_go(own.get("SessionLapsRemainEx"), own.get("SessionTimeRemain"), self.lap_f,
+                                  flag_s or lead_s, stops, loss, lead_f, lead_s, pace_unknown=unknown, slow_tol=PACE_TOL)
+            if ltg_stop is None or not burn or not tank or F is None:
                 break
-            n = stops_needed(F, burn, tank, ltg["distance"], self.reserve, self.lap_f)
+            n = stops_needed(F, burn, tank, ltg_stop["distance"], self.reserve, self.lap_f)
             if n == stops:
                 break
             stops = n
-        res["ltg"], res["stops"] = ltg, stops
+        if self.race:
+            ltg = laps_to_go(own.get("SessionLapsRemainEx"), own.get("SessionTimeRemain"), self.lap_f,
+                             flag_s or lead_s, stops, loss, lead_f, lead_s, pace_unknown=unknown)
+            if ltg is not None and ltg_stop is not None and ltg["distance"] < ltg_stop["distance"]:
+                ltg = ltg_stop              # never a shorter race than the decision's own
+        res["ltg"], res["ltg_stop"], res["stops"] = ltg, ltg_stop, stops
         self._last_dist = ltg["distance"] if ltg else None
-        if ltg is not None and burn and tank and F is not None:
-            res["window"] = pit_window(F, burn, tank, ltg["distance"], self.lap_f, self.reserve)
+        if ltg_stop is not None and burn and tank and F is not None:
+            res["window"] = pit_window(F, burn, tank, ltg_stop["distance"], self.lap_f, self.reserve)
             w = res["window"]
+            if not w["need_stop"] and ltg is not None and ltg["distance"] > ltg_stop["distance"] + 1e-9:
+                sv = save_view(F, burn, ltg["distance"])            # the wide band decides how much saving to ask for
+                if sv["tight"]:
+                    w.update(sv)
+                    w["reach_laps"] = round(F / burn - ltg["distance"], 2)
             if w.get("tight") and not w["need_stop"]:
                 if self._tight_ref is None:
                     self._tight_ref, self._tight_stops = raw_burn, self.stops_done
@@ -1356,11 +1400,12 @@ class CrewChief:
                 w = vp.number_words(kl)
                 c.append(("box_soon", 2 if kl == 2 else 1, f"Box in {w} laps.",
                           f"Box in {kl} laps.{addt}", None, {"add_l": add, "k": kl}))
-        if self.caution and win is not None and win["need_stop"] and not on_pit and burn and self.tank and ltg:
+        lg_stop = num.get("ltg_stop")
+        if self.caution and win is not None and win["need_stop"] and not on_pit and burn and self.tank and lg_stop:
             # a cheap stop is worth calling when stopping now takes a stop off the count, or the one stop you have
             # to make is open now or soon and there is a real amount to add; never when it just adds a stop
             n = win["stops"]
-            dist = ltg["distance"]
+            dist = lg_stop["distance"]                 # a stop-or-not decision: the narrow pace band (2.30)
             now_n = stops_if_stop_now(F, burn, self.tank, dist, self.lap_f, self.reserve)
             need = (dist + self.reserve) * burn
             arrive = F - (1.0 - self.lap_f) * burn
@@ -1601,6 +1646,7 @@ class CrewChief:
         pit_loss = num["pit_loss"]
         s["pit_loss"] = {"s": round(pit_loss[0], 1), "how": pit_loss[1]}
         s["overlay"] = self._overlay_line(num, win)
+        s["fuel_estimated"] = bool(self.fuel_estimated)
         s["text"] = s["call_text"]
         return s
 
@@ -1833,7 +1879,11 @@ def recording_folder(library_folder):
 
 # the extra things the crew chief reads from your car (the rest is in livedata.COACH_CHANNELS)
 CREW_OWN = ("FuelLevel", "PlayerCarInPitStall", "PlayerCarTowTime", "SessionTimeRemain", "SessionLapsRemainEx",
-            "SessionFlags", "SessionState", "PlayerCarPosition", "PlayerCarClassPosition", "PlayerCarIdx", "SessionUniqueID")
+            "SessionFlags", "SessionState", "PlayerCarPosition", "PlayerCarClassPosition", "PlayerCarIdx", "SessionUniqueID",
+            # 2.30 Race Room: the driver-change channels, the team's incident count and the service the pit stall is doing.
+            # A PC that is not in the car gets none of the own-car ones (iRacing doesn't send them): they read as missing.
+            "DCDriversSoFar", "DCLapStatus", "PlayerCarTeamIncidentCount", "PitSvFlags", "PitRepairLeft", "PitOptRepairLeft",
+            "LFwearM", "RFwearM", "LRwearM", "RRwearM")
 
 
 def situation(chief: CrewChief) -> dict:

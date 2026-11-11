@@ -1,5 +1,5 @@
 """C1, the analysis interface (2.30.1): the one door Siyanqaba (Swazi's offline engine on the Zerver) uses for every
-number. See CONTRACT.md. Pure analysis: numpy and Debrief's own modules only, no window, sound, network or irsdk.
+number. See CONTRACT.md. Pure analysis: numpy, PyYAML (each .ibt's session info) and Debrief's own modules; no window, sound, network or irsdk.
 
 Every name here wraps a Debrief function that the app itself uses, so a number Siyanqaba shows is the number Debrief
 shows. Changing a name, an argument or a returned key here is a contract change: bump C1_VERSION here and in

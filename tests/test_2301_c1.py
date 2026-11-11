@@ -38,11 +38,11 @@ def check(cond, msg):
 print("== C1: the door imports nothing heavy")
 code = ("import sys; import debrief.c1, debrief.factsheet; "
         "bad = sorted(m for m in sys.modules if m.split('.')[0] in "
-        "('requests', 'yaml', 'irsdk', 'pywintypes', 'win32com', 'pypdf', 'tkinter', 'webview', 'sounddevice')"
+        "('requests', 'irsdk', 'pywintypes', 'win32com', 'pypdf', 'tkinter', 'webview', 'sounddevice')"
         " or m.startswith('debrief.desktop')); print(','.join(bad))")
 res = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8",
                      timeout=120)
-check(res.returncode == 0 and res.stdout.strip() == "", f"c1 and factsheet load with numpy only ({res.stdout.strip() or 'none'})")
+check(res.returncode == 0 and res.stdout.strip() == "", f"c1 and factsheet load without the app's other packages ({res.stdout.strip() or 'none'})")
 for name in ("review_session", "read_laps", "corner_cards", "habit_p", "detect_corners", "build_segments",
              "session_id", "same_corner", "corner_key", "corner_tolerance_m", "THRESHOLDS", "C1_VERSION"):
     check(hasattr(c1, name), f"c1.{name} exists")
@@ -135,8 +135,8 @@ ct = (ROOT / "CONTRACT.md").read_text(encoding="utf-8")
 check(f"| 1 (Debrief {debrief.__version__})" in ct or "C1 v1" in ct, "CONTRACT.md lists C1 v1")
 check(all(k in ct for k in factsheet.CLAUSE_KEYS), "CONTRACT.md names every clause key")
 pp = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-check('dependencies = ["numpy>=1.24"]' in pp and 'attr = "debrief.__version__"' in pp,
-      "pyproject: numpy only, version from debrief/__init__.py")
+check('dependencies = ["numpy>=1.24", "PyYAML>=6"]' in pp and 'attr = "debrief.__version__"' in pp,
+      "pyproject: numpy and PyYAML (the .ibt session info), version from debrief/__init__.py")
 
 shutil.rmtree(TMP, ignore_errors=True)
 print(f"\n{'all passed' if not fails else str(fails) + ' FAILED'}")

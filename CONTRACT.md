@@ -11,7 +11,7 @@ Any change to a contract below needs a version bump here AND in Siyanqaba's copy
 
 ## C1 v1
 
-`from debrief import c1` (numpy only; no window, sound, network or irsdk):
+`from debrief import c1` (numpy and PyYAML only; no window, sound, network or irsdk):
 
 | Name | Wraps | Gives |
 |---|---|---|

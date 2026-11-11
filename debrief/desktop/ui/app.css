@@ -860,6 +860,3 @@ body.codriving #vCoach.pad{padding:18px clamp(14px,2.5vw,32px) 24px}
 .rrline{fill:none;stroke:var(--muted);stroke-width:1;opacity:.55}
 .rrline.me{stroke:var(--fg);stroke-width:2.6;opacity:1}
 @media (max-width:640px){#vRoom .crcard.crcall{grid-column:auto}#vRoom .crgrid{grid-template-columns:1fr 1fr}}
-/* 2.30.2 Siyanqaba: summary and "How did it feel" taps on a session page */
-.feelrow{flex-wrap:wrap;gap:6px}
-.prsum{font-size:1.05em;line-height:1.5}

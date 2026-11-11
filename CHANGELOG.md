@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.30.3 "Siyanqaba out"
+
+Siyanqaba is not ready, so everything for it has been taken out of Debrief. It will be its own thing, separate from Debrief, and comes back only when it is finished and fully explained.
+
+What you will see differently:
+- **Settings** no longer has the **Siyanqaba** card (night shift folder and Siyanqaba address).
+- A **Practice** session no longer has **Summary and how it felt** (the plain-lines summary, the "How did it feel?" taps, and "On the Zerver" / "Send to the Zerver now").
+- Debrief no longer copies sessions anywhere in the background. It only reads iRacing's folder, as before 2.30.1.
+
+Nothing else changes. Your reviews, settings and laps are kept. If you had typed a night shift folder or an address, Debrief now ignores it; taps you saved stay in the `feel` folder in your reviews folder, untouched, and you can delete that folder if you like.
+
+- Removed: `c1.py`, `factsheet.py`, `feel.py`, `zerverpush.py`, `aisummary.py`, the Siyanqaba page code, `CONTRACT.md`, `pyproject.toml` and their tests. The 2.30.2 release stays on GitHub, so anything already pinned to it still installs.
+- Tested: the full test suite and the Windows build. Not proven yet: the Settings and Practice pages on your screen without the removed parts (checked in a test browser only).
+
 ## 2.30.2 "Siyanqaba side"
 
 Siyanqaba, your own offline engine on the Zerver, now has a place in the window.

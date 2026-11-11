@@ -32,7 +32,6 @@ from . import racing      # 2.16 Racing
 from . import carcompare as carcompare_page     # 2.18 Car vs car
 from . import coach2      # Coach 2.0: voice packs, device, cue log, rehearsal
 from . import home        # 2.18 Today, the start page
-from . import siyanqaba as siyq     # 2.30.2 How did it feel, night shift folder, Siyanqaba's summary
 
 UI = Path(__file__).resolve().parent / "ui"
 ICON_PNG = Path(__file__).resolve().parent / "icon.png"
@@ -2615,8 +2614,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._carsetup_call(lambda: carcompare_page.get(self, r, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}), r, get=True)
         if r in home.GET_ROUTES:                # 2.18 Today
             return self._carsetup_call(lambda: home.get(self, r, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}), r, get=True)
-        if r in siyq.GET_ROUTES:                # 2.30.2 Siyanqaba
-            return self._carsetup_call(lambda: siyq.get(self, r, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}), r, get=True)
         return self._nf()
 
     def _carsetup_call(self, fn, r, get=False):
@@ -3434,8 +3431,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._carsetup_call(lambda: coach2.post(self, r, body), r)
         if r in carsetup.POST_ROUTES:       # 2.15 Car and setup
             return self._carsetup_call(lambda: carsetup.post(self, r, body), r)
-        if r in siyq.POST_ROUTES:           # 2.30.2 Siyanqaba
-            return self._carsetup_call(lambda: siyq.post(self, r, body), r)
         if r == "api/settings":
             try:
                 view = settings_io.save(body)
@@ -4316,10 +4311,6 @@ class Handler(BaseHTTPRequestHandler):
             folder_ok = False
         ss, idx = self.server.practice_sessions(cfg)
         _idx, keys = self._setuplab_index(cfg)
-        try:   # 2.30.2: last week's sessions that haven't reached the Zerver's night shift folder, in the background
-            siyq.auto_push(self.server, cfg, ss)
-        except Exception:  # noqa: BLE001
-            app.say("ERROR starting the night shift folder send:\n" + traceback.format_exc())
         keep = ("id", "car", "car_path", "track", "track_code", "date", "last", "sort", "subsession", "files",
                 "session_types", "laps", "valid_laps", "clean_laps", "best", "median", "surface_temp")
         return self._json(_jsonable({

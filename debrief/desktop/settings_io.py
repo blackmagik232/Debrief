@@ -216,38 +216,6 @@ def clean_team_folder(v) -> str:
     return v
 
 
-def clean_night_shift_folder(v) -> str:
-    """2.30.2 Settings > Siyanqaba: the Zerver's night shift folder (a shared folder on the Zerver), "" = off.
-    It must exist now, so a typo is caught here and not at 3 AM. Raises ValueError."""
-    bad = "Debrief can't find that folder. Is the Zerver on and its night shift folder shared? (e.g. \\\\ZERVER\\inbox)"
-    if v is None:
-        return ""
-    if not isinstance(v, str):
-        raise ValueError(bad)
-    v = v.strip().strip('"').strip()
-    if not v:
-        return ""
-    if len(v) > MAX_FOLDER or re.search(r"[\x00-\x1f<>|?*]", v):
-        raise ValueError(bad)
-    try:
-        ok = Path(expand_folder(v)).is_dir()
-    except (OSError, ValueError):
-        ok = False
-    if not ok:
-        raise ValueError(bad)
-    return v
-
-
-def clean_siyanqaba_address(v) -> str:
-    """2.30.2: Siyanqaba's address on the home network ("" = off). Raises ValueError in plain words."""
-    if v is None:
-        return ""
-    if not isinstance(v, str):
-        raise ValueError("Type the Zerver's name or address, like 10.0.0.20.")
-    from .. import aisummary
-    return aisummary.clean_address(v)
-
-
 # ---------------------------------------------------------------- 2.12 Setup Lab and Coach
 IRACING_FOLDER_BAD = "That folder doesn't exist. Pick iRacing's folder (the one with telemetry in it) or its telemetry folder."
 
@@ -513,10 +481,6 @@ def public_view() -> dict:
         # 2.7.5 RaceCap link: the library folder RaceCap uses. Only its Races folder is ever read.
         "racecap_library": str(raw.get("racecap_library") or "").strip()[:MAX_FOLDER] or None,
         "share_my_cards": raw.get("share_my_cards") is True,
-        # 2.30.2 Settings > Siyanqaba (a folder and an address on the home network; neither is a secret)
-        "night_shift_folder": str(raw.get("night_shift_folder") or "").strip()[:MAX_FOLDER] or None,
-        "night_shift_folder_ok": False,
-        "siyanqaba_address": str(raw.get("siyanqaba_address") or "").strip()[:200] or None,
         # 2.12 Setup Lab and Coach: where iRacing saves telemetry (.ibt). Empty = Documents\iRacing\telemetry.
         "iracing_folder": str(raw.get("iracing_folder") or "").strip()[:MAX_FOLDER] or None,
         "telemetry_folder": str(telemetry_folder(raw)),
@@ -537,11 +501,6 @@ def public_view() -> dict:
     except (OSError, ValueError):
         pass
     out["share_as"] = None
-    if out["night_shift_folder"]:
-        try:
-            out["night_shift_folder_ok"] = Path(expand_folder(out["night_shift_folder"])).is_dir()
-        except (OSError, ValueError):
-            pass
     if out["team_cards_folder"]:
         try:
             out["team_cards_folder_ok"] = Path(expand_folder(out["team_cards_folder"])).is_dir()
@@ -812,10 +771,6 @@ def save(updates: dict) -> dict:
         clean["racecap_library"] = v
     if "team_cards_folder" in updates:
         clean["team_cards_folder"] = clean_team_folder(updates["team_cards_folder"])
-    if "night_shift_folder" in updates:
-        clean["night_shift_folder"] = clean_night_shift_folder(updates["night_shift_folder"])
-    if "siyanqaba_address" in updates:
-        clean["siyanqaba_address"] = clean_siyanqaba_address(updates["siyanqaba_address"])
     if "iracing_folder" in updates:
         clean["iracing_folder"] = clean_iracing_folder(updates["iracing_folder"])
     if "share_my_cards" in updates:

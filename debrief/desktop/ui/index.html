@@ -1033,9 +1033,14 @@
     <div class="row"><button type="submit" class="btn primary" id="rivalGo" disabled>Read the lap</button><span class="msg" id="rivalMsg" role="status"></span></div>
   </form>
 </dialog>
+<dialog id="dlgNew" aria-labelledby="newTitle">
+  <div class="phead"><h3 id="newTitle">What's new</h3><button type="button" class="btn ghost" id="newClose">Close</button></div>
+  <div id="newBody" class="newbody"></div>
+  <div class="row"><button type="button" class="btn primary" id="newOk">Got it</button></div>
+</dialog>
 <dialog id="dlgHelp" aria-labelledby="helpTitle">
   <div class="phead"><h3 id="helpTitle">Help</h3><button type="button" class="btn ghost" id="helpClose">Close</button></div>
-  <div class="row" role="group" aria-label="Help pages"><button type="button" class="btn" data-help="tour">Tour</button><button type="button" class="btn" data-help="words">What the words mean</button><button type="button" class="btn" data-help="keys">Keyboard keys</button><button type="button" class="btn" data-help="credits">Credits</button><button type="button" class="btn" id="helpFirstRun">Setup checklist</button></div>
+  <div class="row" role="group" aria-label="Help pages"><button type="button" class="btn" id="helpWhatsNew">What's new</button><button type="button" class="btn" data-help="tour">Tour</button><button type="button" class="btn" data-help="words">What the words mean</button><button type="button" class="btn" data-help="keys">Keyboard keys</button><button type="button" class="btn" data-help="credits">Credits</button><button type="button" class="btn" id="helpFirstRun">Setup checklist</button></div>
   <div id="helpBody"></div>
 </dialog>
 <dialog id="dlgCard" aria-labelledby="cardTitle">

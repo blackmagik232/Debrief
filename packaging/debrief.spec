@@ -44,6 +44,10 @@ for _f in ("CREDITS.md", "THIRD_PARTY_LICENSES.txt", "LICENSE"):
     if not (ROOT / _f).is_file():
         raise SystemExit(f"{_f} is missing: the build would ship without its credits and licence notices")
     datas.append((str(ROOT / _f), "."))
+# 2.30.4: CHANGELOG.md feeds the What's new window; the build stops without it.
+if not (ROOT / "CHANGELOG.md").is_file():
+    raise SystemExit("CHANGELOG.md is missing: the build would ship without What's new")
+datas.append((str(ROOT / "CHANGELOG.md"), "."))
 # Each bundled package's own metadata folder (its LICENSE and NOTICE files) goes in too, so its exact licence
 # text ships with it. A package that isn't installed on the build PC is skipped (pywin32 on Linux, for one).
 for _dist in ("requests", "urllib3", "certifi", "charset-normalizer", "idna", "numpy", "pypdf", "pyirsdk", "PyYAML",

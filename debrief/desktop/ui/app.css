@@ -860,3 +860,9 @@ body.codriving #vCoach.pad{padding:18px clamp(14px,2.5vw,32px) 24px}
 .rrline{fill:none;stroke:var(--muted);stroke-width:1;opacity:.55}
 .rrline.me{stroke:var(--fg);stroke-width:2.6;opacity:1}
 @media (max-width:640px){#vRoom .crcard.crcall{grid-column:auto}#vRoom .crgrid{grid-template-columns:1fr 1fr}}
+
+/* 2.30.4 What's new */
+.newbody{max-height:60vh;overflow:auto;line-height:1.5}
+.newbody ul{margin:6px 0;padding-left:20px}
+.newbody li{margin:4px 0}
+.newbody code{font-size:.92em}

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.30.4 "What's new"
+
+Every Debrief update now tells you what changed.
+
+- **What's new** opens by itself the first time you open Debrief after an update, with this list for the version you just got. Press **Got it** to close it. It shows once per version.
+- **Help > What's new** shows it again any time.
+- The release page on GitHub shows the same list, in plain words instead of a list of code changes.
+- A new install doesn't show it: the setup checklist comes first.
+
+### For the record
+
+- `debrief/whatsnew.py` reads the top entry of CHANGELOG.md. The part above "For the record" is what users see; this part shows on GitHub only. CHANGELOG.md now ships inside the app.
+- The Windows build stops if the newest CHANGELOG entry isn't for the version being built, has no user text, or names code files in the user part (`python -m debrief.whatsnew check`). The release notes come from `python -m debrief.whatsnew notes` instead of GitHub's list of commits.
+- Seen state is kept in `whatsnew.json` next to settings.toml.
+- Tested: the full test suite, the Windows build and the What's new dialog in a test browser. Not proven yet: the dialog on your screen right after a real in-app update.
+
 ## 2.30.3 "Siyanqaba out"
 
 Siyanqaba is not ready, so everything for it has been taken out of Debrief. It will be its own thing, separate from Debrief, and comes back only when it is finished and fully explained.
@@ -10,6 +26,8 @@ What you will see differently:
 - Debrief no longer copies sessions anywhere in the background. It only reads iRacing's folder, as before 2.30.1.
 
 Nothing else changes. Your reviews, settings and laps are kept. If you had typed a night shift folder or an address, Debrief now ignores it; taps you saved stay in the `feel` folder in your reviews folder, untouched, and you can delete that folder if you like.
+
+### For the record
 
 - Removed: `c1.py`, `factsheet.py`, `feel.py`, `zerverpush.py`, `aisummary.py`, the Siyanqaba page code, `CONTRACT.md`, `pyproject.toml` and their tests. The 2.30.2 release stays on GitHub, so anything already pinned to it still installs.
 - Tested: the full test suite and the Windows build. Not proven yet: the Settings and Practice pages on your screen without the removed parts (checked in a test browser only).

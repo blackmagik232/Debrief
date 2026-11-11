@@ -18,6 +18,11 @@ words and say what he will see differently in the window.
 ## Release flow
 1. Branch `release-x.y.z` from main. Bump `debrief/__init__.py`, add a plain-words CHANGELOG entry at the top, and
    update README/Help if anything he sees changed, all in the same commit.
+   Every update ships with a What's new (owner's rule, 2.30.4): the CHANGELOG entry starts with plain words for the
+   people using Debrief (what they will see, how to use it), then `### For the record` for files, tests and
+   "Not proven yet". The app shows the first part once after updating; GitHub shows both. `python -m debrief.whatsnew
+   check` must pass (the Windows build runs it).
+   Friends use Debrief now: ship only finished features, fully explained. Anything unproven stays off main.
 2. Push the branch; wait for the "Build Windows installer" run to pass.
 3. Only after his "publish": `git push origin <branch>:main` (fast-forward). The main run creates the release and tag.
    Check with `gh api repos/blackmagik232/debrief/releases/latest`.

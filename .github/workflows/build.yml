@@ -69,6 +69,10 @@ jobs:
       # finds new files itself). A failing file is run again on its own before the step fails, and its
       # failure lines come out as ::error annotations, as tests/ci_run.py writes them for one file.
       # Tests that need the mock Garage 61 data or Playwright print SKIPPED here (neither is on the runner).
+      # 2.30.4: no version goes out without a What's new for users at the top of CHANGELOG.md
+      - name: Check What's new
+        run: python -m debrief.whatsnew check
+
       - name: Run tests
         run: python tests/run_all.py -j 4
 
@@ -275,5 +279,8 @@ jobs:
           fi
           files=("dist-installer/Debrief-Setup-$v.exe" "dist-installer/Debrief-Setup-$v.exe.sha256")
           if [ -f "dist-installer/Debrief-Setup-$v.exe.sig" ]; then files+=("dist-installer/Debrief-Setup-$v.exe.sig"); fi
+          # 2.30.4: the release page and the in-app update strip show the same What's new as the app
+          python -m debrief.whatsnew notes > "$RUNNER_TEMP/whatsnew.md"
+          test -s "$RUNNER_TEMP/whatsnew.md"
           gh release create "$tag" "${files[@]}" \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Debrief $v" --generate-notes
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Debrief $v" --notes-file "$RUNNER_TEMP/whatsnew.md"

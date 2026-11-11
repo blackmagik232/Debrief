@@ -2590,7 +2590,7 @@ class Handler(BaseHTTPRequestHandler):
                  "api/diagnostics", "api/setuplab/combos", "api/setuplab/report", "api/coach/status",
                  "api/sessions-ibt", "api/session-review", "api/corner-coach", "api/plan", "api/plan/history",
                  "api/firstrun", "api/endurance", "api/live", "api/recording", "api/last-race", "api/raceroom",
-                 "api/endurance-review"):
+                 "api/endurance-review", "api/whatsnew"):
             if self.headers.get("X-Debrief") != "1":
                 return self._nf()
             q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -3051,6 +3051,15 @@ class Handler(BaseHTTPRequestHandler):
                                "last_update": last})
         info.pop("notes", None) if q.get("auto") == "1" else None
         return self._json({"ok": True, "installed": app.FROZEN, **info, "last_update": last})
+
+    def _get_whatsnew(self, q):
+        """2.30.4 What's new: auto=1 (window opening) shows it once after an update; without it, Help asks."""
+        from .. import whatsnew, __version__
+        try:
+            has_setup = bool(app.load_settings().get("token"))
+        except (SystemExit, Exception):  # noqa: BLE001  (no settings yet = a brand-new install)
+            has_setup = False
+        return self._json(whatsnew.payload(__version__, q.get("auto") == "1", has_setup))
 
     # ---------- diagnostics (2.7.0, L3)
     DIAG_LOG_LINES = 200

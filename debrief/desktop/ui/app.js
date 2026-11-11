@@ -1734,6 +1734,20 @@ function showHelp(k){const b=$('helpBody');const L=k==='keys'?keyList().concat(H
 function openHelp(k){showHelp(k);openDlg($('dlgHelp'))}
 $('btnHelp').addEventListener('click',()=>openHelp('tour'));$('btnCredits').addEventListener('click',()=>openHelp('credits'));$('helpClose').addEventListener('click',()=>closeDlg($('dlgHelp')));
 document.querySelectorAll('[data-help]').forEach(x=>x.addEventListener('click',()=>showHelp(x.dataset.help)));
+/* 2.30.4 What's new: the top of CHANGELOG.md, shown once after an update and from Help any time */
+function renderNew(j){$('newTitle').textContent="What's new in Debrief "+j.version+(j.name?' "'+j.name+'"':'');
+  const box=$('newBody');let ul=null,sub=null;box.replaceChildren();
+  (j.blocks||[]).forEach(b=>{const el=h(b.kind==='li'?'li':'p');
+    b.parts.forEach(([t,k])=>el.append(k?h(k==='b'?'b':'code',null,t):document.createTextNode(t)));
+    if(b.kind!=='li'){ul=sub=null;box.append(el);return}
+    if(b.depth&&ul&&ul.lastElementChild){if(!sub||sub.parentNode!==ul.lastElementChild){sub=h('ul');ul.lastElementChild.append(sub)}sub.append(el);return}
+    if(!ul){ul=h('ul');box.append(ul)}sub=null;ul.append(el)})}
+async function whatsNew(auto){let j;try{j=await api('whatsnew'+(auto?'?auto=1':''))}catch(e){return}
+  if(!j||!j.ok||!j.blocks)return;if(auto&&!j.show)return;renderNew(j);
+  if(auto){const t=setInterval(()=>{if(!document.querySelector('dialog[open]')){clearInterval(t);openDlg($('dlgNew'))}},500)}
+  else{closeDlg($('dlgHelp'));openDlg($('dlgNew'))}}
+$('helpWhatsNew').addEventListener('click',()=>whatsNew(false));
+$('newClose').addEventListener('click',()=>closeDlg($('dlgNew')));$('newOk').addEventListener('click',()=>closeDlg($('dlgNew')));
 function closeResult(){const d=$('dlgResult');if(d.close)d.close();else d.removeAttribute('open')}
 $('fbResult').addEventListener('click',openResult);
 $('resClose').addEventListener('click',closeResult);
@@ -2879,6 +2893,7 @@ $('btnUpdCheck').addEventListener('click',()=>{setMsg('updMsg','Checking...');ch
   reviewGate();
   if(tokenSaved)startSync(true);   // catch up with Garage 61 every time Debrief opens
   checkUpdate('auto');
+  whatsNew(true);                  // 2.30.4: once after an update
   coachPoll();                     // once: keeps polling only if the coach is already running
   loadFirstRun().then(()=>{started=true;tourHint()});   // 2.14: the setup checklist; 2.18: then "New here?" if new
 })();

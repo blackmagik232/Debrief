@@ -106,7 +106,8 @@ def _zerver_state(cfg, me) -> dict:
     err = last.get("errors", {}).get(me.get("id")) if isinstance(last.get("errors"), dict) else None
     if sent:
         return {"set": True, "sent": True, "text": "Sent to the Zerver's night shift folder."}
-    return {"set": True, "sent": False, "text": err or "Not sent yet.", "error": bool(err)}
+    return {"set": True, "sent": False, "error": bool(err),
+            "text": err or "Sessions from the last week go to the Zerver when Debrief opens, or send it now."}
 
 
 def get(h, r, q):

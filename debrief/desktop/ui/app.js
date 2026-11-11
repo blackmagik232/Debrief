@@ -2395,6 +2395,42 @@ function ccCard(c){const card=h('article','cccard'),top=h('div','cchead');
   card.append(row('What\'s different',c.different),row('How to try it',c.how));if(c.gets)card.append(row('What it gets you',c.gets));
   if(c.why)card.append(row('Why',c.why,'note'));if(c.evidence)card.append(row('Evidence',c.evidence,'note'));
   return card}
+/* 2.30.2 Siyanqaba on a session's page: the summary (Debrief's plain order, or Siyanqaba's when an address is set),
+   "How did it feel" taps (pick a corner, tap what the car did, optionally where) and whether it reached the Zerver */
+function siyqSec(sess){const sec=slSec('Summary and how it felt','prSiyq');const id=sess.id;sec.append(h('p','note','Loading...'));
+  const sel={corner:null,phase:null};
+  const draw=async()=>{let j;try{j=await api('siyanqaba/session?'+new URLSearchParams({id}))}catch(e){return}
+    if(!j||!j.ok){sec.replaceChildren(h('h3',null,'Summary and how it felt'),h('p','note',(j&&j.error)||'Not available for this session.'));return}
+    const sum=h('p','prsum',j.summary.text||'');const src=h('p','note','Debrief\'s plain order.');
+    const body=[h('h3',null,'Summary and how it felt'),sum,src];
+    if((j.not_proven_yet||[]).length)body.push(h('p','note','Not proven yet: '+j.not_proven_yet.join('; ')+'.'));
+    if(j.ai_set){const b=h('button','btn chipbtn','Put it in Siyanqaba\'s order');b.type='button';
+      if(j.live){b.disabled=true;b.title='Not while you\'re in an iRacing session.'}
+      b.addEventListener('click',async()=>{b.disabled=true;src.textContent='Asking Siyanqaba on the Zerver (up to 45 seconds)...';let r;
+        try{r=await api('siyanqaba/summary?'+new URLSearchParams({id}))}catch(e){r=null}b.disabled=false;
+        if(r&&r.ok){sum.textContent=r.text;src.textContent=r.source==='siyanqaba'?'In Siyanqaba\'s order (same words, checked).':'Debrief\'s plain order'+((r.problems||[]).length?' ('+r.problems[0]+')':'')+'.'}
+        else src.textContent='Siyanqaba didn\'t answer. This is Debrief\'s plain order.'});
+      const row=h('div','row');row.append(b);body.push(row)}
+    // How did it feel
+    body.push(h('h4',null,'How did it feel?'),h('p','note','Optional, about five seconds: pick a corner, then what the car did. Saved on this PC with the session; Siyanqaba reads it too.'));
+    const cr=h('div','row feelrow');(j.corners||[]).forEach(c=>{const b=h('button','btn chipbtn'+(sel.corner===c.id?' primary':''),turnName(c.id));b.type='button';
+      b.setAttribute('aria-pressed',sel.corner===c.id?'true':'false');b.addEventListener('click',()=>{sel.corner=c.id;draw()});cr.append(b)});
+    if(!(j.corners||[]).length)cr.append(h('span','note','No corners found for this car and track yet.'));body.push(cr);
+    const pr=h('div','row feelrow');pr.append(h('span','note','Where (optional):'));(j.phases||[]).forEach(p=>{const b=h('button','btn chipbtn'+(sel.phase===p.id?' primary':''),p.label);b.type='button';
+      b.setAttribute('aria-pressed',sel.phase===p.id?'true':'false');b.addEventListener('click',()=>{sel.phase=sel.phase===p.id?null:p.id;draw()});pr.append(b)});body.push(pr);
+    const tr=h('div','row feelrow'),msg=h('span','msg');msg.setAttribute('role','status');(j.tags||[]).forEach(t=>{const b=h('button','btn chipbtn',t.label);b.type='button';b.disabled=!sel.corner;
+      b.addEventListener('click',async()=>{let r;try{r=await post('feel',{id,corner:sel.corner,tag:t.id,phase:sel.phase})}catch(e){connectionLost();return}
+        if(!r.ok){msg.textContent=r.error;msg.className='msg bad';return}sel.phase=null;draw()});tr.append(b)});tr.append(msg);body.push(tr);
+    const lines=(j.feel&&j.feel.lines)||[];if(lines.length){const ul=h('ul','pvlist');lines.forEach(x=>ul.append(h('li',null,x)));body.push(ul);
+      const u=h('button','btn chipbtn','Undo last');u.type='button';u.addEventListener('click',async()=>{let r;try{r=await post('feel/undo',{id})}catch(e){connectionLost();return}draw()});
+      const row=h('div','row');row.append(u);body.push(row)}
+    // the Zerver
+    const z=j.zerver||{};const zr=h('div','row');zr.append(h('span','pill'+(z.sent?' ok':(z.error?' no':'')),z.sent?'On the Zerver':(z.set?'Not sent yet':'Zerver off')),h('span','note',z.text||''));
+    if(z.set&&!z.sent){const b=h('button','btn chipbtn','Send to the Zerver now');b.type='button';const m=h('span','msg');m.setAttribute('role','status');
+      b.addEventListener('click',async()=>{b.disabled=true;m.textContent='Sending...';m.className='msg';let r;try{r=await post('zerver/push',{id})}catch(e){connectionLost();return}
+        b.disabled=false;if(!r.ok){m.textContent=r.error;m.className='msg bad';return}draw()});zr.append(b,m)}
+    body.push(zr);sec.replaceChildren(...body)};
+  draw();return sec}
 function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{},out=document.createDocumentFragment();
   const head=h('div','panel slhead'),tt=h('div','pvtt');
   tt.append(h('h2','pvtrack',R.track||R.track_code||''),h('p','pvby',(R.car||R.car_path||'')+' · '+slWhen(R.date)+' · '+((R.session_types||[]).map(sessWord).join(', ')||'Session')));head.append(tt);
@@ -2408,6 +2444,7 @@ function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{}
   out.append(hw);
   // 2.14: the practice plan scored on this session
   out.append(oneThingSec(j.one_thing,j.session));
+  out.append(siyqSec(j.session||{}));
   // 2. best possible lap
   const T=R.theoretical||{},bp=slSec('Best possible lap','prTheo');
   if(T.enough&&ok(T.possible)){bp.append(prFacts([['Best possible',fmtT(T.possible)],['Under your best',ok(T.gap_s)?T.gap_s.toFixed(2)+' s':'–']]));
@@ -2692,6 +2729,7 @@ function fillSettings(v){if(v&&(v.units==='kmh'||v.units==='mph'))UNITS=v.units;
   $('irClear').hidden=!(idS||seS);
   fillBox('cardsFolder',typeof v.team_cards_folder==='string'?v.team_cards_folder:'');
   $('cardsShare').checked=!!v.share_my_cards;cardsStatus(v);
+  fillBox('siyqFolder',typeof v.night_shift_folder==='string'?v.night_shift_folder:'');fillBox('siyqAddr',typeof v.siyanqaba_address==='string'?v.siyanqaba_address:'');siyqStatus(v);
   discordSaved=!!v.discord_saved;discordHint=typeof v.discord_hint==='string'?v.discord_hint:null;
   const dUnread=!discordSaved&&!!v.discord_unreadable;$('discordUnread').hidden=!dUnread;
   const dp=$('discordPill');dp.textContent=discordSaved?'Webhook saved ('+(discordHint||'…')+')':(dUnread?'Can\'t be opened':'Off');dp.className='pill'+(discordSaved?' ok':(dUnread?' no':''));
@@ -2704,6 +2742,16 @@ function cardsStatus(v){const p=$('cardsPill'),st=$('cardsStatus');const f=v.tea
   if(!v.share_my_cards){p.textContent='Reading';p.className='pill ok';st.textContent='Showing teammates\' cards from '+f+'. Your cards stay on this PC.';return}
   p.textContent='Sharing';p.className='pill ok';
   st.textContent=v.share_as?'Sharing as '+v.share_as+' to '+f:'Check your Garage 61 connection once so Debrief knows your name. Until then your cards stay on this PC.'}
+/* 2.30.2 Settings > Siyanqaba */
+function siyqStatus(v){const p=$('siyqPill'),st=$('siyqStatus');const f=v.night_shift_folder,a=v.siyanqaba_address;
+  if(!f&&!a){p.textContent='Off';p.className='pill';st.textContent='No night shift folder and no address: nothing is sent.';return}
+  if(f&&!v.night_shift_folder_ok){p.textContent='Folder missing';p.className='pill no';st.textContent='Debrief can\'t reach '+f+' right now. Is the Zerver on? Sessions wait here and are sent next time.';return}
+  p.textContent='On';p.className='pill ok';
+  st.textContent=(f?'Sessions from the last week are copied to '+f+'.':'No night shift folder: sessions stay on this PC.')+' '+(a?'Summaries can be put in Siyanqaba\'s order at '+a+'.':'No address: summaries use Debrief\'s plain order.')}
+$('fSiyq').addEventListener('submit',async e=>{e.preventDefault();setMsg('siyqMsg','Saving...');let r;
+  try{r=await post('settings',{night_shift_folder:$('siyqFolder').value.trim(),siyanqaba_address:$('siyqAddr').value.trim()})}catch(err){connectionLost();return}
+  if(!r.ok){setMsg('siyqMsg',r.error,'bad');return}
+  fillSettings(r.settings);textClean();savedTick('siyqMsg')});
 $('fCards').addEventListener('submit',async e=>{e.preventDefault();setMsg('cardsMsg','Saving...');let r;
   try{r=await post('settings',{team_cards_folder:$('cardsFolder').value.trim(),share_my_cards:$('cardsShare').checked})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('cardsMsg',r.error,'bad');return}
@@ -2810,7 +2858,7 @@ autoSave(['cardsShare'],()=>({share_my_cards:$('cardsShare').checked}),'cardsMsg
 document.querySelectorAll('#setNav [data-jump]').forEach(b=>b.addEventListener('click',()=>{const t=$(b.dataset.jump);if(!t)return;
   if(t.tagName==='DETAILS')t.open=true;if(t.scrollIntoView)t.scrollIntoView({block:'start'});flash(t)}));
 // typed text that wasn't saved: the boxes you type in, compared with what was there when they were last filled or saved
-const TEXT_BOXES={salut:'How Debrief addresses you',telFolder:'the iRacing folder',rcapFolder:'the RaceCap folder',cardsFolder:'the shared folder',tok:'the Garage 61 token',discordHook:'the Discord webhook',irId:'the iRacing client ID',irSecret:'the iRacing client secret'};
+const TEXT_BOXES={salut:'How Debrief addresses you',telFolder:'the iRacing folder',rcapFolder:'the RaceCap folder',cardsFolder:'the shared folder',siyqFolder:'the night shift folder',siyqAddr:'the Siyanqaba address',tok:'the Garage 61 token',discordHook:'the Discord webhook',irId:'the iRacing client ID',irSecret:'the iRacing client secret'};
 function textClean(){Object.keys(TEXT_BOXES).forEach(id=>{const e=$(id);if(e)e.dataset.orig=e.value})}
 function dirtyText(){return Object.keys(TEXT_BOXES).filter(id=>{const e=$(id);return e&&e.value!==(e.dataset.orig||'')}).map(id=>TEXT_BOXES[id])}
 function leaveOk(){if($('vSettings').hidden)return true;const d=dirtyText();if(!d.length)return true;

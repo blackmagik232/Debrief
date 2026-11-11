@@ -929,6 +929,15 @@
         <div class="row"><button type="submit" class="btn">Save</button><span class="msg" id="cardsMsg" role="status"></span></div>
       </form>
 
+      <form class="panel" id="fSiyq" autocomplete="off">
+        <div class="phead"><h3>Siyanqaba</h3><span class="pill" id="siyqPill">Off</span></div>
+        <p class="note">Siyanqaba is your own offline engine on the Zerver. With a night shift folder, Debrief copies each session's telemetry (and your "How did it feel" taps) there after you drive, so the night shift has it before 3 AM. Debrief only reads iRacing's folder; it never moves or changes your files. With an address, a session's summary can be put in Siyanqaba's order. It never runs while you drive, and it only talks to the Zerver on your home network. Leave both empty to keep Siyanqaba off.</p>
+        <label class="field wide" for="siyqFolder"><span>Night shift folder</span><input id="siyqFolder" type="text" maxlength="400" spellcheck="false" autocomplete="off" placeholder="e.g. \\ZERVER\inbox"></label>
+        <label class="field wide" for="siyqAddr"><span>Siyanqaba address</span><input id="siyqAddr" type="text" maxlength="200" spellcheck="false" autocomplete="off" placeholder="e.g. 10.0.0.20 (Ollama, port 11434)"></label>
+        <p class="note" id="siyqStatus"></p>
+        <div class="row"><button type="submit" class="btn">Save</button><span class="msg" id="siyqMsg" role="status"></span></div>
+      </form>
+
       <form class="panel" id="fDiscord" autocomplete="off">
         <div class="phead"><h3>Discord</h3><span class="pill" id="discordPill">Off</span></div>
         <p class="note msg bad" id="discordUnread" role="alert" hidden>Your saved Discord webhook can't be opened on this Windows account. Paste it again.</p>

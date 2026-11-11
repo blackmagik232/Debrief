@@ -174,6 +174,11 @@ def load_settings() -> dict:
     tcf = str(cfg.get("team_cards_folder") or "").strip()
     cfg["team_cards_folder"] = os.path.expandvars(os.path.expanduser(tcf)) if tcf else ""
     cfg["share_my_cards"] = cfg.get("share_my_cards") is True
+    # 2.30.2 Siyanqaba: the Zerver's night shift folder (sessions are copied there) and Siyanqaba's address on the home
+    # network (the summary's order). Both empty = off.
+    nsf = str(cfg.get("night_shift_folder") or "").strip()
+    cfg["night_shift_folder"] = os.path.expandvars(os.path.expanduser(nsf)) if nsf else ""
+    cfg["siyanqaba_address"] = str(cfg.get("siyanqaba_address") or "").strip()
     # cache + log live in HERE: next to the code from source (Store-installed Python redirects AppData
     # writes), or in %LOCALAPPDATA%\Debrief for the installed app.
     # DEBRIEF_CACHE_DIR lets the tests use a throwaway cache.

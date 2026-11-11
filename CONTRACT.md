@@ -59,6 +59,25 @@ Rules:
 - Corners are named by where they are on the lap (`apex_pct`). `C3` is a detected corner, not the track's official turn 3.
 - `factsheet.check(sheet)` returns `[]` for a sheet that keeps these rules. Siyanqaba refuses unknown versions.
 
+## Night shift folder and feel files (Debrief 2.30.2)
+
+What Debrief puts in the Zerver's night shift folder for one session (`debrief/zerverpush.py`):
+
+| File | What |
+|---|---|
+| `<file>.ibt` | Each telemetry file, copied (never moved); written as `<file>.ibt.partial`, then renamed |
+| `<session id>.session.json` | `{"session_id", "files": [names], "car_path", "track_key", "sent_at"}`, written after the files |
+| `feel/<session id>.json` | The "How did it feel" taps, copied again after each change |
+
+Feel file v1 (`debrief/feel.py`): `{"feel_version": 1, "session_id", "track_key", "car_path", "length_m", "saved_at",
+"taps": [{"corner": "C3", "apex_pct": 0.378, "tag": "loose", "phase": "exit", "at": "..."}]}`. Tags: `loose`, `push`,
+`brakes_long`, `lockup`, `bottoming`, `snap`; phase `entry`, `mid`, `exit` or `null`. Match taps to corners by
+`apex_pct` (`c1.corner_key`), never by the corner number.
+
+C3 from Debrief's side (`debrief/aisummary.py`): only the fact sheet's clause ids and phrases are sent; the reply must
+list every non-required clause exactly once; timeout 45 s, then the plain order. Only to a private or loopback address
+or a bare network name, never through a proxy, and never while a live iRacing session is running.
+
 ## Release flow
 
 1. Debrief tags a release (`v2.30.1` ...).

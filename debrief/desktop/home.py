@@ -94,6 +94,9 @@ def get_today(h, q):
     review, n_reviews = _try("last race", lambda: _newest_review(h), (None, 0))
     ss = _try("practice", lambda: h.server.practice_sessions(cfg)[0], []) or []
     practice = today.last_practice(ss[0]) if ss else None
+    if ss and cfg.get("night_shift_folder"):   # 2.30.2: last week's unsent sessions to the Zerver, in the background
+        from . import siyanqaba as siyq
+        _try("night shift folder", lambda: siyq.auto_push(h.server, cfg, ss))
     plan = _try("practice plan", lambda: h._plan_reply(cfg, {})) if ss else None
     habit = _try("racing", lambda: _racing_cached(h, cfg))
     from .server import setuplab_cache_path

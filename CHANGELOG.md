@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.30.2 "Siyanqaba side"
+
+Siyanqaba, your own offline engine on the Zerver, now has a place in the window.
+
+- **Settings > Siyanqaba** (new card): a **Night shift folder** (the Zerver's shared inbox, e.g. `\\ZERVER\inbox`) and a **Siyanqaba address** (the Zerver on your home network, e.g. `10.0.0.20`). Both empty means off, which is how it starts. The folder must exist when you save, so a typo shows now and not at 3 AM.
+- **Sessions reach the Zerver by themselves.** When Debrief opens (Today) or you open Practice, any session from the last week that isn't on the Zerver yet is copied there in the background: its telemetry files, a small list of which files make the session, and your taps. Each file is written in full under a temporary name first, so the night shift never reads half a file. A file iRacing touched in the last two minutes waits. Debrief only reads iRacing's folder: nothing there is moved, changed or deleted. If the Zerver is off, it tries again next time.
+- **Summary and how it felt** (new, on each Practice session, under How it went):
+  - The session in a few plain lines: best lap and best corners added up, consistency, fuel, the one corner to work on (only one that passed the shuffle test), and what isn't proven yet with the laps still needed.
+  - **How did it feel?** Optional, about five seconds: pick a corner, tap **Loose**, **Push**, **Brakes long**, **Lockup**, **Bottoming** or **Snap**, and if you like **Entry**, **Mid** or **Exit**. **Undo last** takes one back. Saved in `feel` in your reviews folder, with where the corner is on the lap, so it still matches if Debrief numbers the corners differently next time.
+  - Whether the session is **On the Zerver**, with **Send to the Zerver now** if it isn't.
+  - **Put it in Siyanqaba's order** (with an address set): Siyanqaba's model on the Zerver only picks the order of the same lines. Debrief keeps the most important line first, checks the answer has every other line exactly once, and otherwise shows its own order and says why. It waits at most 45 seconds and is greyed out while you're in an iRacing session.
+- **CONTRACT.md** now also describes the night shift folder, the feel file and Debrief's side of the Zerver connection.
+- Tested on stand-ins: taps saved, undone and refused when wrong; a copy with a missing Zerver, a file still being written, a repeat send and a later tap; the summary with a stand-in Zerver that answers right, drops a line, repeats one, invents one, is off or times out; addresses outside the home network refused; and the whole page through the real server.
+- Not proven yet: copying to a real Windows share on the Zerver (`\\ZERVER\...`) and how long a big session takes over your network; Ollama on the Zerver answering from the gaming PC; the new section and Settings card on your screen; Siyanqaba reading the pushed files on the Zerver (its 0.5.0 reads them).
+
 ## 2.30.1 "Siyanqaba link"
 
 Nothing changes in the window. This release gets Debrief ready to work with Siyanqaba, your own offline engine on the Zerver, so both give the same numbers from one source.

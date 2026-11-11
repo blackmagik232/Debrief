@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.30.1 "Siyanqaba link"
+
+Nothing changes in the window. This release gets Debrief ready to work with Siyanqaba, your own offline engine on the Zerver, so both give the same numbers from one source.
+
+- **One door for Siyanqaba (`debrief/c1.py`).** Siyanqaba now gets every number from Debrief instead of working them out its own way: lap times (iRacing's own), which laps are clean and why, corner segments that add up to the lap time, the best possible lap, consistency, fuel, and the corner tips that passed Debrief's shuffle test. It needs nothing but numpy, so it runs on the Zerver without the app.
+- **Fact sheets (`debrief/factsheet.py`).** After a session Debrief can write a short sheet of finished phrases (best lap, consistency, fuel, the one corner to work on, how the car felt, and the trend against your last session here), in mph or km/h and litres or gallons as set in **Settings > Units**. Anything the laps don't prove yet is listed with the laps still needed, never stated as fact. A model may only put the phrases in order; it never writes a number.
+- **Corners are matched by where they are on the lap**, not by their number, because Debrief finds corners from your laps and "Turn 3" can shift between sessions.
+- **The contract (`CONTRACT.md`)** writes all of this down; a change to it needs a new version and passing tests in both Debrief and Siyanqaba. `pyproject.toml` lets the Zerver install Debrief pinned to this release.
+- Tested with stand-in telemetry files (a GT4 at Zolder): the door loads with numpy only, a copied file keeps its session id, corners match across the start line, thin sessions say what is missing, and broken sheets are refused.
+- Not proven yet: installing Debrief from the release tag on the Zerver (Windows); the fact sheet on your real telemetry; corner matching between real sessions on the same track; Siyanqaba's side (its 0.5.0 switches to this door).
+
 ## 2.30.0 "Endurance Race Room"
 
 A new **Race Room** page (in the sidebar under Coach, and in the Today "More" links) for team and long races. It works for the driver in the car and for any teammate in the same race on their own PC.

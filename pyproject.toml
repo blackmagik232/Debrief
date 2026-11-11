@@ -1,0 +1,29 @@
+# Lets Siyanqaba (Swazi's offline engine on the Zerver) install Debrief's analysis code pinned to a release tag:
+#   pip install "debrief @ git+https://github.com/blackmagik232/debrief@v2.30.1"
+# Only numpy is needed for debrief.c1 and debrief.factsheet (CONTRACT.md, C1 and C2). The Windows app itself is
+# built from requirements.txt with PyInstaller (packaging/debrief.spec); this file does not change that build.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "debrief"
+dynamic = ["version"]
+description = "Debrief by Black Magik Studios: iRacing coaching. Free to use, all rights reserved (see LICENSE)."
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24"]
+license = {file = "LICENSE"}
+
+[project.optional-dependencies]
+app = ["requests>=2.31", "tomli>=2.0; python_version < '3.11'", "pypdf>=4.0", "pyirsdk>=1.3", "PyYAML>=6",
+       "pywin32>=306; sys_platform == 'win32'"]
+
+[tool.setuptools.dynamic]
+version = {attr = "debrief.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["debrief", "debrief.*"]
+exclude = ["debrief.data*"]
+
+[tool.setuptools]
+include-package-data = false

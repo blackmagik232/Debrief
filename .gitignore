@@ -45,3 +45,4 @@ signing*
 # debrief/team.py and the other source files are not affected)
 track-notes/
 team/
+*.egg-info/

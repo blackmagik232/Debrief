@@ -50,6 +50,15 @@ FIELD_CHANNELS = ("CarIdxLapCompleted", "CarIdxLapDistPct", "CarIdxLastLapTime",
                   "CarIdxTrackSurface", "CarIdxTireCompound", "CarIdxFastRepairsUsed")
 
 INFO_KEYS = ("WeekendInfo", "DriverInfo", "SessionInfo")
+ENGINEER_INFO_KEYS = INFO_KEYS + ("SplitTimeInfo",)      # 2.31: the sector boundaries, for the Race Engineer
+# 2.31 Race Engineer: what the practice / qualifying page reads besides the crew chief's channels
+ENGINEER_OWN = ("IsInGarage", "IsReplayPlaying", "LapBestLapTime", "LapCurrentLapTime", "PlayerCarTowTime",
+                "PlayerCarMyIncidentCount", "AirTemp", "TrackTempCrew", "TrackWetness", "PlayerCarPosition",
+                "PlayerCarClassPosition", "SessionUniqueID", "FuelLevel", "LapDist",
+                "LFtempCL", "LFtempCM", "LFtempCR", "RFtempCL", "RFtempCM", "RFtempCR",
+                "LRtempCL", "LRtempCM", "LRtempCR", "RRtempCL", "RRtempCM", "RRtempCR",
+                "LFwearL", "LFwearM", "LFwearR", "RFwearL", "RFwearM", "RFwearR",
+                "LRwearL", "LRwearM", "LRwearR", "RRwearL", "RRwearM", "RRwearR")
 REPROBE_S = 30.0          # a channel that read as None is tried again this often (only when the SDK can't list them)
 
 
@@ -70,8 +79,9 @@ class LiveReader:
     retry_s seconds); state is 'not_installed', 'not_running' or 'connected'."""
 
     def __init__(self, rate_hz: float = 20.0, retry_s: float = 2.0, own=COACH_CHANNELS, field=(),
-                 info_poll_s: float = 0.5, info_fallback_s: float = 5.0):
+                 info_poll_s: float = 0.5, info_fallback_s: float = 5.0, info_keys=INFO_KEYS):
         self.interval = 1.0 / max(1.0, rate_hz)
+        self.info_keys = tuple(info_keys)
         self.realtime = True
         self.done = False
         self.state = "not_running"
@@ -221,7 +231,7 @@ class LiveReader:
     def _load_info(self, counter) -> bool:
         if self._ir is None:
             return False
-        got = {k: self._get(k) for k in INFO_KEYS}
+        got = {k: self._get(k) for k in self.info_keys}
         if not any(got.values()):
             return False
         with self._lock:

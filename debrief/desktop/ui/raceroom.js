@@ -4,14 +4,17 @@
 (function(){
 'use strict';
 const {$,api,post,h,ok,fmtT,show,markNav,goNav,plainText,connectionLost,setMsg,setView,view}=window.DebriefHost;
-const rr={seq:0,timer:null,tab:'live',st:null,iam:null,busy:false,races:null,iamFilled:''};
+const rr={seq:0,timer:null,tab:'live',st:null,iam:null,busy:false,races:null,iamFilled:'',auto:false,logKey:'',coachCues:true};
 const rrT=s=>{if(!ok(s))return '--';s=Math.max(0,Math.round(s));const hh=Math.floor(s/3600),m=Math.floor((s%3600)/60),x=s%60;return (hh?hh+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0')};
 const rrLap=s=>ok(s)&&s>0?fmtT(s).replace(/0$/,''):'--';
 function rrDur(s){if(!ok(s))return '--';const m=Math.round(s/60);return m>=60?Math.floor(m/60)+' h '+(m%60)+' min':m+' min'}
 function rrCell(tr,t,cls){const td=h('td',cls||null,t==null||t===''?'':String(t));tr.append(td);return td}
 function rrRows(id,rows,empty,cols,build){const tb=$(id);if(!rows||!rows.length){const tr=h('tr'),td=h('td','dnone',empty);td.colSpan=cols;tr.append(td);tb.replaceChildren(tr);return}
   tb.replaceChildren(...rows.map(build))}
-function openRoom(){setView('room');show('vRoom');markNav();rrTab(rr.tab);roomPoll()}
+function openRoom(){setView('room');show('vRoom');markNav();rrTab(rr.tab);roomPoll();rrAutoStart()}
+// the engineer is live as soon as iRacing connects: the page starts the coach itself once when it opens (never twice in a row)
+async function rrAutoStart(){if(rr.auto||rr.busy)return;rr.auto=true;let j;try{j=await api('raceroom')}catch(e){return}
+  if(j&&j.ok&&!j.running){try{await post('coach/start')}catch(e){}roomPoll()}}
 async function roomPoll(){const seq=++rr.seq;clearTimeout(rr.timer);if(view()!=='room')return;let j;
   try{j=await api('raceroom')}catch(e){connectionLost();return}
   if(seq!==rr.seq)return;if(j&&j.ok)rrRender(j);
@@ -42,12 +45,13 @@ function rrRival(who,r,idle){const sub=who+'Sub';$(who+'Card').className='crcard
   if(t.indexOf('threat')>=0)$(who+'Card').className='crcard hot';else if(t.indexOf('catchable')>=0)$(who+'Card').className='crcard good'}
 
 function rrRender(j){if(view()!=='room')return;const st=j.room||{};rr.st=st;const role=(st.role||{}).role||'none';
-  const racing=st.state==='racing'&&j.running;
-  const pill=$('rrPill');pill.className='pill'+(racing?' ok':'');
-  pill.textContent=!j.running?'Coach off':racing?(role==='crew'?'Crew':'Driving'):'Waiting';
-  $('rrRole').textContent=!j.running?'':role==='driver'?'You are driving.':role==='crew'?'You are in the session as crew: fuel is estimated and the calls are text only.':role==='spectator'?'You are watching.':'';
+  const racing=st.state==='racing'&&j.running;const E=st.engineer||{},live=!!(j.running&&(E.connected||racing));
+  const pill=$('rrPill');pill.className='pill'+(live?' ok':'');
+  pill.textContent=!j.running?'Coach off':racing?(role==='crew'?'Crew':'Driving'):live?(role==='crew'?'Crew':role==='spectator'?'Watching':'Live'):'Waiting';
+  $('rrRole').textContent=!j.running?'':role==='driver'?'You are driving.':role==='crew'?'You are in the session as crew: fuel is estimated and the engineer is text only.':role==='spectator'?'You are watching.':'';
   $('rrStart').hidden=!!j.running;
-  $('rrText').textContent=!j.running?'Start the coach to open the Race Room in a race.':(racing?'':(st.text||'Waiting for iRacing.'));
+  $('rrText').textContent=!j.running?'Start the coach to open the Race Room. It also starts by itself when this page opens.':(live?'':(st.text&&/Waiting/.test(st.text)?st.text+' ':'Waiting for iRacing. ')+'Start a session in iRacing and the engineer comes alive as soon as it connects.');
+  enRender(j,E,!!(j.running&&E.connected));
   $('rrBoard').hidden=!racing;$('rrBody').hidden=!racing;
   rrIam(j,st);
   if(!racing){$('rrAlert').hidden=true;return}
@@ -133,6 +137,63 @@ function rrChart(P){const el=$('rrChart'),laps=P.laps||[],ser=P.series||[];
     if(d)svg.append(mk('path',{d:d,class:'rrline'+(s.me?' me':'')}))});
   const alt=ser.filter(s=>s.me).map(s=>'Our car: P'+[...s.pos].reverse().find(ok)+' now').join('');
   el.setAttribute('aria-label','Class positions lap by lap. '+alt);el.replaceChildren(svg)}
+
+// ---------- 2.31 the Race Engineer: header, radio, practice and qualifying
+const enSign=(x,d)=>(x>0?'+':'')+x.toFixed(d==null?2:d);
+function enRender(j,E,live){const wrap=$('enWrap');wrap.hidden=!live;if(!live)return;
+  const S=E.session||{},fam=E.family||'other';
+  $('enKind').textContent=S.label||'Session';$('enKind').className='pill ok';
+  const C=E.car||{};$('enCar').textContent=C.text||'';$('enCar').hidden=!C.text;
+  $('enSub').textContent=[S.name&&S.name!==S.label?S.name:'',S.track,S.car,S.class,S.phase_text].filter(Boolean).join(' · ');
+  const cards=[];
+  cards.push(rrKV(S.laps_left!=null?'Laps left':'Time left',S.laps_left!=null?String(S.laps_left):(S.time_left_text||'--'),S.laps_left!=null&&S.time_left_text?S.time_left_text:'' ));
+  const W=S.weather||{};cards.push(rrKV('Weather',W.track!=null?'Track '+W.track+W.unit:(W.air!=null?'Air '+W.air+W.unit:'--'),[W.air!=null&&W.track!=null?'Air '+W.air+W.unit:'',W.wet].filter(Boolean).join(' · ')));
+  const P=S.pos||{};if(P.overall||P.class)cards.push(rrKV('Your position',P.class?'P'+P.class+' in class':'P'+P.overall,P.class&&P.overall?'P'+P.overall+' overall':''));
+  $('enHdr').replaceChildren(...cards);
+  const pin=E.pinned;$('enPin').hidden=!pin;if(pin)$('enPin').textContent=pin.text;
+  enLog(E);enTalk(E);
+  $('enPractice').hidden=!(E.practice&&(fam==='practice'||fam==='qualify'));if(!$('enPractice').hidden)enPractice(E,fam);
+  $('enQuali').hidden=fam!=='qualify';if(fam==='qualify')enQuali(E);
+  const pf=E.perf;$('enPerf').textContent=(pf&&ok(pf.cpu_pct)?'The engineer uses about '+pf.cpu_pct.toFixed(2)+'% of one core. ':'')}
+function enLog(E){const T=(E.transcript||[]).filter(r=>rr.coachCues||r.who!=='coach');
+  const key=(E.transcript||[]).length+':'+((E.transcript||[])[0]||{}).id+':'+((E.transcript||[])[0]||{}).spoken+':'+rr.coachCues;if(key===rr.logKey)return;rr.logKey=key;
+  $('enLog').replaceChildren(...(T.length?T.map(r=>{const li=h('li',(r.who==='you'?'you':r.who==='coach'?'coach':'eng')+(r.urgent?' urgent':''));
+    const tx=h('span','entx');tx.textContent=r.text+(r.est?' (est.)':'');
+    if(r.spoken===false&&r.who==='engineer'){const sub=h('span','ensub');sub.textContent=r.why?'Not said: '+r.why:'Shown here only';tx.append(sub)}
+    li.append(h('span','encl',r.clock||'--:--'),h('span','enwho',r.who==='you'?'You':r.who==='coach'?'Coach':'Engineer'),tx);return li}):
+    [(()=>{const li=h('li','dnone');li.textContent='Nothing on the radio yet. The engineer talks when you leave the pits, and answers when you ask.';return li})()]))}
+function enTalk(E){const t=E.talk||{};$('enTalk').textContent=t.state==='listening'?'Listening...':t.state==='thinking'?'Working it out...':t.state==='error'?(t.error||''):(E.estimated?'This PC is not in the car: the engineer here is text only.':'')}
+$('enCoachCues').addEventListener('change',()=>{rr.coachCues=$('enCoachCues').checked;rr.logKey='';if(rr.st&&rr.st.engineer)enLog(rr.st.engineer)});
+$('enAsk').addEventListener('submit',async e=>{e.preventDefault();const q=$('enQ').value.trim();if(!q)return;setMsg('enAskMsg','');$('enAskGo').disabled=true;let r;
+  try{r=await post('raceroom',{action:'ask',text:q})}catch(err){$('enAskGo').disabled=false;connectionLost();return}
+  $('enAskGo').disabled=false;if(!r.ok){setMsg('enAskMsg',r.error||'That didn\'t work.','bad');return}$('enQ').value='';rr.logKey='';
+  if(r.room){rr.st=r.room;const E=r.room.engineer||{};enLog(E)}});
+function enPractice(E,fam){const A=E.practice||{},card=[];
+  const L=A.last,B=A.best,T=A.target;
+  card.push(rrKV('Last lap',L?L.text:'--',L?(L.valid?'':'not counted: '+L.why):''));
+  card.push(rrKV('Best lap',B?B.text:'--',B?'lap '+B.lap:''));
+  card.push(rrKV('Against '+(T?T.how:'your best'),ok(A.delta)?enSign(A.delta)+' s':'--',T?'Target '+T.text:'No target yet',ok(A.delta)?(A.delta>0.05?'':'good'):''));
+  const F=A.fuel||{};card.push(rrKV('Fuel a lap'+(F.estimated?' (est.)':''),ok(F.burn)?F.burn.toFixed(2)+' '+F.unit:'--',ok(F.level)?'In the tank '+F.level+' '+F.unit+(ok(F.laps)?' · '+F.laps+' laps':''):'Learning: two clean laps'));
+  const K=A.consistency;card.push(rrKV('Consistency',K?K.spread.toFixed(2)+' s':'--',K?'spread of your last '+K.n+' clean laps'+(ok(K.prev)?(K.spread<K.prev-0.05?', improving':K.spread>K.prev+0.05?', getting wider':''):''):'Needs three clean laps'));
+  $('enPracCards').replaceChildren(...card);
+  $('enPracTitle').textContent=fam==='qualify'?'Your laps':'Your laps';$('enPracPill').textContent=(A.clean||0)+' clean lap'+((A.clean||0)===1?'':'s');
+  $('enPracNote').textContent=A.sector_how?'Sectors use '+A.sector_how+'.':'';
+  const sec=(A.sectors||[]).filter(x=>ok(x.last)||ok(x.best));$('enSecTbl').hidden=!sec.length;
+  rrRows('enSecRows',sec,'',4,x=>{const tr=h('tr');rrCell(tr,'Sector '+x.n);rrCell(tr,ok(x.last)?x.last.toFixed(2)+' s':'');rrCell(tr,ok(x.best)?x.best.toFixed(2)+' s':'');
+    rrCell(tr,ok(x.delta)?enSign(x.delta)+' s':'',ok(x.delta)&&x.delta>0.3?'bad':'');return tr});
+  const Ty=A.tyres,cs=(Ty&&Ty.corners)||[];$('enTyreTbl').hidden=!cs.length;
+  rrRows('enTyreRows',cs,'',3,c=>{const tr=h('tr');rrCell(tr,c.corner);rrCell(tr,ok(c.temp)?c.temp+Ty.unit:'');rrCell(tr,ok(c.wear_pct)?c.wear_pct+'% worn':'');return tr});
+  $('enTyreNote').textContent=Ty?Ty.note:'';
+  rrRows('enLaps',A.laps,'No laps yet.',3,l=>{const tr=h('tr');rrCell(tr,l.lap);rrCell(tr,l.text);rrCell(tr,l.valid?'clean':l.why,l.valid?'':'bad');return tr})}
+function enQuali(E){const Q=E.quali||{},T=E.traffic||{},cards=[];$('enQState').textContent=Q.state_text||'';
+  cards.push(rrKV('Your position',ok(Q.rank)?'P'+Q.rank:'--',ok(Q.of)?'of '+Q.of+' with a time':'No time set yet'));
+  cards.push(rrKV('To pole',ok(Q.pole_gap)?(Q.pole_gap===0?'On pole':'+'+Q.pole_gap.toFixed(3)+' s'):'--',Q.pole_text?'Pole '+Q.pole_text:''));
+  cards.push(rrKV('To the car in front',ok(Q.ahead_gap)?'+'+Q.ahead_gap.toFixed(3)+' s':'--',''));
+  const tr=(c,idle)=>c?'#'+(c.num||'?')+' '+c.gap_s.toFixed(1)+' s'+(c.rate!=null?(c.rate<-0.1?' · closing':c.rate>0.1?' · pulling away':''):''):idle;
+  cards.push(rrKV('Traffic ahead',T.ahead?T.ahead.gap_s.toFixed(1)+' s':'Clear',tr(T.ahead,'Nobody close ahead on track'),T.ahead&&T.ahead.gap_s<5?'hot':'good'));
+  cards.push(rrKV('Traffic behind',T.behind?T.behind.gap_s.toFixed(1)+' s':'Clear',tr(T.behind,'Nobody close behind on track')));
+  cards.push(rrKV('Clear track',T.clear_in_s===0?'Now':ok(T.clear_in_s)?'In about '+T.clear_in_s+' s':'--',T.clear_in_s==null?'The car ahead is not pulling away':'Nobody within 6 s ahead'));
+  $('enQCards').replaceChildren(...cards);$('enQNote').textContent='Gaps are by track position, any class, at your reference lap time.'}
 
 // ---------- Endurance review
 async function rrRevList(){if(rr.races)return rrRevFill();$('rrRevMsg').textContent='Looking...';let j;try{j=await api('endurance-review')}catch(e){connectionLost();return}

@@ -2045,7 +2045,7 @@ function crewRender(st){if(current.view!=='coach')return;const c=st.crew||{},pil
   const PL=c.plan;if(PL&&PL.text)$('crPlan').textContent=PL.text+(c.plan_note?' ('+c.plan_note+')':'');
   const ul=$('crCalls');ul.replaceChildren(...((c.calls||[]).length?c.calls.slice(0,6).map(x=>{const li=h('li');li.append(h('span','cot','L'+(x.lap==null?'?':x.lap)),h('span',null,x.text+(x.spoken===false&&x.why?'  (not said: '+x.why+')':'')));return li}):[h('li','dnone','No calls yet.')]));
   const pf=c.perf,pe=$('crPerf');pe.hidden=!(pf&&ok(pf.cpu_pct));if(!pe.hidden)pe.textContent='Crew chief uses about '+pf.cpu_pct.toFixed(2)+'% of one core.'}
-function fillCoachSettings(s){$('coCrewCalls').checked=s.crew_calls!==false;$('coCrewVoice').checked=s.crew_voice!==false;$('coLapTimes').value=s.lap_times==='full'?'full':'short';$('coInRaces').checked=!!s.in_races;$('coMarkers').checked=s.markers!==false;$('coFeedback').checked=s.feedback!==false;
+function fillCoachSettings(s){$('coCrewCalls').checked=s.crew_calls!==false;$('coCrewVoice').checked=s.crew_voice!==false;$('coEngineer').checked=s.engineer!==false;$('coRadio').checked=s.radio_click!==false;$('coTalkBack').checked=!!s.talk_back;co.mic=s.mic_name||'';coTalkMics();$('coLapTimes').value=s.lap_times==='full'?'full':'short';$('coInRaces').checked=!!s.in_races;$('coMarkers').checked=s.markers!==false;$('coFeedback').checked=s.feedback!==false;
   $('coLapDelta').checked=s.lap_delta!==false;$('coBeep').checked=!!s.brake_beep;$('coNotes').checked=s.notes!==false;$('coLearn').checked=s.learn_cues!==false;$('coTopN').value=String(Math.max(1,Math.min(3,s.top_n||2)));
   $('coVol').value=String(ok(s.volume)?s.volume:100);$('coRate').value=String(ok(s.rate)?s.rate:0);coRanges()}
 function coRanges(){$('coVolV').textContent=$('coVol').value+'%';const r=+$('coRate').value;$('coRateV').textContent=r<0?'slower':r>0?'faster':'normal'}
@@ -2056,7 +2056,7 @@ function coCornerLabel(w){const m=/^[A-Za-z](\d+)$/.exec(String(w.name||''));con
 $('fCoach').addEventListener('change',()=>{co.dirty=true});
 $('fCoach').addEventListener('submit',async e=>{e.preventDefault();setMsg('coSetMsg','Saving...');
   const settings={in_races:$('coInRaces').checked,markers:$('coMarkers').checked,feedback:$('coFeedback').checked,lap_delta:$('coLapDelta').checked,
-    brake_beep:$('coBeep').checked,crew_calls:$('coCrewCalls').checked,crew_voice:$('coCrewVoice').checked,notes:$('coNotes').checked,learn_cues:$('coLearn').checked,top_n:+$('coTopN').value,volume:+$('coVol').value,rate:+$('coRate').value,lap_times:$('coLapTimes').value};
+    brake_beep:$('coBeep').checked,crew_calls:$('coCrewCalls').checked,crew_voice:$('coCrewVoice').checked,engineer:$('coEngineer').checked,radio_click:$('coRadio').checked,talk_back:$('coTalkBack').checked,mic_name:$('coMic').value,notes:$('coNotes').checked,learn_cues:$('coLearn').checked,top_n:+$('coTopN').value,volume:+$('coVol').value,rate:+$('coRate').value,lap_times:$('coLapTimes').value};
   let r;try{r=await post('coach/settings',{settings})}catch(err){connectionLost();return}
   if(!r.ok){setMsg('coSetMsg',r.error,'bad');return}co.dirty=false;fillCoachSettings(r.settings||settings);
   setMsg('coSetMsg',co.st&&co.st.running?'Saved. The coach uses them now.':'Saved.','ok')});
@@ -2167,7 +2167,7 @@ $('ovOpacity').addEventListener('change',()=>ovSet({opacity:+$('ovOpacity').valu
 let co2={voices:null,sessions:null,vdirty:false,previewing:false,measuring:false,logName:null};
 const CO2_EV={spoken:'Said',made:'Made',dropped:'Dropped',cancelled:'Cut off',not_made:'Not made',corner_fixed:'Fixed',
   corner_regressed:'Slipped back',focus_learned:'Focus learned',lap_end:'Lap',repeated:'Repeated',asked:'Asked',muted:'Muted'};
-function co2Open(){co2LoadVoices();co2LoadSessions();co2LoadLogs()}
+function co2Open(){co2LoadVoices();co2LoadSessions();co2LoadLogs();coTalkLoad()}
 function co2Render(st){if(current.view!=='coach')return;const run=!!st.running,K=st.keys||{},reh=st.mode==='rehearsal';
   const rp=$('coRepeat');rp.disabled=!run;rp.title=run&&!(K.repeat&&K.repeat.on)?'This key works while the Debrief window is in front.':'Says the last cue again. Works from the car too, while Debrief is open.';
   const q1=$('coQuiet1');q1.disabled=!run;const ql=st.muted&&ok(st.quiet_left)?Math.ceil(st.quiet_left):null;
@@ -2261,6 +2261,20 @@ function co2Wheel(w,x){if(!w)return;x=x||'R';const learning=w.state==='learning'
 [['R','repeat'],['P','pace'],['N','note'],['U','uselap']].forEach(([x,role])=>{
   $('coWheel'+x+'Learn').addEventListener('click',async()=>{setMsg('coWheel'+x+'Msg','Press the button on your wheel now...');const r=await co2Post('coach/wheel-'+role+'-learn',{},'coWheel'+x+'Msg');if(r&&r.wheel)co2Wheel(r.wheel,x);coachPoll()});
   $('coWheel'+x+'Clear').addEventListener('click',async()=>{const r=await co2Post('coach/wheel-'+role+'-clear',{},'coWheel'+x+'Msg');if(r&&r.wheel)co2Wheel(r.wheel,x)})});
+// 2.31 Talk to your engineer: the button (a key or a wheel button), the microphone and the speech model
+function coTalkMics(){const sel=$('coMic');if(!sel)return;const want=co.mic||'';if(![...sel.options].some(o=>o.value===want)&&want){const o=h('option',null,want);o.value=want;sel.append(o)}sel.value=want}
+function coTalkShow(t){if(!t)return;$('coTalkText').textContent=t.text||'';$('coTalkLearn').disabled=!!t.learning;$('coTalkClear').disabled=!!t.learning||!t.binding;
+  if(t.note)setMsg('coTalkMsg',t.note,/^Saved|cleared/.test(t.note)?'ok':'bad');
+  const sel=$('coMic'),have=[...sel.options].map(o=>o.value);(t.mics||[]).forEach(m=>{if(have.indexOf(m)<0){const o=h('option',null,m);o.value=m;sel.append(o)}});coTalkMics();
+  const m=t.model||{},L=t.libs||{};$('coTalkModel').textContent=!$('coTalkBack').checked?'':!L.vosk?'Speech recognition is not installed in this copy of Debrief.':!L.sounddevice?'Talk-back needs a microphone: the audio library is not available on this PC.':m.state==='ready'?'Speech model installed. Hold your button and ask: "gap behind", "how\'s the fuel", "where am I losing time".'+(m.fingerprint?' Model fingerprint (SHA-256): '+m.fingerprint.slice(0,16)+'...'+(m.pinned?'':' (not checked against a published value yet)'):''):(m.text||'')+(m.pct!=null?' ('+m.pct+'%)':'')}
+async function coTalkLoad(){let j;try{j=await api('coach/talk')}catch(e){return}if(j&&j.ok)coTalkShow(j)}
+$('coTalkLearn').addEventListener('click',async()=>{setMsg('coTalkMsg','Press the key or wheel button you want to hold to talk...');let r;
+  try{r=await post('coach/talk-learn',{})}catch(e){connectionLost();return}if(!r.ok){setMsg('coTalkMsg',r.error||'That didn\'t work.','bad');return}
+  coTalkShow(r.talk);const t0=Date.now();const iv=setInterval(async()=>{let j;try{j=await api('coach/talk')}catch(e){clearInterval(iv);return}
+    if(j&&j.ok)coTalkShow(j);if(!j||!j.learning||Date.now()-t0>20000)clearInterval(iv)},700)});
+$('coTalkClear').addEventListener('click',async()=>{let r;try{r=await post('coach/talk-clear',{})}catch(e){connectionLost();return}if(r&&r.talk)coTalkShow(r.talk)});
+$('coMic').addEventListener('change',()=>{co.dirty=true});
+$('coTalkBack').addEventListener('change',()=>{co.dirty=true;if($('coTalkBack').checked)coTalkLoad()});
 // the coach log
 async function co2LoadLogs(){let j;try{j=await api('coach/logs')}catch(e){return}if(!j||!j.ok)return;const tb=$('coLogList'),L=j.logs||[];
   tb.replaceChildren(...(L.length?L.map(x=>{const tr=h('tr'),b=h('button','btn chipbtn','View');b.type='button';b.addEventListener('click',()=>co2ShowLog(x.name,x.title+(x.mode==='rehearsal'?' (rehearsal)':'')+', '+x.date));
@@ -2283,7 +2297,7 @@ $('coLogCopy').addEventListener('click',async()=>{if(!co2.logName)return;let j;t
   const done=await copyText(j.text);setMsg('coLogMsg',done?'Copied. Paste it wherever you\'re asking for help.':'Couldn\'t copy to the clipboard.',done?'ok':'bad')});
 // help: Coach 2.0 and credits
 HELP.tour.push(['Live data','While you drive, Debrief quietly records each iRacing session (fuel, driver aids, pit stops, tyres, incidents, every car\u2019s pit stops). Find it in the All sessions list (From iRacing) and at the top of a race review. Settings > Live data turns it on or off and starts it with Windows; an icon near the clock lets you open Debrief, pause or quit it.']);
-HELP.tour.push(['Race Room','Under Coach, the Race Room is the pit board for a team or long race: who is driving and for how long, the next driver and when their stint starts in their own time, the box call, fuel, the cars around you, every stop in your class and the rest of the race worked out again after a caution or a long stop. A teammate who is not driving sees it too; their fuel is always marked estimated, with no spoken fuel calls. If you are the next driver, Debrief tells you aloud and on screen about fifteen and five minutes before your stint. After the race, Race review shows pace by stint and driver, every stop against the plan and what your class rivals did.']);
+HELP.tour.push(['Race Room','Under Coach, the Race Room is your race engineer in every session: practice, qualifying, a test drive or a race. It names the session and what your car is doing, shows your laps, sectors, fuel and tyres in practice and the traffic and gap to pole in qualifying, and keeps a radio list of what the engineer said with a pinned urgent message. Hold your talk button (Settings > Coach > Talk back) and ask how\'s the fuel, gap behind or where am I losing time, or type it in the box. In a team or long race it is also the pit board: who is driving and for how long, the next driver and when their stint starts in their own time, the box call, fuel, the cars around you, every stop in your class and the rest of the race worked out again after a caution or a long stop. A teammate who is not driving sees it too; their fuel is always marked estimated, with no spoken fuel calls. If you are the next driver, Debrief tells you aloud and on screen about fifteen and five minutes before your stint. After the race, Race review shows pace by stint and driver, every stop against the plan and what your class rivals did.']);
 HELP.tour.push(['Coach voice','The coach speaks with a natural voice, through the headset you pick on the Coach page (Voice and sound). Rehearse plays one of your sessions through it first.']);
 HELP.tour.push(['Crew chief','In a race the Coach page shows a pit board and a voice calls what matters: fuel laps left, laps to go, when to box and how much to add, the cheap stop under a caution, a car closing behind or alongside and a car ahead pitting. It reads your car and your class only, never makes a caution a pit stop, and says short things only where it is quiet (never under braking, never with a car alongside). Turn the calls or the voice off in Settings on the Coach page.']);
 HELP.words.push(['Recorded by Debrief','A session Debrief recorded from iRacing while you drove that Garage 61 does not have. Its numbers are all from iRacing.'],

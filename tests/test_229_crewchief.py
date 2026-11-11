@@ -1223,7 +1223,9 @@ def test_every_crew_phrase_composes_and_numbers_say_units():
     assert vp.compose("Box this lap. Forty-two litres.") == ["cc_box_this_lap", "cc_litres_42"]
     assert vp.compose("Box now, cheap stop. Eleven gallons.") == ["cc_box_now_cheap_stop", "cc_gallons_11"]
     assert vp.compose("Car behind closing, three tenths a lap.") == ["cc_car_behind_closing", "cc_rate_3"]
-    assert vp.compose("Box this lap. One hundred and twenty-one litres.") is None      # not in the pack: stays text
+    assert vp.compose("Box this lap. One hundred and ninety litres.") is None           # not in the pack: stays text
+    # 2.31: the engineer's number clips (0 to 150) also say a big add, so 121 now speaks
+    assert vp.compose("Box this lap. One hundred and twenty-one litres.") is not None
     assert vp.compose("Box this lap. One litres.") is None                              # grammar is checked
     # the earlier phrases are unchanged
     assert vp.compose("Brake marker, T3") == ["brake_marker_turn_3"]
@@ -1380,7 +1382,8 @@ def test_runner_speaks_the_calls_and_writes_the_race_log():
     assert any(t.startswith("Car behind closing") for t in said)
     # fuel critical is priority 6, the rest 4 (coaching cues are 1 to 3): one shared queue, fuel first
     pr = {x["text"].split(".")[0]: x["priority"] for x in v.said}
-    assert all(x["priority"] in (cc.PRIORITY_CREW, cc.PRIORITY_FUEL) for x in v.said)
+    # 2.31: the engineer shares the queue (its briefing and notes are below the crew chief's priority)
+    assert all(x["priority"] in (cc.PRIORITY_CREW, cc.PRIORITY_FUEL) or x["priority"] < cc.PRIORITY_CREW for x in v.said)
     assert all(x["priority"] == cc.PRIORITY_FUEL for x in v.said if x["text"].startswith(("Fuel critical", "Data lost")))
     assert all(x["checked"] is None for x in v.said)              # asked right before playing: still true
     # a phrase the voice has no clip for is a log line, once, and stays on screen

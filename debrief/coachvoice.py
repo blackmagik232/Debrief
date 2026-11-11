@@ -28,7 +28,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import audioout, voicepack
+from . import audioout, radioclick, voicepack
 
 _LOG = logging.getLogger("debrief.coachvoice")
 MAX_PHRASES = 400
@@ -74,6 +74,7 @@ class PackVoice:
         self.playing = 0
         self.history: list = []           # [{"text", "source", "t_asked", "t_start", "t_end", "ok"}] (last 50)
         self._uncovered: set = set()
+        self.radio_clicks = True          # 2.31 Settings "Radio click": engineer messages get a squelch before and after
         self.available = player is not None
         self.reason = "" if player is not None else "no sound device"
         threading.Thread(target=self._load, args=(pack, bundled_dir, user_dir), name="debrief-voicepack",
@@ -182,7 +183,7 @@ class PackVoice:
         v = (self.volume if volume is None else volume) / 100.0
         return voicepack.to_pcm16(np.asarray(x) * v)
 
-    def _play(self, text, x, source, priority, interrupt, kind="cue", check=None) -> bool:
+    def _play(self, text, x, source, priority, interrupt, kind="cue", check=None, on_drop=None) -> bool:
         if self.player is None:
             return False
         rec = {"text": text, "source": source, "kind": kind, "t_asked": self._clock(), "t_start": None,
@@ -196,6 +197,11 @@ class PackVoice:
             rec["t_end"], rec["ok"] = self._clock(), bool(ok)
             if rec["t_start"] is not None:
                 self.playing = max(0, self.playing - 1)
+            elif on_drop is not None and not ok:
+                try:
+                    on_drop()           # 2.31: it never started (waited too long): the caller may make the call again
+                except Exception:  # noqa: BLE001
+                    pass
         with self._lock:
             self.history.append(rec)
             del self.history[:-50]
@@ -203,15 +209,19 @@ class PackVoice:
         return self.player.play(self._pcm(x), self.sr, priority=priority, interrupt=interrupt, on_start=started,
                                 on_end=ended, tag=text, **kw)
 
-    def say(self, text: str, priority: int = 0, t=None, interrupt: bool = False, check=None) -> bool:
+    def say(self, text: str, priority: int = 0, t=None, interrupt: bool = False, check=None, radio: bool = False,
+            on_drop=None) -> bool:
         """check (2.17.2): asked right before the sound starts; a reason back means the cue no longer fits and it is
-        not played (the coach logs why)."""
+        not played (the coach logs why). radio (2.31): the engineer's voice: a short click before and after, when
+        Settings > Radio click is on."""
         if self._closed or not text:
             return False
         self._ready.wait(5.0)
         x, source = self._samples(text)
         if x is not None:
-            ok = self._play(text, x, source, priority, interrupt, check=check)
+            if radio and self.radio_clicks:
+                x = radioclick.wrap(x, self.sr)
+            ok = self._play(text, x, source, priority, interrupt, check=check, on_drop=on_drop)
             if ok:
                 self.said += 1
                 self.said_fallback += source == "windows"
@@ -234,7 +244,9 @@ class PackVoice:
             if self._clock() - asked > FALLBACK_FRESH_S:
                 self._log(f"voice: '{text}' was ready too late and was not said")
                 return
-            if self._play(text, y, "windows", priority, interrupt, check=check):
+            if radio and self.radio_clicks:
+                y = radioclick.wrap(y, self.sr)
+            if self._play(text, y, "windows", priority, interrupt, check=check, on_drop=on_drop):
                 self.said += 1
                 self.said_fallback += 1
                 self.last = (text, priority)
@@ -443,5 +455,7 @@ def make_coach_voice(settings, user_dir=None, state_dir=None, log=None, backend=
             renderer = voice_mod.SapiRenderer(log=log)
         except Exception:  # noqa: BLE001
             renderer = None
-    return PackVoice(getattr(settings, "voice_pack", None) or None, user_dir=user_dir, volume=settings.volume,
-                     rate=settings.rate, player=player, renderer=renderer, log=log)
+    v = PackVoice(getattr(settings, "voice_pack", None) or None, user_dir=user_dir, volume=settings.volume,
+                  rate=settings.rate, player=player, renderer=renderer, log=log)
+    v.radio_clicks = bool(getattr(settings, "radio_click", True))
+    return v

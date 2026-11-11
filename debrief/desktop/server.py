@@ -1090,6 +1090,7 @@ def _jsonable(o):
 
 COACH_FIELDS = {"in_races": bool, "markers": bool, "feedback": bool, "lap_delta": bool, "brake_beep": bool,
                 "notes": bool, "learn_cues": bool, "crew_calls": bool, "crew_voice": bool,
+                "engineer": bool, "radio_click": bool, "talk_back": bool, "mic_name": lambda v: coach2.clean_device(v),
                 "top_n": (1, 3, "Focus corners must be 1, 2 or 3."), "volume": (0, 100, "Volume must be 0 to 100."),
                 "rate": (-10, 10, "Speaking speed must be -10 to 10."), "level": lambda v: clean_level(v),
                 "lap_times": lambda v: clean_lap_times(v),
@@ -2179,6 +2180,11 @@ class DebriefServer(ThreadingHTTPServer):
         self._start_wheel()
         coach2.overlay_autostart(self)        # 2.19: the overlay, if he left it turned on
         coach2.start_wheel(self)              # Coach 2.0: the wheel button for "Repeat that"
+        try:
+            from . import talk
+            talk.setup(self, r, vc, settings)     # 2.31: the talk button, the microphone and the recogniser (only when on)
+        except Exception:  # noqa: BLE001
+            app.say("ERROR starting Talk to your engineer:\n" + traceback.format_exc())
         app.say("Coach started." if mode == "live" else "Coach rehearsal started.")
         return {"ok": True}
 
@@ -3629,6 +3635,15 @@ class Handler(BaseHTTPRequestHandler):
         from .. import raceroom
         act = body.get("action")
         r = self._room_runner()
+        if act == "ask":
+            if r is None:
+                raise ValueError("Start the coach first.")
+            text = body.get("text")
+            if not isinstance(text, str) or not text.strip() or len(text) > 200:
+                raise ValueError("Type a short question for the engineer.")
+            res = r.ask_engineer(text, "typed")
+            return self._json({"ok": res.get("ok", True), "intent": res.get("intent"), "answer": res.get("text"),
+                               "room": r.room_state()})
         if act == "iam":
             lib = self._library_folder()
             if lib is None:
@@ -4290,6 +4305,9 @@ class Handler(BaseHTTPRequestHandler):
         if r is not None:
             try:
                 r.update_settings(new)
+                if "talk_back" in new or "mic_name" in new:
+                    from . import talk
+                    talk.setup(self.server, r, self.server.coach_voice, r.settings)
             except Exception:  # noqa: BLE001
                 app.say("ERROR applying the coach settings:\n" + traceback.format_exc())
         return self._json({"ok": True, "settings": keep})

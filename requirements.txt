@@ -6,3 +6,6 @@ pyirsdk>=1.3
 PyYAML>=6
 # 2.12 live coach: Windows speech (SAPI) through COM; Windows only, so CI on Linux skips it
 pywin32>=306; sys_platform == "win32"
+# 2.31 Race Engineer: Talk to your engineer (offline speech recognition and the microphone)
+vosk>=0.3.45
+sounddevice>=0.4.6

@@ -804,3 +804,243 @@ Race Room, to a teammate who is next in the car. Calm and clear, a helpful heads
 
 717. Your stint starts in about fifteen minutes.
 718. Your stint starts in about five minutes.
+
+## Section O (from line 719)
+
+Race Engineer on the radio (2.31). Short pieces of a sentence that are joined with numbers: calm, clear, like an engineer talking to his driver. Each line on its own; numbers are read as plain numbers.
+
+719. Copy.
+720. Say again.
+721. Loud and clear.
+722. I don't have that yet.
+723. Nobody behind you.
+724. Nobody ahead of you.
+725. He's closing.
+726. He's not closing.
+727. He's pulling away.
+728. You're gaining on him.
+729. Out lap, warm the tyres.
+730. Clear track ahead, push this lap.
+731. Back off for a gap.
+732. Last lap of the session.
+733. Cool-down lap, bring it in.
+734. Bring it in.
+735. New best.
+736. Consistency is improving.
+737. Laps are getting scattered, settle down.
+738. Good, steady laps.
+739. No stop needed.
+740. Urgent calls only.
+741. I'll keep you posted.
+742. Fuel is fine.
+743. Debrief.
+744. Work on.
+745. Nothing stands out.
+746. Pit entry.
+747. Chequered flag.
+748. Welcome back.
+749. Green flag.
+750. Fuel is now measured.
+751. Target is.
+752. Fuel for.
+753. Laps.
+754. Track temp.
+755. Air temp.
+756. Traffic ahead in.
+757. Seconds.
+758. Gap behind is.
+759. Gap ahead is.
+760. That's position.
+761. Tenths off position.
+762. A tenth off position.
+763. You are position.
+764. Last lap.
+765. Best lap.
+766. Sector.
+767. Tenths down.
+768. A tenth down.
+769. Seconds down.
+770. Litres a lap.
+771. Gallons a lap.
+772. Laps in the tank.
+773. Laps of fuel.
+774. Box in.
+775. Minutes left.
+776. Minute left.
+777. Laps to go.
+778. Lap to go.
+779. Degrees.
+780. Off your best.
+781. You're losing most in sector.
+782. Hottest tyre is the.
+783. At.
+784. Left front.
+785. Right front.
+786. Left rear.
+787. Right rear.
+788. Used.
+789. Litres.
+790. Gallons.
+791. Start position.
+792. Starting on.
+793. Point.
+794. Pole is.
+795. And pole is.
+796. Tenths clear.
+797. Ahead is.
+798. Behind is.
+799. Grid.
+800. Formation lap.
+801. Consistency.
+802. Lap.
+803. Zero.
+804. One.
+805. Two.
+806. Three.
+807. Four.
+808. Five.
+809. Six.
+810. Seven.
+811. Eight.
+812. Nine.
+813. Ten.
+814. Eleven.
+815. Twelve.
+816. Thirteen.
+817. Fourteen.
+818. Fifteen.
+819. Sixteen.
+820. Seventeen.
+821. Eighteen.
+822. Nineteen.
+823. Twenty.
+824. Twenty-one.
+825. Twenty-two.
+826. Twenty-three.
+827. Twenty-four.
+828. Twenty-five.
+829. Twenty-six.
+830. Twenty-seven.
+831. Twenty-eight.
+832. Twenty-nine.
+833. Thirty.
+834. Thirty-one.
+835. Thirty-two.
+836. Thirty-three.
+837. Thirty-four.
+838. Thirty-five.
+839. Thirty-six.
+840. Thirty-seven.
+841. Thirty-eight.
+842. Thirty-nine.
+843. Forty.
+844. Forty-one.
+845. Forty-two.
+846. Forty-three.
+847. Forty-four.
+848. Forty-five.
+849. Forty-six.
+850. Forty-seven.
+851. Forty-eight.
+852. Forty-nine.
+853. Fifty.
+854. Fifty-one.
+855. Fifty-two.
+856. Fifty-three.
+857. Fifty-four.
+858. Fifty-five.
+859. Fifty-six.
+860. Fifty-seven.
+861. Fifty-eight.
+862. Fifty-nine.
+863. Sixty.
+864. Sixty-one.
+865. Sixty-two.
+866. Sixty-three.
+867. Sixty-four.
+868. Sixty-five.
+869. Sixty-six.
+870. Sixty-seven.
+871. Sixty-eight.
+872. Sixty-nine.
+873. Seventy.
+874. Seventy-one.
+875. Seventy-two.
+876. Seventy-three.
+877. Seventy-four.
+878. Seventy-five.
+879. Seventy-six.
+880. Seventy-seven.
+881. Seventy-eight.
+882. Seventy-nine.
+883. Eighty.
+884. Eighty-one.
+885. Eighty-two.
+886. Eighty-three.
+887. Eighty-four.
+888. Eighty-five.
+889. Eighty-six.
+890. Eighty-seven.
+891. Eighty-eight.
+892. Eighty-nine.
+893. Ninety.
+894. Ninety-one.
+895. Ninety-two.
+896. Ninety-three.
+897. Ninety-four.
+898. Ninety-five.
+899. Ninety-six.
+900. Ninety-seven.
+901. Ninety-eight.
+902. Ninety-nine.
+903. One hundred.
+904. One hundred and one.
+905. One hundred and two.
+906. One hundred and three.
+907. One hundred and four.
+908. One hundred and five.
+909. One hundred and six.
+910. One hundred and seven.
+911. One hundred and eight.
+912. One hundred and nine.
+913. One hundred and ten.
+914. One hundred and eleven.
+915. One hundred and twelve.
+916. One hundred and thirteen.
+917. One hundred and fourteen.
+918. One hundred and fifteen.
+919. One hundred and sixteen.
+920. One hundred and seventeen.
+921. One hundred and eighteen.
+922. One hundred and nineteen.
+923. One hundred and twenty.
+924. One hundred and twenty-one.
+925. One hundred and twenty-two.
+926. One hundred and twenty-three.
+927. One hundred and twenty-four.
+928. One hundred and twenty-five.
+929. One hundred and twenty-six.
+930. One hundred and twenty-seven.
+931. One hundred and twenty-eight.
+932. One hundred and twenty-nine.
+933. One hundred and thirty.
+934. One hundred and thirty-one.
+935. One hundred and thirty-two.
+936. One hundred and thirty-three.
+937. One hundred and thirty-four.
+938. One hundred and thirty-five.
+939. One hundred and thirty-six.
+940. One hundred and thirty-seven.
+941. One hundred and thirty-eight.
+942. One hundred and thirty-nine.
+943. One hundred and forty.
+944. One hundred and forty-one.
+945. One hundred and forty-two.
+946. One hundred and forty-three.
+947. One hundred and forty-four.
+948. One hundred and forty-five.
+949. One hundred and forty-six.
+950. One hundred and forty-seven.
+951. One hundred and forty-eight.
+952. One hundred and forty-nine.
+953. One hundred and fifty.

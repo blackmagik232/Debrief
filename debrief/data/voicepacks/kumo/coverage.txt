@@ -1,6 +1,15 @@
-Kumo (Japanese accent, male) (kumo): 776 clips, 29.34 MB, 16000 Hz, speed 0.95, comma pause 40 ms
+Kumo (Japanese accent, male) (kumo): 1011 clips, 37.83 MB, 16000 Hz, speed 0.95, comma pause 40 ms
 Coach phrases covered: 5542 of 5542 (100.0%)
 Left to Windows speech by design: Good, 0 .. Good, 19 (20 phrases)
+Takes to listen to: 6 (new lines only)
+  line 753 'Laps.': odd length for its words (2.4 syllables/s, usual 4.4)
+  line 799 'Grid.': odd length for its words (2.6 syllables/s, usual 4.4)
+  line 802 'Lap.': odd length for its words (2.5 syllables/s, usual 4.4)
+  line 807 'Four.': odd length for its words (2.6 syllables/s, usual 4.4)
+  line 808 'Five.': odd length for its words (2.2 syllables/s, usual 4.4)
+  line 812 'Nine.': odd length for its words (2.3 syllables/s, usual 4.4)
+
+Earlier lines:
 Takes to listen to: 0 (new lines only)
 
 Earlier lines:

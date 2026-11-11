@@ -433,7 +433,7 @@
       <div class="prwrap">
         <span class="eyebrow">Team races and long races</span>
         <h1>Race Room</h1>
-        <p class="lede">The pit board for you and your team. The driver sees it from the car; a teammate in the same race sees it too. Fuel on a teammate's screen is always marked "estimated".</p>
+        <p class="lede">Your race engineer, live in every session: practice, qualifying and races, on your own or with a team. It talks to you, shows what is going on, and answers when you ask. In a team race the pit board is below, and fuel on a teammate's screen is always marked "estimated".</p>
         <div class="row rrtop"><span class="pill" id="rrPill">Waiting</span><span class="note" id="rrRole"></span>
           <label class="rriam" id="rrIamWrap" hidden><span>I am</span><select id="rrIam" aria-label="Which driver in the plan are you"></select></label>
           <button type="button" class="btn" id="rrStart" hidden>Start the coach</button></div>
@@ -441,6 +441,31 @@
         <div id="rrLive">
           <p class="note" id="rrText" role="status"></p>
           <div class="rralert" id="rrAlert" role="alert" hidden></div>
+          <div id="enWrap" hidden>
+            <div class="enhead">
+              <div class="row rrtop"><span class="pill" id="enKind">Session</span><span class="pill" id="enCar"></span><span class="note" id="enSub"></span></div>
+              <div class="crgrid" id="enHdr"></div>
+            </div>
+            <div class="enpin" id="enPin" role="alert" hidden></div>
+            <div class="panel" id="enRadio">
+              <div class="phead"><h3>Engineer radio</h3><label class="check enfilter" for="enCoachCues"><input id="enCoachCues" type="checkbox" checked><span>Show coaching cues</span></label></div>
+              <ol class="enlog" id="enLog" aria-label="Radio messages, newest first" aria-live="polite"></ol>
+              <form class="row enask" id="enAsk"><label class="field enq"><span>Ask your engineer</span><input id="enQ" type="text" maxlength="120" autocomplete="off" placeholder="gap behind? how's the fuel? where am I losing time?"></label><button type="submit" class="btn" id="enAskGo">Ask</button><span class="msg" id="enAskMsg" role="status"></span></form>
+              <p class="note" id="enTalk"></p>
+            </div>
+            <div id="enPractice" hidden>
+              <div class="panel"><div class="phead"><h3 id="enPracTitle">Your laps</h3><span class="pill" id="enPracPill"></span></div>
+                <div class="crgrid" id="enPracCards"></div><p class="note" id="enPracNote"></p>
+                <div class="tblwrap"><table class="maptbl" id="enSecTbl" hidden><caption class="sr">Sector times against your best</caption><thead><tr><th>Sector</th><th>Last lap</th><th>Your best lap</th><th>Difference</th></tr></thead><tbody id="enSecRows"></tbody></table></div>
+                <div class="tblwrap"><table class="maptbl" id="enTyreTbl" hidden><caption class="sr">Tyres</caption><thead><tr><th>Tyre</th><th>Temperature</th><th>Wear</th></tr></thead><tbody id="enTyreRows"></tbody></table></div>
+                <p class="note" id="enTyreNote"></p></div>
+              <div class="panel"><div class="phead"><h3>Lap list</h3></div><div class="tblwrap"><table class="maptbl"><caption class="sr">Laps this session</caption><thead><tr><th>Lap</th><th>Time</th><th>Notes</th></tr></thead><tbody id="enLaps"></tbody></table></div></div>
+            </div>
+            <div id="enQuali" hidden>
+              <div class="panel"><div class="phead"><h3>Qualifying</h3><span class="pill" id="enQState"></span></div><div class="crgrid" id="enQCards"></div><p class="note" id="enQNote"></p></div>
+            </div>
+            <p class="note" id="enPerf"></p>
+          </div>
           <div class="crgrid" id="rrBoard" hidden>
             <div class="crcard crcall" id="rrCallCard"><span class="eyebrow">Crew chief</span><b id="rrCall">--</b><small id="rrCallSub"></small></div>
             <div class="crcard"><span class="eyebrow">Class position</span><b id="rrPos">--</b><small id="rrPosSub"></small></div>
@@ -717,6 +742,15 @@
           <label class="check" for="coLapDelta"><input id="coLapDelta" type="checkbox"><span>Your lap against your best</span></label>
           <label class="check" for="coCrewCalls"><input id="coCrewCalls" type="checkbox"><span>Crew chief calls: fuel, when to pit, and the cars around you in a race</span></label>
           <label class="check" for="coCrewVoice"><input id="coCrewVoice" type="checkbox"><span>Crew chief voice: say the calls out loud</span></label>
+          <label class="check" for="coEngineer"><input id="coEngineer" type="checkbox"><span>Race engineer: briefings, practice notes, qualifying calls and a debrief</span></label>
+          <label class="check" for="coRadio"><input id="coRadio" type="checkbox"><span>Radio click: a short click before and after what the engineer says</span></label>
+          <label class="check" for="coTalkBack"><input id="coTalkBack" type="checkbox"><span>Talk to your engineer: hold a button and ask a question (needs a microphone; the first time it downloads a 40 MB speech model, and your voice stays on this PC)</span></label>
+          <div class="cowheel" id="coTalk">
+            <label class="field" for="coMic"><span>Microphone</span><select id="coMic"><option value="">Windows default</option></select></label>
+            <p id="coTalkText" role="status">No button chosen yet.</p>
+            <div class="row"><button type="button" class="btn" id="coTalkLearn">Press the button you want</button><button type="button" class="btn" id="coTalkClear">Clear</button><span class="msg" id="coTalkMsg" role="status"></span></div>
+            <p class="note" id="coTalkModel"></p>
+          </div>
           <label class="check" for="coBeep"><input id="coBeep" type="checkbox"><span>A short beep at a focus corner's brake point</span></label>
           <label class="check" for="coNotes"><input id="coNotes" type="checkbox"><span>Play my corner notes before their corners</span></label>
           <label class="check" for="coLearn"><input id="coLearn" type="checkbox"><span>Learning the track: say how a corner compares with my best so far in this session ("T5, 3 down on your best", "T3, braked 15 metres later", "T4, off track")</span></label>

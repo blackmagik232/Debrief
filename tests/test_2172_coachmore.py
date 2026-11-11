@@ -137,7 +137,7 @@ for t in ("T3, ten tenths down", "Sector four, up a tenth", "Sector one, good, u
           "Reference set, sixty nine"):
     check(vp.compose(t) is None, f"compose({t!r}) is None (Windows speech says it)")
 old_lines = [ln for ln in vp.lines() if ln["section"] in "ABCDEF"]
-check(old_lines[-1]["text"] == "Building your reference." and all(ln["section"] in "GHIJKLMN" for ln in vp.lines()[len(old_lines):]),
+check(old_lines[-1]["text"] == "Building your reference." and all(ln["section"] in "GHIJKLMNO" for ln in vp.lines()[len(old_lines):]),
       "new lines come after the old ones (earlier line numbers never change)")
 check(PACK is not None and not (set(vp.all_keys()) - set(PACK.clips)), "George has every clip, new ones too")
 rates = [vp.loudness_db(PACK.clips[k], PACK.rate) for k in ("lost_0_2", "sector_1", "reference_set", "lap_98",

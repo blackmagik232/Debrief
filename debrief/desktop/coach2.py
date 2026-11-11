@@ -47,8 +47,8 @@ from urllib.parse import parse_qs, urlsplit
 from .. import app
 from . import settings_io
 
-GET_ROUTES = ("api/coach/voices", "api/coach/logs", "api/coach/log", "api/coach/result", "api/cornernotes", "api/coach/mic")
-POST_ROUTES = ("api/coach/voice-settings", "api/coach/preview", "api/coach/measure", "api/coach/import-pack",
+GET_ROUTES = ("api/coach/talk", "api/coach/voices", "api/coach/logs", "api/coach/log", "api/coach/result", "api/cornernotes", "api/coach/mic")
+POST_ROUTES = ("api/coach/talk-learn", "api/coach/talk-clear", "api/coach/talk-model", "api/coach/voice-settings", "api/coach/preview", "api/coach/measure", "api/coach/import-pack",
                "api/coach/repeat", "api/coach/quiet", "api/coach/rehearse", "api/coach/wheel-repeat-learn",
                "api/coach/wheel-repeat-clear", "api/coach/pace", "api/coach/wheel-pace-learn",
                "api/coach/wheel-pace-clear", "api/coach/mute-set", "api/coach/rehearse-speed",
@@ -69,8 +69,9 @@ WHEEL_ROLES = {"repeat": ("wheel_repeat", "It says the last cue again.", "repeat
                "pace": ("wheel_pace", "It asks the coach for your pace.", "ask_pace"),
                "note": ("wheel_note", "Hold it to record a corner note; let go to save it.", "note_press"),
                "uselap": ("wheel_uselap", "It makes the lap you just drove your reference lap, if it was clean.",
-                          "use_last_lap")}
-HOLD_ROLES = {"note": "note_release"}      # 2.20 push-to-talk: the runner call for the button going up
+                          "use_last_lap"),
+               "talk": ("wheel_talk", "Hold it to talk to your engineer; let go to send.", "talk_press")}
+HOLD_ROLES = {"note": "note_release", "talk": "talk_release"}      # 2.20 push-to-talk: the runner call for the button going up
 
 
 # ---------------------------------------------------------------- where things live
@@ -239,7 +240,7 @@ def _wheel(server, role="repeat"):
             rel = (lambda: _wheel_release(server, role)) if role in HOLD_ROLES else None
             st.wheels[role] = wheelmute.WheelMute(on_press=lambda: _wheel_press(server, role),
                                                   binding=_wheel_saved(role), backend=f() if f else None,
-                                                  log=app.say, on_release=rel)
+                                                  log=app.say, on_release=rel, hz=30.0 if role == "talk" else wheelmute.POLL_HZ)
         return st.wheels[role]
 
 
@@ -376,6 +377,11 @@ def _close(v):
 def on_coach_stop(server):
     """Called by the server's stop_coach: the wheel repeat button stops with the coach."""
     stop_wheel(server)
+    try:
+        from . import talk
+        talk.teardown(server)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def close_mic(server):
@@ -809,7 +815,8 @@ def voice_note_for(server, voice_status=None) -> dict:
 
 # ---------------------------------------------------------------- GET
 def get(h, r, q):
-    return {"api/coach/voices": get_voices, "api/coach/logs": get_logs, "api/coach/log": get_log,
+    from . import talk
+    return {"api/coach/talk": talk.get_talk, "api/coach/voices": get_voices, "api/coach/logs": get_logs, "api/coach/log": get_log,
             "api/coach/result": get_result, "api/cornernotes": get_notes, "api/coach/mic": get_mic}[r](h, q)
 
 
@@ -882,7 +889,9 @@ def get_log(h, q):
 
 # ---------------------------------------------------------------- POST
 def post(h, r, body):
-    fn = {"api/coach/voice-settings": post_voice_settings, "api/coach/preview": post_preview,
+    from . import talk
+    fn = {"api/coach/talk-learn": talk.post_learn, "api/coach/talk-clear": talk.post_clear, "api/coach/talk-model": talk.post_model,
+          "api/coach/voice-settings": post_voice_settings, "api/coach/preview": post_preview,
           "api/coach/measure": post_measure, "api/coach/import-pack": post_import_pack,
           "api/coach/repeat": post_repeat, "api/coach/quiet": post_quiet, "api/coach/rehearse": post_rehearse,
           "api/coach/wheel-repeat-learn": post_wheel_learn, "api/coach/wheel-repeat-clear": post_wheel_clear,

@@ -1,6 +1,15 @@
-Omega (Indian accent, male) (omega): 776 clips, 29.91 MB, 16000 Hz, speed 1.05, comma pause 70 ms
+Omega (Indian accent, male) (omega): 1011 clips, 38.64 MB, 16000 Hz, speed 1.05, comma pause 70 ms
 Coach phrases covered: 5542 of 5542 (100.0%)
 Left to Windows speech by design: Good, 0 .. Good, 19 (20 phrases)
+Takes to listen to: 6 (new lines only)
+  line 753 'Laps.': odd length for its words (2.6 syllables/s, usual 4.3)
+  line 805 'Two.': odd length for its words (1.8 syllables/s, usual 4.3)
+  line 808 'Five.': odd length for its words (2.4 syllables/s, usual 4.3)
+  line 812 'Nine.': odd length for its words (2.4 syllables/s, usual 4.3)
+  line 814 'Eleven.': odd length for its words (7.5 syllables/s, usual 4.3)
+  line 815 'Twelve.': odd length for its words (2.4 syllables/s, usual 4.3)
+
+Earlier lines:
 Takes to listen to: 0 (new lines only)
 
 Earlier lines:

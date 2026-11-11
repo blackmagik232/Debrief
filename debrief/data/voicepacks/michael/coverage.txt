@@ -1,6 +1,15 @@
-Michael (American male) (michael): 776 clips, 29.23 MB, 16000 Hz, speed 1.00, comma pause 40 ms
+Michael (American male) (michael): 1011 clips, 37.43 MB, 16000 Hz, speed 1.00, comma pause 40 ms
 Coach phrases covered: 5542 of 5542 (100.0%)
 Left to Windows speech by design: Good, 0 .. Good, 19 (20 phrases)
+Takes to listen to: 6 (new lines only)
+  line 753 'Laps.': odd length for its words (2.6 syllables/s, usual 4.7)
+  line 799 'Grid.': odd length for its words (2.6 syllables/s, usual 4.7)
+  line 808 'Five.': odd length for its words (2.4 syllables/s, usual 4.7)
+  line 809 'Six.': odd length for its words (2.8 syllables/s, usual 4.7)
+  line 812 'Nine.': odd length for its words (2.7 syllables/s, usual 4.7)
+  line 815 'Twelve.': odd length for its words (2.6 syllables/s, usual 4.7)
+
+Earlier lines:
 Takes to listen to: 0 (new lines only)
 
 Earlier lines:

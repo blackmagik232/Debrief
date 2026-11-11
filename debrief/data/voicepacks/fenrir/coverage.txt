@@ -1,6 +1,19 @@
-Fenrir (American male) (fenrir): 776 clips, 28.45 MB, 16000 Hz, speed 0.85, comma pause 40 ms
+Fenrir (American male) (fenrir): 1011 clips, 36.36 MB, 16000 Hz, speed 0.85, comma pause 40 ms
 Coach phrases covered: 5542 of 5542 (100.0%)
 Left to Windows speech by design: Good, 0 .. Good, 19 (20 phrases)
+Takes to listen to: 10 (new lines only)
+  line 753 'Laps.': odd length for its words (2.6 syllables/s, usual 4.9)
+  line 793 'Point.': odd length for its words (2.6 syllables/s, usual 4.9)
+  line 799 'Grid.': odd length for its words (2.6 syllables/s, usual 4.9)
+  line 802 'Lap.': odd length for its words (2.9 syllables/s, usual 4.9)
+  line 806 'Three.': odd length for its words (2.9 syllables/s, usual 4.9)
+  line 807 'Four.': odd length for its words (2.9 syllables/s, usual 4.9)
+  line 808 'Five.': odd length for its words (2.9 syllables/s, usual 4.9)
+  line 809 'Six.': odd length for its words (2.9 syllables/s, usual 4.9)
+  line 812 'Nine.': odd length for its words (2.6 syllables/s, usual 4.9)
+  line 815 'Twelve.': odd length for its words (2.6 syllables/s, usual 4.9)
+
+Earlier lines:
 Takes to listen to: 0 (new lines only)
 
 Earlier lines:

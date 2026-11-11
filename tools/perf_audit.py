@@ -13,6 +13,7 @@ What it measures (on whatever PC runs it; the numbers on Swazi's Ryzen 5 5600X3D
              voice-queue pump, as share of one core; the cost of reading its extra channels is in "read"
   room       (2.30) Race Room: RaceRoom.pre/post on a 64-car scripted team race at 20 Hz (its own work, without the crew
              chief), the live re-plan for 24 h x 6 drivers, and the size of the team-race log per hour
+  engineer   (2.31) the Race Engineer: Engineer.feed on a 64-car qualifying field at 20 Hz, and the talk-back key poll at 30 Hz
   recorder   (2.27) the background recorder: idle while waiting for iRacing, recording a 64-car race (its own work,
              plus the cost of reading ~80 values at 20 Hz and 12 car arrays at 4 Hz estimated like "read"), and the
              size of its logs per hour
@@ -47,6 +48,8 @@ BUDGET = {
     "racelog_mb_per_h": 15.0,     # gzipped race log
     "memory_mb": 400.0,           # whole app resident memory
     "crew_pct_core": 1.0,         # crew chief at 20 Hz with a 64-car field
+    "engineer_pct_core": 1.0,     # Race Engineer at 20 Hz with a 64-car field (qualifying, the busiest page)
+    "ptt_pct_core": 0.2,          # talk-back button polling at 30 Hz
     "room_pct_core": 1.0,         # Race Room at 20 Hz with a 64-car field (the crew chief is measured separately)
     "replan_ms": 200.0,           # one live re-plan, 24 h and 6 drivers
     "roomlog_mb_per_h": 15.0,     # the team-race log (race.jsonl.gz)
@@ -110,6 +113,48 @@ def crew_cost(sim_seconds=900.0, cars=64):
     per = (time.thread_time() - t0) / max(1, n)
     return {"frames": n, "us_per_frame": per * 1e6, "pct_core": per * 20.0 * 100.0, "calls": len(ch.calls_made)
             if hasattr(ch, "calls_made") else None}
+
+
+def engineer_cost(sim_seconds=900.0, cars=64):
+    """Engineer.feed over a scripted 64-car field in a qualifying session (traffic, laps, sectors, messages) at 20 Hz,
+    field arrays at 4 Hz. The crew chief is measured separately."""
+    import crew_sim as S
+    from debrief import engineer as EN
+    sim = S.RaceSim(laps=60, tank=60.0, burn=3.0, cars=cars)
+    sec = sim.sections()
+    sec["WeekendInfo"].update(EventType="Qualify", Official=1, SeriesID=77, LeagueID=0, NumCarClasses=1, SubSessionID=1)
+    sec["SessionInfo"] = {"Sessions": [{"SessionNum": 0, "SessionType": "Open Qualify", "SessionName": "QUALIFY"}]}
+    sec["SplitTimeInfo"] = {"Sectors": [{"SectorNum": i, "SectorStartPct": i / 3.0} for i in range(3)]}
+    eng = EN.Engineer(units="mph")
+    frames = [(o, f) for o, f in sim.run(sim_seconds)]
+    t0 = time.thread_time()
+    n = 0
+    for o, f in frames:
+        for k in range(2):
+            now = o["SessionTime"] + 0.05 * k
+            eng.feed(o, f if k == 0 else None, sec, 1, now, role="driver")
+            eng.take_calls()
+            n += 1
+    per = (time.thread_time() - t0) / max(1, n)
+    t1 = time.thread_time()
+    for _ in range(200):
+        eng.state()
+    st_ms = (time.thread_time() - t1) / 200 * 1000.0       # the page asks for the picture about once a second
+    return {"frames": n, "us_per_frame": per * 1e6, "pct_core": per * 20.0 * 100.0 + st_ms / 10.0, "state_ms": st_ms}
+
+
+def ptt_cost(seconds=3.0, hz=30.0):
+    """One poll of the talk-back key (a fake keyboard: the real call is one GetAsyncKeyState, a few microseconds) at 30 Hz,
+    and the recogniser is not running at all while the button is up."""
+    from debrief import ptt
+    keys = ptt.FakeKeys()
+    kp = ptt.KeyPoller(binding={"vk": 0x70}, backend=keys, hz=hz)
+    n = 20000
+    t0 = time.thread_time()
+    for _ in range(n):
+        kp.poll_once()
+    per = (time.thread_time() - t0) / n
+    return {"us_per_poll": per * 1e6, "pct_core": per * hz * 100.0}
 
 
 def room_cost(sim_seconds=900.0, cars=64):
@@ -364,7 +409,7 @@ def memory_cost():
 
 def run():
     res = {"coach": coach_cost(), "read": read_cost(), "yaml": yaml_cost(), "planner": planner_cost(),
-           "racelog": racelog_cost(), "crew": crew_cost(), "room": room_cost(), "replan": replan_cost(), "memory": memory_cost(), "recorder": recorder_cost()}
+           "racelog": racelog_cost(), "crew": crew_cost(), "room": room_cost(), "engineer": engineer_cost(), "ptt": ptt_cost(), "replan": replan_cost(), "memory": memory_cost(), "recorder": recorder_cost()}
     checks = [
         ("Live coach (20 Hz)", f"{res['coach']['pct_core']:.2f}% of a core", res["coach"]["pct_core"] <= BUDGET["coach_pct_core"],
          f"<= {BUDGET['coach_pct_core']}%"),
@@ -372,6 +417,10 @@ def run():
          f"<= {BUDGET['read_pct_core']}%"),
         ("Crew chief (20 Hz, 64 cars)", f"{res['crew']['pct_core']:.2f}% of a core ({res['crew']['us_per_frame']:.0f} us a frame)",
          res["crew"]["pct_core"] <= BUDGET["crew_pct_core"], f"<= {BUDGET['crew_pct_core']}%"),
+        ("Race Engineer (20 Hz, 64 cars)", f"{res['engineer']['pct_core']:.2f}% of a core ({res['engineer']['us_per_frame']:.0f} us a frame, picture {res['engineer']['state_ms']:.2f} ms)",
+         res["engineer"]["pct_core"] <= BUDGET["engineer_pct_core"], f"<= {BUDGET['engineer_pct_core']}%"),
+        ("Talk-back button polling (30 Hz)", f"{res['ptt']['pct_core']:.3f}% of a core ({res['ptt']['us_per_poll']:.1f} us a poll)",
+         res["ptt"]["pct_core"] <= BUDGET["ptt_pct_core"], f"<= {BUDGET['ptt_pct_core']}%"),
         ("Race Room (20 Hz, 64 cars)", f"{res['room']['pct_core']:.2f}% of a core ({res['room']['us_per_frame']:.0f} us a frame)",
          res["room"]["pct_core"] <= BUDGET["room_pct_core"], f"<= {BUDGET['room_pct_core']}%"),
         ("Live re-plan, 24 h x 6 drivers", ("skipped" if "skipped" in res["replan"] else f"{res['replan']['worst_ms']:.0f} ms"),

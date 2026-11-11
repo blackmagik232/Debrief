@@ -51,6 +51,18 @@ CREDITS = [
     {"name": "pywin32", "author": "Mark Hammond and contributors", "licence": "PSF-style (win32 parts: "
      "BSD-style)", "link": "https://github.com/mhammond/pywin32", "use": "Windows speech for the rare phrase a "
      "voice pack can't say, and the background recorder's icon near the clock.", "kind": "bundled"},
+    {"name": "Vosk", "author": "Alpha Cephei Inc.", "licence": "Apache-2.0",
+     "link": "https://github.com/alphacep/vosk-api", "use": "Offline speech recognition for Talk to your engineer: it hears "
+     "your question on this PC and sends the sound nowhere.", "kind": "bundled"},
+    {"name": "Vosk small English model", "author": "Alpha Cephei Inc.", "licence": "Apache-2.0",
+     "link": "https://alphacephei.com/vosk/models", "use": "The speech model (vosk-model-small-en-us-0.15, about 40 MB) "
+     "Talk to your engineer downloads once, the first time you turn it on.", "kind": "optional"},
+    {"name": "sounddevice", "author": "Matthias Geier", "licence": "MIT",
+     "link": "https://github.com/spatialaudio/python-sounddevice", "use": "Opens the microphone while you hold the talk "
+     "button.", "kind": "bundled"},
+    {"name": "PortAudio", "author": "Ross Bencina, Phil Burk and contributors", "licence": "MIT",
+     "link": "https://www.portaudio.com", "use": "The audio library inside sounddevice's Windows package.",
+     "kind": "bundled"},
     {"name": "IBM Plex Sans", "author": "IBM Corp.", "licence": "SIL Open Font License 1.1",
      "link": "https://github.com/IBM/plex", "use": "The window's text font.", "kind": "bundled"},
     {"name": "Barlow Condensed", "author": "The Barlow Project Authors (Jeremy Tribby)",

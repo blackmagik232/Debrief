@@ -180,6 +180,8 @@ SECTIONS = {
     "M": "Crew chief on the radio. Calm and clear, like an engineer telling you what to do next. Numbers are litres, "
          "gallons, laps or tenths of a second. A short natural pause at the comma.",
     "N": "Race Room, to a teammate who is next in the car. Calm and clear, a helpful heads-up.",
+    "O": "Race Engineer on the radio (2.31). Short pieces of a sentence that are joined with numbers: calm, clear, "
+         "like an engineer talking to his driver. Each line on its own; numbers are read as plain numbers.",
 }
 PACE_WHOLES = ["No clean lap yet", "Down more than two seconds"]      # 2.17.2 answers to "How's my pace?"
 
@@ -314,6 +316,125 @@ def lines() -> list:
     # 2.30 "Race Room" (added after everything above, so earlier line numbers never change)
     for w in SWAP_WHOLES:
         add("N", f"{w}.", [("cc_" + _slug(w), "whole")])
+    # 2.31 "Race Engineer" (added after everything above, so earlier line numbers never change)
+    for w in ENG_PHRASES:
+        add("O", f"{w[:1].upper()}{w[1:]}.", [("en_" + _slug(w), "whole")])
+    for n in range(ENG_NUMBERS[0], ENG_NUMBERS[1] + 1):
+        w = number_words(n)
+        add("O", f"{w[:1].upper()}{w[1:]}.", [(f"en_n_{n}", "whole")])
+    return out
+
+
+# ---------------------------------------------------------------- 2.31 race engineer (pieces of sentences and numbers)
+ENG_NUMBERS = (0, 150)          # "Fuel for twelve laps", "Track temp ninety-four", "Gap behind is one point two seconds"
+# Pieces the engineer joins with numbers and lap times. Each is one clip (en_<slug>); a message is made of them.
+ENG_PHRASES = [
+    "Copy", "Say again", "Loud and clear", "I don't have that yet", "Nobody behind you", "Nobody ahead of you",
+    "He's closing", "He's not closing", "He's pulling away", "You're gaining on him",
+    "Out lap, warm the tyres", "Clear track ahead, push this lap", "Back off for a gap", "Last lap of the session",
+    "Cool-down lap, bring it in", "Bring it in", "New best", "Consistency is improving",
+    "Laps are getting scattered, settle down", "Good, steady laps", "No stop needed", "Urgent calls only",
+    "I'll keep you posted", "Fuel is fine", "Debrief", "Work on", "Nothing stands out", "Pit entry",
+    "Chequered flag", "Welcome back", "Green flag", "Fuel is now measured",
+    "Target is", "Fuel for", "laps", "Track temp", "Air temp", "Traffic ahead in", "seconds", "Gap behind is",
+    "Gap ahead is", "That's position", "tenths off position", "a tenth off position", "You are position", "Last lap",
+    "Best lap", "Sector", "tenths down", "a tenth down", "seconds down", "litres a lap", "gallons a lap",
+    "laps in the tank", "laps of fuel", "Box in", "minutes left", "minute left", "laps to go", "lap to go", "degrees",
+    "off your best", "You're losing most in sector", "Hottest tyre is the", "at", "left front", "right front",
+    "left rear", "right rear", "Used", "litres", "gallons", "Start position", "Starting on", "point", "Pole is",
+    "and pole is", "tenths clear", "Ahead is", "Behind is", "Grid", "Formation lap", "consistency", "lap",
+]
+ENG_LAP_LEADS = ("target is", "last lap", "best lap", "pole is", "and pole is")     # a lap time follows these
+_ENG = None
+
+
+def _eng_tables():
+    global _ENG
+    if _ENG is None:
+        frags = {}
+        for p in ENG_PHRASES:
+            frags[tuple(re.findall(r"[a-z0-9'\-]+", p.lower()))] = "en_" + _slug(p)
+        nums = {}
+        for n in range(ENG_NUMBERS[0], ENG_NUMBERS[1] + 1):
+            nums[tuple(number_words(n).replace("-", "- ").replace("- ", "-").split())] = n
+        _ENG = (frags, nums, max(len(k) for k in frags))
+    return _ENG
+
+
+def eng_number_keys(n) -> list:
+    return [f"en_n_{int(n)}"]
+
+
+def _eng_sentence(sentence: str):
+    """One engineer sentence -> clip keys, or None. Pieces (ENG_PHRASES), numbers 0..150, 'one point two', and a lap
+    time after 'Target is' / 'Last lap' / 'Best lap' (the coach's own lap-time clips)."""
+    frags, nums, longest = _eng_tables()
+    words = re.findall(r"[a-z0-9'\-]+", sentence.lower())
+    if not words or len(words) > 40:
+        return None
+    for j, w in enumerate(words):                  # grammar: "one litres" / "one gallons" is wrong (and "one litre" is fine)
+        if w in ("litres", "gallons") and j and words[j - 1] == "one" and (j < 2 or words[j - 2] not in ("point", "and", "hundred")):
+            return None
+    out, i, lead_lap = [], 0, False
+    while i < len(words):
+        if lead_lap:
+            lead_lap = False
+            got = None
+            for k in (4, 3, 2):
+                keys = _lap_keys(" ".join(words[i:i + k]))
+                if keys and i + k <= len(words):
+                    got = (k, keys)
+                    break
+            if got:
+                out += got[1]
+                i += got[0]
+                continue
+        hit = None
+        for k in range(min(longest, len(words) - i), 0, -1):
+            f = frags.get(tuple(words[i:i + k]))
+            if f:
+                hit = (k, f)
+                break
+        if hit:
+            out.append(hit[1])
+            lead_lap = " ".join(words[i:i + hit[0]]) in ENG_LAP_LEADS
+            i += hit[0]
+            continue
+        num = None
+        for k in range(min(4, len(words) - i), 0, -1):
+            n = nums.get(tuple(words[i:i + k]))
+            if n is not None:
+                num = (k, n)
+                break
+        if num is None:
+            return None
+        out += eng_number_keys(num[1])
+        i += num[0]
+        # "one point two": a number, 'point', a digit
+        if i + 1 < len(words) and words[i] == "point" and (words[i + 1],) in nums and nums[(words[i + 1],)] <= 9:
+            out += ["en_point"] + eng_number_keys(nums[(words[i + 1],)])
+            i += 2
+    return out or None
+
+
+def engineer_compose(text) -> list | None:
+    """2.31: the clip keys for an engineer message (one or more sentences, any mix of the coach's own sentences, the
+    crew chief's and the engineer's pieces), or None when a sentence can't be said from clips."""
+    if not isinstance(text, str) or len(text) > 220:
+        return None
+    parts = [p.strip().rstrip(".!?") for p in re.split(r"(?<=[.!?])\s+", " ".join(text.split())) if p.strip()]
+    if not parts:
+        return None
+    out = []
+    for p in parts:
+        k = _crew_sentence(p.lower())
+        if k is None:
+            k = _compose_one(p)
+        if k is None:
+            k = _eng_sentence(p)
+        if k is None:
+            return None
+        out += k
     return out
 
 
@@ -464,9 +585,14 @@ def crew_compose(text) -> list | None:
 
 
 def compose(text) -> list | None:
-    """The clip keys that say one of the coach's cues, or None when no pack can say it (unknown words, a corner
-    past turn 25, a delta over 2 seconds ...). Only reads the text: whether a given pack has every clip is
-    VoicePack.compose's job."""
+    """The clip keys that say one of the coach's cues, the crew chief's calls or the engineer's messages, or None when
+    no pack can say it (unknown words, a corner past turn 25, a delta over 2 seconds ...). Only reads the text: whether
+    a given pack has every clip is VoicePack.compose's job."""
+    k = _compose_one(text)
+    return k if k else engineer_compose(text)
+
+
+def _compose_one(text) -> list | None:
     if not isinstance(text, str):
         return None
     ck = crew_compose(text)

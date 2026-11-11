@@ -1494,7 +1494,7 @@ class RaceRoom:
         elif role.get("role") == "spectator":
             st["state"], st["text"] = "waiting", "You are watching and are not on a team in this session."
         elif not self.race:
-            st["text"] = "Not a race: the Race Room waits for the race to start."
+            st["text"] = "No race is running. The engineer's page shows this session."
         else:
             st["text"] = ""
         board = self._board(snap, crew)

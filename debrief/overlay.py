@@ -107,6 +107,11 @@ def view_model(status, unit="mph", edit=False) -> dict:
                 if not (call and call.get("rank", 99) <= 4) or call.get("kind") in FUEL_KINDS:
                     crew += " (est.)"
             crew_tone = "bad" if cr.get("state") == "lost" or (call and call.get("rank", 99) <= 3) else "dim"
+        eng = rm.get("engineer") if isinstance(rm.get("engineer"), dict) else None
+        if eng and eng.get("text") and not crew:
+            # 2.31 Race Engineer: the newest radio message is the overlay line outside a race call (a crew PC's marked "(est.)")
+            crew = str(eng["text"])[:60] + (" (est.)" if eng.get("est") else "")
+            crew_tone = "bad" if eng.get("urgent") else "dim"
         if rm.get("enabled") and rm.get("overlay") and rm.get("state") == "racing":
             room = str(rm["overlay"])[:80]       # 2.30 Race Room: "Stint 41:02 · next Ben 02:15 · BOX L29 (est.)"
         if state == "muted":

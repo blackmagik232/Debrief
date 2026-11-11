@@ -860,3 +860,21 @@ body.codriving #vCoach.pad{padding:18px clamp(14px,2.5vw,32px) 24px}
 .rrline{fill:none;stroke:var(--muted);stroke-width:1;opacity:.55}
 .rrline.me{stroke:var(--fg);stroke-width:2.6;opacity:1}
 @media (max-width:640px){#vRoom .crcard.crcall{grid-column:auto}#vRoom .crgrid{grid-template-columns:1fr 1fr}}
+
+/* ---------- 2.31 Race Engineer: the radio, the header and the practice / qualifying panels (Race Room) */
+.enhead{display:grid;gap:10px;margin:8px 0 12px}
+.enpin{border:2px solid var(--bad);border-radius:8px;padding:12px 14px;margin:10px 0;font-family:var(--display);font-weight:700;font-size:clamp(22px,3vw,34px);letter-spacing:.02em;overflow-wrap:anywhere;color:var(--bad)}
+.enlog{list-style:none;margin:8px 0;padding:0;max-height:420px;overflow:auto;display:grid;gap:2px;border:1px solid var(--grid);border-radius:6px}
+.enlog li{display:grid;grid-template-columns:64px 74px minmax(0,1fr);gap:8px;padding:6px 10px;align-items:baseline;border-top:1px solid var(--grid);font-size:var(--fs-14);overflow-wrap:anywhere}
+.enlog li:first-child{border-top:0}
+.enlog .encl{font-family:var(--mono);font-size:var(--fs-13);color:var(--muted)}
+.enlog .enwho{font-family:var(--mono);font-size:var(--fs-11);letter-spacing:.08em;text-transform:uppercase;color:var(--fg2)}
+.enlog li.you .enwho{color:var(--good)}
+.enlog li.coach{color:var(--muted)}
+.enlog li.urgent .entx{color:var(--bad);font-weight:700}
+.enlog .ensub{display:block;font-size:var(--fs-13);color:var(--muted)}
+.enask{align-items:end;flex-wrap:wrap;gap:10px}
+.enask .enq{flex:1 1 260px;min-width:0}
+.enask input{width:100%;font:inherit;font-size:var(--fs-14);color:var(--fg);background:var(--bg);border:1px solid var(--axis);border-radius:5px;padding:8px 10px}
+.enfilter{font-size:var(--fs-13)}
+@media (max-width:640px){.enlog li{grid-template-columns:52px minmax(0,1fr)}.enlog .enwho{display:none}}

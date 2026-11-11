@@ -77,7 +77,8 @@ for p in (ROOT / "debrief").rglob("*.py"):
             mods.add(node.module.split(".")[0])
 third = sorted(m for m in mods - STD if not m.startswith("_"))
 mod_to_credit = {"numpy": "NumPy", "requests": "requests", "pypdf": "pypdf", "yaml": "PyYAML", "comtypes": "comtypes",
-                 "tomli": None}
+                 "tomli": None,
+                 "vosk": "Vosk", "sounddevice": "sounddevice"}      # 2.31 Talk to your engineer
 unknown = [m for m in third if m not in mod_to_credit]
 check(not unknown, f"no third-party import without a credit (new: {unknown})")
 check(all(mod_to_credit[m] is None or mod_to_credit[m] in names for m in third if m in mod_to_credit),

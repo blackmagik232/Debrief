@@ -19,6 +19,9 @@ Every third-party part Debrief uses or ships, who made it, its licence and where
 | pyirsdk | Mihail Latyshov (kutu) | MIT | <https://github.com/kutu/pyirsdk> | Reads iRacing's live data for the Coach, the background recorder and the replay scan. The recorder also follows its idea of re-reading the session text only when iRacing's update counter changes. |
 | PyYAML | Kirill Simonov and Ingy döt Net | MIT | <https://pyyaml.org> | Reads the session details inside telemetry files. |
 | pywin32 | Mark Hammond and contributors | PSF-style (win32 parts: BSD-style) | <https://github.com/mhammond/pywin32> | Windows speech for the rare phrase a voice pack can't say, and the background recorder's icon near the clock. |
+| Vosk | Alpha Cephei Inc. | Apache-2.0 | <https://github.com/alphacep/vosk-api> | Offline speech recognition for Talk to your engineer: it hears your question on this PC and sends the sound nowhere. |
+| sounddevice | Matthias Geier | MIT | <https://github.com/spatialaudio/python-sounddevice> | Opens the microphone while you hold the talk button. |
+| PortAudio | Ross Bencina, Phil Burk and contributors | MIT | <https://www.portaudio.com> | The audio library inside sounddevice's Windows package. |
 | IBM Plex Sans | IBM Corp. | SIL Open Font License 1.1 | <https://github.com/IBM/plex> | The window's text font. |
 | Barlow Condensed | The Barlow Project Authors (Jeremy Tribby) | SIL Open Font License 1.1 | <https://github.com/jpt/barlow> | Headings. |
 | JetBrains Mono | The JetBrains Mono Project Authors | SIL Open Font License 1.1 | <https://github.com/JetBrains/JetBrainsMono> | Numbers and labels. |
@@ -43,6 +46,7 @@ Every third-party part Debrief uses or ships, who made it, its licence and where
 | Name | Author | Licence | Link | What for |
 |---|---|---|---|---|
 | comtypes | Thomas Heller and the comtypes developers | MIT | <https://github.com/enthought/comtypes> | A fallback for Windows speech, used only when it is already installed and pywin32 isn't. |
+| Vosk small English model | Alpha Cephei Inc. | Apache-2.0 | <https://alphacephei.com/vosk/models> | The speech model (vosk-model-small-en-us-0.15, about 40 MB) Talk to your engineer downloads once, the first time you turn it on. |
 
 ## Used to build Debrief (not shipped)
 

@@ -63,7 +63,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import cornernotes, crewchief, engine, ibt, livedata, perfmeter, raceroom, voicepack
+from . import cornernotes, crewchief, engine, engineer, ibt, livedata, perfmeter, raceroom, voicepack
 from . import units as _units
 
 GRID = 1000                 # reference points around the lap
@@ -182,6 +182,11 @@ class Settings:
     # 2.29 Crew chief (fuel, pit window, rivals): the calls in the window, and the voice for them
     crew_calls: bool = True
     crew_voice: bool = True
+    # 2.31 Race Engineer: the radio in every session; a click before and after what it says; talking back
+    engineer: bool = True
+    radio_click: bool = True
+    talk_back: bool = False
+    mic_name: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -2558,8 +2563,10 @@ class IrsdkSource(livedata.LiveReader):
         """crew (2.29): also read what the crew chief needs: fuel, the race clock, flags, and the CarIdx arrays of
         the whole field (about 4 times a second; the latest copy is s["_field"])."""
         super().__init__(rate_hz=rate_hz, retry_s=retry_s,
-                         own=CHANNELS + (crewchief.CREW_OWN if crew else ()),
-                         field=livedata.FIELD_CHANNELS if crew else ())
+                         own=CHANNELS + ((crewchief.CREW_OWN + tuple(c for c in livedata.ENGINEER_OWN
+                                                                     if c not in crewchief.CREW_OWN)) if crew else ()),
+                         field=livedata.FIELD_CHANNELS if crew else (),
+                         info_keys=livedata.ENGINEER_INFO_KEYS if crew else livedata.INFO_KEYS)
         self._field_last = None
         self._field_next = 0.0
         self._types: dict = {}
@@ -2745,6 +2752,7 @@ class LiveRunner:
         self.crew = crew if crew is not None else (crewchief.CrewChief(units=self.settings.units, clock=clock)
                                                    if mode == "live" else None)
         self.crew_speaker = crewchief.CallSpeaker(voice_on=self.settings.crew_voice)
+        self._pump_lock = threading.RLock()
         if self.crew is not None:
             self.crew_speaker.on_drop = self.crew.forgive      # a dropped call may be made again (box this lap)
         self.crew_perf = perfmeter.PerfMeter("crewchief", on_slow=lambda m: self._log("crewchief: " + m))
@@ -2763,6 +2771,13 @@ class LiveRunner:
                               log=(room_log.add if room_log is not None else None)) if mode == "live" else None)
         self.room_perf = perfmeter.PerfMeter("raceroom", on_slow=lambda m: self._log("raceroom: " + m))
         self._room_noclip: set = set()
+        # 2.31 Race Engineer: one radio for every session (its messages share the crew chief's quiet-zone queue)
+        self.engineer = engineer.Engineer(units=self.settings.units, target_fn=self._engineer_target) if mode == "live" else None
+        self.eng_perf = perfmeter.PerfMeter("engineer", on_slow=lambda m: self._log("engineer: " + m))
+        self._eng_calls: dict = {}
+        self.talk = None                # talkback.TalkBack (made by the server when Talk to your engineer is on)
+        self._takes_radio = None
+        self._takes_drop = None
 
     def _voice_duration(self, text):
         fn = getattr(self.voice, "duration", None)
@@ -3014,6 +3029,8 @@ class LiveRunner:
         if cue.kind == KIND_NOTE:
             self._say_note(cue)
             return
+        if self.engineer is not None:
+            self.engineer.note_spoken("coach", cue.text, kind="coach", session_t=getattr(cue, "spoken_t", None))
         if self._takes_check is None:
             self._takes_check = _accepts(getattr(self.voice, "say", None), "check")
         if self._takes_check:
@@ -3066,6 +3083,11 @@ class LiveRunner:
         new = Settings.from_dict({**self.settings.to_dict(), **(d or {})})
         for f in fields(Settings):
             setattr(self.settings, f.name, getattr(new, f.name))
+        try:
+            if hasattr(self.voice, "radio_clicks"):
+                self.voice.radio_clicks = bool(self.settings.radio_click)
+        except Exception:  # noqa: BLE001
+            pass
         try:
             self.voice.set(volume=self.settings.volume, rate=self.settings.rate)
         except Exception:  # noqa: BLE001
@@ -3363,8 +3385,10 @@ class LiveRunner:
                 finally:
                     if self.mode == "live":
                         self.room_perf._done(rw, rc)       # Race Room pre to post (the crew chief step sits between them, so this is an upper bound)
-            if self._crew_on():
-                self._crew_deliver(calls, own, now)
+            eng_calls = self._engineer_step(s, own, secs, ver, now, room)
+            if self._crew_on() or eng_calls or self.crew_speaker.pending:
+                # (with the crew chief's calls off the engineer's waiting messages are still pumped every reading)
+                self._crew_deliver(calls if self._crew_on() else [], own, now, extra=eng_calls)
         except Exception as e:  # noqa: BLE001  (the crew chief never stops the coach)
             self._problem(f"crew chief step failed ({e.__class__.__name__}: {str(e)[:120]})")
         finally:
@@ -3403,13 +3427,54 @@ class LiveRunner:
         except Exception as e:  # noqa: BLE001
             self._problem(f"crew chief step failed ({e.__class__.__name__}: {str(e)[:120]})")
 
-    def _crew_deliver(self, calls, s: dict, now: float):
+    def _engineer_target(self):
+        """The saved lap target (the crew chief's plan target) for the engineer's briefing, or None."""
+        try:
+            # only a target he saved (or the stint plan's lap): never the crew chief's median of recent laps, which would be
+            # shown as "your target" (the engineer says "your best" or "recent pace" for what it works out itself)
+            c = self.crew
+            return (c.target_given or c.plan_lap_s or None) if c is not None else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _engineer_step(self, s, own, secs, ver, now, room) -> list:
+        """2.31: the Race Engineer reads the sample (its own cost is metered) and returns the calls to say now."""
+        eng = self.engineer
+        if eng is None or not self.settings.engineer:
+            return []
+        w, c = time.perf_counter(), time.thread_time()
+        try:
+            eng.units = _units.norm(self.settings.units)
+            eng.coach_says_laps = True   # the coach runs alongside and says every lap result ("New best, up a tenth")
+            st = room.state() if room is not None else {}
+            role = ((st or {}).get("role") or {}).get("role") or ("driver" if s.get("IsOnTrack") else "none")
+            eng.feed(s, s.get("_field"), secs, ver, now, role=role, board=(st or {}).get("board"))
+            return eng.take_calls()
+        except Exception as e:  # noqa: BLE001
+            self._problem(f"race engineer step failed ({e.__class__.__name__}: {str(e)[:120]})")
+            return []
+        finally:
+            if self.mode == "live":
+                self.eng_perf._done(w, c)
+
+    def _crew_deliver(self, calls, s: dict, now: float, extra=()):
         crew, sp, lg = self.crew, self.crew_speaker, self.crew_log
+        eng = self.engineer
+        if eng is not None:
+            for c in calls:
+                eng.add_call(c)
+                self._eng_calls[c.id] = c
+        for c in extra:
+            self._eng_calls[c.id] = c
+        if len(self._eng_calls) > 200:
+            self._eng_calls = dict(list(self._eng_calls.items())[-100:])
         if self.room is not None and self.room.role.get("role") == "crew":
             # 2.30: on a crew PC the fuel is an estimate. Every crew chief call stays text there (no spoken box or fuel call
             # from a number nobody measured); the swap alerts are the only thing a crew PC says.
             for c in calls:
                 c.spoken, c.why = False, raceroom.CREW_NO_VOICE
+                if eng is not None:
+                    eng.mark(c, False, raceroom.CREW_NO_VOICE)
                 if lg is not None:
                     lg.add(crewchief.call_row(crew, c))
             sp.pending = []
@@ -3422,20 +3487,30 @@ class LiveRunner:
                 lg.add({"k": "lap", "t": s.get("SessionTime"), "lap": crew.lap, "sit": crewchief.situation(crew)})
             for c in calls:
                 lg.add(crewchief.call_row(crew, c))
-        sp.offer(calls)
-        c = sp.pump(s, now)
-        for ev in sp.take_events():
+        with self._pump_lock:                  # the one pumper: the live loop (a question only offers its answer)
+            sp.offer(list(calls) + list(extra))
+            c = sp.pump(s, now)
+            evs = sp.take_events()
+        for ev in evs:
             if lg is not None:
                 lg.add({"k": ev["what"], "call": ev["call"], "t": s.get("SessionTime"), "why": ev.get("why", "")})
+            if eng is not None and ev["what"] == "dropped" and ev["call"] in self._eng_calls:
+                eng.mark(self._eng_calls[ev["call"]], False, ev.get("why", ""))
         if c is None:
             return
-        why = crew.still_valid(c, s)
+        is_eng = str(c.kind).startswith("eng_")
+        why = _eng_or_crew_valid(c, s, eng, crew, is_eng)
         if why:
             c.spoken, c.why = False, why
+            if eng is not None:
+                eng.mark(c, False, why)
             if lg is not None:
                 lg.add({"k": "dropped", "call": c.id, "t": s.get("SessionTime"), "why": why})
             return
-        self._say_crew(c)
+        if is_eng:
+            self._say_eng(c)
+        else:
+            self._say_crew(c)
 
     def _say_crew(self, c):
         """One crew chief call to the voice: sound priority 6 for fuel critical, 4 for the rest (coaching is 1 to 3), so
@@ -3451,13 +3526,84 @@ class LiveRunner:
             self._crew_noclip.add(c.say)
             self._log(f"crewchief: the voice pack has no clip for '{c.say}'; Windows speech says it, or it stays text")
         c.spoken = True
+        if self.engineer is not None:
+            self.engineer.mark(c, True)
         if self._takes_check is None:
             self._takes_check = _accepts(getattr(v, "say", None), "check")
+        if self._takes_radio is None:
+            self._takes_radio = _accepts(getattr(v, "say", None), "radio")
         crew = self.crew
+        kw = {"radio": True} if self._takes_radio else {}
+        if self._takes_drop is None:
+            self._takes_drop = _accepts(getattr(v, "say", None), "on_drop")
+        if self._takes_drop:
+            kw["on_drop"] = lambda c=c: self._call_dropped(c)     # waited too long in the player: make it again
         if self._takes_check:
-            v.say(c.say, priority=c.priority, t=c.session_t, check=lambda c=c: crew.still_valid(c, self._latest))
+            v.say(c.say, priority=c.priority, t=c.session_t, check=lambda c=c: crew.still_valid(c, self._latest), **kw)
         else:
-            v.say(c.say, priority=c.priority, t=c.session_t)
+            v.say(c.say, priority=c.priority, t=c.session_t, **kw)
+
+    def _call_dropped(self, c):
+        """The player dropped a crew call that never started (it waited too long behind equal priority): forgive it, so the
+        crew chief's next reading makes it again, and say so in the transcript."""
+        try:
+            self.crew.forgive(c)
+            if self.engineer is not None:
+                self.engineer.mark(c, False, "the radio was busy, it is made again")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _say_eng(self, c):
+        """2.31: one Race Engineer message to the voice, through the same player queue as the crew chief's calls."""
+        v, eng, crew = self.voice, self.engineer, self.crew
+        covers = getattr(v, "covers", None)
+        try:
+            has = bool(covers(c.say)) if callable(covers) else True
+        except Exception:  # noqa: BLE001
+            has = True
+        if not has and c.say not in self._crew_noclip:
+            self._crew_noclip.add(c.say)
+            self._log(f"engineer: the voice pack has no clip for '{c.say}'; Windows speech says it, or it stays text")
+        c.spoken = True
+        eng.mark(c, True)
+        if self._takes_check is None:
+            self._takes_check = _accepts(getattr(v, "say", None), "check")
+        if self._takes_radio is None:
+            self._takes_radio = _accepts(getattr(v, "say", None), "radio")
+        kw = {"radio": True} if self._takes_radio else {}
+        if self._takes_check:
+            v.say(c.say, priority=c.priority, t=c.session_t, check=lambda c=c: _eng_or_crew_valid(c, self._latest, eng, crew, True), **kw)
+        else:
+            v.say(c.say, priority=c.priority, t=c.session_t, **kw)
+
+    # ---- 2.31 talking to the engineer (the button, or the box on the page)
+    def ask_engineer(self, text: str, source: str = "typed") -> dict:
+        """A question (typed, or recognised): the answer goes to the transcript and, on a driver PC, to the voice at once."""
+        eng = self.engineer
+        if eng is None:
+            return {"ok": False, "error": "The Race Engineer runs when you drive or crew live."}
+        now = self._clock()
+        res = eng.ask(text, now, source=source)
+        c = res.pop("call", None)
+        if c is not None:
+            self._eng_calls[c.id] = c
+            eng.take_calls()
+            with self._pump_lock:
+                self.crew_speaker.offer([c])
+            # only the live loop pumps (next reading, a twentieth of a second): a crew call that is waiting for its quiet
+            # place can never be swallowed here, and a question asked while braking waits its turn in the queue
+        res["ok"] = True
+        return res
+
+    def talk_press(self):
+        t = self.talk
+        if t is not None:
+            t.press()
+
+    def talk_release(self):
+        t = self.talk
+        if t is not None:
+            t.release()
 
     def room_brief(self) -> dict:
         """What the coach status says about Race Room (the overlay line and the role); the page gets all of it from room_state()."""
@@ -3467,13 +3613,18 @@ class LiveRunner:
         st = r.state() or {}
         return {"enabled": True, "overlay": st.get("overlay") or "", "role": (st.get("role") or {}).get("role", "none"),
                 "state": st.get("state"), "alert": (st.get("swap") or {}).get("alert"),
-                "perf": self.room_perf.summary()}
+                "perf": self.room_perf.summary(),
+                "engineer": self.engineer.latest() if self.engineer is not None else None}
 
     def room_state(self) -> dict:
         r = self.room
         if r is None:
             return {"state": "waiting", "text": "The Race Room runs when you drive or crew live."}
         d = dict(r.state() or {})
+        if self.engineer is not None:
+            d["engineer"] = self.engineer.state() if self.engineer.connected else self.engineer.idle_state()
+            d["engineer"]["perf"] = self.eng_perf.summary()
+            d["engineer"]["talk"] = self.talk.status() if self.talk is not None else {"state": "off", "text": ""}
         d["perf"] = self.room_perf.summary()
         d["log"] = (self.room_log.path.name if self.room_log is not None and self.room_log.path else None)
         d["log_dir"] = (str(self.room_log.path.parent) if self.room_log is not None and self.room_log.path else None)
@@ -3758,3 +3909,14 @@ class Hotkey:
         except Exception:  # noqa: BLE001
             pass
         self._thread.join(timeout)
+
+def _eng_or_crew_valid(c, own, eng, crew, is_eng):
+    """2.31 review: an engineer message is checked by the engineer; a spoken "Box this lap" ANSWER is also checked by the crew
+    chief's own box rules (past pit entry, final lap, already in the pits, that lap is over), exactly like a crew box call."""
+    if not is_eng or eng is None:
+        return crew.still_valid(c, own) if crew is not None else None
+    why = eng.still_valid(c, own)
+    if why or crew is None or not (c.data or {}).get("box_answer"):
+        return why
+    import dataclasses
+    return crew.still_valid(dataclasses.replace(c, kind="box_now"), own)

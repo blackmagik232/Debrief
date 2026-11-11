@@ -1418,6 +1418,30 @@ am_michael, am_fenrir and af_heart) by tools/make_voicepack.py. Kokoro's model a
 of Debrief; only the generated sound clips are.
 
 ==============================================================================
+Vosk and the Vosk small English model (Talk to your engineer)
+Licence: Apache-2.0 (licence text: see "Apache License 2.0" below)
+==============================================================================
+
+Vosk (vosk-api) by Alpha Cephei Inc., https://github.com/alphacep/vosk-api, and the model vosk-model-small-en-us-0.15,
+https://alphacephei.com/vosk/models, are licensed under the Apache License 2.0. The speech model is not part of Debrief's
+installer: Talk to your engineer downloads it once, on the PC, the first time it is turned on. Recognition runs on this PC
+only; the sound of your voice is never sent anywhere.
+
+==============================================================================
+sounddevice and PortAudio (the microphone for Talk to your engineer)
+Licence: MIT
+==============================================================================
+
+python-sounddevice, Copyright (c) 2015-2023 Matthias Geier, https://github.com/spatialaudio/python-sounddevice
+PortAudio, Copyright (c) 1999-2011 Ross Bencina and Phil Burk, http://www.portaudio.com
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+==============================================================================
 Crew Chief
 Licence: not needed (ideas only, no code used)
 ==============================================================================
@@ -1437,7 +1461,7 @@ programs built with it be shipped under their own terms. https://pyinstaller.org
 
 ==============================================================================
 Apache License 2.0
-Licence: full text (for requests and Kokoro-82M)
+Licence: full text (for requests, Kokoro-82M and Vosk)
 ==============================================================================
 
 Apache License

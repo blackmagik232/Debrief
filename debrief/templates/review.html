@@ -262,6 +262,11 @@ g.kf>:first-child{stroke:var(--ink);stroke-width:1.5px}
 .ctab .meta{display:block;color:var(--muted);font-size:11.5px}
 .rlverdict{font-size:var(--t-lg,20px);font-weight:600;margin:0 0 var(--s3)}
 .rlgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:var(--s3);margin:var(--s3) 0}
+/* 2.35 "See it": From iRacing charts */
+.fichart svg text{user-select:none}
+details.finums>summary{cursor:pointer;color:var(--ink2);font-size:var(--t-sm)}
+details.finums[open]>summary{margin-bottom:var(--s2)}
+details.finums h4{margin:var(--s3) 0 var(--s1);font-size:var(--t-sm)}
 .rlkey{display:flex;flex-wrap:wrap;gap:var(--s3);font-size:var(--t-sm);color:var(--ink2);margin-top:var(--s2)}
 .rlkey i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 .rldetail{margin-top:var(--s3);padding-top:var(--s3);border-top:1px solid var(--line);min-height:44px}
@@ -1817,21 +1822,152 @@ safe('depth',()=>{const X=isObj(D.depth)?D.depth:null;if(!X)return;const host=$(
   block('Your comparison lap',null,[isObj(X.ref_match)&&X.ref_match.sentence]);
   if(host.children.length)$('depth').hidden=false},'depth');
 
+// ---------- 2.35 "See it": the From iRacing charts. recordings.py makes every number (X.charts); this only draws them.
+// Each chart keeps its block's words; the block's table goes under "Show the numbers".
+const FI_GAL=3.78541,FI_UNIT=document.documentElement.getAttribute('data-units')==='mph'?'gal':'L';   // fuel follows Settings > Units
+const fiFuel=l=>FI_UNIT==='gal'?l/FI_GAL:l;
+const fiFuelTxt=(l,d=2)=>fin(l)?l.toFixed(d)+' L ('+(l/FI_GAL).toFixed(d)+' gal)':'no reading';
+const FI_AID={bb:'Brake bias',abs:'ABS',tc:'Traction control'};
+const fiNum=v=>fin(v)?String(+v.toFixed(3)):v==null?'-':String(v);
+// where on the lap (d = 0..1 of the lap) in corner names: "C4", "after C9", or the share of the lap when the review has no corners
+function fiWhere(d){if(!fin(d))return '';const f=((d%1)+1)%1,m=f*L;const c=cornerAt(m);if(c)return String(c.id);
+  let prev=null,pe=-1;D.corners.forEach(k=>{if(!fin(k.end_m))return;const e=wrapM(k.end_m);if(e<=m&&e>pe){prev=k;pe=e}});
+  return prev?'after '+String(prev.id):Math.round(f*100)+'% of the way round'}
+function fiFrame(host,H,label){const W=Math.max(300,Math.min(1100,host.clientWidth||720));
+  return {W,svg:el('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',height:H,role:'img','aria-label':label})}}
+function fiGrid(svg,W,ml,mr,Y,vals,f){vals.forEach(v=>svg.append(el('line',{x1:ml,x2:W-mr,y1:Y(v),y2:Y(v),stroke:'var(--line)'}),T(ml-6,Y(v)+4,f(v),{'text-anchor':'end','font-size':11.5})))}
+function fiLaps(svg,X,L0,L1,y){const st=Math.max(1,Math.ceil(niceStep(Math.max(1,L1-L0),8)));const ls=[L0];
+  for(let l=Math.ceil((L0+1)/st)*st;l<L1;l+=st)if(X(L1)-X(l)>=30)ls.push(l);if(L1!==L0)ls.push(L1);
+  let last=-1e9;ls.forEach(l=>{const x=X(l);if(x-last<30&&l!==L1)return;svg.append(T(x,y,'L'+l,{'text-anchor':'middle','font-size':11.5}));last=x})}
+// legend: [kind, colour, words]; kind is line, dash, box or dot
+function fiKey(key,items){items.forEach(([k,c,t])=>{const s=h('span');const i=h('i','k'+(k==='box'?' box':k==='dot'?' dot':''));
+  if(k==='box'||k==='dot')i.style.background=c;else{i.style.borderColor=c;if(k==='dash')i.style.borderTopStyle='dashed'}s.append(i,document.createTextNode(t));key.append(s)})}
+const FI_DRAW={
+  fuel(C,box,key,p){const laps=(Array.isArray(C.laps)?C.laps:[]).filter(x=>isObj(x)&&fin(x.lap)&&fin(x.l)&&x.l>=0);if(laps.length<2)return false;
+    if(fin(C.laps_per_tank)&&C.laps_per_tank>0)p.insertBefore(h('p',null,'A full tank lasts about '+C.laps_per_tank.toFixed(1)+' laps at that rate.'),box);
+    const H=200,ml=48,mr=12,top=14,bot=24;const {W,svg}=fiFrame(box,H,'Fuel used each lap, in '+(FI_UNIT==='gal'?'gallons':'litres'));
+    const L0=Math.min(...laps.map(x=>x.lap)),L1=Math.max(...laps.map(x=>x.lap)),n=L1-L0+1;const slot=(W-ml-mr)/n,bw=Math.max(2,Math.min(26,slot*0.7));
+    const X=l=>ml+slot*(l-L0+0.5);const mx=Math.max(...laps.map(x=>fiFuel(x.l)),fin(C.median)?fiFuel(C.median):0)*1.12||1;const Y=v=>top+(H-top-bot)*(1-v/mx);
+    fiGrid(svg,W,ml,mr,Y,ticks(0,mx,4),v=>v.toFixed(mx<2?2:1));svg.append(T(ml-6,top-4,FI_UNIT,{'text-anchor':'end','font-size':11}));
+    laps.forEach(x=>{const v=fiFuel(x.l);const r=el('rect',{x:X(x.lap)-bw/2,y:Y(v),width:bw,height:Math.max(0,Y(0)-Y(v)),rx:1.5,fill:x.pit?'var(--mid)':'var(--a)'});
+      hover(r,'Lap '+x.lap,[fiFuelTxt(x.l)+' used'+(x.pit?'. A pit lap, so it is left out of the average.':'.')]);svg.append(r)});
+    if(fin(C.median)){const y=Y(fiFuel(C.median));svg.append(el('line',{x1:ml,x2:W-mr,y1:y,y2:y,stroke:'var(--b)','stroke-width':2,'stroke-dasharray':'6 4'}))}
+    fiLaps(svg,X,L0,L1,H-6);box.append(svg);
+    fiKey(key,[['box','var(--a)','Fuel used on a lap'],...(laps.some(x=>x.pit)?[['box','var(--mid)','Pit lap']]:[]),...(fin(C.median)?[['dash','var(--b)','Your average, '+fiFuelTxt(C.median)]]:[])]);
+    return true},
+  position(C,box,key){const P=(Array.isArray(C.laps)?C.laps:[]).filter(x=>isObj(x)&&fin(x.lap)&&fin(x.pos)).sort((a,b)=>a.lap-b.lap);if(P.length<2)return false;
+    const cls=!!C.class&&P.some(x=>fin(x.cpos));const all=P.map(x=>x.pos).concat(cls?P.filter(x=>fin(x.cpos)).map(x=>x.cpos):[]);const lo=Math.min(...all),hi=Math.max(...all);
+    const H=220,ml=40,mr=12,top=16,bot=24;const L0=P[0].lap,L1=P[P.length-1].lap;
+    const {W,svg}=fiFrame(box,H,'Your position by lap: P'+P[0].pos+' on lap '+L0+' to P'+P[P.length-1].pos+' on lap '+L1);
+    const X=l=>ml+(W-ml-mr)*(l-L0)/Math.max(1,L1-L0),Y=v=>top+(H-top-bot)*(hi===lo?0.5:(v-lo)/(hi-lo));
+    fiGrid(svg,W,ml,mr,Y,ticks(lo,hi,4).filter(v=>Number.isInteger(v)),v=>'P'+v);
+    const stops=(Array.isArray(C.stops)?C.stops:[]).filter(l=>fin(l)&&l>=L0&&l<=L1);const sw=Math.max(6,(W-ml-mr)/Math.max(1,L1-L0)*0.8);
+    stops.forEach(l=>{const r=el('rect',{x:X(l)-sw/2,y:top-6,width:sw,height:H-top-bot+12,fill:'var(--pb)','fill-opacity':.16});hover(r,'Lap '+l,['Your pit stop.']);svg.append(r)});
+    const line=(k,c)=>{const q=P.filter(x=>fin(x[k]));if(q.length>1)svg.append(el('polyline',{points:q.map(x=>X(x.lap).toFixed(1)+','+Y(x[k]).toFixed(1)).join(' '),fill:'none',stroke:c,'stroke-width':2,'stroke-linejoin':'round'}))};
+    if(cls)line('cpos','var(--b)');line('pos','var(--a)');
+    P.forEach(x=>{const d=el('circle',{cx:X(x.lap),cy:Y(x.pos),r:P.length>60?2:3,fill:'var(--panel)',stroke:'var(--a)','stroke-width':1.5});
+      hover(d,'Lap '+x.lap,['P'+x.pos+' overall'+(cls&&fin(x.cpos)?', P'+x.cpos+' in your class':'')+'.']);svg.append(d)});
+    const inc={};(Array.isArray(C.incidents)?C.incidents:[]).filter(e=>isObj(e)&&fin(e.lap)).forEach(e=>{(inc[e.lap]=inc[e.lap]||[]).push(e)});
+    Object.keys(inc).forEach(k=>{const l=+k;if(l<L0||l>L1)return;const near=P.reduce((a,b)=>Math.abs(b.lap-l)<Math.abs(a.lap-l)?b:a);const x=X(l),y=Y(near.pos)-9;
+      const t=el('path',{d:'M'+x+','+(y+5)+' l-5.5,-9 h11 z',fill:'var(--warn)',stroke:'var(--panel)','stroke-width':1});
+      const pts=inc[k].reduce((a,e)=>a+(fin(e.n)?e.n:0),0);hover(t,'Lap '+l,['+'+pts+' incident point'+(pts===1?'':'s')+(inc[k].some(e=>fin(e.d))?', at '+andList(inc[k].filter(e=>fin(e.d)).map(e=>fiWhere(e.d)))+'.':'.')]);svg.append(t)});
+    fiLaps(svg,X,L0,L1,H-6);box.append(svg);
+    fiKey(key,[['line','var(--a)','Overall'],...(cls?[['line','var(--b)','In your class']]:[]),...(stops.length?[['box','color-mix(in srgb,var(--pb) 35%,transparent)','Your pit stop']]:[]),...(Object.keys(inc).length?[['dot','var(--warn)','Incident']]:[])]);
+    return true},
+  gaps(C,box,key,p){const G=(Array.isArray(C)?C:[]).filter(g=>isObj(g)&&fin(g.lap)).sort((a,b)=>a.lap-b.lap);const vals=G.flatMap(g=>[g.ahead,g.behind].filter(fin));if(G.length<2||vals.length<2)return false;
+    const cap=Math.max(2,Math.min(Math.max(...vals),(quant(vals,0.9)||2)*1.5));const gst=niceStep(cap,4),mx=+(Math.ceil(cap/gst-1e-9)*gst).toFixed(6);
+    const H=210,ml=44,mr=12,top=14,bot=24;const L0=G[0].lap,L1=G[G.length-1].lap;const {W,svg}=fiFrame(box,H,'Gaps to the car ahead and the car behind, lap by lap');
+    const X=l=>ml+(W-ml-mr)*(l-L0)/Math.max(1,L1-L0),Y=v=>top+(H-top-bot)*(1-Math.min(v,mx)/mx);
+    fiGrid(svg,W,ml,mr,Y,ticks(0,mx,4),v=>v+' s');let clipped=false;
+    [['ahead','var(--a)'],['behind','var(--b)']].forEach(([k,c])=>{const q=G.filter(g=>fin(g[k]));if(!q.length)return;
+      if(q.length>1)svg.append(el('polyline',{points:q.map(g=>X(g.lap).toFixed(1)+','+Y(g[k]).toFixed(1)).join(' '),fill:'none',stroke:c,'stroke-width':2,'stroke-linejoin':'round'}));
+      q.forEach(g=>{const over=g[k]>mx;if(over)clipped=true;const d=el('circle',{cx:X(g.lap),cy:Y(g[k]),r:over?4:2.6,fill:over?'var(--panel)':c,stroke:c,'stroke-width':1.5});
+        hover(d,'Lap '+g.lap,[(k==='ahead'?'Car ahead':'Car behind')+(g[k+'_name']?' ('+g[k+'_name']+')':'')+': '+g[k].toFixed(1)+' s.']);svg.append(d)})});
+    fiLaps(svg,X,L0,L1,H-6);box.append(svg);
+    fiKey(key,[['line','var(--a)','Car ahead'],['line','var(--b)','Car behind']]);
+    if(clipped)p.append(h('p','note','Gaps over '+mx+' s are drawn at the top as open dots.'));
+    return true},
+  stops(C,box,key,p){let cars=(Array.isArray(C.cars)?C.cars:[]).filter(c=>isObj(c)&&Array.isArray(c.stops)&&c.stops.some(s=>isObj(s)&&fin(s.lap)));if(!cars.length)return false;
+    const mine=String(C.me_class||''),multi=new Set(cars.map(c=>String(c.cls||''))).size>1;const nk=n=>/^\d+$/.test(String(n))?+n:1e6;
+    cars.sort((a,b)=>(b.me-a.me)||((String(b.cls||'')===mine)-(String(a.cls||'')===mine))||(nk(a.n)-nk(b.n)));
+    const MAXR=24,more=Math.max(0,cars.length-MAXR);cars=cars.slice(0,MAXR);
+    const laps=Math.max(fin(C.laps)?C.laps:1,...cars.flatMap(c=>c.stops.map(s=>s.lap||1)));
+    const rh=22,ml=170,mr=12,top=6,bot=24,H=top+cars.length*rh+bot;const {W,svg}=fiFrame(box,H,'Pit stops by lap for '+plural(cars.length,'car'));
+    const X=l=>ml+(W-ml-mr)*(l-1)/Math.max(1,laps-1);
+    cars.forEach((c,i)=>{const y=top+i*rh,dim=multi&&mine&&String(c.cls||'')!==mine;
+      if(c.me)svg.append(el('rect',{x:0,y,width:W,height:rh,fill:'var(--hi)'}));
+      svg.append(el('line',{x1:ml,x2:W-mr,y1:y+rh/2,y2:y+rh/2,stroke:'var(--line)'}));
+      let lab=(c.n?'#'+c.n+' ':'')+String(c.name||'');if(lab.length>22)lab=lab.slice(0,21)+'…';
+      svg.append(el('text',{x:ml-8,y:y+rh/2+4,'text-anchor':'end','font-size':12,fill:dim?'var(--muted)':'var(--ink)','font-weight':c.me?600:400},lab+(c.me?' (you)':'')));
+      c.stops.filter(s=>isObj(s)&&fin(s.lap)).forEach(s=>{const m=el('rect',{x:X(s.lap)-4,y:y+4,width:8,height:rh-8,rx:2,fill:c.me?'var(--a)':dim?'var(--mid)':'var(--ink2)'});
+        hover(m,(c.n?'#'+c.n+' ':'')+String(c.name||''),['Lap '+s.lap+(fin(s.s)?', '+Math.round(s.s)+' s in the pit lane.':'.')]);svg.append(m)})});
+    fiLaps(svg,X,1,laps,H-6);box.append(svg);
+    fiKey(key,[['box','var(--a)','Your stops'],['box','var(--ink2)','Another car'+(multi&&mine?' in your class':'')],...(multi&&mine?[['box','var(--mid)','Another class']]:[])]);
+    if(more)p.append(h('p','note','The '+plural(more,'other car')+' that stopped '+(more===1?'is':'are')+' in the numbers below.'));
+    return true},
+  tyres(C,box,key){const w=Array.isArray(C.wear)?C.wear:[];if(w.length!==4||!w.every(fin))return false;
+    const col=v=>v>=0.7?'var(--good)':v>=0.4?'var(--warn)':'var(--bad)';
+    const svg=el('svg',{viewBox:'-30 0 360 250',width:360,height:250,role:'img','aria-label':'Tread left at the end: '+w.map(v=>Math.round(v*100)+'%').join(', ')});svg.style.maxWidth='100%';
+    svg.append(T(150,14,'Front',{'text-anchor':'middle','font-size':11.5}),el('rect',{x:110,y:24,width:80,height:204,rx:28,fill:'var(--band)',stroke:'var(--axis)'}));
+    [['Front left',72,44,'end',62],['Front right',196,44,'start',238],['Rear left',72,160,'end',62],['Rear right',196,160,'start',238]].forEach(([n,x,y,a,tx],i)=>{
+      const r=el('rect',{x,y,width:32,height:58,rx:5,fill:col(w[i]),'fill-opacity':.85,stroke:'var(--ink2)','stroke-width':1});hover(r,n,[Math.round(w[i]*100)+'% of the tread left at the end.']);
+      svg.append(r,el('text',{x:tx,y:y+27,'text-anchor':a,'font-size':16,'font-weight':600,fill:'var(--ink)','font-family':MONO},Math.round(w[i]*100)+'%'),T(tx,y+44,n.toLowerCase(),{'text-anchor':a,'font-size':11}))});
+    box.append(svg);fiKey(key,[['box','var(--good)','70% or more left'],['box','var(--warn)','40 to 70%'],['box','var(--bad)','Under 40%']]);return true},
+  aids(C,box,key){const ch=(Array.isArray(C.changes)?C.changes:[]).filter(c=>isObj(c)&&fin(c.lap)&&FI_AID[c.aid]);if(!ch.length)return false;
+    const per=(Array.isArray(C.per_lap)?C.per_lap:[]).filter(x=>isObj(x)&&fin(x.lap));const ks=['bb','abs','tc'].filter(k=>ch.some(c=>c.aid===k));
+    const all=per.map(x=>x.lap).concat(ch.map(c=>c.lap));const L0=Math.min(...all),L1=Math.max(...all,L0+1);
+    const rh=40,ml=130,mr=24,top=8,bot=24,H=top+ks.length*rh+bot;const {W,svg}=fiFrame(box,H,'Driver aid changes by lap');
+    const X=l=>ml+(W-ml-mr)*(l-L0)/Math.max(1,L1-L0);
+    ks.forEach((k,i)=>{const y=top+i*rh+rh/2+6;const cs=ch.filter(c=>c.aid===k).sort((a,b)=>a.lap-b.lap);
+      svg.append(el('text',{x:ml-10,y:y+4,'text-anchor':'end','font-size':12.5,fill:'var(--ink)'},FI_AID[k]),el('line',{x1:ml,x2:W-mr,y1:y,y2:y,stroke:'var(--axis)','stroke-width':2}));
+      const first=per.find(x=>x[k]!=null);const v0=cs[0].from!=null?cs[0].from:first?first[k]:null;let last=-1e9;
+      if(v0!=null){svg.append(T(ml+2,y-8,fiNum(v0),{'font-size':11}));last=ml+2}
+      cs.forEach(c=>{const x=X(c.lap);const d=el('circle',{cx:x,cy:y,r:5,fill:'var(--b)',stroke:'var(--panel)','stroke-width':1.5});
+        const where=fin(c.d)?fiWhere(c.d):'';hover(d,'Lap '+c.lap,[FI_AID[k]+' from '+fiNum(c.from)+' to '+fiNum(c.to)+(where?', '+where:'')+'.']);svg.append(d);
+        if(x-last>=40){svg.append(T(x,y-9,fiNum(c.to),{'text-anchor':'middle','font-size':11,fill:'var(--ink)'}));last=x}})});
+    fiLaps(svg,X,L0,L1,H-6);box.append(svg);fiKey(key,[['dot','var(--b)','You changed it (the new value above)']]);return true},
+  incidents(C,box,key,p){const ev=(Array.isArray(C)?C:[]).filter(e=>isObj(e)&&fin(e.lap));
+    const where=ev.filter(e=>fin(e.d));if(where.length&&where.length<=10)p.insertBefore(h('p',null,'Where: '+andList(where.map(e=>'lap '+e.lap+' '+fiWhere(e.d)+(fin(e.n)?' (+'+e.n+')':'')))+'.'),box);
+    if(!MAP||!where.length)return false;
+    const W=Math.max(260,Math.min(460,box.clientWidth||420)),H=Math.round(W*0.68);const pts=mapFit(W,H,24);if(pts.length<10)return false;
+    const svg=el('svg',{viewBox:'0 0 '+W+' '+H,width:W,height:H,role:'img','aria-label':'Track map with '+plural(where.length,'incident')});svg.style.maxWidth='100%';
+    const d='M'+pts.map(q=>q[0].toFixed(1)+','+q[1].toFixed(1)).join(' L')+' Z';
+    svg.append(el('path',{d,fill:'none',stroke:'var(--track)','stroke-width':10,'stroke-linejoin':'round'}),el('path',{d,fill:'none',stroke:'var(--axis)','stroke-width':1.5,'stroke-linejoin':'round'}));
+    svg.append(el('circle',{cx:pts[0][0],cy:pts[0][1],r:4,fill:'var(--ink)'}));
+    const seen={};where.forEach(e=>{const f=((e.d%1)+1)%1;const i=Math.min(pts.length-1,Math.round(f*(pts.length-1)));const k=Math.round(i/3);const o=(seen[k]=(seen[k]||0)+1)-1;
+      const [x,y]=pts[i];const r=fin(e.n)?Math.min(10,4+2*e.n):5;const c=el('circle',{cx:x+o*7,cy:y-o*7,r,fill:'var(--bad)','fill-opacity':.85,stroke:'var(--panel)','stroke-width':1.5});
+      hover(c,'Lap '+e.lap,[(fin(e.n)?'+'+e.n+' incident point'+(e.n===1?'':'s'):'An incident')+' at '+fiWhere(e.d)+'.']);svg.append(c)});
+    box.append(svg);fiKey(key,[['dot','var(--bad)','An incident (bigger means more points)'],['dot','var(--ink)','Start/finish line']]);return true}
+};
+
 // ---------- 2.27: what Debrief recorded from iRacing while you drove (D.from_iracing; built in recordings.py, all words and numbers are made there)
 safe('from iracing',()=>{const X=isObj(D.from_iracing)?D.from_iracing:null;if(!X||!Array.isArray(X.blocks))return;const host=$('fiBody');
+  $('fromIracing').hidden=false;$('jumpFi').hidden=false;   // 2.35: shown first, so each chart can measure its width
   $('fiLede').textContent=typeof X.lede==='string'?X.lede:'';
-  X.blocks.filter(isObj).forEach(b=>{const p=h('div','panel');p.append(h('h3',null,String(b.h||'')));
+  const CH=isObj(X.charts)?X.charts:{};const nums={};
+  const tableOf=tb=>{const tw=h('div','tablewrap');const t=h('table');const hd=h('thead');const hr=h('tr');tb.cols.forEach(c=>hr.append(h('th',null,String(c))));hd.append(hr);t.append(hd);
+    const bd=h('tbody');tb.rows.forEach(r=>{const tr=h('tr');(Array.isArray(r)?r:[]).forEach(c=>tr.append(h('td',null,String(c))));bd.append(tr)});t.append(bd);tw.append(t);return tw};
+  X.blocks.filter(isObj).forEach(b=>{
+    let tb=isObj(b.table)&&Array.isArray(b.table.cols)&&Array.isArray(b.table.rows)&&b.table.rows.length?b.table:null;
+    // a "numbers of" block (fuel lap by lap) goes under its chart's Show the numbers when that chart was drawn
+    if(typeof b.numbers_of==='string'&&nums[b.numbers_of]){if(tb){const d=nums[b.numbers_of];d.hidden=false;d.append(h('h4',null,String(b.h||'')),tableOf(tb))}return}
+    const p=h('div','panel');p.append(h('h3',null,String(b.h||'')));host.append(p);
     (Array.isArray(b.lines)?b.lines:[]).forEach(l=>p.append(h('p',null,String(l))));
-    const T=isObj(b.table)&&Array.isArray(b.table.cols)&&Array.isArray(b.table.rows)&&b.table.rows.length?b.table:null;
-    if(T){const tw=h('div','tablewrap');const t=h('table');const hd=h('thead');const hr=h('tr');T.cols.forEach(c=>hr.append(h('th',null,String(c))));hd.append(hr);t.append(hd);
-      const tb=h('tbody');T.rows.forEach(r=>{const tr=h('tr');(Array.isArray(r)?r:[]).forEach(c=>tr.append(h('td',null,String(c))));tb.append(tr)});t.append(tb);tw.append(t);p.append(tw)}
-    if(typeof b.note==='string'&&b.note)p.append(h('p','note',b.note));host.append(p)});
-  (Array.isArray(X.notes)?X.notes:[]).forEach(n=>$('fiNotes').append(h('p','note',String(n))));
-  $('fromIracing').hidden=false;$('jumpFi').hidden=false},'fiBody');
+    // incidents: the corner, not "90% of the way round"
+    if(b.chart==='incidents'&&tb&&Array.isArray(CH.incidents)&&CH.incidents.length===tb.rows.length)
+      tb={cols:tb.cols,rows:tb.rows.map((r,i)=>{const w=isObj(CH.incidents[i])?fiWhere(CH.incidents[i].d):'';return w&&Array.isArray(r)&&r.length>2?[...r.slice(0,2),w,...r.slice(3)]:r})};
+    let drawn=false;const fn=typeof b.chart==='string'&&FI_DRAW[b.chart];
+    if(fn&&CH[b.chart]!=null){const box=h('div','chart fichart');const key=h('div','legend');p.append(box);
+      try{drawn=fn(CH[b.chart],box,key,p)===true}catch(e){try{console.error('Debrief: the '+b.chart+' chart could not be drawn:',e)}catch(_){}drawn=false}
+      if(drawn){if(key.children.length)p.insertBefore(key,box.nextSibling)}else box.remove()}
+    if(drawn){const d=h('details','finums');d.append(h('summary',null,'Show the numbers'));if(tb)d.append(tableOf(tb));else d.hidden=true;p.append(d);nums[b.chart]=d}
+    else if(tb)p.append(tableOf(tb));
+    if(typeof b.note==='string'&&b.note)p.append(h('p','note',b.note))});
+  (Array.isArray(X.notes)?X.notes:[]).forEach(n=>$('fiNotes').append(h('p','note',String(n))))},'fiBody');
 
 // Save as PDF: the numbers, the race log and the extra corners are on paper too, with no way to unfold them there.
 // Anything else prints if you opened it. Folds go back to how they were after the print dialog closes.
-let pdfOpened=[];function pdfOpen(){['deep','rlGapsWrap','rlMoments','fixMore'].forEach(id=>{const d=$(id);if(d&&!d.hidden&&!d.open){pdfOpened.push(d);if(id==='deep')openDeep();else d.open=true}})}
+let pdfOpened=[];function pdfOpen(){['deep','rlGapsWrap','rlMoments','fixMore'].forEach(id=>{const d=$(id);if(d&&!d.hidden&&!d.open){pdfOpened.push(d);if(id==='deep')openDeep();else d.open=true}});document.querySelectorAll('details.finums').forEach(d=>{if(!d.hidden&&!d.open){pdfOpened.push(d);d.open=true}})}
 $('btnPdf').addEventListener('click',()=>{pdfOpen();setTimeout(()=>window.print(),250)});
 window.addEventListener('beforeprint',pdfOpen);window.addEventListener('afterprint',()=>{pdfOpened.forEach(d=>{d.open=false});pdfOpened=[]});
 // ---------- 2.8: the race, from a replay scan (D.racecap). Everything is textContent; without a scan the page is as before.

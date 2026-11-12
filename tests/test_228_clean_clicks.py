@@ -1351,12 +1351,12 @@ def test_review_page_keeps_every_section_and_number():
 
 def test_layout_is_bumped_and_saved_reviews_are_refreshed_once():
     from debrief import report
-    assert report.LAYOUT == "2.28.1"
+    assert report.LAYOUT == "2.35.0"
     lib = TMP / "layoutlib"
     MFL.main(str(lib))
     (lib / ".layout").write_text("2.18.0", encoding="utf-8")
     n = report.refresh_all(str(lib))
-    assert n >= 1 and (lib / ".layout").read_text(encoding="utf-8").strip() == "2.28.1"
+    assert n >= 1 and (lib / ".layout").read_text(encoding="utf-8").strip() == report.LAYOUT
     assert (lib / ".backup").is_dir() or any(lib.glob(".backup*")), "reviews are backed up before the re-render"
     assert report.refresh_all(str(lib)) == 0           # once per layout
 

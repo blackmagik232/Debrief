@@ -148,7 +148,7 @@ def test_view_uses_plain_words_and_names_its_source():
     folder, _ = record(lib=lib, seconds=330)
     sec, sm = recordings.find(lib, f"{folder.name}#2")
     v = recordings.view(sec, sm)
-    assert v["title"] == "From iRacing" and "straight from iRacing" in v["lede"] and "Garage 61" in v["lede"]
+    assert v["title"] == "From iRacing" and "straight from iRacing" in v["lede"] and "Garage 61" not in v["lede"], "2.35: iRacing's own numbers"
     heads = [b["h"] for b in v["blocks"]]
     assert heads[:2] == ["Fuel", "Fuel lap by lap"] and "Driver aids" in heads and "Incidents" in heads
     assert "Your position over the race" in heads and "Pit stops, every car" in heads and "Your pit stops" in heads
@@ -236,7 +236,7 @@ def test_review_page_template_has_the_section_and_draws_only_text():
     chunk = t[mark:mark + 2500]
     assert "innerHTML" not in chunk and "textContent" in chunk or "h('" in chunk
     assert t.index('id="fromIracing"') < t.index('<details class="deep"'), "up front, not folded away"
-    assert report.LAYOUT == "2.28.1", "2.28.1 re-renders saved reviews once (review.html changed); reviews with a recording are rewritten by attach_pending; the rest need no re-render"
+    assert report.LAYOUT == "2.35.0", "2.35.0 re-renders saved reviews once (review.html draws the From iRacing charts)"
 
 
 # ================================================================ endpoints
@@ -716,6 +716,8 @@ def test_window_settings_live_data_and_sessions_from_iracing():
     srv().recorder = None
 
     def go(pg):
+        # What's new opens once after an update (this checkout's whatsnew.json may say an older version was seen): not this test's subject
+        pg.route("**/api/whatsnew*", lambda r: r.fulfill(body='{"ok": true, "show": false}', content_type="application/json"))
         pg.goto(srv().url)
         pg.wait_for_selector(".navbtn[data-nav=settings]", timeout=15000)
         pg.click(".navbtn[data-nav=settings]")

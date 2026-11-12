@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.31.1 "Tidy"
+
+Two small fixes from a full check of Debrief. Nothing new to learn, and your reviews and settings are untouched.
+
+- **Error messages no longer get stuck on screen.** When a background job stopped (for example the history sync while you are offline), its red message stayed in the bottom corner on every page until you closed it, and could cover a button. It now goes away by itself after a few seconds. The same message still shows on the page it belongs to (All sessions for the sync), and the sync dot in the sidebar still shows it.
+- **A cleaner log.** Clicking to another page before the last one had finished loading wrote a false error into Debrief's log. That no longer happens, so when something really goes wrong it is easy to find in **Copy diagnostics**.
+
+### For the record
+
+- `debrief/desktop/server.py`: `_send` drops a reply quietly when the window has closed the connection (ConnectionError: Windows ConnectionAbortedError 10053, Linux BrokenPipeError) instead of raising into the route's error handler, which logged "ERROR in api/..." with a traceback and then tried to write a 500 to the same closed connection.
+- `debrief/desktop/ui/app.js`: `banner(msg, true, ms)` now honours its time; error banners with no time (or 0) still stay until closed.
+- `debrief/balance.py`: removed an older copy of `_step` that a newer one below it replaced (no change in behaviour).
+- Tests: new `tests/test_2311_quiet.py` (fails 10 checks on 2.31.0, passes now); `tests/test_25_d.py`'s Discord stand-in gains `digest`, so its run no longer prints a false "Weekly digest failed" traceback.
+- Found by a full audit on 2026-11-12: full test suite, every page in a test browser on a fresh install and with a library, at 1400x900 and 1280x720, light and dark. No script errors, failed requests or broken text on any page.
+- Not proven yet: the Windows build of this version on your PC.
+
 ## 2.31.0 "Help"
 
 Help is now a proper guide instead of a wall of text, and it teaches you how to use Debrief to get faster and understand your car.

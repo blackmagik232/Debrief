@@ -49,7 +49,8 @@ function fileNotesEl(files){if(!files.length)return null;const d=h('details','su
 try{window.debriefUi=Object.freeze({plainText,plainLines,fileNotes,keyList:()=>keyList(),pageKeys:()=>PAGE_KEYS.slice(),sure:k=>SURE[k]&&SURE[k][0]})}catch(e){}
 // 2.6: error banners stay until the close button is pressed; other banners still fade after a few seconds
 function banner(msg,bad,ms){msg=plainText(msg)||msg;const b=$('banner');const ba=$('bannerAct');if(ba)ba.remove();const so=$('shareOpen');if(so)so.remove();$('bannerText').textContent=msg;b.className='banner'+(bad?' bad':'');b.hidden=false;clearTimeout(banner.t);
-  if(ms!==0&&!bad)banner.t=setTimeout(()=>b.hidden=true,ms||5000)}
+  // 2.31.1: an error with its own time (a background job that stopped) hides after it too; an error with no time stays
+  if(ms!==0&&(!bad||ms))banner.t=setTimeout(()=>b.hidden=true,ms||5000)}
 $('bannerClose').addEventListener('click',()=>{clearTimeout(banner.t);$('banner').hidden=true});
 // 2.18: a banner with one action button (e.g. Rebuild), gone with the next banner
 function bannerAction(msg,label,fn,ms){banner(msg,false,ms==null?12000:ms);const b=h('button','btn ghost',label);b.type='button';b.id='bannerAct';b.addEventListener('click',()=>{$('banner').hidden=true;fn()});$('bannerClose').before(b)}

@@ -2474,9 +2474,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header(k, v)
         if extra.get("Connection", "").lower() == "close":
             self.close_connection = True
-        self.end_headers()
-        if self.command != "HEAD":
-            self.wfile.write(body)
+        try:
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+        except ConnectionError:
+            # 2.31.1: the window stopped waiting (a click to another page, a reload, closing Debrief). Windows says
+            # ConnectionAbortedError, Linux BrokenPipeError. Nothing is wrong and nobody is left to answer, so this is
+            # not logged as an ERROR: those false errors filled debrief.log and hid the real ones.
+            self.close_connection = True
 
     def _json(self, obj, code=200):
         try:   # 2.18: every speed the window shows in the one unit from Settings > Units

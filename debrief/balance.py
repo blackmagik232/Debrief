@@ -1078,21 +1078,6 @@ def _find_key(flat: dict, leaves, side: str | None = None):
     return None, None
 
 
-def _step(key: str, text: str, way: int):
-    """(new text value, step) one step `way` (+1 up, -1 down) from the current value; None if not a number."""
-    from . import setuplab
-    s = setuplab._num_text(text)
-    if s is None:
-        return None
-    dec = setuplab._decimals(s)
-    leaf = key.rsplit(".", 1)[-1]
-    step = 0.5 if (leaf in _BIAS or (leaf in _WING and dec)) else (1.0 if dec == 0 else 10 ** -dec)
-    new = float(s) + way * step
-    if leaf in _ARB + _TC and new < 1:
-        return None                                  # already at the lowest number (the range isn't in the file)
-    return (f"{new:.{max(dec, 1 if step == 0.5 else 0)}f}" if dec or step == 0.5 else f"{int(round(new))}"), s
-
-
 TARGETS = {
     "front_arb": (_ARB, "front", "Front anti-roll bar", {-1: "one step softer", 1: "one step stiffer"}),
     "rear_arb": (_ARB, "rear", "Rear anti-roll bar", {-1: "one step softer", 1: "one step stiffer"}),

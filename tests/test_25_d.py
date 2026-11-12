@@ -142,6 +142,7 @@ def fakes(rec=None, post_raises=None, check_result=None, learn=True):
                      "Webhooks > Copy Webhook URL.")
     d.valid = lambda url: isinstance(url, str) and bool(re.match(WEBHOOK_RE, url)) and not any(c.isspace() for c in url)
     d.hint = lambda url: "…/" + re.match(WEBHOOK_RE, url).group(1)[-4:]
+    d.digest = lambda rows, today=None: None   # the library page asks for the weekly digest on every rebuild
 
     def check(url):
         rec.calls.append(("discord.check", url))

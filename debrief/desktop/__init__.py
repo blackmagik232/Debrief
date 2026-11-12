@@ -378,7 +378,7 @@ def selftest() -> int:
         from .. import prepare
         with tempfile.TemporaryDirectory() as td:
             checks["prepare"] = prepare.view({"library_folder": td}, None, []).get("ok") is True
-        for asset, want in (("static/app.js", b"use strict"), ("static/app.css", b"box-sizing"),
+        for asset, want in (("static/app.js", b"use strict"), ("static/app.css", b"box-sizing"), ("static/help.js", b"DEBRIEF_HELP"),
                             ("static/tokens.css", b":root"), ("static/icon.png", b"PNG")):
             checks[asset] = get(asset, want)
 

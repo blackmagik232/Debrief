@@ -258,7 +258,7 @@ def _window(api, viewport=(1280, 860), fresh_storage=True):
         path, _, qs = rel.partition("?")
         if path in ("", "index.html"):
             return route.fulfill(body=(UI / "index.html").read_text(encoding="utf-8"), content_type="text/html")
-        if path in ("static/app.js", "static/app.css"):
+        if path in ("static/app.js", "static/app.css", "static/help.js"):
             return route.fulfill(body=(UI / path[7:]).read_text(encoding="utf-8"),
                                  content_type="text/javascript" if path.endswith(".js") else "text/css")
         if path.startswith("lib/"):

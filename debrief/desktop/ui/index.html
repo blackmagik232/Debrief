@@ -1038,10 +1038,32 @@
   <div id="newBody" class="newbody"></div>
   <div class="row"><button type="button" class="btn primary" id="newOk">Got it</button></div>
 </dialog>
-<dialog id="dlgHelp" aria-labelledby="helpTitle">
-  <div class="phead"><h3 id="helpTitle">Help</h3><button type="button" class="btn ghost" id="helpClose">Close</button></div>
-  <div class="row" role="group" aria-label="Help pages"><button type="button" class="btn" id="helpWhatsNew">What's new</button><button type="button" class="btn" data-help="tour">Tour</button><button type="button" class="btn" data-help="words">What the words mean</button><button type="button" class="btn" data-help="keys">Keyboard keys</button><button type="button" class="btn" data-help="credits">Credits</button><button type="button" class="btn" id="helpFirstRun">Setup checklist</button></div>
-  <div id="helpBody"></div>
+<dialog id="dlgHelp" class="helpdlg" aria-labelledby="helpTitle">
+  <div class="helpwrap">
+    <aside class="helpside">
+      <div class="helpbrand"><span class="eyebrow">Debrief</span><h3 id="helpTitle">Help</h3></div>
+      <nav class="helpnav" aria-label="Help pages">
+        <span class="hgroup">Learn</span>
+        <button type="button" class="hnav" data-help="start">Start here</button>
+        <button type="button" class="hnav" data-help="improve">Get faster</button>
+        <button type="button" class="hnav" data-help="car">Know your car</button>
+        <button type="button" class="hnav" data-help="race">Race smarter</button>
+        <span class="hgroup">Reference</span>
+        <button type="button" class="hnav" data-help="tour">Every page</button>
+        <button type="button" class="hnav" data-help="numbers">Reading the numbers</button>
+        <button type="button" class="hnav" data-help="words">Glossary</button>
+        <button type="button" class="hnav" data-help="keys">Keyboard keys</button>
+        <span class="hgroup">More</span>
+        <button type="button" class="hnav" id="helpWhatsNew">What's new</button>
+        <button type="button" class="hnav" id="helpFirstRun">Setup checklist</button>
+        <button type="button" class="hnav" data-help="credits">Credits</button>
+      </nav>
+    </aside>
+    <div class="helpmain">
+      <div class="helptop"><input type="search" id="helpSearch" placeholder="Search Help: a word, a page, a key" aria-label="Search Help" autocomplete="off" spellcheck="false"><button type="button" class="btn ghost" id="helpClose">Close</button></div>
+      <div id="helpBody" class="helpbody" tabindex="-1"></div>
+    </div>
+  </div>
 </dialog>
 <dialog id="dlgCard" aria-labelledby="cardTitle">
   <form id="fCard" method="dialog" autocomplete="off">
@@ -1146,6 +1168,7 @@
     <div class="row"><button type="button" class="btn primary" id="discordHowGo">Open Discord settings in Debrief</button><button type="button" class="btn" id="discordHowCancel">Not now</button></div>
   </div>
 </dialog>
+<script src="static/help.js"></script>
 <script src="static/app.js"></script>
 <script src="static/raceroom.js"></script>
 </body></html>

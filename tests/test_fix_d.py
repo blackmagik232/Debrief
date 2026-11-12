@@ -581,6 +581,8 @@ def _app(api, width=1280):
             return route.fulfill(body=(UI / "index.html").read_text(encoding="utf-8"), content_type="text/html")
         if rel == "static/app.js":
             return route.fulfill(body=(UI / "app.js").read_text(encoding="utf-8"), content_type="text/javascript")
+        if rel == "static/help.js":
+            return route.fulfill(body=(UI / "help.js").read_text(encoding="utf-8"), content_type="text/javascript")
         if rel == "static/app.css":
             return route.fulfill(body=(UI / "app.css").read_text(encoding="utf-8"), content_type="text/css")
         if rel == "static/tokens.css":

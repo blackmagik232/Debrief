@@ -592,7 +592,7 @@ def test_window_session_buttons_say_practice_and_qualifying():
         rel = route.request.url[len(base_url):].split("?")[0]
         if rel in ("", "index.html"):
             return route.fulfill(body=(UI / "index.html").read_text(encoding="utf-8"), content_type="text/html")
-        if rel in ("static/app.js", "static/app.css"):
+        if rel in ("static/app.js", "static/app.css", "static/help.js"):
             return route.fulfill(body=(UI / rel[7:]).read_text(encoding="utf-8"),
                                  content_type="text/javascript" if rel.endswith(".js") else "text/css")
         if rel.startswith("api/"):

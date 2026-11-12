@@ -2563,7 +2563,7 @@ class Handler(BaseHTTPRequestHandler):
             name = r[len("static/"):]
             if name == "tokens.css":
                 return self._send(200, design_tokens().encode("utf-8"), "text/css; charset=utf-8")
-            if name in ("app.css", "app.js", "raceroom.js"):
+            if name in ("app.css", "app.js", "raceroom.js", "help.js"):
                 return self._file(UI / name)
             if name == "icon.png" and ICON_PNG.exists():
                 return self._file(ICON_PNG)

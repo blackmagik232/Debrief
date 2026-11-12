@@ -458,7 +458,7 @@ def window(api, viewport=(1280, 860), hold=(), init_script=None):
             return route.fulfill(body=(UI / "index.html").read_text(encoding="utf-8"), content_type="text/html")
         if path == "static/tokens.css":
             return route.fulfill(body=S.design_tokens(), content_type="text/css")
-        if path in ("static/app.js", "static/app.css"):
+        if path in ("static/app.js", "static/app.css", "static/help.js"):
             return route.fulfill(body=(UI / path[7:]).read_text(encoding="utf-8"),
                                  content_type="text/javascript" if path.endswith(".js") else "text/css")
         if path.startswith("lib/") or path.startswith("sample/"):

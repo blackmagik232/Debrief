@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.31.0 "Help"
+
+Help is now a proper guide instead of a wall of text, and it teaches you how to use Debrief to get faster and understand your car.
+
+- **A bigger Help window** with a contents list on the left and a **search box** at the top. Type any word, page or key and pick a result to jump straight to it.
+- **Get faster**: the Debrief loop, step by step. Drive, read the top of your review or practice, pick one thing, practise it with the coach, check that it stuck, then watch your trend. Also: where the time hides in a corner, how to compare two laps, a good 20-minute practice, getting ready for race day, learning a new track and the traps to avoid.
+- **Know your car**: how weight moving under braking and throttle changes grip, what pushing and rotating mean, what to try at corner entry, middle and exit (driving first, then setup), and how to change the setup one step at a time without fooling yourself. Tyre pressures and fixed setup series too.
+- **Race smarter**: what to do after every race, starts and incidents, fuel and stint planning, and the crew chief and Race Room.
+- **Start here**: setup in four steps and a plan for your first week.
+- **Every page**: one card for each page in the sidebar, what it is for and when to use it, with an **Open** button that takes you there.
+- **Reading the numbers**: the four "how sure" words (Sure, Likely, A hint, A guess) and how Debrief checks itself before it tells you something.
+- **Glossary**: every word, now in groups (Laps and pace, Corners and driving, The coach, Car and setup and more).
+- **Keyboard keys**: grouped, with the keys drawn as keys.
+- **F1** still opens the keyboard keys. Nothing else in Debrief changes, and your reviews and settings are untouched.
+
+### For the record
+
+- New `debrief/desktop/ui/help.js` holds the guide's words (text only, never HTML); `app.js` draws Help from it plus the existing tour, words, keys and credits lists. `index.html` has the new Help window; `app.css` its look in light and dark. The server serves `help.js` and the packaged self-test checks it.
+- Tests: new `tests/test_231_help.py` (the guide is complete and plain, every Open button names a real page, a card for every sidebar page, search, Esc, the narrow layout, no console errors, light and dark). Browser tests that fake the server now also serve `help.js`.
+- The branch is `release-2.31.0-help`, because `release-2.31.0` already holds the unpublished Race Engineer work; that becomes 2.32 when it is ready.
+- Not proven yet: how Help looks in the real Debrief window on your PC, at your Windows display scaling.
+
 ## 2.30.4 "What's new"
 
 Every Debrief update now tells you what changed.

@@ -1728,11 +1728,88 @@ const HELP={tour:[['Review your race','Press Review last race. If your newest ra
   ['Wheel button mute','Coach page > Settings > Mute from a wheel button: press Learn, then press the button on your wheel. That button then mutes and unmutes the coach.'],
   ['Sure, Likely, A hint, A guess','How sure something is, the same four words on every page. Sure: read straight from your laps, or a tip that beat chance in fewer than 1 in 100 shuffles of 12 or more laps (and still does when every corner is counted at once). Likely: beat chance in fewer than 1 in 20. A hint: only a few laps show it, or it could still be chance. A guess: no clear pattern, so try it and see.']],
  keys:[['Ctrl+Shift+M','Mute or unmute the coach']]};   // 2.18: the page keys come first, from keyList()
-function showHelp(k){const b=$('helpBody');const L=k==='keys'?keyList().concat(HELP.keys):HELP[k];b.classList.toggle('keygrid',k==='keys');
-  b.replaceChildren(...(k==='tour'?[h('p','note','A quick look at how Debrief works.')]:k==='keys'?[h('p','note','Ctrl+1 to Ctrl+9 and Ctrl+0 open the pages in the sidebar\'s order.')]:[]),...L.map(([t,d])=>{const p=h('p');p.append(h('b',null,t+': '),document.createTextNode(d));return p}));
-  document.querySelectorAll('[data-help]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.help===k?'true':'false'))}
+/* 2.31.0 Help: a full guide with a contents list, search and pages that open the part of Debrief they describe.
+   The Learn sections and the page cards are in help.js (window.DEBRIEF_HELP); Every page also lists HELP.tour, the
+   Glossary HELP.words (grouped), Keyboard keys keyList() + HELP.keys, Credits HELP.credits. Text only, never HTML. */
+const HG=(window.DEBRIEF_HELP&&typeof window.DEBRIEF_HELP==='object')?window.DEBRIEF_HELP:{sections:[],pages:[],groups:[]};
+const HELP_REF={tour:['Reference','Every page'],words:['Reference','Glossary'],keys:['Reference','Keyboard keys'],credits:['More','Credits']};
+let helpAt='start';
+function helpTitle(k){const s=(HG.sections||[]).find(x=>x.id===k);return s?[s.group,s.title]:(HELP_REF[k]||['Help','Help'])}
+function rich(s){const f=document.createDocumentFragment();String(s||'').split('**').forEach((t,i)=>{if(t)f.append(i%2?h('b',null,t):document.createTextNode(t))});return f}
+function plainRich(s){return String(s||'').replace(/\*\*/g,'')}
+function helpGo(x){if(!x||!(x.go||x.hgo))return null;const b=h('button','btn hgo');b.type='button';
+  if(x.go)b.dataset.nav=x.go;else b.dataset.hgo=x.hgo;
+  b.append(document.createTextNode(x.label||'Open'),h('span','harrow',' →'));b.lastChild.setAttribute('aria-hidden','true');return b}
+function helpBlock(x,id){let el;
+  if(x.lede!=null)el=h('p','hlede'),el.append(rich(x.lede));
+  else if(x.h!=null)el=h('h3','hh',x.h);
+  else if(x.p!=null){el=h('div','hpara');if(x.p){const p=h('p');p.append(rich(x.p));el.append(p)}}
+  else if(x.steps){el=h('ol','hsteps');x.steps.forEach(st=>{const li=h('li','hstep'),c=h('div','hstepc');c.append(h('b','hst',st.t));const p=h('p');p.append(rich(st.d));c.append(p);
+    const g=helpGo(st);if(g)c.append(g);li.append(c);el.append(li)})}
+  else if(x.cards){el=h('div','hcards');x.cards.forEach(cd=>{const c=h('div','hcard');c.append(h('h4',null,cd.t));const p=h('p');p.append(rich(cd.d));c.append(p);const g=helpGo(cd);if(g)c.append(g);el.append(c)})}
+  else if(x.list){el=h('ul','hlist');x.list.forEach(t=>{const li=h('li');li.append(rich(t));el.append(li)})}
+  else if(x.tip!=null||x.warn!=null){const w=x.warn!=null;el=h('div','hcall '+(w?'warn':'tip'));el.append(h('span','hcalltag',w?'Watch out':'Tip'));const p=h('p');p.append(rich(w?x.warn:x.tip));el.append(p)}
+  else if(x.table){el=h('div','htblwrap');const t=h('table','htbl'),tr=h('tr');x.table.head.forEach(c=>tr.append(h('th',null,c)));const th=h('thead');th.append(tr);t.append(th);
+    const tb=h('tbody');x.table.rows.forEach(r=>{const row=h('tr');r.forEach((c,i)=>{const td=h(i?'td':'th');if(i)td.append(rich(c));else{td.textContent=c;td.scope='row'}row.append(td)});tb.append(row)});t.append(tb);el.append(t)}
+  else if(x.sure){el=h('div','hsure');x.sure.forEach(([lv,d])=>{const r=h('div','hsurerow');const b=sureBadge(lv);if(b)r.append(b);r.append(h('p',null,d));el.append(r)})}
+  else return null;
+  const g=(x.steps||x.cards)?null:helpGo(x);if(g){if(el.tagName==='DIV'&&!el.classList.contains('hcall'))el.append(g);else{const w=h('div','hblock');w.append(el,g);el=w}}
+  el.id=id;return el}
+function keyCaps(s){const f=document.createDocumentFragment();String(s).split(/(Hold | or )/).forEach(part=>{if(!part)return;
+  if(part==='Hold '||part===' or '){f.append(h('span','kword',part));return}
+  part.split('+').forEach((k,i)=>{if(i)f.append(h('span','kplus','+'));f.append(h('kbd',null,k))})});return f}
+function keyGroup(k){if(/^Hold |^Ctrl\+Shift\+/.test(k))return 'While you drive';if(/^Ctrl\+[0-9]$/.test(k))return 'Pages';if(k==='Ctrl+Enter'||k==='J'||k==='K')return 'Reviews';return 'Anywhere'}
+function glossary(){const m=new Map();(HELP.words||[]).forEach(([t,d])=>{if(m.has(t)){const o=m.get(t);if(o.indexOf(d)<0)m.set(t,o+' '+d)}else m.set(t,d)});return m}
+function helpHead(k){const [g,t]=helpTitle(k);const hd=h('header','hhead');hd.append(h('span','eyebrow',g),h('h2',null,t));return hd}
+function helpRender(k){const b=$('helpBody'),out=[helpHead(k)];
+  if(k==='tour'){out.push(Object.assign(h('p','hlede'),{textContent:'What every page in the sidebar is for and when to use it, then each feature in detail.'}));
+    const g=h('div','hcards hpages');(HG.pages||[]).forEach((x,i)=>{const c=h('div','hcard');c.id='h-tour-p'+i;c.append(h('h4',null,x.t),h('p',null,x.what));const w=h('p','hwhen');w.append(h('b',null,'Use it: '),document.createTextNode(x.when));c.append(w);
+      const go=helpGo({go:x.go,label:'Open '+x.t});if(go)c.append(go);g.append(c)});out.push(g,h('h3','hh','Features in detail'));
+    const f=h('div','hcards');HELP.tour.forEach(([t,d],i)=>{const c=h('div','hcard');c.id='h-tour-'+i;c.append(h('h4',null,t),h('p',null,d));f.append(c)});out.push(f)}
+  else if(k==='words'){out.push(Object.assign(h('p','hlede'),{textContent:'Every word Debrief uses that might need explaining, in groups. Search at the top finds any of them.'}));
+    const m=glossary(),done=new Set();
+    const grp=(name,terms)=>{if(!terms.length)return;out.push(h('h3','hh',name));const dl=h('dl','hgloss');terms.sort((a,c)=>a.localeCompare(c)).forEach(t=>{const dt=h('dt',null,t),dd=h('dd',null,m.get(t));dt.id='h-words-'+t.replace(/[^A-Za-z0-9]+/g,'-');dl.append(dt,dd)});out.push(dl)};
+    (HG.groups||[]).forEach(([name,L])=>{const ts=L.filter(t=>m.has(t)&&!done.has(t));ts.forEach(t=>done.add(t));grp(name,ts)});
+    grp('More words',[...m.keys()].filter(t=>!done.has(t)))}
+  else if(k==='keys'){out.push(h('p','note','Ctrl+1 to Ctrl+9 and Ctrl+0 open the pages in the sidebar\'s order.'));const by=new Map();
+    keyList().concat(HELP.keys).forEach(([key,d])=>{const g=keyGroup(key);if(!by.has(g))by.set(g,[]);by.get(g).push([key,d])});
+    const wrap=h('div','hkeys');['Pages','Reviews','Anywhere','While you drive'].forEach(g=>{const L=by.get(g);if(!L)return;const sec=h('section','hkeysec');sec.append(h('h3','hh',g));
+      L.forEach(([key,d])=>{const r=h('p','krow'),kc=h('span','kcaps');kc.append(keyCaps(key));r.append(kc,h('span','ksep',': '),h('span','kdesc',d));sec.append(r)});wrap.append(sec)});out.push(wrap)}
+  else if(k==='credits'){const dl=h('dl','hgloss hcredits');HELP.credits.forEach(([t,d])=>dl.append(h('dt',null,t),h('dd',null,d)));out.push(dl)}
+  else{const s=(HG.sections||[]).find(x=>x.id===k);if(s)s.blocks.forEach((x,i)=>{const el=helpBlock(x,'h-'+k+'-'+i);if(el)out.push(el)})}
+  b.classList.toggle('keygrid',k==='keys');b.replaceChildren(...out)}
+function helpNavMark(k){document.querySelectorAll('#dlgHelp [data-help]').forEach(x=>{const on=x.dataset.help===k;x.setAttribute('aria-pressed',on?'true':'false');x.classList.toggle('active',on)})}
+function showHelp(k,anchor){if(!(HELP_REF[k]||(HG.sections||[]).some(x=>x.id===k)))k='start';helpAt=k;$('helpSearch').value='';helpRender(k);helpNavMark(k);
+  const b=$('helpBody');if(anchor){const el=document.getElementById(anchor);if(el){el.scrollIntoView({block:'center'});el.classList.add('hflash');setTimeout(()=>el.classList.remove('hflash'),1600);return}}b.scrollTop=0}
 function openHelp(k){showHelp(k);openDlg($('dlgHelp'))}
-$('btnHelp').addEventListener('click',()=>openHelp('tour'));$('btnCredits').addEventListener('click',()=>openHelp('credits'));$('helpClose').addEventListener('click',()=>closeDlg($('dlgHelp')));
+/* search: every Learn block, page card, feature, word and key, by plain text */
+function helpIndex(){const L=[];const add=(sec,id,title,text)=>{if(text)L.push({sec,id,title,text:plainRich(text)})};
+  (HG.sections||[]).forEach(s=>{let head=s.title;s.blocks.forEach((x,i)=>{const id='h-'+s.id+'-'+i;
+    if(x.h!=null){head=x.h;add(s.id,id,x.h,x.h);return}
+    if(x.steps)x.steps.forEach(st=>add(s.id,id,st.t,st.d));else if(x.cards)x.cards.forEach(c=>add(s.id,id,c.t,c.d));
+    else if(x.list)add(s.id,id,head,x.list.join(' '));else if(x.table)add(s.id,id,head,x.table.rows.map(r=>r.join(' \u2014 ')).join(' \u00b7 '));
+    else if(x.sure)add(s.id,id,head,x.sure.map(r=>(SURE[r[0]]||[''])[0]+': '+r[1]).join(' '));
+    else add(s.id,id,head,x.lede!=null?x.lede:x.p!=null?x.p:x.tip!=null?x.tip:x.warn)})});
+  (HG.pages||[]).forEach((x,i)=>add('tour','h-tour-p'+i,x.t,x.what+' '+x.when));
+  HELP.tour.forEach(([t,d],i)=>add('tour','h-tour-'+i,t,d));
+  glossary().forEach((d,t)=>add('words','h-words-'+t.replace(/[^A-Za-z0-9]+/g,'-'),t,d));
+  keyList().concat(HELP.keys).forEach(([k,d])=>add('keys',null,k,k+' '+d));return L}
+function helpSearch(){const q=$('helpSearch').value.trim(),b=$('helpBody');if(q.length<2){helpRender(helpAt);helpNavMark(helpAt);return}
+  const ql=q.toLowerCase(),words=ql.split(/\s+/).filter(Boolean);
+  const hits=helpIndex().map(x=>{const tl=x.title.toLowerCase(),xl=x.text.toLowerCase();if(!words.every(w=>tl.includes(w)||xl.includes(w)))return null;
+    return Object.assign(x,{score:(tl.includes(ql)?4:0)+(words.every(w=>tl.includes(w))?2:0)+(xl.includes(ql)?1:0)})}).filter(Boolean).sort((a,c)=>c.score-a.score).slice(0,40);
+  helpNavMark('');b.classList.remove('keygrid');
+  const hd=h('header','hhead');hd.append(h('span','eyebrow','Search'),h('h2',null,hits.length?(hits.length+(hits.length===1?' result':' results')+(hits.length===40?' (the first 40)':'')):'Nothing found'));
+  const out=[hd];if(!hits.length)out.push(h('p','hlede','Try another word, or look in the Glossary. Search looks through everything in Help.'));
+  const ul=h('div','hresults');hits.forEach(x=>{const r=h('button','hresult');r.type='button';const [g,t]=helpTitle(x.sec);r.append(h('span','eyebrow',t),h('b',null,x.title));
+    const at=x.text.toLowerCase().indexOf(words[0]);const st=Math.max(0,at-70),snip=(st?'…':'')+x.text.slice(st,st+190)+(st+190<x.text.length?'…':'');
+    const p=h('p');const mk=snip.toLowerCase().indexOf(words[0]);if(mk>=0&&words[0].length>1){p.append(document.createTextNode(snip.slice(0,mk)),h('mark',null,snip.slice(mk,mk+words[0].length)),document.createTextNode(snip.slice(mk+words[0].length)))}else p.textContent=snip;
+    r.append(p);r.addEventListener('click',()=>showHelp(x.sec,x.id));ul.append(r)});out.push(ul);b.replaceChildren(...out);b.scrollTop=0}
+$('helpSearch').addEventListener('input',helpSearch);
+$('helpSearch').addEventListener('keydown',e=>{if(e.key==='Escape'&&$('helpSearch').value){e.preventDefault();e.stopPropagation();$('helpSearch').value='';helpSearch()}});
+$('helpBody').addEventListener('click',e=>{const n=e.target.closest('[data-nav]');if(n){closeDlg($('dlgHelp'));return}
+  const g=e.target.closest('[data-hgo]');if(!g)return;if(g.dataset.hgo==='firstrun')$('helpFirstRun').click();else if(g.dataset.hgo==='whatsnew')whatsNew(false)});
+$('btnHelp').addEventListener('click',()=>openHelp('start'));$('btnCredits').addEventListener('click',()=>openHelp('credits'));$('helpClose').addEventListener('click',()=>closeDlg($('dlgHelp')));
 document.querySelectorAll('[data-help]').forEach(x=>x.addEventListener('click',()=>showHelp(x.dataset.help)));
 /* 2.30.4 What's new: the top of CHANGELOG.md, shown once after an update and from Help any time */
 function renderNew(j){$('newTitle').textContent="What's new in Debrief "+j.version+(j.name?' "'+j.name+'"':'');

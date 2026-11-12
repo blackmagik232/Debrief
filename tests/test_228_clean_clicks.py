@@ -1128,7 +1128,7 @@ def test_settings_save_switches_by_themselves_and_keep_save_for_typed_text():
         saved.clear()
         pg.uncheck("#recWin")
         pg.wait_for_function("() => /Saved/.test(document.getElementById('recMsg').textContent)")
-        assert saved == [{"record_sessions": True, "start_with_windows": False}], saved
+        assert saved == [{"record_sessions": True, "start_with_windows": False, "ensure_telemetry": False}], saved
         assert pg.evaluate("() => getComputedStyle(document.getElementById('recMsg'), '::before').content").startswith('"\u2713')
         pg.check("#updAuto")
         pg.select_option("#refs", "3")

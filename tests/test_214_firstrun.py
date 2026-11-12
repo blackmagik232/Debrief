@@ -39,11 +39,14 @@ st = fr.steps({})
 check([s["id"] for s in st] == list(fr.STEP_IDS) and not any(s["done"] for s in st), "six steps, none done")
 check(list(fr.STEP_IDS) == ["folder", "record", "telemetry", "session", "voice", "token"],
       "2.18: telemetry first, Garage 61 last")
-check(all(s["action"] for s in st if s["id"] != "record") and all(s["title"] and s["text"] for s in st),
-      "each has a title and text, and an action unless it's done in iRacing")
+check(all(s["action"] for s in st) and all(s["title"] and s["text"] for s in st),
+      "each has a title, text and an action (2.32: record offers Turn it on for me)")
 check(by_id({"steps": fr.steps({"folder": True})})["telemetry"]["action"] is None, "an empty folder: nothing to read")
-check(by_id({"steps": st})["record"]["action"] is None and "Alt+L" in by_id({"steps": st})["record"]["text"],
-      "record: says iRacing records nothing until Alt+L")
+check(by_id({"steps": st})["record"]["action"] == "telemetry_auto" and "Alt+L" in by_id({"steps": st})["record"]["text"],
+      "record: offers to turn it on, and still says Alt+L")
+_auto = by_id({"steps": fr.steps({"folder": True, "ensure_telemetry": True})})["record"]
+check(_auto["action"] is None and "each time you get in the car" in _auto["text"] and not _auto["done"],
+      "2.32 record with the switch on: nothing to click, just drive")
 txt = json.dumps(st, ensure_ascii=False)
 check("\u2014" not in txt and "\u2013" not in txt, "no long dashes")
 st = {s["id"]: s for s in fr.steps({"token": True, "folder": True, "folder_path": "C:/x", "files": 3, "ibt_files": 3,

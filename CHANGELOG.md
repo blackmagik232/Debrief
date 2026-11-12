@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.32.0 "Telemetry on"
+
+Debrief can now make sure iRacing saves your telemetry, so Practice, Setup Lab and the Coach always have something to work with.
+
+- **Make iRacing save my telemetry** (Settings > Live data). Tick it, and each time you get in the car Debrief checks whether iRacing is saving its telemetry file. If it isn't, Debrief turns it on for you, the same as pressing Alt+L. You never have to remember Alt+L again.
+- It's off until you tick it. It is the only thing Debrief ever sends to iRacing, and it only ever turns telemetry on, never off.
+- It works even if you switched off Debrief's own session recording.
+- Settings > Live data shows what it is doing: "iRacing is saving your telemetry", "Waiting for you to get in the car", or, if iRacing didn't respond after three tries, a note to press Alt+L.
+- **On the setup checklist**, the "Turn on telemetry in iRacing" step now has a **Turn it on for me** button.
+- Also in this update, if you skipped 2.31.1: red error messages go away by themselves, and the log no longer fills with false errors.
+
+### For the record
+
+- `debrief/livedata.py`: `LiveReader.telemetry_start()` sends pyirsdk's `telem_command(TelemCommandMode.start)`; False when not connected or on any error.
+- `debrief/liverec.py`: `Recorder._telemetry_guard` asks when `ensure_telemetry` is on, `IsOnTrack` is true and `IsDiskLoggingEnabled` is false: at most every 10 s (`TEL_ASK_S`) and 3 times per iRacing connection (`TEL_ASKS`), then state "failed". It runs before the record_sessions/paused check. State (`saving`, `asked`, `off_track`, `failed`) goes into the status file as `telemetry`. The session summary's note now points at the switch.
+- Settings: `ensure_telemetry` (off unless true) in `app.py`, `settings_io.py` (view, live view, validation); `liverec.prefs()`. Window: `recTel` switch and `recTelState` line in Settings > Live data; checklist action `telemetry_auto`; `firstrun.py` offers it on the record step and says "just drive" once it is on. Help, README and the empty-state texts mention it.
+- Tests: new `tests/test_232_telemetry.py` (switch off, already saving, asks once, gives up after 3, 10 s spacing, off track, unknown, recording off, reconnect, real reader, settings and checklist). `test_227_liverec.py` now checks that nothing is sent with the switch off and that only "start" exists; `test_214_firstrun.py` expects the new checklist action.
+- Not proven yet: iRacing obeying the start command on your PC. The command is iRacing's own SDK broadcast, the same one other telemetry tools use. First check: tick the switch, get in the car with telemetry off, and see the line change to "iRacing is saving your telemetry".
+
 ## 2.31.1 "Tidy"
 
 Two small fixes from a full check of Debrief. Nothing new to learn, and your reviews and settings are untouched.

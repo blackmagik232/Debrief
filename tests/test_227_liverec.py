@@ -418,9 +418,13 @@ def test_iracing_telemetry_files_off_is_noted_and_never_toggled():
     assert rec.status_doc()["disk_logging"] is False
     rec._end_session("x")
     sm = summary_of(rec.finished[0])
-    assert sm["disk_logging"] is False and ".ibt" in sm["disk_logging_note"] and "never changes" in sm["disk_logging_note"]
+    assert sm["disk_logging"] is False and ".ibt" in sm["disk_logging_note"] and "Make iRacing save my telemetry" in sm["disk_logging_note"]
+    # 2.32: the one thing Debrief may send to iRacing is "start saving telemetry", only with that switch on (it is off
+    # here, as by default), and only from LiveReader.telemetry_start (tests/test_232_telemetry.py checks the switch)
+    assert rec.tel_sent == 0 and rec.tel_state is None
     src = (ROOT / "debrief" / "liverec.py").read_text(encoding="utf-8") + (ROOT / "debrief" / "livedata.py").read_text(encoding="utf-8")
-    assert "broadcast" not in src.lower() and "irsdk_" not in src and "_broadcast_msg" not in src and "telem_command" not in src
+    assert "_broadcast_msg" not in src and "irsdk_" not in src and src.count("telem_command") == 1
+    assert "TelemCommandMode.start" in src and "TelemCommandMode.stop" not in src
 
 
 def test_a_failure_in_one_step_does_not_stop_the_recorder():

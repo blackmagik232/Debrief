@@ -203,6 +203,20 @@ class LiveReader:
             return None
         return s
 
+    def telemetry_start(self) -> bool:
+        """2.32: ask iRacing to start saving its telemetry file (.ibt), the same as pressing Alt+L in the car. True when
+        the request was sent. The only thing Debrief ever sends to iRacing, and only with Settings > Live data >
+        "Make iRacing save my telemetry" on."""
+        ir = self._ir                         # called from the same thread that reads, like read_own()
+        if ir is None or self.state != "connected":
+            return False
+        try:
+            import irsdk
+            ir.telem_command(irsdk.TelemCommandMode.start)
+            return True
+        except Exception:  # noqa: BLE001  (an old pyirsdk or a closed iRacing: try again later)
+            return False
+
     def read_field(self) -> dict | None:
         """The CarIdx arrays that exist, as lists. None while iRacing isn't running."""
         return self._frozen(self.field, False)

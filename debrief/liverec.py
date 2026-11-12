@@ -43,6 +43,8 @@ FLUSH_S = 30.0            # complete gzip pieces are appended this often
 ROW_S = 1.0               # one row a second in both logs
 FIELD_HZ = 4.0
 GONE_S = 6.0              # iRacing not answering for this long = it has closed
+TEL_ASK_S = 10.0          # 2.32: ask iRacing to save telemetry at most this often...
+TEL_ASKS = 3              # ...and this many times per iRacing connection, then say it didn't work
 BEAT_S = 3.0              # lock/status file refresh; a lock older than STALE_S is a dead recorder's
 STALE_S = 20.0
 INFO_EVERY_S = 300.0      # the bulky SessionInfo part is copied at most this often (and at each end)
@@ -237,9 +239,10 @@ def prefs() -> dict:
     try:
         cfg = app.load_settings()
         return {"record_sessions": cfg["record_sessions"], "start_with_windows": cfg["start_with_windows"],
-                "library_folder": cfg["library_folder"]}
+                "ensure_telemetry": cfg.get("ensure_telemetry") is True, "library_folder": cfg["library_folder"]}
     except (SystemExit, OSError, KeyError, ValueError):
-        return {"record_sessions": True, "start_with_windows": True, "library_folder": str(app.documents_dir() / "Debrief Reviews")}
+        return {"record_sessions": True, "start_with_windows": True, "ensure_telemetry": False,
+                "library_folder": str(app.documents_dir() / "Debrief Reviews")}
 
 
 # ---------------------------------------------------------------- one recorder at a time
@@ -369,6 +372,7 @@ def status_view() -> dict:
         return {"state": "off", "text": "Not running", "running": False, "by": None}
     return {"state": d.get("state") or "waiting", "text": d.get("text") or "Waiting for iRacing", "running": True,
             "by": d.get("role"), "session": d.get("session"), "disk_logging": d.get("disk_logging"),
+            "telemetry": d.get("telemetry"),
             "perf": d.get("perf")}
 
 
@@ -533,6 +537,11 @@ class Recorder:
         self.on_finished = on_finished
         self.utc = utc or now_utc           # the wall clock as an ISO UTC string (the tests give a scripted one)
         self.finished: list = []              # folders finished by this recorder (the tests and the window read it)
+        # 2.32 "Make iRacing save my telemetry": None (switched off), "saving", "asked", "failed" or "off_track"
+        self.tel_state = None
+        self._tel_asks = 0
+        self._tel_next = 0.0
+        self.tel_sent = 0                     # requests sent to iRacing in this recorder's life (the tests read it)
 
     def _w(self) -> int:
         return int(epoch_of(self.utc()))
@@ -630,6 +639,9 @@ class Recorder:
         """One pass. True while iRacing is answering (call again soon), False when there is nothing to do."""
         self._housekeeping()
         if not self.enabled():
+            if self._prefs.get("ensure_telemetry") is True:
+                o = self.reader.read_own(keep_none=False)
+                self._telemetry_guard(o, self.clock())
             if self.cur is not None:
                 self._end_session("paused")
             self._state, self._text = "paused", "Paused"
@@ -639,12 +651,14 @@ class Recorder:
         now = self.clock()
         own = self.reader.read_own(keep_none=False)
         if own is None:
+            self._telemetry_guard(None, now)
             if self.cur is not None and self._last_ok is not None and now - self._last_ok > GONE_S:
                 self._end_session("iRacing closed")
             if self.cur is None:
                 self._state, self._text = "waiting", "Waiting for iRacing"
             return False
         self._last_ok = now
+        self._telemetry_guard(own, now)
         ver, secs = self.reader.info_sections()
         if not secs:
             self._state, self._text = "waiting", "iRacing is up; reading the session"
@@ -662,6 +676,46 @@ class Recorder:
         self._state = "recording"
         self._text = self._recording_text(sess)
         return True
+
+    # ------------------------------------------------------------ 2.32: iRacing's own telemetry
+    def _telemetry_guard(self, own, now):
+        """With "Make iRacing save my telemetry" on: when you are in the car and iRacing isn't saving its telemetry file,
+        ask it to start (the same as pressing Alt+L), at most every TEL_ASK_S seconds and TEL_ASKS times per iRacing
+        connection. Never asks to stop, and does nothing at all with the switch off."""
+        if self._prefs.get("ensure_telemetry") is not True:
+            self.tel_state = None
+            return
+        if own is None:                       # iRacing closed: the next connection gets fresh tries
+            self._tel_asks, self._tel_next = 0, 0.0
+            if self.tel_state in ("failed", "asked", "off_track"):
+                self.tel_state = None
+            return
+        saving = own.get("IsDiskLoggingEnabled")
+        if saving is None:                    # this iRacing doesn't say: nothing safe to do
+            return
+        if saving:
+            if self.tel_state in ("asked", "failed"):
+                self.say("liverec: iRacing is saving telemetry now.")
+            self.tel_state, self._tel_asks = "saving", 0
+            return
+        if not own.get("IsOnTrack"):
+            if self.tel_state != "failed":
+                self.tel_state = "off_track"
+            return
+        if self._tel_asks >= TEL_ASKS:
+            if self.tel_state != "failed":
+                self.say("liverec: asked iRacing %d times to save telemetry and it still isn't; press Alt+L in the car." % TEL_ASKS)
+            self.tel_state = "failed"
+            return
+        if now < self._tel_next:
+            return
+        self._tel_next = now + TEL_ASK_S
+        self._tel_asks += 1
+        ask = getattr(self.reader, "telemetry_start", None)
+        if ask is not None and ask():
+            self.tel_sent += 1
+            self.tel_state = "asked"
+            self.say("liverec: iRacing wasn't saving telemetry; asked it to start (Settings > Live data).")
 
     # ------------------------------------------------------------ which folder
     @staticmethod
@@ -948,7 +1002,7 @@ class Recorder:
 
     def status_doc(self) -> dict:
         doc = {"state": self._state, "text": self._text, "paused": self.is_paused(),
-               "perf": self.perf.summary()}
+               "perf": self.perf.summary(), "telemetry": self.tel_state}
         if self.cur is not None and self.cur.sec is not None:
             doc["session"] = {"folder": self.cur.folder.name, "num": self.cur.sec.num, "type": self.cur.sec.type,
                               "laps": self.cur.sec.laps_done}
@@ -1198,5 +1252,6 @@ def summarise_dir(folder, ended_by: str = "", final: bool = True) -> dict:
             "disk_logging": disk,
             "disk_logging_note": ("" if disk is not False else
                                   "iRacing's own telemetry files (.ibt) were switched off during this session, so no "
-                                  "telemetry file was saved. Debrief only reads this setting and never changes it."),
+                                  "telemetry file was saved. Turn on Settings > Live data > Make iRacing save my telemetry "
+                                  "and Debrief switches it on for you."),
             "sessions": secs}

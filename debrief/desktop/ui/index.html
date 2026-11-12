@@ -870,9 +870,11 @@
 
       <form class="panel" id="fLive">
         <div class="phead"><h3>Live data</h3><span class="pill" id="recPill"></span></div>
-        <p class="note">While you drive, Debrief reads iRacing directly and keeps a record of every session: fuel, driver aids, pit stops, tyres, incidents, and where every car was. Garage 61 stays the source for your teammates, reference laps and history. Debrief only reads iRacing and never changes anything in it.</p>
+        <p class="note">While you drive, Debrief reads iRacing directly and keeps a record of every session: fuel, driver aids, pit stops, tyres, incidents, and where every car was. Garage 61 stays the source for your teammates, reference laps and history. Debrief only reads iRacing, with one exception you can switch on below.</p>
         <label class="check" for="recOn"><input id="recOn" type="checkbox"><span>Record sessions in the background</span></label>
         <label class="check" for="recWin"><input id="recWin" type="checkbox"><span>Start with Windows (a small icon near the clock; right-click it to open Debrief, pause or quit)</span></label>
+        <label class="check" for="recTel"><input id="recTel" type="checkbox"><span>Make iRacing save my telemetry: when you are in the car and iRacing isn't saving its telemetry file, Debrief turns it on for you (the same as pressing Alt+L). Practice, Setup Lab and the Coach need those files.</span></label>
+        <p class="note" id="recTelState" hidden></p>
         <p class="note">Recorder: <b id="recStatus"></b></p>
         <p class="note msg bad" id="recDisk" hidden></p>
         <p class="mono path" id="recPath"></p>

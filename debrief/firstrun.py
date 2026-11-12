@@ -40,8 +40,10 @@ FLAGS = ("voice_tested", "dismissed", "token_rejected")
 
 STEP_IDS = ("folder", "record", "telemetry", "session", "voice", "token")
 SKIPPED_KEY = "skipped"                    # 2.19.2: firstrun.json "skipped": [step ids he chose to skip]
-TELEMETRY_HOW = ("iRacing doesn't save telemetry until you turn it on: in the car, press Alt+L (or turn on telemetry "
-                 "recording in iRacing's settings), then drive a few laps.")
+TELEMETRY_HOW = ("iRacing doesn't save telemetry until you turn it on: click Turn it on for me and Debrief does it each "
+                 "time you get in the car (or press Alt+L in the car yourself), then drive a few laps.")
+TELEMETRY_AUTO_ON = ("Debrief turns on iRacing's telemetry each time you get in the car. Drive a few laps and the files "
+                     "appear here.")
 
 
 def steps(facts: dict) -> list:
@@ -65,10 +67,13 @@ def steps(facts: dict) -> list:
          f"else, pick the folder in Settings."),
         "Telemetry folder found.", "settings_folder")
     add("record", ibt > 0 or files > 0, "Turn on telemetry in iRacing",
-        ((f"Debrief found your telemetry folder but no telemetry files (.ibt) in it yet. {TELEMETRY_HOW}")
+        ((f"Debrief found your telemetry folder but no telemetry files (.ibt) in it yet. "
+          f"{TELEMETRY_AUTO_ON if f.get('ensure_telemetry') else TELEMETRY_HOW}")
          if f.get("folder") else f"Debrief hasn't found your telemetry folder yet. {TELEMETRY_HOW}"),
         (f"Debrief found {ibt} telemetry file{'s' if ibt != 1 else ''} (.ibt) in your telemetry folder."
-         if ibt else "iRacing is saving your telemetry."), None)
+         if ibt else "iRacing is saving your telemetry."),
+        # 2.32: Debrief can turn it on for you; once that is on there is nothing to click, just drive
+        None if f.get("ensure_telemetry") else "telemetry_auto")
     add("telemetry", files > 0, "Read your telemetry",
         ("Debrief has found telemetry files but hasn't read them yet. Click Read my telemetry." if ibt else
          "Once iRacing has saved some telemetry, Debrief reads it from the folder."),
@@ -189,13 +194,14 @@ def gather(raw_settings: dict | None = None, cache_file=None, state_path=None, f
     cache_file: Setup Lab's index file (the cache folder's setuplab-index.json when None); folder: the telemetry folder
     (from the settings when None). Never raises."""
     facts = {"token": False, "folder": False, "folder_path": "", "ibt_files": 0, "files": 0, "best_clean": 0,
-             "voice_tested": False, "token_rejected": False}
+             "voice_tested": False, "token_rejected": False, "ensure_telemetry": False}
     try:
         from .desktop import settings_io
         raw = raw_settings
         if raw is None:
             raw, _err = settings_io._raw()
         facts["token"] = bool(settings_io.token_present(raw or {}))
+        facts["ensure_telemetry"] = (raw or {}).get("ensure_telemetry") is True
         tf = Path(folder) if folder else settings_io.telemetry_folder(raw or {})
         facts["folder_path"] = str(tf)
         facts["folder"] = tf.is_dir()

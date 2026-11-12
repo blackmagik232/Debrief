@@ -466,6 +466,7 @@ def public_view() -> dict:
         # 2.27 Settings > Live data (both on unless switched off)
         "record_sessions": raw.get("record_sessions") is not False,
         "start_with_windows": raw.get("start_with_windows") is not False,
+        "ensure_telemetry": raw.get("ensure_telemetry") is True,   # 2.32, off unless switched on
         "recordings_folder": None,
         "recorder": None,
         "salutation": clean_salutation(raw.get("salutation")),
@@ -531,7 +532,7 @@ def public_view() -> dict:
 def live_view() -> dict:
     """The Live data switches and folder, without anything else (the Settings panel refreshes with this)."""
     v = public_view()
-    return {k: v.get(k) for k in ("record_sessions", "start_with_windows", "recordings_folder")}
+    return {k: v.get(k) for k in ("record_sessions", "start_with_windows", "ensure_telemetry", "recordings_folder")}
 
 
 def clean_units(v) -> str:
@@ -724,7 +725,8 @@ def save(updates: dict) -> dict:
         if not isinstance(v, bool):
             raise ValueError("Check for updates must be on or off.")
         clean["check_updates"] = v
-    for k, label in (("record_sessions", "Record sessions in the background"), ("start_with_windows", "Start with Windows")):
+    for k, label in (("record_sessions", "Record sessions in the background"), ("start_with_windows", "Start with Windows"),
+                     ("ensure_telemetry", "Make iRacing save my telemetry")):
         if k in updates:
             v = updates[k]
             if not isinstance(v, bool):

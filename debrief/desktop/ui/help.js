@@ -11,7 +11,7 @@ sections: [
   {lede: `Debrief turns the laps you already drive into a short list of what to work on next, then helps you practise it and shows whether it worked. It reads your laps from Garage 61 and the telemetry files iRacing saves on this PC. It never changes anything in iRacing.`},
   {h: 'Get set up (about 10 minutes)'},
   {steps: [
-    {t: 'Turn on telemetry in iRacing', d: `In the car, press **Alt+L** once. iRacing then saves a telemetry file (.ibt) for every session. Debrief finds the folder by itself; if it can't, Settings lets you pick it.`, go: 'settings', label: 'Open Settings'},
+    {t: 'Turn on telemetry in iRacing', d: `Easiest: tick **Settings > Live data > Make iRacing save my telemetry** (or **Turn it on for me** on the setup checklist) and Debrief turns it on each time you get in the car. Or press **Alt+L** in the car yourself. iRacing then saves a telemetry file (.ibt) for every session. Debrief finds the folder by itself; if it can't, Settings lets you pick it.`, go: 'settings', label: 'Open Settings'},
     {t: 'Connect Garage 61', d: `Make a free Garage 61 account, request a personal token, paste it in Settings and press **Save and check**. Debrief then downloads your history in the background, newest first.`, go: 'settings', label: 'Open Settings'},
     {t: 'Drive 10 clean laps in one session', d: `Any car, any track. Ten laps without an incident or a pit stop is what Practice needs to pick your first thing to work on.`},
     {t: 'Test the coach voice', d: `On the Coach page pick your headset and press **Test voice**. The coach talks through that device while you drive.`, go: 'coach', label: 'Open Coach'}]},

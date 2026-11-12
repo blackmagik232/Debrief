@@ -266,7 +266,7 @@ function renderToday(){const j=td.j;if(!j)return;
     const facts=[ok(P.best)?'Best '+fmtT(P.best):'',ok(P.clean_laps)?plural(P.clean_laps,'clean lap'):'',ok(P.laps)&&P.laps!==P.clean_laps?plural(P.laps,'lap')+' in all':''].filter(Boolean).join(' · ');
     const row=h('div','row');row.append(tdBtn({label:'Open this session',go:'session',id:P.id},false));
     pb.replaceChildren(top,h('p','note',facts||'No timed laps'),row)}
-  else pb.replaceChildren(h('p','note','No practice from your telemetry yet. In iRacing, press Alt+L in the car to save telemetry, then drive a few laps.'),
+  else pb.replaceChildren(h('p','note','No practice from your telemetry yet. Tick Settings > Live data > Make iRacing save my telemetry (or press Alt+L in the car), then drive a few laps.'),
     (()=>{const r=h('div','row');r.append(tdBtn({label:'Open Practice',go:'practice'},false));return r})())}
 /* 2.28 "This week's race": the series you starred (or the one last prepared) and its track this week, with one button that
    opens Prepare on it. Before anything is known it offers "Pick your series". */
@@ -1885,7 +1885,7 @@ async function loadSetupLab(withReport){let j;try{j=await api('setuplab/combos')
   else if(!combos.length)slEmpty('No telemetry files yet',TEL_HOW);
   else loadSlReport()}
 // 2.18: iRacing records no telemetry until it is turned on; every telemetry page's empty state says so the same way
-const TEL_HOW='iRacing doesn\'t save telemetry until you turn it on: in the car, press Alt+L (or turn on telemetry recording in iRacing\'s settings), then drive a few laps.';
+const TEL_HOW='iRacing doesn\'t save telemetry until you turn it on: tick Settings > Live data > Make iRacing save my telemetry, or press Alt+L in the car, then drive a few laps.';
 function slEmpty(title,text,act){$('slReport').replaceChildren(emptyState(title,text,act))}
 function renderSlTel(){const j=sl.data;if(!j)return;const pill=$('slPill'),run=!!j.running||(lastJob&&lastJob.state==='running'&&lastJob.kind==='setuplab');
   $('slPath').textContent=j.folder||'';$('slFolderSet').hidden=!!j.folder_ok;$('slRead').disabled=!j.folder_ok||run;$('slStop').hidden=!run;
@@ -2676,6 +2676,9 @@ $('coWheelClear').addEventListener('click',async()=>{let r;try{r=await post('coa
 let fr={data:null,force:false,at:0};
 const FR_ACT={settings_token:['Open Settings',()=>{if(!$('vWelcome').hidden&&guideOn){const g=$('gs3');if(g&&g.scrollIntoView)g.scrollIntoView({block:'start'});$('gTok').focus();return}openSettings()}],
   settings_folder:['Open Settings',()=>{openSettings();const f=$('fTelemetry');if(f&&f.scrollIntoView)f.scrollIntoView({block:'start'})}],
+  // 2.32: one click turns on Settings > Live data > Make iRacing save my telemetry
+  telemetry_auto:['Turn it on for me',async()=>{let r;try{r=await post('settings',{ensure_telemetry:true})}catch(e){connectionLost();return}
+    if(!r.ok){banner(r.error||'That wasn\'t saved.',true,9000);return}banner('Done: Debrief now makes iRacing save your telemetry whenever you are in the car.');loadFirstRun()}],
   read_telemetry:['Read my telemetry',()=>{openSetupLab();const b=$('slRead');if(b&&!b.disabled)b.click()}],
   practice:['Open Practice',()=>goNav('practice')],
   // 2.18: Test voice is folded under the Coach page's Settings: open it there and press it, so you hear it at once
@@ -2773,7 +2776,7 @@ function fillSettings(v){if(v&&(v.units==='kmh'||v.units==='mph'))UNITS=v.units;
   $('telPill').textContent=v.telemetry_folder_ok?'Found':'Not found';$('telPill').className='pill '+(v.telemetry_folder_ok?'ok':'no');
   fillBox('salut',typeof v.salutation==='string'?v.salutation:'');
   $('syncOpen').checked=v.sync_on_open!==false;$('updAuto').checked=v.check_updates!==false;$('syncTel').checked=v.sync_telemetry!=='none';
-  $('recOn').checked=v.record_sessions!==false;$('recWin').checked=v.start_with_windows!==false;
+  $('recOn').checked=v.record_sessions!==false;$('recWin').checked=v.start_with_windows!==false;$('recTel').checked=v.ensure_telemetry===true;
   $('recPath').textContent=v.recordings_folder?'Recordings are kept in: '+v.recordings_folder+' (Debrief never deletes them)':'';
   showRecorder(v.recorder);
   $('libPath').textContent=v.library_folder||'Not set yet. It will be Documents\\Debrief Reviews once settings are saved.';
@@ -2819,8 +2822,12 @@ $('discordClear').addEventListener('click',async()=>{const b=$('discordClear');
   b.dataset.armed='';b.textContent='Remove';fillSettings(r.settings);setMsg('discordMsg','Removed.','ok')});
 function showRecorder(r){if(!r)return;const t=r.text||'Not running';$('recStatus').textContent=t;
   const p=$('recPill');p.textContent=r.running?(r.state==='recording'?'Recording':r.state==='paused'?'Paused':'On'):'Off';p.className='pill'+(r.running&&r.state!=='paused'?' ok':' no');
-  const dk=$('recDisk');const bad=r.running&&r.disk_logging===false;dk.hidden=!bad;
-  if(bad)dk.textContent='iRacing\u2019s own telemetry files (.ibt) are switched off, so no telemetry file is being saved for this session. Debrief only reads that setting and never changes it; turn it on in iRacing if you want those files.'}
+  const dk=$('recDisk');const tel=r.telemetry;const bad=r.running&&r.disk_logging===false&&tel!=='asked';dk.hidden=!bad;
+  if(bad)dk.textContent=tel==='failed'?'Debrief asked iRacing to save telemetry and it still isn\u2019t. Press Alt+L in the car.':
+    'iRacing\u2019s own telemetry files (.ibt) are switched off, so no telemetry file is being saved for this session. Tick Make iRacing save my telemetry above, or press Alt+L in the car.';
+  // 2.32: what the telemetry switch is doing right now
+  const ts=$('recTelState'),TS={saving:'iRacing is saving your telemetry.',asked:'iRacing wasn\u2019t saving telemetry, so Debrief asked it to start.',off_track:'Waiting for you to get in the car.'};
+  ts.hidden=!(r.running&&TS[tel]);ts.textContent=TS[tel]||''}
 async function refreshLive(){if(current.view!=='settings')return;try{const j=await api('live');if(j&&j.ok)showRecorder(j.recorder)}catch(e){}}
 setInterval(refreshLive,5000);
 async function loadSettings(){try{fillSettings(await api('settings'))}catch(e){connectionLost()}}
@@ -2894,7 +2901,7 @@ function autoSave(ids,body,msgId,okText,keep){ids.forEach(id=>$(id).addEventList
   fillSettings(r.settings);savedTick(msgId,typeof okText==='function'?okText():okText,keep)}))}
 autoSave(['refs','prac'],()=>({max_reference_laps:+$('refs').value,include_practice:$('prac').checked}),'optMsg');
 autoSave(['unitsSel'],()=>({units:$('unitsSel').value==='kmh'?'kmh':'mph'}),'unitsMsg',()=>'Saved. Pages and the coach use '+spdLabel()+' from now on; an open review shows it when you open it again.',true);
-autoSave(['recOn','recWin'],()=>({record_sessions:$('recOn').checked,start_with_windows:$('recWin').checked}),'recMsg');
+autoSave(['recOn','recWin','recTel'],()=>({record_sessions:$('recOn').checked,start_with_windows:$('recWin').checked,ensure_telemetry:$('recTel').checked}),'recMsg');
 autoSave(['syncOpen','syncTel'],()=>({sync_on_open:$('syncOpen').checked,sync_telemetry:$('syncTel').checked?'best':'none'}),'syncOptMsg');
 autoSave(['updAuto'],()=>({check_updates:$('updAuto').checked}),'updMsg');
 autoSave(['cardsShare'],()=>({share_my_cards:$('cardsShare').checked}),'cardsMsg');

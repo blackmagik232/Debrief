@@ -165,6 +165,9 @@ def load_settings() -> dict:
     # 2.27 live data: record every iRacing session in the background, and start that recorder with Windows
     cfg["record_sessions"] = cfg.get("record_sessions") is not False
     cfg["start_with_windows"] = cfg.get("start_with_windows") is not False
+    # 2.32: make iRacing save its own telemetry (.ibt) whenever you are in the car. Off unless switched on: it is the
+    # one thing Debrief sends to iRacing (the same as pressing Alt+L).
+    cfg["ensure_telemetry"] = cfg.get("ensure_telemetry") is True
     cfg["sync_telemetry"] = "none" if str(cfg.get("sync_telemetry", "best")).strip().lower() == "none" else "best"
     # optional iRacing data API credentials: only stored here; nothing runs with them by default
     for k in ("iracing_client_id", "iracing_client_secret"):

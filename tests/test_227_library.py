@@ -337,7 +337,7 @@ def test_settings_toggles_validate_save_and_default_on():
             assert "must be on or off" in str(e)
     v = settings_io.save({"record_sessions": True, "start_with_windows": True})
     assert v["record_sessions"] is True and v["start_with_windows"] is True
-    assert "token" not in json.dumps(settings_io.live_view()) and set(settings_io.live_view()) == {"record_sessions", "start_with_windows", "recordings_folder"}
+    assert "token" not in json.dumps(settings_io.live_view()) and set(settings_io.live_view()) == {"record_sessions", "start_with_windows", "ensure_telemetry", "recordings_folder"}
 
 
 def test_api_settings_and_live_status():

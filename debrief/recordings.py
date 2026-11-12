@@ -104,6 +104,16 @@ def _summary(d: Path) -> dict | None:
         return None
     if not isinstance(doc, dict):
         return None
+    if doc.get("final") and (doc.get("sv") or 1) < liverec.SUMMARY_V and (d / liverec.CAR).exists():
+        # 2.35: worked out again from the recording's own files (green-flag stops, aids, gaps, AI count). Derived data only.
+        try:
+            new = liverec.summarise_dir(d, ended_by=doc.get("ended_by") or "", final=True)
+            fsutil.write_json(p, new, default=str)
+            doc = new
+            st = p.stat()
+            key = (str(p), st.st_mtime_ns, st.st_size)
+        except Exception:  # noqa: BLE001 (the old summary still works)
+            pass
     with _LOCK:
         _CACHE[str(p)] = (key, doc)
     return doc
@@ -269,11 +279,11 @@ def view(sec: dict, summary: dict) -> dict:
     st = [x for x in fuel.get("stints") or [] if x.get("per_lap_l") is not None]
     table = {"cols": ["Stint", "Laps", "Fuel used", "Per lap"],
              "rows": [[f"{x['stint']}", f"{x['first_lap']} to {x['last_lap']}", _l(x.get("fuel_l")), _l(x.get("per_lap_l"), 2)] for x in st]}
-    blocks.append({"h": "Fuel", "lines": lines, "table": table if len(st) > 0 else None,
+    blocks.append({"h": "Fuel", "lines": lines, "table": table if len(st) > 1 else None, "chart": "fuel",
                    "note": "A stint ends at each of your own pit stops. Laps with a pit stop in them are left out of the per-lap figures."})
     pl = [x for x in fuel.get("per_lap") or []]
     if pl:
-        blocks.append({"h": "Fuel lap by lap", "lines": [],
+        blocks.append({"h": "Fuel lap by lap", "lines": [], "numbers_of": "fuel",
                        "table": {"cols": ["Lap", "Fuel used", ""], "rows": [[str(x["lap"]), _l(x["fuel_used_l"], 2), "pit lap" if x.get("pit") else ""] for x in pl]}})
     aids = sec.get("aids") or {}
     seen = aids.get("seen") or {}
@@ -282,26 +292,29 @@ def view(sec: dict, summary: dict) -> dict:
                        "table": None})
     else:
         ls = []
-        for k in ("bb", "abs", "tc"):
-            if k in seen:
-                vals = seen[k]
-                ls.append(f"{_AID[k]}: " + (f"{_num_s(vals[0])} the whole time." if len(vals) == 1 else "used " + ", ".join(_num_s(v) for v in vals) + "."))
         ch = aids.get("changes") or []
+        steady = [k for k in ("bb", "abs", "tc") if k in seen and len(seen[k]) == 1]
+        if steady:
+            parts = [f"{_AID[k].lower() if i else _AID[k]} {_num_s(seen[k][0])}" for i, k in enumerate(steady)]
+            ls.append((", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else parts[0]) + " the whole session.")
+        for k in ("bb", "abs", "tc"):
+            if k in seen and len(seen[k]) > 1:
+                ls.append(f"{_AID[k]}: used " + ", ".join(_num_s(v) for v in seen[k]) + ".")
         for c in ch[:40]:
             ls.append(f"Lap {c.get('lap')}: you changed {_AID.get(c['aid'], c['aid']).lower()} from {_num_s(c['from'])} to {_num_s(c['to'])}"
                       + (f", {_where(c.get('d'))}." if c.get("d") is not None else "."))
         cols = [k for k in ("bb", "abs", "tc") if k in seen]
-        blocks.append({"h": "Driver aids", "lines": ls,
+        blocks.append({"h": "Driver aids", "lines": ls, "chart": "aids" if ch else None,
                        "table": {"cols": ["Lap"] + [_AID[k] for k in cols],
-                                 "rows": [[str(x["lap"])] + [_num_s(x.get(k)) for k in cols] for x in aids.get("per_lap") or []]},
-                       "note": "The value shown for a lap is what it was when you finished that lap."})
+                                 "rows": [[str(x["lap"])] + [_num_s(x.get(k)) for k in cols] for x in aids.get("per_lap") or []]} if ch else None,
+                       "note": "The value shown for a lap is what it was when you finished that lap." if ch else None})
     inc = sec.get("incidents") or {}
     il = []
     tot = inc.get("total")
     il.append("No incident points." if not tot else f"{tot} incident point{'' if tot == 1 else 's'} in this session"
               + (f" ({inc['team_total']} for the whole team)." if inc.get("team_total") not in (None, tot) else "."))
     ev = inc.get("events") or []
-    blocks.append({"h": "Incidents", "lines": il,
+    blocks.append({"h": "Incidents", "lines": il, "chart": "incidents" if ev else None,
                    "table": {"cols": ["Lap", "Points", "Where"],
                              "rows": [[str(e.get("lap")), f"+{e.get('gained')}", _where(e.get("d"))] for e in ev]} if ev else None})
     ps = sec.get("pit_stops") or []
@@ -313,7 +326,7 @@ def view(sec: dict, summary: dict) -> dict:
                                            "changed" if p.get("tyres_changed") else "-"] for p in ps]}})
     ty, we = sec.get("tyres") or {}, sec.get("weather") or {}
     tl = []
-    if ty.get("sets_used") is not None:
+    if ty.get("sets_used"):
         tl.append(f"Tyre sets used: {ty['sets_used']}" + (f" of {ty['sets_available']}." if ty.get("sets_available") else "."))
     if ty.get("wear_end"):
         w = ty["wear_end"]
@@ -324,7 +337,8 @@ def view(sec: dict, summary: dict) -> dict:
         tl.append(f"Track {we['track_c']:.1f} C ({we['track_c'] * 9 / 5 + 32:.0f} F)"
                   + (f", air {we['air_c']:.1f} C ({we['air_c'] * 9 / 5 + 32:.0f} F)." if we.get("air_c") is not None else "."))
     if tl:
-        blocks.append({"h": "Tyres and conditions", "lines": tl, "table": None})
+        blocks.append({"h": "Tyres and conditions", "lines": tl, "table": None,
+                       "chart": "tyres" if ty.get("wear_end") and all(x is not None for x in ty["wear_end"]) else None})
     race = sec.get("race")
     if race:
         pl = race.get("positions") or []
@@ -332,20 +346,37 @@ def view(sec: dict, summary: dict) -> dict:
         ls = []
         if fin.get("pos"):
             ls.append(f"You finished P{fin['pos']}" + (f" (P{fin['cpos']} in your class)." if fin.get("cpos") and fin["cpos"] != fin["pos"] else "."))
-        blocks.append({"h": "Your position over the race", "lines": ls,
+        blocks.append({"h": "Your position over the race", "lines": ls, "chart": "position" if len(pl) > 1 else None,
                        "table": {"cols": ["Lap", "Overall", "In class"], "rows": [[str(p["lap"]), f"P{p['pos']}", f"P{p['cpos']}" if p.get("cpos") else "-"] for p in pl]} if pl else None,
                        "note": "Your position when you crossed the line at the end of each lap."})
-        riv = [r for r in race.get("rivals") or []]
+        gp = race.get("gaps") or []
+        if len(gp) > 1:
+            gl = []
+            ah = [g["ahead"] for g in gp if g.get("ahead") is not None]
+            bh = [g["behind"] for g in gp if g.get("behind") is not None]
+            if ah:
+                gl.append(f"Car ahead: {ah[0]:.1f} s after lap {gp[0]['lap']}, {ah[-1]:.1f} s at the end.")
+            if bh:
+                gl.append(f"Car behind: {bh[0]:.1f} s after lap {gp[0]['lap']}, {bh[-1]:.1f} s at the end.")
+            blocks.append({"h": "Gaps to the cars around you", "lines": gl, "chart": "gaps",
+                           "table": {"cols": ["Lap", "Ahead", "Gap", "Behind", "Gap"],
+                                     "rows": [[str(g["lap"]), g.get("ahead_name") or "-", "-" if g.get("ahead") is None else f"{g['ahead']:.1f} s",
+                                               g.get("behind_name") or "-", "-" if g.get("behind") is None else f"{g['behind']:.1f} s"] for g in gp]},
+                           "note": "In your class, when you crossed the line. Shrinking ahead means you were catching; shrinking behind means you were being caught."})
+        riv = [r for r in race.get("rivals") or [] if r.get("stops")]
+        quiet = len([r for r in race.get("rivals") or [] if not r.get("stops")])
         if riv:
             rows = []
-            for r in sorted(riv, key=lambda r: (-len(r["stops"]), r["number"])):
+            num_key = lambda n: (0, int(n)) if str(n).isdigit() else (1, str(n))
+            for r in sorted(riv, key=lambda r: (-len(r["stops"]), num_key(r["number"]))):
                 sp = r["stops"]
                 rows.append([("#" + r["number"] if r["number"] else "-") + (" (you)" if r.get("is_me") else ""), r["name"] or "-",
                              str(len(sp)), ", ".join(str(x["lap"]) for x in sp) or "-",
                              ", ".join(f"{x['lane_s']:.0f} s" for x in sp) or "-"])
-            blocks.append({"h": "Pit stops, every car", "lines": [],
+            blocks.append({"h": "Pit stops, every car", "chart": "stops",
+                           "lines": [f"{len(riv)} car{'' if len(riv) == 1 else 's'} stopped" + (f"; the other {quiet} didn't." if quiet else ".")],
                            "table": {"cols": ["Car", "Driver", "Stops", "On laps", "Time in the pit lane"], "rows": rows},
-                           "note": "Worked out from each car's pit-road flag, once a second. A pass through the pit lane without stopping counts too."})
+                           "note": "Worked out from each car's pit-road flag, once a second, from the green flag on. A pass through the pit lane without stopping counts too."})
     notes = []
     if summary.get("disk_logging_note"):
         notes.append(summary["disk_logging_note"])
@@ -355,11 +386,50 @@ def view(sec: dict, summary: dict) -> dict:
         notes.append("Debrief or the PC stopped suddenly during this session. The recording was finished from what had been saved, so the last half minute may be missing.")
     notes.append("Lap numbers here are iRacing's own.")
     title = {1: "Practice", 2: "Qualifying", 3: "Race"}.get(kind, "Session")
+    charts = _charts(sec, summary)
     return {"title": "From iRacing", "kind": title, "recorded": True, "final": bool(summary.get("final")),
             "id": f"{summary.get('folder')}#{sec.get('num')}",
-            "lede": "Everything in this section comes straight from iRacing, recorded live by Debrief while you drove. "
-                    "Your lap times and everything else on this page are from Garage 61.",
-            "blocks": blocks, "notes": notes}
+            "lede": "Everything in this section comes straight from iRacing, recorded live by Debrief while you drove.",
+            "blocks": blocks, "notes": notes, "charts": charts,
+            "ai_cars": summary.get("ai_cars") or 0}
+
+
+def _charts(sec: dict, summary: dict) -> dict:
+    """2.35 "See it": the numbers each chart on the review page draws (review.html draws them; words stay in blocks)."""
+    out: dict = {}
+    fuel = sec.get("fuel") or {}
+    pl = [x for x in fuel.get("per_lap") or [] if x.get("fuel_used_l") is not None and (x.get("lap") or 0) >= 1]
+    if pl:
+        med = fuel.get("per_lap_median_l")
+        tank = summary.get("fuel_tank_l")
+        out["fuel"] = {"laps": [{"lap": x["lap"], "l": x["fuel_used_l"], "pit": bool(x.get("pit"))} for x in pl],
+                       "median": med, "tank": tank,
+                       "laps_per_tank": round(tank * (summary.get("fuel_max_pct") or 1) / med, 1) if tank and med else None}
+    race = sec.get("race") or {}
+    pos = race.get("positions") or []
+    own = [p.get("lap") for p in sec.get("pit_stops") or [] if p.get("lap") is not None]
+    inc = [{"lap": e.get("lap"), "n": e.get("gained"), "d": e.get("d")} for e in (sec.get("incidents") or {}).get("events") or []]
+    if len(pos) > 1:
+        multi = any(p.get("cpos") and p.get("cpos") != p.get("pos") for p in pos)
+        out["position"] = {"laps": pos, "class": multi, "stops": own, "incidents": inc}
+    if len(race.get("gaps") or []) > 1:
+        out["gaps"] = race["gaps"]
+    riv = [r for r in race.get("rivals") or [] if r.get("stops")]
+    if riv:
+        laps = max([p.get("lap") or 0 for p in pos] + [s.get("lap") or 0 for r in riv for s in r["stops"]] + [1])
+        mine = next((r for r in race.get("rivals") or [] if r.get("is_me")), None)
+        out["stops"] = {"laps": laps, "cars": [{"n": r["number"], "name": r["name"], "me": bool(r.get("is_me")), "cls": r.get("class") or "",
+                                                "stops": [{"lap": s.get("lap"), "s": s.get("lane_s")} for s in r["stops"]]} for r in riv],
+                        "me_class": (mine or {}).get("class") or ""}
+    if inc:
+        out["incidents"] = inc
+    ty = sec.get("tyres") or {}
+    if ty.get("wear_end") and all(x is not None for x in ty["wear_end"]):
+        out["tyres"] = {"wear": ty["wear_end"]}
+    aids = sec.get("aids") or {}
+    if aids.get("changes"):
+        out["aids"] = {"changes": aids["changes"], "per_lap": aids.get("per_lap") or []}
+    return out
 
 
 def standalone_view(sec: dict, summary: dict) -> dict:

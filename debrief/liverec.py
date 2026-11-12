@@ -37,6 +37,8 @@ from pathlib import Path
 from . import app, fsutil, livedata, perfmeter
 
 VERSION = 1
+SUMMARY_V = 2       # 2.35: green-flag stop and aid filtering, gaps, AI count (older summaries are worked out again)
+RACING = 4          # irsdk SessionState: racing (green flag)
 FOLDER = "Recorded"
 CAR, FIELD, INFO, SUMMARY = "car.jsonl.gz", "field.jsonl.gz", "session.yaml.json", "summary.json"
 FLUSH_S = 30.0            # complete gzip pieces are appended this often
@@ -1086,8 +1088,70 @@ def _stops_own(samples, laps_by_t):
     return out
 
 
-def _field_stops(rows, drivers, me_idx):
-    """Every other car's pit stops, from CarIdxOnPitRoad going on and off (and CarIdxTrackSurface 1 = in its stall)."""
+def _field_stops(rows, drivers, me_idx, green_t=None):
+    """Every other car's pit stops, from CarIdxOnPitRoad going on and off (and CarIdxTrackSurface 1 = in its stall).
+    2.35: a visit that began before the green flag (a pit-lane start, the garage) isn't a stop, and two visits of one car
+    less than 30 s apart are one stop (a drive-through that touched the line twice)."""
+    return _merge_stops(_field_stops_raw(rows, drivers, me_idx), green_t)
+
+
+def _merge_stops(stops: dict, green_t=None) -> dict:
+    out = {}
+    for i, sp in stops.items():
+        keep = []
+        for x in sorted(sp, key=lambda x: x.get("in_t") or 0):
+            if green_t is not None and (x.get("in_t") or 0) < green_t:
+                continue
+            if keep and (x["in_t"] - (keep[-1]["in_t"] + keep[-1]["lane_s"])) < 30.0:
+                k = keep[-1]
+                k["lane_s"] = round(x["in_t"] + x["lane_s"] - k["in_t"], 1)
+                k["stall_s"] = round(k["stall_s"] + x["stall_s"], 1)
+                k["stopped"] = k["stopped"] or x["stopped"]
+                continue
+            keep.append(dict(x))
+        if keep:
+            out[i] = keep
+    return out
+
+
+def _gaps(field_rows, lap_rows, me_idx, drivers):
+    """2.35: at the end of each of your laps, the gap to the car ahead of you and behind you in your class
+    (CarIdxF2Time: time behind the leader). [{lap, ahead, behind, ahead_name, behind_name}]; [] when nothing fits."""
+    if me_idx is None or not field_rows:
+        return []
+    out, j = [], 0
+    rows = [r for r in field_rows if r.get("t") is not None]
+    for l in lap_rows:
+        t = l.get("t")
+        if t is None:
+            continue
+        while j < len(rows) and rows[j]["t"] < t:
+            j += 1
+        if j >= len(rows):
+            break
+        r = rows[j]
+        f2, cp = r.get("f2") or [], r.get("cpos") or r.get("pos") or []
+        if me_idx >= len(f2) or me_idx >= len(cp) or not cp[me_idx] or f2[me_idx] is None:
+            continue
+        mine, me_t = cp[me_idx], f2[me_idx]
+        row = {"lap": l.get("lap")}
+        for want, key, sign in ((mine - 1, "ahead", 1), (mine + 1, "behind", -1)):
+            for i, c in enumerate(cp):
+                if c == want and i != me_idx and i < len(f2) and f2[i] is not None and f2[i] >= 0:
+                    d = drivers.get(i) or {}
+                    if d.get("CarIsPaceCar"):
+                        continue
+                    g = (me_t - f2[i]) * sign
+                    if 0 <= g < 600:
+                        row[key] = round(g, 2)
+                        row[key + "_name"] = d.get("UserName") or ""
+                    break
+        if "ahead" in row or "behind" in row:
+            out.append(row)
+    return out
+
+
+def _field_stops_raw(rows, drivers, me_idx):
     state: dict = {}
     stops: dict = {}
     for r in rows:
@@ -1141,8 +1205,10 @@ def _section(num, car, field, si_sessions, drivers, me_idx, tl_end):
     clean = [l for l in timed if best and l["time"] <= best * 1.07]
     typical = _median([l["time"] for l in clean])
     burns = [l for l in whole if l.get("fuel_used") is not None and l["fuel_used"] > 0.01 and not l.get("pit")]
+    is_race = str(typ).strip().lower() == "race"
+    green_t = next((r.get("t") for r in samples if r.get("st") == RACING and r.get("t") is not None), None) if is_race else None
     # stints: a new one begins after each of your own pit stops
-    stops = _stops_own(samples, None)
+    stops = [x for x in _stops_own(samples, None) if green_t is None or (x.get("in_t") or 0) >= green_t]
     cut = sorted({s["lap"] for s in stops if s.get("lap") is not None})
     stints, cur = [], []
     for l in whole:
@@ -1161,17 +1227,28 @@ def _section(num, car, field, si_sessions, drivers, me_idx, tl_end):
                            "counted_laps": len(fl), "fuel_l": round(sum(fl), 2) if fl else None,
                            "per_lap_l": round(sum(fl) / len(fl), 3) if fl else None})
     # aids
+    # 2.35: only what you drove with counts. Before the first whole lap (and before the green flag in a race) iRacing
+    # reports 0 while the car loads, which read as "you changed brake bias from 0 to 50".
     aid_seen: dict = {}
-    for l in laps:
-        for k, v in (l.get("aids") or {}).items():
-            aid_seen.setdefault(k, set()).add(v)
+    for l in whole:
+        if (l.get("lap") or 0) >= 1:
+            for k, v in (l.get("aids") or {}).items():
+                aid_seen.setdefault(k, set()).add(v)
+    first_t = next((l.get("t") for l in whole if (l.get("lap") or 0) >= 1 and l.get("t") is not None), None)
     for r in samples:
+        if (r.get("lap") or 0) < 1 or (green_t is not None and (r.get("t") or 0) < green_t) or (
+                first_t is not None and (r.get("t") or 0) < first_t - 600):
+            continue
         for k in ("bb", "abs", "tc"):
             if r.get(k) is not None:
                 aid_seen.setdefault(k, set()).add(r[k])
     changes = []
-    for l in laps:
+    for l in whole:
+        if (l.get("lap") or 0) < 1:
+            continue
         for c in l.get("chg") or []:
+            if c.get("from") in (None, 0) and l is next((x for x in whole if (x.get("lap") or 0) >= 1), None):
+                continue
             changes.append(dict(c, lap=l.get("lap")))
     by_lap: dict = {}
     for e in incs:
@@ -1185,7 +1262,7 @@ def _section(num, car, field, si_sessions, drivers, me_idx, tl_end):
                     "per_lap": [{"lap": l.get("lap"), "fuel_used_l": l.get("fuel_used"), "pit": bool(l.get("pit"))} for l in whole
                                 if l.get("fuel_used") is not None]},
            "aids": {"seen": {k: sorted(v) for k, v in aid_seen.items()},
-                    "per_lap": [{"lap": l.get("lap"), **(l.get("aids") or {})} for l in whole if l.get("aids")],
+                    "per_lap": [{"lap": l.get("lap"), **(l.get("aids") or {})} for l in whole if l.get("aids") and (l.get("lap") or 0) >= 1],
                     "changes": changes},
            "incidents": {"total": last.get("ti") if last.get("ti") is not None else sum(by_lap.values()),
                          "team_total": last.get("tti"),
@@ -1195,7 +1272,7 @@ def _section(num, car, field, si_sessions, drivers, me_idx, tl_end):
                                          "wear_end": last.get("w4")},
            "weather": {"track_c": last.get("tt"), "air_c": last.get("at"), "wetness": last.get("wet")}}
     # race extras
-    if str(typ).strip().lower() == "race":
+    if is_race:
         fr = [r for r in field if r.get("sn") == num]
         pos_laps = [{"lap": l.get("lap"), "pos": l.get("pos"), "cpos": l.get("cpos")} for l in whole if l.get("pos")]
         fin = None
@@ -1205,7 +1282,7 @@ def _section(num, car, field, si_sessions, drivers, me_idx, tl_end):
                        "laps": rp.get("LapsComplete"), "incidents": rp.get("Incidents")}
         if fin is None and pos_laps:
             fin = {"pos": pos_laps[-1]["pos"], "cpos": pos_laps[-1]["cpos"], "from": "last lap row"}
-        stp = _field_stops(fr, drivers, me_idx)
+        stp = _field_stops(fr, drivers, me_idx, green_t)
         rivals = []
         for i, d in sorted(drivers.items()):
             if d.get("CarIsPaceCar") or d.get("IsSpectator"):
@@ -1213,7 +1290,9 @@ def _section(num, car, field, si_sessions, drivers, me_idx, tl_end):
             rivals.append({"car_idx": i, "number": str(d.get("CarNumber") or ""), "name": d.get("UserName") or "",
                            "team": d.get("TeamName") or "", "class": d.get("CarClassShortName") or "",
                            "is_me": i == me_idx, "stops": stp.get(i, [])})
-        out["race"] = {"positions": pos_laps, "finish": fin, "rivals": rivals, "field_rows": len(fr)}
+        out["race"] = {"positions": pos_laps, "finish": fin, "rivals": rivals, "field_rows": len(fr),
+                       "gaps": _gaps(fr, [l for l in whole if (l.get("lap") or 0) >= 1], me_idx, drivers),
+                       "green_t": green_t}
     return out
 
 
@@ -1240,7 +1319,8 @@ def summarise_dir(folder, ended_by: str = "", final: bool = True) -> dict:
     sub = wi.get("SubSessionID") or hdr.get("subsession")
     started = hdr.get("started") or next((s["started"] for s in secs if s.get("started")), None)
     ended = max((s["ended"] for s in secs if s.get("ended")), default=None)
-    return {"version": VERSION, "app": _version(), "final": bool(final), "complete": bool(final), "ended_by": ended_by,
+    ai = [d for i, d in drivers.items() if d.get("CarIsAI") and not d.get("CarIsPaceCar") and i != me_idx]
+    return {"version": VERSION, "sv": SUMMARY_V, "app": _version(), "final": bool(final), "complete": bool(final), "ended_by": ended_by,
             "folder": folder.name, "subsession": int(sub) if sub else None,
             "track": {"name": track_name, "config": wi.get("TrackConfigName") or "", "code": wi.get("TrackName") or "",
                       "id": wi.get("TrackID"), "length": wi.get("TrackLength")},
@@ -1254,4 +1334,4 @@ def summarise_dir(folder, ended_by: str = "", final: bool = True) -> dict:
                                   "iRacing's own telemetry files (.ibt) were switched off during this session, so no "
                                   "telemetry file was saved. Turn on Settings > Live data > Make iRacing save my telemetry "
                                   "and Debrief switches it on for you."),
-            "sessions": secs}
+            "sessions": secs, "ai_cars": len(ai), "official": bool(sub)}

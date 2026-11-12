@@ -452,19 +452,18 @@ def test_firstrun():
     make_old()
     read_telemetry()
     code, j = call("api/firstrun")
-    assert code == 200 and j["ok"] and j["total"] == 6, j
+    assert code == 200 and j["ok"] and j["total"] == 5 and "voice" not in {x["id"] for x in j["steps"]}, j   # 2.33
     by = {x["id"]: x for x in j["steps"]}
     assert by["token"]["done"] and by["folder"]["done"] and by["telemetry"]["done"] and by["session"]["done"], by
     assert by["record"]["done"] and "telemetry files (.ibt)" in by["record"]["text"], by["record"]   # 2.18
-    if not by["voice"]["done"]:
-        assert j["next"] == "voice" and by["voice"]["action"] == "test_voice" and j["show"], j
-        use_fakes(s, lambda: Holding(make_new()))
-        s.stop_coach()
-        code, r = call("api/coach/test-voice", {})
-        assert code == 200 and r["ok"], r
-        end = time.time() + 20
-        while time.time() < end and not call("api/firstrun")[1]["all_done"]:
-            time.sleep(0.1)
+    # 2.33: the voice test is no longer a setup step, but a heard Test voice is still remembered
+    use_fakes(s, lambda: Holding(make_new()))
+    s.stop_coach()
+    code, r = call("api/coach/test-voice", {})
+    assert code == 200 and r["ok"], r
+    end = time.time() + 20
+    while time.time() < end and not json.loads((TMP / "firstrun.json").read_text(encoding="utf-8") if (TMP / "firstrun.json").exists() else "{}").get("voice_tested"):
+        time.sleep(0.1)
     j = call("api/firstrun")[1]
     assert j["all_done"] and not j["show"] and j["text"] == "You're all set.", j
     code, j = call("api/firstrun/dismiss", {})
@@ -650,29 +649,23 @@ def test_firstrun_in_the_window():
         pg.goto(s.url)
         # 2.18: with the token saved and a session of clean laps, setup is done: Debrief opens on Today with no
         # "Getting set up" box, and the step left (the voice) is one quiet line
-        pg.wait_for_selector("#tdSetupLine.quiet")      # 2.28: the strip is always there; "quiet" when it has a step to show
-        assert pg.evaluate("() => !document.getElementById('vToday').hidden"), "the start page is Today"
+        # 2.33: the voice test is no longer a setup step, so with these steps done there is nothing left to show
+        pg.wait_for_selector("#vToday:not([hidden])")
+        pg.wait_for_timeout(800)
         assert pg.evaluate("() => document.getElementById('firstRun').hidden")
-        line = pg.text_content("#tdSetupLine")
-        assert "1 step left" in line and "Test the coach's voice" in line, line
-        no_dash_text(pg, "#tdSetupLine")
-        pg.click("#tdSetupLine >> text=Test voice")
-        pg.wait_for_selector("#vCoach", state="visible")
-        assert pg.evaluate("() => document.getElementById('coSet').open")
-        pg.wait_for_function("() => document.getElementById('coSetMsg').textContent !== ''")   # it pressed Test voice
-        time.sleep(1)
-        st.write_text("{}", encoding="utf-8")              # the voice was heard: forget it, for the rest of the test
+        line = pg.text_content("#tdSetupLine") or ""
+        assert "step left" not in line and "voice" not in line, line
+        st.write_text("{}", encoding="utf-8")
         # Help > Setup checklist shows the whole list on Today
         pg.click("#btnHelp")
         pg.click("#helpFirstRun")
         pg.wait_for_selector("#firstRun:not([hidden]) .frstep")
         assert pg.evaluate("() => document.getElementById('firstRun').closest('#vToday') !== null")
         w = call("api/firstrun")[1]
-        assert w["total"] == 6 and not dict((x["id"], x["done"]) for x in w["steps"])["voice"], w
-        assert pg.text_content("#frPill") == f"{w['done']} of 6 done", pg.text_content("#frPill")
+        assert w["total"] == 5 and "voice" not in {x["id"] for x in w["steps"]}, w   # 2.33
+        assert pg.text_content("#frPill") == f"{w['done']} of 5 done", pg.text_content("#frPill")
         assert pg.locator("#frList .frstep.done").count() == w["done"]
-        btn = pg.locator("#frList button[data-fr=test_voice]")
-        assert btn.count() == 1 and btn.text_content() == "Test voice"     # 2.18: the button it names is right there
+        assert pg.locator("#frList button[data-fr=test_voice]").count() == 0
         no_dash_text(pg, "#firstRun")
         if shots:
             snap(pg, shots / "firstrun-light.png")

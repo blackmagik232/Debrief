@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.33.0 "Fits any screen"
+
+Debrief is tidier on laptop screens and on pages that are still empty.
+
+- **The sidebar fits a laptop screen.** On a shorter window the rows sit a little closer together. Only if every page still doesn't fit (like a 1080p laptop at 150% scaling), Season, Skills and Goals fold under **Progress**, and Race Room under **Coach**, until you open that page. A small **+** shows a page has more under it. When everything fits, nothing is folded.
+- **Empty pages say what to do once.** Racing and Car vs car used to repeat the same steps two or three times before you had any data. Now each shows one **How to fill this page** card with numbered steps.
+- **Rebuild all.** If your Skills page says reviews were saved without lap traces, one **Rebuild all** button now makes them all again from Garage 61, instead of opening each review. Debrief tells you how many and roughly how long first, and you can cancel. Typed race results are kept. If Garage 61 can't be reached, it stops at once instead of trying every review.
+- **A shorter setup checklist.** Testing the coach's voice is no longer a setup step. The coach is optional, and Test voice is still on the Coach page. The "can't find your telemetry folder" step no longer prints the whole folder path; **Why?** shows where Debrief looked.
+- Also in this update, if you skipped 2.32.0: **Make iRacing save my telemetry** in Settings > Live data.
+
+### For the record
+
+- Sidebar: `index.html` sub-pages carry `data-parent`; `markNav()` marks `.shown`, `.hassub` and `.grpopen`; `navFit()` sets `body.navtight` (fold `.navbtn.sub:not(.shown)`) only when the nav overflows its scroll area, re-checked on resize; `app.css` tightens rows below 960 px tall. Measured: every page fits from about 780 px; at 720 the sub-pages fold.
+- Developer tool: `tools/codemap.py` maps every module, window function, page element and route to the tests that use it (`--which <thing>` prints the tests to run). CLAUDE.md says to use it.
+- Empty states: `emptyCard()` in `app.js` (heading plus numbered steps for "How to fill this page"). Racing shows one card and hides the incidents section when there is nothing at all; Car vs car's "Where you were faster" no longer repeats the table card's steps.
+- Rebuild all: `server.rebuild_all_items` (race reviews whose skills reason is `no_traces`, newest first, at most 40), `_rebuild_all` (the same as each review's Rebuild; one failure is named and skipped; a connection or token failure stops the rest; Cancel works between reviews); job `rebuildall`; `POST api/rebuild-all` (`count_only` for the question first). The Skills page in `templates/library.html` has the button (inside the window only); `profile.WHY_SHORT` points at it.
+- Checklist: `firstrun.STEP_IDS` drops `voice` (voice_tested is still remembered); steps carry `detail`, which `today._from_setup` shows as Why?. Help's setup steps mark the coach optional; README updated.
+- Tests: new `tests/test_233_screens.py` (Rebuild all with a stand-in, the checklist, and the window at 1280x720 and 1920x1080: the sidebar fits on every page, folding, one empty card, Rebuild all asks first). `test_214_firstrun.py`, `test_214_page.py` and `test_2192_fixes.py` follow the new checklist and words.
+- Not proven yet: Rebuild all against real Garage 61 data (first check: your Skills page's Rebuild all), and how the sidebar looks at your own Windows scaling.
+
 ## 2.32.0 "Telemetry on"
 
 Debrief can now make sure iRacing saves your telemetry, so Practice, Setup Lab and the Coach always have something to work with.

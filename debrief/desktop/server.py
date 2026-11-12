@@ -552,10 +552,10 @@ JOB_TITLES = {"review": "Reviewing your last race", "check": "Checking the conne
               "prep": "Building your track prep page", "team": "Updating the team hub", "teamload": "Loading a track for the team hub",
               "sync": "Syncing your Garage 61 history", "teamauto": "Syncing your team's laps", "schedule": "Loading the iRacing season schedule",
               "scan": "Scanning the replay", "rival": "Reading a rival's lap", "update": "Updating Debrief", "weekly": "Updating this week's team leaderboards",
-              "setuplab": "Reading your telemetry files"}
+              "setuplab": "Reading your telemetry files", "rebuildall": "Rebuilding your saved reviews"}
 BACKGROUND_TITLES = {"refresh": "Updating your saved reviews to the new page layout"}
 # 2.28: jobs the Cancel button can stop; they check for it every time they report a step
-CANCELLABLE = ("review", "prep", "team", "teamload", "weekly")
+CANCELLABLE = ("review", "prep", "team", "teamload", "weekly", "rebuildall")
 CANCELLED_MSG = "You stopped it. Nothing was changed."
 
 
@@ -737,6 +737,8 @@ class Jobs:
                                       car_id=params.get("car_id"), rebuild=bool(params.get("rebuild")), info=info)
                 result = {"review": Path(page).parent.name, "saved": bool(info.get("saved")),
                           "changes": info.get("changes")}
+            elif kind == "rebuildall":
+                result = _rebuild_all(cfg, params.get("items") or [], cb)
             elif kind == "scan":
                 from .. import replay_scan
                 try:
@@ -1157,6 +1159,61 @@ def clean_coach_settings(raw) -> dict:
 def saved_coach_settings() -> dict:
     d = settings_io.load_extra("coach").get("settings")
     return d if isinstance(d, dict) else {}
+
+
+REBUILD_ALL_MAX = 40   # 2.33: one Rebuild all does at most this many (each is about 15 paced Garage 61 requests)
+
+
+REBUILD_NONE = ("Nothing to rebuild: every review that needs its lap traces is either done already or can't be told "
+                "apart from its saved data (review those again from All sessions).")
+
+
+def rebuild_all_items(cfg) -> list:
+    """2.33 Rebuild all: [(review folder, job params)] for the race reviews saved without lap traces (the Skills page's
+    "no_traces"), newest first, at most REBUILD_ALL_MAX. A review whose race can't be told from its saved data is left
+    out (it can't be rebuilt by its own button either)."""
+    from .. import library
+    rows = library.race_rows(library.list_reviews(cfg["library_folder"]))
+    rows = sorted((r for r in rows if r.get("skills_why") == "no_traces" and r.get("dir")),
+                  key=lambda r: str(r.get("date") or ""), reverse=True)
+    out = []
+    for r in rows:
+        d = Path(cfg["library_folder"]) / "reviews" / r["dir"]
+        try:
+            out.append((r["dir"], review_rebuild_params(d)))
+        except (ValueError, OSError):
+            continue
+        if len(out) >= REBUILD_ALL_MAX:
+            break
+    return out
+
+
+def _rebuild_all(cfg, items, cb) -> dict:
+    """Make each review again from Garage 61, one after another (the same as its own Rebuild button). One that fails is
+    named and skipped; Cancel stops before the next one. Typed race results are kept, as with Rebuild."""
+    done, failed = [], []
+    n = len(items)
+    for i, (name, params) in enumerate(items):
+        cb(i / max(1, n), f"Rebuilding review {i + 1} of {n}...")
+
+        def sub(frac, msg, i=i):
+            cb((i + (frac or 0.0)) / max(1, n), msg)
+        try:
+            app.cmd_review(cfg, params.get("event"), open_after=False, progress=sub, session_kind=params.get("session_type"),
+                           track_id=params.get("track_id"), car_id=params.get("car_id"), rebuild=True, info={})
+            done.append(name)
+        except JobCancelled:
+            raise
+        except (SystemExit, Exception) as e:  # noqa: BLE001  (one bad race never stops the rest)
+            why = friendly(e)
+            failed.append({"review": name, "why": why})
+            app.say(f"Rebuild all: {name} failed: {why}")
+            if re.search(r"reach Garage 61|token|401", why, re.I):   # no connection or a refused token: the rest would fail too
+                failed += [{"review": nm, "why": why} for nm, _p in items[i + 1:]]
+                cb(1.0, why)
+                raise SystemExit(f"{why} Rebuild all stopped there; {len(done)} review{'s' if len(done) != 1 else ''} rebuilt before that.")
+    cb(1.0, f"Rebuilt {len(done)} of {n} review{'s' if n != 1 else ''}.")
+    return {"rebuilt": done, "failed": failed, "total": n}
 
 
 def _rebuild_library(cfg) -> None:
@@ -3387,6 +3444,18 @@ class Handler(BaseHTTPRequestHandler):
             if not self._token_saved():
                 return self._json({"ok": False, "error": FINISH_SETUP, "setup": True}, 400)
             return self._json(self.server.jobs.start("review", params))
+        if r == "api/rebuild-all":   # 2.33: every review saved without lap traces, made again from Garage 61
+            if not self._token_saved():
+                return self._json({"ok": False, "error": FINISH_SETUP, "setup": True}, 400)
+            try:
+                items = rebuild_all_items(self._cfg())
+            except ValueError as e:
+                return self._json({"ok": False, "error": str(e)}, 400)
+            if not items:
+                return self._json({"ok": False, "error": REBUILD_NONE}, 400)
+            if isinstance(body, dict) and body.get("count_only") is True:
+                return self._json({"ok": True, "count": len(items)})
+            return self._json(self.server.jobs.start("rebuildall", {"items": items}))
         if r == "api/replay-scan":
             try:
                 d = self._review_dir(self._cfg(), body.get("review"))

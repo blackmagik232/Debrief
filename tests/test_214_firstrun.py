@@ -36,8 +36,8 @@ def by_id(w):
 
 print("== steps from facts")
 st = fr.steps({})
-check([s["id"] for s in st] == list(fr.STEP_IDS) and not any(s["done"] for s in st), "six steps, none done")
-check(list(fr.STEP_IDS) == ["folder", "record", "telemetry", "session", "voice", "token"],
+check([s["id"] for s in st] == list(fr.STEP_IDS) and not any(s["done"] for s in st), "five steps, none done")
+check(list(fr.STEP_IDS) == ["folder", "record", "telemetry", "session", "token"],
       "2.18: telemetry first, Garage 61 last")
 check(all(s["action"] for s in st) and all(s["title"] and s["text"] for s in st),
       "each has a title, text and an action (2.32: record offers Turn it on for me)")
@@ -77,13 +77,16 @@ st = {s["id"]: s for s in fr.steps({"token": False, "token_rejected": True})}
 check(not st["token"]["done"] and "didn't accept" not in st["token"]["text"], "no token: the plain text")
 check("personal access token" in st["token"]["text"] and "Practice, Setup Lab" in st["token"]["text"],
       "token step: personal access token, and what works without it")
-check(st["voice"]["text"].startswith("Click Test voice"), "voice: names the Test voice button")
+check("voice" not in st, "2.33: no voice step (the coach is optional)")
+_nf = {s["id"]: s for s in fr.steps({"folder": False, "folder_path": "C:/Users/me/Documents/iRacing/telemetry"})}["folder"]
+check("C:/" not in _nf["text"] and _nf["detail"] == "Debrief looked in C:/Users/me/Documents/iRacing/telemetry.",
+      "2.33: the folder looked in is behind Why?, not in the step text")
 w = fr.walkthrough({"token": True, "folder": True, "files": 3, "best_clean": 10, "voice_tested": True}, state={})
 check(w["all_done"] and not w["show"] and w["text"] == "You're all set.", "all done: not shown")
 w = fr.walkthrough({"token": True}, state={"dismissed": True})
 check(w["dismissed"] and not w["show"] and w["next"] == "folder" and w["done"] == 1, "dismissed: not shown")
 w = fr.walkthrough({"token": True}, state={})
-check(w["show"] and w["text"] == "1 of 6 done. Next: Find your iRacing telemetry.", w["text"])
+check(w["show"] and w["text"] == "1 of 5 done. Next: Find your iRacing telemetry.", w["text"])
 check(fr.steps(None)[0]["done"] is False and fr.steps("junk")[0]["id"] == "folder", "bad facts: no crash")
 
 print("== gather from Debrief's own files")
@@ -109,7 +112,7 @@ setuplab.index(TEL, cache_path=cache)
 f = fr.gather()
 check(f["files"] == 2 and f["best_clean"] >= fr.MIN_CLEAN, f"a session with {f['best_clean']} clean laps")
 w = fr.walkthrough()
-check(w["next"] == "voice" and w["done"] == 5 and w["show"], f"only the voice left: {w['text']}")
+check(w["all_done"] and w["done"] == 5 and not w["show"], f"2.33: done without a voice test: {w['text']}")
 
 print("== the state file")
 check(fr.mark("voice_tested"), "voice tested remembered")

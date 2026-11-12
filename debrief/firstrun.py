@@ -38,7 +38,8 @@ MIN_CLEAN = 10                             # practiceplan.WANT_LAPS: the clean l
 MAX_COUNT = 100000                         # .ibt files counted in the folder at most (a quick look, not a read)
 FLAGS = ("voice_tested", "dismissed", "token_rejected")
 
-STEP_IDS = ("folder", "record", "telemetry", "session", "voice", "token")
+# 2.33: the coach's voice test is no longer a setup step (the coach is optional; Coach > Settings > Test voice stays)
+STEP_IDS = ("folder", "record", "telemetry", "session", "token")
 SKIPPED_KEY = "skipped"                    # 2.19.2: firstrun.json "skipped": [step ids he chose to skip]
 TELEMETRY_HOW = ("iRacing doesn't save telemetry until you turn it on: click Turn it on for me and Debrief does it each "
                  "time you get in the car (or press Alt+L in the car yourself), then drive a few laps.")
@@ -57,15 +58,15 @@ def steps(facts: dict) -> list:
     out = []
     skipped = {x for x in (f.get("skipped") or []) if isinstance(x, str)}
 
-    def add(sid, done, title, todo, ok, action):
+    def add(sid, done, title, todo, ok, action, detail=""):
         out.append({"id": sid, "done": bool(done), "title": title, "text": ok if done else todo,
-                    "action": None if done else action, "skipped": bool(not done and sid in skipped)})
+                    "action": None if done else action, "skipped": bool(not done and sid in skipped),
+                    "detail": "" if done else detail})   # 2.33: e.g. the folder looked in, shown behind "Why?"
 
     ibt = int(f.get("ibt_files") or 0)
     add("folder", f.get("folder"), "Find your iRacing telemetry",
-        (f"Debrief can't find your telemetry folder{f' ({folder})' if folder else ''}. If iRacing saves it somewhere "
-         f"else, pick the folder in Settings."),
-        "Telemetry folder found.", "settings_folder")
+        "Debrief can't find your iRacing telemetry folder. If iRacing saves it somewhere else, pick the folder in Settings.",
+        "Telemetry folder found.", "settings_folder", f"Debrief looked in {folder}." if folder else "")
     add("record", ibt > 0 or files > 0, "Turn on telemetry in iRacing",
         ((f"Debrief found your telemetry folder but no telemetry files (.ibt) in it yet. "
           f"{TELEMETRY_AUTO_ON if f.get('ensure_telemetry') else TELEMETRY_HOW}")
@@ -85,9 +86,6 @@ def steps(facts: dict) -> list:
          f"Drive at least {MIN_CLEAN} clean laps in one go (no offs, no pit stops) so Debrief can pick one thing for "
          f"you to work on."),
         f"You have a session with {best} clean laps. Open it on the Practice page.", "practice")
-    add("voice", f.get("voice_tested"), "Test the coach's voice",
-        "Click Test voice: the coach says one short line out loud, so you can check you hear it over the game.",
-        "The coach's voice has been tested.", "test_voice")
     rejected = bool(f.get("token")) and bool(f.get("token_rejected"))
     add("token", f.get("token") and not rejected, "Connect Garage 61 for race reviews",
         ("Garage 61 didn't accept your saved personal access token. Paste it again in Settings." if rejected else

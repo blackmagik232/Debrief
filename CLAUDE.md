@@ -11,6 +11,14 @@ words and say what he will see differently in the window.
 - Say plainly what was tested and what was not. Tests use stand-ins; real Garage 61 data and Windows prove the rest.
   Write a "Not proven yet" line in the CHANGELOG for anything only a real PC/real data can confirm.
 
+## Code map
+- Before changing code, read the project doc `claude/debrief-codemap.md` (or run `python tools/codemap.py`, which writes
+  `codemap.json` and `CODEMAP.md`; both are generated, so don't commit them). It lists every module, what it imports, what
+  imports it, the window routes it answers and the exact test files to run. The visual version is the "Debrief Code
+  Constellation" artifact. Regenerate both after every release.
+- Before a change, `python tools/codemap.py --which <thing>` (a module, function or method, #element, .class, nav:page or
+  api/route; repeat --which for several) prints the test files to run for it. Run those first, then the full suite before a release.
+
 ## Commands
 - `python3 tests/run_all.py`: all tests (about 6 minutes). Must be 100% green before every commit.
 - Windows-safe tests: no SIGALRM, no /tmp literals, utf-8 file opens, normalize CRLF, no sub-3 s network timing.

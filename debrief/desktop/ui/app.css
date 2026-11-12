@@ -59,6 +59,13 @@ a{color:var(--me)}
 .footnav{display:grid;grid-template-columns:1fr 1fr;gap:2px}
 .footnav .navbtn{padding:6px 11px}
 /* short windows (1093x614, 1280x720): tighter, so the page list still has room */
+/* 2.33 "Fits any screen": below 960 px tall the sidebar rows are tighter; and only when every page still doesn't fit
+   (body.navtight, measured in markNav), the sub-pages fold under their page while you are in another group, so the
+   whole sidebar fits a 1080p laptop at 150% (720 px) without scrolling */
+body.navtight .nav .navbtn.sub:not(.shown){display:none}
+body.navtight .nav .navbtn.hassub:not(.grpopen)::after{content:"+";color:var(--muted);font-family:var(--mono);margin-left:6px;font-size:var(--fs-11)}
+@media (max-height:960px){.side{gap:6px;padding-top:10px}.nav{gap:0}.sidefoot{padding-top:6px;gap:6px}
+  .nav .navbtn{padding-top:4px;padding-bottom:4px}.nav .navbtn.sub{padding-top:3px;padding-bottom:3px}.nav .navgroup{padding:3px 11px 0 14px}}
 @media (max-height:780px){.side{gap:8px;padding-top:12px}.brand{padding-bottom:8px}.brand .name{font-size:var(--fs-21)}.brand img{width:28px;height:28px}
   .btn.big{padding:9px 12px;font-size:var(--fs-14)}.navbtn{padding:6px 11px}.navbtn.sub{padding:4px 11px 4px 26px}.navgroup{padding-top:6px}}
 .seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--axis);border-radius:5px;overflow:hidden}
@@ -963,3 +970,9 @@ dialog.helpdlg[open]{display:block}
   .helpbrand{display:none}.helpnav{display:flex;gap:2px}.hgroup{display:none}.hnav{white-space:nowrap;border-left:0;border-bottom:3px solid transparent;border-radius:4px 4px 0 0}
   .hnav.active{border-bottom-color:var(--me)}.helpbody{padding:20px 18px 40px}.hgloss{grid-template-columns:1fr}.hgloss dt{border-bottom:0;padding-bottom:0}}
 @media (prefers-reduced-motion:reduce){.hflash{animation:none}}
+
+/* 2.33: empty pages say what to do once, quietly */
+.emptycard .emptyh{font-family:var(--display);font-weight:700;font-size:var(--fs-21);text-transform:uppercase;letter-spacing:.02em;margin:0 0 8px}
+.emptycard .emptysteps{margin:0 0 10px;padding-left:22px;display:grid;gap:6px;max-width:68ch}
+.emptycard .emptysteps li{line-height:1.5}
+.panel.pvnone.emptycard{padding:18px 20px}

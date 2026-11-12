@@ -84,7 +84,7 @@ def test_overlay_next_step():
 # ---------------------------------------------------------------- 4. progress words
 def test_skills_reason_in_one_line():
     line = profile.why_line({"no_traces": 3, "few_clean": 1}, 4)
-    assert line == "None of your 4 race reviews has skill scores yet: they were saved without lap traces (open one and press Rebuild)."
+    assert line == "None of your 4 race reviews has skill scores yet: they were saved without lap traces (Rebuild all on the Skills page makes them again)."
     assert profile.why_line({}, 0) == "" and "1 race review has" in profile.why_line({"few_clean": 1}, 1)
     assert "the page below says why" not in JS and "p.why_line" in JS
 

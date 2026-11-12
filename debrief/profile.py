@@ -449,7 +449,7 @@ def over_time(rows: list) -> list:
 EXIT_NOTE = "Exit speeds from reviews before 2.7.0 were measured 150 m after the apex."
 
 
-WHY_SHORT = {"no_traces": "they were saved without lap traces (open one and press Rebuild)",
+WHY_SHORT = {"no_traces": "they were saved without lap traces (Rebuild all on the Skills page makes them again)",
              "not_enough_clean_laps": "they had fewer than 6 clean laps with telemetry",
              "few_clean": "they had fewer than 6 clean laps with telemetry",
              "not_enough_better_laps": "they had too few quick laps to compare your typical laps with",

@@ -30,7 +30,7 @@
     <span class="navgroup" aria-hidden="true">Before you drive</span>
     <button type="button" class="navbtn" data-nav="prep" title="Prepare: this week's race (Ctrl+2)" aria-keyshortcuts="Control+2">Prepare</button>
     <button type="button" class="navbtn" data-nav="coach" title="Coach: spoken cues while you drive (Ctrl+3)" aria-keyshortcuts="Control+3">Coach</button>
-    <button type="button" class="navbtn sub" data-nav="room" title="Race Room: the pit board, stints and strategy of a team race">Race Room</button>
+    <button type="button" class="navbtn sub" data-nav="room" data-parent="coach" title="Race Room: the pit board, stints and strategy of a team race">Race Room</button>
     <span class="navgroup" aria-hidden="true">After you drive</span>
     <button type="button" class="navbtn" data-nav="sessions" title="All sessions: every session Garage 61 has for you (Ctrl+4)" aria-keyshortcuts="Control+4">All sessions</button>
     <button type="button" class="navbtn" data-nav="practice" title="Practice: every time you drove, from iRacing's telemetry files on this PC (Ctrl+5)" aria-keyshortcuts="Control+5">Practice</button>
@@ -40,9 +40,9 @@
     <button type="button" class="navbtn" data-nav="cars" title="Car vs car: which car of a class is quicker at a track (Ctrl+8)" aria-keyshortcuts="Control+8">Car vs car</button>
     <span class="navgroup" aria-hidden="true">Over time</span>
     <button type="button" class="navbtn" data-nav="library" title="Progress: am I getting faster? (Ctrl+9)" aria-keyshortcuts="Control+9">Progress</button>
-    <button type="button" class="navbtn sub" data-nav="season" title="Season: this season's races">Season</button>
-    <button type="button" class="navbtn sub" data-nav="skills" title="Skills: your driver profile">Skills</button>
-    <button type="button" class="navbtn sub" data-nav="goals" title="Goals: target lap times">Goals</button>
+    <button type="button" class="navbtn sub" data-nav="season" data-parent="library" title="Season: this season's races">Season</button>
+    <button type="button" class="navbtn sub" data-nav="skills" data-parent="library" title="Skills: your driver profile">Skills</button>
+    <button type="button" class="navbtn sub" data-nav="goals" data-parent="library" title="Goals: target lap times">Goals</button>
     <span class="navgroup" aria-hidden="true">Team</span>
     <button type="button" class="navbtn" data-nav="team" title="Team (Ctrl+0)" aria-keyshortcuts="Control+0">Team</button>
   </nav>

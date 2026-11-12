@@ -187,7 +187,7 @@ def _from_setup(S: dict) -> dict | None:
     if not st:
         return None
     return {"source": "setup", "title": _s(st.get("title")), "lines": [["", _s(st.get("text"))]] if _s(st.get("text")) else [],
-            "where": "", "why": "The next setup step.", "sureness": None,
+            "where": "", "why": _s(st.get("detail")) or "The next setup step.", "sureness": None,
             "action": {"label": "Do this step", "go": "setup", "step": st.get("action")}, "more": None}
 
 

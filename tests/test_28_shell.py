@@ -251,7 +251,7 @@ def test_setup_gate_and_sample_review():
         pg.wait_for_function("() => !document.getElementById('vWelcome').hidden")
         pg.wait_for_selector("#firstRun:not([hidden]) .frstep")
         assert pg.text_content("#frTitle") == "Start with your telemetry"
-        assert pg.locator("#frList .frstep").count() == 5          # its Garage 61 step is the guide below
+        assert pg.locator("#frList .frstep").count() == 4          # its Garage 61 step is the guide below (2.33: no voice step)
         if pg.locator("#frList button[data-fr=practice]").count():
             pg.click("#frList button[data-fr=practice]")
             pg.wait_for_function("() => !document.getElementById('vPractice').hidden")

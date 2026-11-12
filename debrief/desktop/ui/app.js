@@ -126,10 +126,10 @@ new MutationObserver(()=>$('btnMenu').setAttribute('aria-expanded',String(docume
    either, since a reload drops the window's place and can close Debrief, so it says where Review last race went. */
 const PAGE_KEYS=[...document.querySelectorAll('.nav .navbtn[data-nav]:not(.sub)')].map(b=>b.dataset.nav).slice(0,10);
 const keyOfPage=n=>{const i=PAGE_KEYS.indexOf(n);return i<0?null:'Ctrl+'+(i===9?0:i+1)};
-const KEY_MSG=/^(review|reviewgo|settings|help|prev|next|rebuild|page[0-9])$/;
+const KEY_MSG=/^(review|reviewgo|settings|help|prev|next|rebuild|rebuildall|page[0-9])$/;
 let oldKeyShown=false;
 function shortcut(k){if(/^(reviewgo|prev|next|rebuild|page[0-9])$/.test(k)&&!leaveOk())return true;
-  if(k==='reviewgo'){startReview();return true}if(k==='rebuild'){if(current.view==='review'&&current.dir)rebuildReview(current.dir);return true}if(k==='settings'){openSettings();return true}
+  if(k==='reviewgo'){startReview();return true}if(k==='rebuild'){if(current.view==='review'&&current.dir)rebuildReview(current.dir);return true}if(k==='rebuildall'){rebuildAll();return true}if(k==='settings'){openSettings();return true}
   if(k==='review'){if(!oldKeyShown){oldKeyShown=true;banner('Review last race is Ctrl+Enter now (or the button at the top of the sidebar). Ctrl+R does nothing in Debrief.',false,9000)}return true}
   if(k==='help'){if(!$('dlgHelp').open)openHelp('keys');else showHelp('keys');return true}
   if(document.querySelector('dialog[open]'))return false;
@@ -159,9 +159,19 @@ const FRAME_VIEWS=['review','library','season','skills','goalCharts','prepPage',
 const NAV_OF={today:'today',weekly:'team',sync:'sessions',sessions:'sessions',library:'library',season:'season',skills:'skills',goals:'goals',goalCharts:'goals',prep:'prep',prepPage:'prep',schedule:'prep',team:'team',teamPage:'team',settings:'settings',setuplab:'setuplab',coach:'coach',practice:'practice',racing:'racing',cars:'cars',room:'room'};
 let current={view:null,dir:null};
 function show(view){VIEWS.forEach(v=>$(v).hidden=(v!==view));if(view!=='vFrame')document.title=appTitle()}
+// 2.33: fold the sub-pages only when the whole sidebar wouldn't fit the window (measured with everything shown)
+function navFit(){const n=document.querySelector('.nav'),sc=n&&n.closest('.sidescroll');if(!sc)return;
+  document.body.classList.remove('navtight');
+  if(n.getBoundingClientRect().bottom>sc.getBoundingClientRect().bottom+1)document.body.classList.add('navtight')}
+{let t=0;addEventListener('resize',()=>{clearTimeout(t);t=setTimeout(navFit,120)})}
 function markNav(){
   const nav=NAV_OF[current.view]||null;
   document.querySelectorAll('.navbtn').forEach(b=>{const on=b.dataset.nav===nav;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+  // 2.33: on a short window the sub-pages (Race Room; Season, Skills, Goals) fold under their page until you are in that group
+  {const sub=document.querySelector('.nav .navbtn.sub[data-nav="'+nav+'"]'),grp=sub?sub.dataset.parent:nav;
+   document.querySelectorAll('.nav .navbtn.sub').forEach(b=>b.classList.toggle('shown',b.dataset.parent===grp));
+   document.querySelectorAll('.nav .navbtn:not(.sub)').forEach(b=>{const has=!!document.querySelector('.nav .navbtn.sub[data-parent="'+b.dataset.nav+'"]');b.classList.toggle('hassub',has);b.classList.toggle('grpopen',has&&b.dataset.nav===grp)})}
+  navFit();
   document.querySelectorAll('.rev').forEach(b=>{const on=current.view==='review'&&b.dataset.dir===current.dir;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
   document.body.classList.remove('navopen');
   frameBar();lastRaceCard();renderFirstRun();
@@ -449,16 +459,16 @@ async function loadReviews(){
 }
 
 /* ---------- jobs: review / prep / team share the progress screen; check stays in Settings */
-const TITLES0={setuplab:'Reading your telemetry files',scan:'Scanning the replay',rival:'Reading a rival\'s lap',weekly:'Updating this week\'s team leaderboards',update:'Updating Debrief',sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
-const STOPPED={scan:'The scan stopped',rival:'Reading the lap stopped',weekly:'The leaderboard refresh stopped',update:'The update stopped',review:'The review stopped',prep:'The prep page stopped',team:'The team refresh stopped'};
+const TITLES0={rebuildall:'Rebuilding your saved reviews',setuplab:'Reading your telemetry files',scan:'Scanning the replay',rival:'Reading a rival\'s lap',weekly:'Updating this week\'s team leaderboards',update:'Updating Debrief',sync:'Syncing your Garage 61 history',review:'Reviewing your last race',prep:'Building your track prep page',team:'Updating the team hub',check:'Checking the connection'};
+const STOPPED={rebuildall:'Rebuild all stopped',scan:'The scan stopped',rival:'Reading the lap stopped',weekly:'The leaderboard refresh stopped',update:'The update stopped',review:'The review stopped',prep:'The prep page stopped',team:'The team refresh stopped'};
 const TITLES=Object.assign({},TITLES0);   // the review title can change per job; TITLES0 keeps the defaults
 let handled=new Set(),polling=false,lastJob=null,lastStart=null;
 /* 2.28 Never blocked. Only an action that truly needs the one job slot (a review, prep, team refresh, sync, check,
    scan...) can wait for the running job; it says why in plain words, looks disabled, and starts by itself when the job
    ends. Browsing, filters, opening pages and reviews and every settings save never go through here. */
-const FINISH_WORD={review:'the review',prep:'the prep page',team:'the team refresh',teamload:'the team update',weekly:'the leaderboard refresh',scan:'the scan',rival:'the lap read',
+const FINISH_WORD={rebuildall:'Rebuild all',review:'the review',prep:'the prep page',team:'the team refresh',teamload:'the team update',weekly:'the leaderboard refresh',scan:'the scan',rival:'the lap read',
   setuplab:'the telemetry read',check:'the connection check',sync:'the sync',schedule:'the schedule load',update:'the update',teamauto:'the team sync'};
-const QUEUE_WORD={review:'Review',prep:'Prep page',team:'Team refresh',teamload:'Team update',weekly:'Leaderboard refresh',scan:'Scan',rival:'Lap read',check:'Connection check',sync:'Sync',schedule:'Schedule load',setuplab:'Telemetry read',update:'Update'};
+const QUEUE_WORD={rebuildall:'Rebuild all',review:'Review',prep:'Prep page',team:'Team refresh',teamload:'Team update',weekly:'Leaderboard refresh',scan:'Scan',rival:'Lap read',check:'Connection check',sync:'Sync',schedule:'Schedule load',setuplab:'Telemetry read',update:'Update'};
 const finishName=s=>FINISH_WORD[s&&s.kind]||'the current job';
 const jobRunning=()=>!!(lastJob&&lastJob.state==='running');
 const conflicting=()=>jobRunning()&&lastJob.kind!=='sync';
@@ -478,11 +488,15 @@ async function startJob(kind,body,el){
   if(conflicting()){
     if(lastJob.kind===kind&&kind!=='check'){openJob();return false}
     afterJob(QUEUE_WORD[kind]||'That',()=>startJob(kind,body),el);return false}
-  let r;try{r=await post(kind==='scan'?'replay-scan':kind==='rival'?'rival-read':kind==='teamload'?'team-load':kind,body)}catch(e){connectionLost();return false}
+  let r;try{r=await post(kind==='rebuildall'?'rebuild-all':kind==='scan'?'replay-scan':kind==='rival'?'rival-read':kind==='teamload'?'team-load':kind,body)}catch(e){connectionLost();return false}
   if(!r.ok){banner(r.error||'Could not start.',true);return false}
   lastStart={kind,body};lastJob={state:'running',kind,id:r.id};
   resetJobView(kind);openJob();poll();return true;
 }
+// 2.33 Rebuild all (from the Skills page): says how many and how long first, then one job for all of them
+async function rebuildAll(){let r;try{r=await post('rebuild-all',{count_only:true})}catch(e){connectionLost();return}
+  if(!r.ok){banner(r.error||'Could not start.',!/^Nothing to rebuild/.test(r.error||''),9000);return}
+  bannerAction('Rebuild '+plural(r.count,'review')+'? Debrief downloads each race again from Garage 61 (about '+Math.max(1,Math.round(r.count*20/60))+' min in all). Typed race results are kept.','Rebuild all',()=>startJob('rebuildall',{}),0)}
 async function startCheck(){
   if(conflicting()){if(lastJob.kind==='check')return;afterJob('The connection check',startCheck,$('btnCheck'),'chkMsg');return}
   setMsg('chkMsg','Checking...');setMsg('tokMsg','');$('btnCheck').disabled=true;checkFail=false;
@@ -553,7 +567,7 @@ function render(s){
   if(s.kind==='update'&&s.state==='done'&&!handled.has(s.id)){handled.add(s.id);
     setBar(1);$('jobEyebrow').textContent='Installing';$('jobNow').textContent='Debrief is closing to install the update. It reopens on its own in about a minute; you can close this window.';
     lost=true;return}
-  if(s.kind==='review'||s.kind==='scan'||s.kind==='rival'||s.kind==='prep'||s.kind==='team'||s.kind==='teamload'||s.kind==='weekly'||s.kind==='update'){
+  if(s.kind==='review'||s.kind==='scan'||s.kind==='rival'||s.kind==='prep'||s.kind==='team'||s.kind==='teamload'||s.kind==='weekly'||s.kind==='update'||s.kind==='rebuildall'){
     if(s.kind==='review'&&s.state==='running')TITLES.review=s.title||TITLES0.review;
     setBar(s.frac||0);$('jobNow').textContent=s.state==='error'?'Stopped.':plainText(noCounts(s.message))||'Working...';
     if($('jobTitle').textContent!==TITLES[s.kind]&&s.state==='running')resetJobView(s.kind);
@@ -575,6 +589,9 @@ function render(s){
       const stay=current.view==='job';  // only jump to the result if the person is still watching
       if(s.kind==='scan'){loadReviews().then(()=>{if(s.result&&s.result.review){if(stay)openReview(s.result.review);reloadFrame();banner('Race log added from the replay'+(s.result.confirmed?'.':'. Garage 61 couldn\'t confirm it\'s the same race, so check the names look right.'),false,9000)}})}
       else if(s.kind==='rival'){if(s.result&&s.result.review){if(stay)openReview(s.result.review);reloadFrame();banner((s.result.name||'The rival')+'\'s lap'+(ok(s.result.lap)?' '+s.result.lap:'')+' is in Compare, as a rival with no pedal data.',false,9000)}}
+      else if(s.kind==='rebuildall')loadReviews().then(()=>{const R=s.result||{},f=(R.failed||[]).length;   // 2.33
+        if(stay)goNav('skills');else reloadFrame();
+        banner('Rebuilt '+plural((R.rebuilt||[]).length,'review')+'.'+(f?' '+plural(f,'review')+' couldn\'t be rebuilt; debrief.log names them.':' Your skill scores are up to date.'),!!f,12000)});
       else if(s.kind==='review')loadReviews().then(()=>{const R=s.result||{};if(!R.review)return;
         if(R.saved){openReview(R.review);bannerAction('You\'ve already reviewed this race, so here is the saved review. Nothing was downloaded.','Rebuild',()=>rebuildReview(R.review))}
         else if(Array.isArray(R.changes)){if(stay||current.dir===R.review)openReview(R.review);if(current.dir===R.review)reloadFrame();banner('Review rebuilt. '+R.changes.filter(x=>typeof x==='string').join(' '),false,12000)}
@@ -3362,17 +3379,25 @@ function renderRacing(){const j=rc.data;if(!j)return;const W=j.where||{},C=j.cou
   if(W.telemetry)det+=' Telemetry comes from the folder "'+(W.telemetry_name||'telemetry')+'".';
   if(W.racecap)det+=' RaceCap\'s replay scans are read too.';else if(W.racecap_set)det+=' RaceCap\'s folder wasn\'t found, so its scans are left out.';
   $('rcFilesNote').textContent=det;
-  rcStarts(j);rcIncidents(j)}
-function rcEmpty(host,title,lines,settings){const e=h('div','panel pvnone');e.append(h('h2','pvtrack',title));lines.forEach(t=>e.append(h('p','lede',t)));
+  rcStarts(j);rcIncidents(j);
+  // 2.33: nothing at all yet = one card that says how to fill the page, instead of the same steps under each section
+  const none=!races&&!sess;$('rcInc').hidden=none;
+  if(none){const N=fileNotes([].concat((j.starts||{}).notes||[],(j.incidents||{}).notes||[]));
+    rcEmpty($('rcStarts'),'How to fill this page',[RC_HOW_TEL,RC_HOW_SCAN].concat(N.notes.slice(0,3)),!W.telemetry);const f=fileNotesEl(N.files);if(f)$('rcStarts').firstChild.append(f)}}
+// 2.33: an empty page is one quiet card: a heading, then the steps as a numbered list when it is "How to fill this page"
+function emptyCard(title,lines){const e=h('div','panel pvnone emptycard');e.append(h('h3','emptyh',title));
+  if(/^How to fill/.test(title)&&lines.length>1){const ol=h('ol','emptysteps');lines.forEach(t=>ol.append(h('li',null,t)));e.append(ol)}
+  else lines.forEach(t=>e.append(h('p','lede',t)));return e}
+function rcEmpty(host,title,lines,settings){const e=emptyCard(title,lines);
   if(settings){const b=h('button','btn','Set the folder in Settings');b.type='button';b.dataset.nav='settings';const r=h('div','row');r.append(b);e.append(r)}
   host.replaceChildren(e)}
 const RC_HOW_SCAN='Open a race review and press Scan this race: Debrief then sees every car near you on lap 1 and who was close when you had an incident.';
-const RC_HOW_TEL='Record telemetry in iRacing (Alt+L in the car, or automatic recording in iRacing\'s options): your incident count and your position at the green come from it.';
+const RC_HOW_TEL='Your starts and incidents come from your telemetry: tick Settings > Live data > Make iRacing save my telemetry (or press Alt+L in the car), then race.';
 function rcSentences(box,list,pats){(list||[]).forEach(t=>{const pat=(pats||[]).some(p=>t===p)||/looks like a habit|is a pattern/.test(t);
   const p=h('p',pat?'rcpat':'rcsay',t);if(pat){p.prepend(h('b',null,'Pattern: '))}box.append(p)})}
 /* (a) your starts */
 function rcStarts(j){const host=$('rcStarts'),S=j.starts||{},W=j.where||{};
-  if(!S.races){const N=fileNotes(S.notes);rcEmpty(host,'Your starts',['No races to show yet.',RC_HOW_TEL,RC_HOW_SCAN].concat(N.notes.slice(0,3)),!W.telemetry);const f=fileNotesEl(N.files);if(f)host.firstChild.append(f);return}
+  if(!S.races){const N=fileNotes(S.notes);rcEmpty(host,'Your starts',['No races to show yet.',RC_HOW_SCAN].concat(N.notes.slice(0,3)),!W.telemetry);const f=fileNotesEl(N.files);if(f)host.firstChild.append(f);return}
   const out=document.createDocumentFragment();
   const sec=slSec('Your starts','rcStartSec');sec.classList.add('rcsec');
   const g=rc.track?(S.tracks||[]).find(x=>x.track===rc.track):S.overall;
@@ -3431,7 +3456,7 @@ function rcRaceTable(rows,withTrack){const wrap=h('div','tblwrap'),t=h('table','
 /* (b) your incidents */
 function rcIncidents(j){const host=$('rcInc'),M=j.incidents||{},W=j.where||{};
   const ts=(M.tracks||[]).filter(t=>!rc.track||t.track===rc.track);
-  if(!M.sessions){const N=fileNotes(M.notes);rcEmpty(host,'Your incidents',['No sessions to show yet.',RC_HOW_TEL,RC_HOW_SCAN].concat(N.notes.slice(0,3)),!W.telemetry);const f=fileNotesEl(N.files);if(f)host.firstChild.append(f);return}
+  if(!M.sessions){const N=fileNotes(M.notes);rcEmpty(host,'Your incidents',['No sessions to show yet.',RC_HOW_TEL].concat(N.notes.slice(0,3)),!W.telemetry);const f=fileNotesEl(N.files);if(f)host.firstChild.append(f);return}
   const sec=slSec('Your incidents','rcIncSec');sec.classList.add('rcsec');
   sec.append(h('p','note','iRacing counts 1x off track, 2x loss of control, 4x contact. '+(M.steps_note||'')));
   ts.forEach(t=>sec.append(rcIncTrack(t)));
@@ -3524,9 +3549,9 @@ function renderCars(){const j=cc.data;if(!j)return;const F=j.found||{},opts=j.op
   (j.notes||[]).forEach(n=>note+=' '+n);
   $('ccFoundNote').textContent=note;
   ccTable(j);ccWhere(j)}
-function ccEmpty(host,title,lines){const e=h('div','panel pvnone');e.append(h('h2','pvtrack',title));lines.forEach(t=>e.append(h('p','lede',t)));host.replaceChildren(e)}
+function ccEmpty(host,title,lines){host.replaceChildren(emptyCard(title,lines))}
 function ccTable(j){const host=$('ccTable'),C=j.compare;
-  if(!C||!(C.cars||[]).length){ccEmpty(host,'No races to compare yet',CC_HOW);return}
+  if(!C||!(C.cars||[]).length){ccEmpty(host,'How to fill this page',CC_HOW);return}
   const sec=slSec(C.track+', '+C.class,'ccSec');sec.classList.add('rcsec');
   const n=C.counts||{};
   sec.append(prFacts([['Races',String(n.races||0)],['Drivers',String(C.drivers||0)],['With an iRating',String(C.with_irating||0)],['Not counted',String(n.left_out||0)]]));
@@ -3553,7 +3578,8 @@ function ccTable(j){const host=$('ccTable'),C=j.compare;
   sec.append(how);host.replaceChildren(sec)}
 function ccWhere(j){const host=$('ccWhere'),W=j.where,cars=j.tel_cars||[];
   const sec=slSec('Where you were faster in each car','ccWhereSec');sec.classList.add('rcsec');
-  if(!W){sec.append(h('p','rcsay',cars.length===1?'Your telemetry here is only in the '+cars[0].car+'. '+CC_HOW[2]:'No telemetry of yours in two cars of this class at this track. '+CC_HOW[2]));host.replaceChildren(sec);return}
+  const empty=!j.compare||!(j.compare.cars||[]).length;   // 2.33: the card above already lists every step
+  if(!W){sec.append(h('p','rcsay',(cars.length===1?'Your telemetry here is only in the '+cars[0].car+'.':'No telemetry of yours in two cars of this class at this track yet.')+(empty?'':' '+CC_HOW[2])));host.replaceChildren(sec);return}
   const L=W.lap||{};
   sec.append(prFacts([[W.a+' laps',String(W.laps_a)],[W.b+' laps',String(W.laps_b)],[W.a+' best',ok(L.a_best)?fmtT(L.a_best):'Not known'],[W.b+' best',ok(L.b_best)?fmtT(L.b_best):'Not known']]));
   sec.append(h('p','note','The laps in each car come from different sessions, days and setups'+(W.teammate?' (and one of them is '+W.teammate+'\'s)':'')+', so a difference can be the day, the setup or the driver as well as the car.'));

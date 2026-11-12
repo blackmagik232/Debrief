@@ -14,7 +14,7 @@ sections: [
     {t: 'Turn on telemetry in iRacing', d: `Easiest: tick **Settings > Live data > Make iRacing save my telemetry** (or **Turn it on for me** on the setup checklist) and Debrief turns it on each time you get in the car. Or press **Alt+L** in the car yourself. iRacing then saves a telemetry file (.ibt) for every session. Debrief finds the folder by itself; if it can't, Settings lets you pick it.`, go: 'settings', label: 'Open Settings'},
     {t: 'Connect Garage 61', d: `Make a free Garage 61 account, request a personal token, paste it in Settings and press **Save and check**. Debrief then downloads your history in the background, newest first.`, go: 'settings', label: 'Open Settings'},
     {t: 'Drive 10 clean laps in one session', d: `Any car, any track. Ten laps without an incident or a pit stop is what Practice needs to pick your first thing to work on.`},
-    {t: 'Test the coach voice', d: `On the Coach page pick your headset and press **Test voice**. The coach talks through that device while you drive.`, go: 'coach', label: 'Open Coach'}]},
+    {t: 'Optional: the coach', d: `If you want spoken cues while you drive, open the Coach page, pick your headset and press **Test voice**. Everything else in Debrief works without it.`, go: 'coach', label: 'Open Coach'}]},
   {tip: `The **setup checklist** on Today shows which of these are done and the next step, with a button for each.`, hgo: 'firstrun', label: 'Show the setup checklist'},
   {h: 'Your first week'},
   {cards: [

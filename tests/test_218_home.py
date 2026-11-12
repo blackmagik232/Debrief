@@ -326,6 +326,8 @@ def test_window_today_keys_and_returning_user():
         pg.wait_for_function("() => document.getElementById('bannerText').textContent === 'Garage 61 is busy.'")
         assert [c for c in calls if c[0] == "POST" and c[1] == "review"]
         # Season and Skills are under Progress; their own sidebar entries light up
+        if not pg.is_visible(".navbtn[data-nav=skills]"):   # 2.33: on a short window it is folded under Progress
+            pg.click(".navbtn[data-nav=library]")
         pg.click(".navbtn[data-nav=skills]")
         pg.wait_for_function("() => document.querySelector('.navbtn[data-nav=skills]').getAttribute('aria-current') === 'page'")
         assert not errs, errs

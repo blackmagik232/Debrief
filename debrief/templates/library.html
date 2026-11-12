@@ -881,7 +881,7 @@ function trendWord(t){if(!t||typeof t!=='object'||t.span_ok===false||!SK_TW[t.di
   if(SKG.length<2)$('skctl').hidden=true;
   sel.addEventListener('change',()=>{skSel.group=sel.value;renderSkills()})})();
 // 2.18: why the race reviews have no skill scores, from the reviews themselves (EXTRA.skills.why)
-const SK_WHY={no_traces:'were saved without the lap traces the scores are worked out from (open one and press Rebuild to make it again with them)',
+const SK_WHY={no_traces:'were saved without the lap traces the scores are worked out from (Rebuild all makes them again with them)',
   not_enough_clean_laps:'had fewer than 6 clean laps with telemetry',few_clean:'had fewer than 6 clean laps with telemetry',
   not_enough_better_laps:'had too few quick laps to compare your typical laps with',no_corners:'have no corners Debrief could find',
   bad_data:'couldn\u2019t be read',no_block:'couldn\u2019t be scored'};
@@ -894,7 +894,12 @@ function skWhyText(){const W=SKP&&SKP.why&&typeof SKP.why==='object'?SKP.why:{};
 function renderSkills(){const tiles=$('sktiles'),pan=$('skpanel');tiles.replaceChildren();pan.replaceChildren();skRedraw=null;
   const g=SKG.find(x=>String(x.key)===skSel.group)||SKG[0];
   if(!g||!SK_PH.some(([k])=>g.phases[k]&&Array.isArray(g.phases[k].races)&&g.phases[k].races.length)){tiles.hidden=true;
-    const e=h('div','empty');e.append(h('b',null,'No skill scores yet'),h('span',null,skWhyText()));pan.append(e);return}
+    const e=h('div','empty');e.append(h('b',null,'No skill scores yet'),h('span',null,skWhyText()));
+    // 2.33: inside the Debrief window, one button rebuilds every review saved without lap traces (the window asks first)
+    const W=SKP&&SKP.why&&typeof SKP.why==='object'?SKP.why:{};
+    if(parent!==window&&ok(W.no_traces)&&W.no_traces>0){const b=h('button','btn rball','Rebuild all');b.type='button';
+      b.addEventListener('click',()=>{try{parent.postMessage({type:'debrief-key',key:'rebuildall'},'*')}catch(_){}});const p=h('p',null);p.append(b);e.append(p)}
+    pan.append(e);return}
   tiles.hidden=false;skSel.group=String(g.key);$('skgroup').value=skSel.group;
   const wk=SKP.weakest&&SKP.weakest.group===g.key?SKP.weakest.phase:(SKP.weakest&&g.key==='all'?SKP.weakest.phase:null);
   if(!skSel.phase||!g.phases[skSel.phase])skSel.phase=(wk&&g.phases[wk])?wk:'overall';

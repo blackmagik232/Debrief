@@ -186,7 +186,7 @@ def test_a_cancel_for_one_job_never_stops_the_next():
 def test_sync_is_not_cancelled_by_job_stop():
     """Cancel is for review, prep, team and weekly jobs; a sync has its own Pause and job-stop leaves it alone."""
     s = srv()
-    assert S.CANCELLABLE == ("review", "prep", "team", "teamload", "weekly")
+    assert S.CANCELLABLE == ("review", "prep", "team", "teamload", "weekly", "rebuildall")   # 2.33: Rebuild all
     assert s.jobs.cancel() is False
     assert "sync" not in S.CANCELLABLE and "check" not in S.CANCELLABLE
 

@@ -198,7 +198,7 @@ function openFrame(rel,reload){const f=$('frame');const want=BASE+rel;const want
   // keep the current screen until a big review page has loaded, so there's no blank flash
   if($('vFrame').hidden){clearTimeout(openFrame.t);openFrame.t=setTimeout(()=>show('vFrame'),4000);
     f.addEventListener('load',()=>{clearTimeout(openFrame.t);if(FRAME_VIEWS.includes(current.view))show('vFrame')},{once:true})}}
-function openReview(dir){current={view:'review',dir};openFrame('lib/reviews/'+encodeURIComponent(dir)+'/index.html');markNav();loadResult(dir)}
+function openReview(dir){current={view:'review',dir};openFrame('lib/reviews/'+encodeURIComponent(dir)+'/index.html');markNav();loadResult(dir);offerUpgrade(dir)}
 function openLibrary(){
   if(!libFolder){current={view:'welcome'};welcome();return}
   current={view:'library',dir:null};openFrame('lib/index.html#overview');markNav()}
@@ -319,8 +319,10 @@ function welcome(){
   if(!g61Ready())guideOn=true;
   const t=$('welcomeText');
   $('guide').hidden=!guideOn;$('guideHead').hidden=!guideOn;$('welcomeActions').hidden=guideOn;
-  if(guideOn){t.textContent='Practice, Setup Lab, the Coach and Racing work now, from the telemetry iRacing saves on this PC. Race reviews also need Garage 61: four quick steps below.';updateGuide()}
-  else t.textContent='No reviews yet. When your race has uploaded to Garage 61, click Review last race.';
+  if(guideOn){t.textContent=localOK?'Race reviews, Practice, Setup Lab, the Coach and Racing all work now, from the telemetry iRacing saves on this PC. Garage 61 is optional: it adds your teammates\' comparison laps, your older history and the Team page.':
+    'Practice, Setup Lab, the Coach, Racing and race reviews work from the telemetry iRacing saves on this PC: turn it on in Settings > Live data, then race. Garage 61 is optional: it adds your teammates\' comparison laps, your older history and the Team page.';updateGuide()}
+  else t.textContent='No reviews yet. Click Review last race after your next race.';
+  const gl=$('gLocal');if(gl)gl.hidden=!(localOK&&!g61Ready());
   show('vWelcome');markNav()}
 
 /* ---------- the bar above pages in the frame */
@@ -507,8 +509,11 @@ async function startCheck(){
   $('btnCheck').disabled=true;setMsg('chkMsg','Checking...');poll();
 }
 // 2.6: Review last race waits for a saved token (aria-disabled, so the tooltip still shows why)
-function reviewGate(){const b=$('btnReview');const off=!g61Ready();b.setAttribute('aria-disabled',String(off));
-  b.title=off?'Finish step 3 first.':'Review last race (Ctrl+Enter)';if(off)$('syncStrip').hidden=true;navGate()}
+// 2.34 "No token needed": with iRacing telemetry on this PC, Review last race works without Garage 61
+let localOK=false;
+function reviewGate(){const b=$('btnReview');const off=!g61Ready()&&!localOK;b.setAttribute('aria-disabled',String(off));
+  b.title=off?'Turn on iRacing telemetry (Settings > Live data) or connect Garage 61 first.':'Review last race (Ctrl+Enter)';if(!g61Ready())$('syncStrip').hidden=true;
+  const gl=$('gLocal');if(gl)gl.hidden=!(localOK&&!g61Ready());navGate()}
 // 2.28: nothing to review with yet: say so where the token goes (scroll to the box, flash it) instead of doing nothing
 function flash(el){if(!el)return;el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),2600)}
 function needToken(){const bad=tokenSaved&&(tokenRejected||checkFail);
@@ -519,7 +524,7 @@ function needToken(){const bad=tokenSaved&&(tokenRejected||checkFail);
 // 2.28 Instant last review: a saved review that is at least as new as the newest race in the synced history opens at
 // once; Garage 61 is asked in the background and a newer race gets a one-click banner. Otherwise the job runs as before.
 async function startReview(){
-  if(!g61Ready()){needToken();return}
+  if(!g61Ready()){if(localOK){startJob('review',{local:true},$('btnReview'));return}needToken();return}
   if(jobRunning()&&lastJob.kind!=='sync'){startJob('review',undefined,$('btnReview'));return}
   let j=null;try{j=await api('last-race')}catch(e){}
   if(j&&j.ok&&j.instant&&j.saved&&j.saved.dir){openReview(j.saved.dir);checkNewerRace();return}
@@ -529,7 +534,13 @@ async function checkNewerRace(){const seq=++newerSeq;let j;try{j=await api('last
   if(seq!==newerSeq||!j||!j.ok||!j.newer||conflicting())return;const n=j.newer;
   bannerAction('Newer race found.','Review it',()=>startJob('review',n.track_id&&n.car_id&&n.session_type?{event:n.event,session_type:n.session_type,track_id:n.track_id,car_id:n.car_id}:undefined),0)}
 // 2.18: make a saved review again from Garage 61 (Review last race opens the saved one without downloading)
-function rebuildReview(dir){if(!g61Ready()){needToken();return}startJob('review',{review:dir,rebuild:true})}
+const reviewRow=dir=>{for(const g of groupsCache)for(const r of g.reviews||[])if(r.dir===dir)return r;return null};
+function rebuildReview(dir){const r=reviewRow(dir);if(!g61Ready()&&!(r&&r.source==='pc')){needToken();return}startJob('review',{review:dir,rebuild:true})}
+// 2.34: a review built from this PC can gain your teammates' comparison laps once Garage 61 has the race
+function addComparison(dir){if(!g61Ready()){needToken();return}startJob('review',{review:dir,upgrade:true})}
+const offeredUpgrade=new Set();
+function offerUpgrade(dir){const r=reviewRow(dir);if(!r||r.source!=='pc'||!g61Ready()||offeredUpgrade.has(dir))return;offeredUpgrade.add(dir);
+  bannerAction('This review comes from your PC.','Add comparison laps',()=>addComparison(dir),15000)}
 $('btnReview').addEventListener('click',startReview);
 
 // 2.8: request counts live in Settings > About. The job's own lines are for the log too, so they keep
@@ -595,6 +606,10 @@ function render(s){
       else if(s.kind==='review')loadReviews().then(()=>{const R=s.result||{};if(!R.review)return;
         if(R.saved){openReview(R.review);bannerAction('You\'ve already reviewed this race, so here is the saved review. Nothing was downloaded.','Rebuild',()=>rebuildReview(R.review))}
         else if(Array.isArray(R.changes)){if(stay||current.dir===R.review)openReview(R.review);if(current.dir===R.review)reloadFrame();banner('Review rebuilt. '+R.changes.filter(x=>typeof x==='string').join(' '),false,12000)}
+        else if(R.upgraded){if(stay||current.dir===R.review)openReview(R.review);banner('Comparison laps added from Garage 61. The review from your PC was replaced by this one (its result is kept).',false,12000)}
+        else if(R.local){offeredUpgrade.add(R.review);if(stay)openReview(R.review);
+          banner(R.local_because==='garage61_missing'?'Garage 61 doesn\'t have this race yet, so this review comes from your telemetry files. Open it again later and press Add comparison laps.':
+            g61Ready()?'Review ready, from your telemetry files.':'Review ready, from your telemetry files. Connect Garage 61 to add your teammates\' comparison laps.',false,12000)}
         else{if(stay)openReview(R.review);banner('Review ready.')}});
       else loadPages().then(()=>{const team=s.kind==='team'||s.kind==='teamload'||s.kind==='weekly';
         if(s.result&&s.result.page){if(stay)openPage(s.result.page,team?'teamPage':'prepPage');
@@ -2701,7 +2716,8 @@ const FR_ACT={settings_token:['Open Settings',()=>{if(!$('vWelcome').hidden&&gui
   // 2.18: Test voice is folded under the Coach page's Settings: open it there and press it, so you hear it at once
   test_voice:['Test voice',()=>{openCoach();const d=$('coSet');if(d)d.open=true;const b=$('coTest');if(!b)return;
     if(b.scrollIntoView)b.scrollIntoView({block:'center'});b.focus();if(!b.disabled)b.click()}]};
-async function loadFirstRun(){fr.at=Date.now();let j;try{j=await api('firstrun')}catch(e){return}if(!j||!j.ok)return;fr.data=j;renderFirstRun()}
+async function loadFirstRun(){fr.at=Date.now();let j;try{j=await api('firstrun')}catch(e){return}if(!j||!j.ok)return;fr.data=j;
+  const was=localOK;localOK=(j.steps||[]).some(x=>x.id==='record'&&x.done);if(was!==localOK){reviewGate();if(!$('vWelcome').hidden)welcome()}renderFirstRun()}
 // 2.18: setup counts as done once there is something of yours to show (a Garage 61 token, or a session with 5 clean
 // laps): today.setup_done. After that the box is gone and any step left is one quiet line on Today.
 const setupDone=j=>!!(td.j&&td.j.setup?td.j.setup_done:j&&(j.all_done||(j.steps||[]).some(x=>x.done&&(x.id==='token'||x.id==='session'))));

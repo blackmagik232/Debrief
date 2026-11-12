@@ -277,7 +277,7 @@ def test_window_first_run_gate_and_check_messages():
     try:
         pg.wait_for_function("() => !document.getElementById('vWelcome').hidden")
         btn = pg.evaluate("() => { const b = document.getElementById('btnReview'); return [b.getAttribute('aria-disabled'), b.title] }")
-        assert btn == ["true", "Finish step 3 first."], btn
+        assert btn[0] == "true" and "connect Garage 61" in btn[1], btn   # 2.34: no telemetry and no token
         # pressing it (or Ctrl+R) starts nothing without a token
         pg.click("#btnReview", force=True)          # aria-disabled: still clickable, so the tooltip shows
         pg.keyboard.press("Control+r")

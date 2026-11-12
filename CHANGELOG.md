@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.34.0 "No token needed"
+
+You can review a race without Garage 61 now. Debrief reads the race straight from the telemetry file iRacing saves on your PC.
+
+- **Review last race works without Garage 61.** Turn on telemetry (Settings > Live data > **Make iRacing save my telemetry**, or Alt+L in the car), race, then press **Review last race**. You get the same review page as before: what to work on, your corners, pace, consistency and the plan. The review says **From your PC** so you know where it came from.
+- **Your result fills itself in.** Start and finish position, field size, strength of field, incidents, laps led and your iRating before the race come from iRacing's own session data in the file. In a multi-class race it is your class position. If Debrief's recorder saw the chequered flag, its finish is used. You can still type or change the result yourself.
+- **Garage 61 is optional.** It adds **comparison laps** from your teammates and the drivers you follow, your history from before Debrief, and the Team page. The welcome screen and setup checklist now say so.
+- **Add comparison laps.** Connect Garage 61 later and open a review made from your PC. A banner offers **Add comparison laps**. Debrief makes the review again from Garage 61 with comparison laps, keeps any result you typed, and the PC version is replaced. A copy is kept in `.backup`, so nothing is lost and the race isn't listed twice.
+- **Review last race doesn't miss a race.** If you have Garage 61 but it doesn't have your newest race yet, Debrief reviews it from your PC instead of opening an older review.
+- Laps iRacing marked not clean (an incident or track limits) say "iRacing flagged" on a PC review, not "Garage 61 flagged".
+
+### For the record
+
+- New `debrief/localrace.py`: finds races in the telemetry folder (`sessionibt.sessions`, race sessions only), reads the race session's laps from the `.ibt` files into the same lap and telemetry shape a Garage 61 review uses, and calls the same `engine.analyze`, so every page and the library work unchanged. `meta.source = "pc"`, `meta.subsession`, `meta.files`; event id `ir<subsession>`; same folder naming as any review.
+- `engine.raw_from_columns()` holds the cleaning `parse_csv` used to do, so an `.ibt` lap and a Garage 61 CSV of the same lap read the same (tested). `analyze` accepts already-read laps. `engine.flagger(meta)`, with matching checks in `insights`, `racecraft` and `review.html`, names who flagged laps; `markers` no longer names Garage 61.
+- Result: `localrace.result_from` reads `ResultsPositions` for the race session and `QualifyResultsInfo` (grid counted from 0) from the session data; multi-class uses `ClassPosition` and the class field; the pace car is left out; SOF uses the usual formula over the drivers in the file. A recording's finish overrides it only when the recorder saw the session end.
+- `app.cmd_review_local` (saved review opens at once; Rebuild makes it again), `app._newest_local_unseen` (with a token, asks Garage 61 `event_for_subsession` for the newest PC race), `app.retire_local_twin` (a Garage 61 review of the same race within 3 hours, same track and car, takes over the PC one and keeps its result.json), `app.cmd_review_upgrade`.
+- Server: `api/review` without a token reviews from the PC; body `upgrade` adds comparison laps (asks for Garage 61 when there's no token); `review_rebuild_params` keeps a PC review local; `api/last-race` reports `local_newer` so the instant shortcut doesn't open an older review. Window: `#gLocal` on the welcome screen, `reviewGate` allows reviews when telemetry is found, `offerUpgrade` banner. The review template's trace drawing skips missing samples (no more console errors on files without a channel).
+- Tests: new `tests/test_234_notoken.py` (fake race files: finding races, the review, the result from session data including multi-class and the recording override, saved and rebuild, Garage 61 taking over, token-but-missing, the server routes, the window). `test_26_c.py` follows the new Garage 61 wording.
+- Not proven yet: a real race file. First check: race once, then with Garage 61 disconnected press **Review last race**. Things to look at: that iRacing has written the final results into the file when it closes (`ResultsPositions`), the start position, and that the review groups with your Garage 61 reviews of the same track and car (names match) for personal bests. Then **Add comparison laps** with Garage 61 connected.
+
 ## 2.33.0 "Fits any screen"
 
 Debrief is tidier on laptop screens and on pages that are still empty.

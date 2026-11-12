@@ -384,6 +384,7 @@ def for_review(data: dict, library_folder) -> dict | None:
     if not secs:
         return None
     sub = (data.get("racecap") or {}).get("subsession") if isinstance(data.get("racecap"), dict) else None
+    sub = meta.get("subsession") or sub     # 2.34: a review built from this PC knows its iRacing session
     row = {"start": meta.get("started_at"), "type": kind, "track": meta.get("track"), "car": meta.get("car"),
            "subsession": sub}
     got = assign([row], secs).get(0)

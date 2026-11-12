@@ -592,7 +592,7 @@ def test_messages_point_to_settings_and_welcome():
     assert code == 500 and j["error"] == "Debrief couldn't save your settings. Is %LOCALAPPDATA%\\Debrief read-only or full?"
     write_settings(token="PASTE-YOUR-GARAGE61-TOKEN-HERE")
     try:
-        code, j = post("api/review", {})
+        code, j = post("api/review", {"event": "ABC123", "session_type": 3, "track_id": 1, "car_id": 1})  # 2.34: an empty body reviews from this PC; a Garage 61 session still needs the token
         assert code == 400 and j["error"] == "Finish setup first: paste your Garage 61 token on the welcome screen."
         assert srv().jobs.snapshot().get("kind") != "review"
     finally:

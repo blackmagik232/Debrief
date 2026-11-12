@@ -87,10 +87,11 @@ def steps(facts: dict) -> list:
          f"you to work on."),
         f"You have a session with {best} clean laps. Open it on the Practice page.", "practice")
     rejected = bool(f.get("token")) and bool(f.get("token_rejected"))
-    add("token", f.get("token") and not rejected, "Connect Garage 61 for race reviews",
+    # 2.34 "No token needed": race reviews work from the telemetry on this PC; Garage 61 adds to them
+    add("token", f.get("token") and not rejected, "Optional: connect Garage 61",
         ("Garage 61 didn't accept your saved personal access token. Paste it again in Settings." if rejected else
-         "Race reviews, your history and team laps come from Garage 61: paste your Garage 61 personal access token "
-         "in Settings. Practice, Setup Lab, the Coach and Racing work without it."),
+         "Garage 61 adds your teammates' comparison laps, your older history and the Team page: paste your Garage 61 "
+         "personal access token in Settings. Race reviews, Practice, Setup Lab, the Coach and Racing work without it."),
         "Your Garage 61 personal access token is saved.", "settings_token")
     return out
 

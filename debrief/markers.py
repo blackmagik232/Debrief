@@ -10,7 +10,7 @@ import math
 
 FPS = 60
 COLOR = {"pass": "Yellow", "lost": "Red", "fight": "Blue", "incident": "Red", "pit": "Purple", "lap": "Green"}
-TAG = {"best": "Best lap", "pit": "Pit lap", "unclean": "Garage 61 flagged this lap", "traffic": "Most likely traffic", "slow": "Slow lap"}
+TAG = {"best": "Best lap", "pit": "Pit lap", "unclean": "Flagged lap (track limits or an incident)", "traffic": "Most likely traffic", "slow": "Slow lap"}
 
 
 def tc(seconds: float, fps: int = FPS) -> str:

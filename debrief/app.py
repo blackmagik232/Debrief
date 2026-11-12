@@ -860,6 +860,11 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     if session_kind in (1, 2, 3):
         sessions = [session_kind]
     ev_track, ev_car = track_id, car_id
+    if not event_id and not session_kind:
+        local = _newest_local_unseen(cfg, api, step)          # 2.34: a race Garage 61 doesn't have yet
+        if local is not None:
+            info["local_because"] = "garage61_missing"
+            return cmd_review_local(cfg, session=local, open_after=open_after, progress=progress, info=info)
     if not event_id:
         step("Finding your most recent race...", 0.08)
         event_id, ev_track, ev_car = find_last_event(api, sessions, cfg["cache_dir"], cfg["library_folder"])
@@ -1018,6 +1023,11 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     out_dir = library.review_dir(cfg["library_folder"], laps, track_name, car_name,
                                  suffix={1: "practice", 2: "qualifying"}.get(
                                      chosen_kind, ""))
+    if chosen_kind in (3, None):
+        race_dts = [lap_start_dt(l) for l in laps if lap_start_dt(l)]
+        took = retire_local_twin(cfg["library_folder"], out_dir, track_name, car_name, min(race_dts) if race_dts else None)
+        if took:
+            info["replaced_local"] = took
     # personal-best check against earlier reviews of this track and car (no Garage 61 requests)
     try:
         data["pb"] = library.pb_for(cfg["library_folder"], data, exclude_dir=out_dir.name)
@@ -1053,6 +1063,170 @@ def cmd_review(cfg, event_id=None, open_after=True, progress=None, session_kind=
     if open_after:
         webbrowser.open(page.as_uri())
     return page
+
+
+# ---------------------------------------------------------------- 2.34 "No token needed": reviews from this PC
+TWIN_S = 3 * 3600          # a PC review and a Garage 61 review of one race start within this of each other
+
+
+def _local_reviews(library_folder) -> list:
+    """[(folder, meta)] of the saved reviews built from this PC."""
+    out = []
+    try:
+        for d in (Path(library_folder) / "reviews").iterdir():
+            try:
+                m = json.loads((d / "review.json").read_text(encoding="utf-8")).get("meta") or {}
+            except (OSError, ValueError, AttributeError):
+                continue
+            if m.get("source") == "pc":
+                out.append((d, m))
+    except OSError:
+        pass
+    return out
+
+
+def _same_race(meta, track, car, start_dt) -> bool:
+    from . import recordings
+    try:
+        t = datetime.fromisoformat(str(meta.get("started_at")).replace("Z", "+00:00"))
+        t = t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return False
+    if start_dt is None or abs((t - start_dt).total_seconds()) > TWIN_S:
+        return False
+    return recordings.same_track(meta.get("track"), track) and recordings.same_car(meta.get("car"), car)
+
+
+def retire_local_twin(library_folder, out_dir, track, car, start_dt) -> str | None:
+    """A Garage 61 review is about to be saved in out_dir: a PC review of the same race (same track and car, starting
+    within TWIN_S) is replaced by it, so a race is never listed twice. Its result (typed in, or read from iRacing) is
+    kept as out_dir's result.json when out_dir has none, the old folder is backed up to .backup/replaced/ and removed.
+    Returns the old folder's name, or None. Never raises."""
+    try:
+        import shutil
+        out_dir = Path(out_dir)
+        for d, m in _local_reviews(library_folder):
+            if d.resolve() == out_dir.resolve() or not _same_race(m, track, car, start_dt):
+                continue
+            from . import results
+            if not (out_dir / results.FILE).exists():
+                old = results.load(d)
+                if old is None:
+                    try:
+                        old = json.loads((d / "review.json").read_text(encoding="utf-8")).get("result")
+                    except (OSError, ValueError, AttributeError):
+                        old = None
+                if isinstance(old, dict) and old.get("finish_pos") is not None:
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                    (out_dir / results.FILE).write_text(json.dumps(old, indent=1), encoding="utf-8")
+            bk = Path(library_folder) / "reviews" / ".backup" / "replaced"
+            bk.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(d, bk / d.name, dirs_exist_ok=True)
+            shutil.rmtree(d, ignore_errors=True)
+            say(f"  This race's review from your PC ({d.name}) is replaced by the Garage 61 one (a copy is in .backup).")
+            return d.name
+    except Exception:  # noqa: BLE001  (never worth losing the new review over)
+        import traceback
+        say("  Couldn't replace the review from your PC:\n" + traceback.format_exc())
+    return None
+
+
+def _g61_has(library_folder, session) -> bool:
+    """A saved Garage 61 review of this PC race exists (same track and car, near in time)."""
+    try:
+        start = datetime.fromtimestamp(float(session.get("sort") or 0), tz=timezone.utc)
+    except (TypeError, ValueError, OSError):
+        return False
+    try:
+        for d in (Path(library_folder) / "reviews").iterdir():
+            try:
+                m = json.loads((d / "review.json").read_text(encoding="utf-8")).get("meta") or {}
+            except (OSError, ValueError, AttributeError):
+                continue
+            if m.get("source") != "pc" and m.get("session", "Race") == "Race" and _same_race(m, session.get("track"), session.get("car"), start):
+                return True
+    except OSError:
+        pass
+    return False
+
+
+def _newest_local_unseen(cfg, api, step):
+    """With a Garage 61 token: the newest race on this PC when Garage 61 doesn't have it yet (and it has no Garage 61
+    review), else None. Costs one Garage 61 request; any problem means None (the usual Garage 61 review runs)."""
+    try:
+        from . import localrace
+        s = localrace.newest()
+        if not s or not s.get("subsession") or _g61_has(cfg["library_folder"], s):
+            return None
+        if api.event_for_subsession(s["subsession"]):
+            return None
+        step("Garage 61 doesn't have your newest race yet, so Debrief reviews it from your telemetry files.", 0.08)
+        return s
+    except SystemExit:
+        return None
+    except Exception:  # noqa: BLE001
+        import traceback
+        say("  Couldn't check for a race on this PC:\n" + traceback.format_exc())
+        return None
+
+
+def cmd_review_local(cfg, session=None, open_after=True, progress=None, rebuild=False, info=None, subsession=None):
+    """2.34: review your newest race (or the race with this subsession) from the telemetry files on this PC: no
+    Garage 61 needed. Same page, folder rules and library as a Garage 61 review; meta.source is "pc". A saved review of
+    the race opens at once unless rebuild (info["saved"] = True, like cmd_review)."""
+    from . import localrace
+    info = info if isinstance(info, dict) else {}
+    info["local"] = True
+    step = _stepper(progress)
+    if session is None:
+        folder = localrace.telemetry_folder()
+        if not folder or not Path(folder).is_dir():
+            raise SystemExit(localrace.NO_FOLDER)
+        step("Looking for your races in your telemetry files...", 0.04)
+        rs = localrace.races(folder)
+        if subsession:
+            rs = [r for r in rs if str(r.get("subsession")) == str(subsession)]
+        if not rs:
+            raise SystemExit(localrace.NO_RACE)
+        session = rs[0]
+    if not rebuild:
+        d = saved_review_dir(cfg.get("library_folder"), localrace.event_id(session), 3)
+        if d is not None:
+            info["saved"] = True
+            step("Already reviewed: opening the saved review.", 1.0)
+            return d / "index.html"
+    data, out_dir = localrace.build(cfg, session, progress=progress, info=info)
+    if rebuild:
+        try:
+            old = json.loads((out_dir / "review.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            old = None
+        info["changes"] = rebuild_changes(old, data)
+    step("Saving the review and updating the library...", 0.95)
+    page = report.write(out_dir, data)
+    try:
+        library.rebuild(cfg["library_folder"])
+    except Exception:  # noqa: BLE001
+        import traceback
+        say("  Couldn't update the library page (it will refresh next time it's opened):\n" + traceback.format_exc())
+    info["local"] = True
+    step(f"Done. Review saved to {page}", 1.0)
+    if open_after:
+        webbrowser.open(page.as_uri())
+    return page
+
+
+def cmd_review_upgrade(cfg, subsession, open_after=False, progress=None, info=None):
+    """2.34 "Add comparison laps": the Garage 61 review of a race reviewed from this PC (same race, found by its iRacing
+    subsession). It replaces the PC review (retire_local_twin keeps its result)."""
+    step = _stepper(progress)
+    step("Connecting to Garage 61...", 0.02)
+    api = make_api(cfg)
+    ev = api.event_for_subsession(subsession) if subsession else None
+    if not ev:
+        raise SystemExit("Garage 61 doesn't have this race yet. Once it has uploaded (usually a few minutes after the "
+                         "race), press Add comparison laps again.")
+    return cmd_review(cfg, ev, open_after=open_after, progress=progress, session_kind=3, rebuild=True, info=info)
 
 
 def learn_from_for(library_folder, data) -> list:

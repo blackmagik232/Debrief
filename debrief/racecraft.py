@@ -243,7 +243,7 @@ def build(data: dict, raw_laps: list | None = None) -> dict | None:
     if unclean and len(summary) < MAX_SUMMARY:
         u = sorted(unclean)
         lost = [by_n[n] - median for n in u if n in by_n]
-        s = f"Garage 61 flagged {len(u)} lap{'s' if len(u) != 1 else ''} ({_and([str(n) for n in u])})"
+        s = f"{'iRacing' if (data.get('meta') or {}).get('source') == 'pc' else 'Garage 61'} flagged {len(u)} lap{'s' if len(u) != 1 else ''} ({_and([str(n) for n in u])})"
         avg = sum(lost) / len(lost) if lost else None
         if avg is not None and avg >= 0.05:
             s += f"; on those laps you were {avg:.1f} s off your typical lap on average"

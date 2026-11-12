@@ -387,6 +387,7 @@ def _row_from(d, p: Path) -> dict | None:
         "ref_gap": round(best - _num(main["t"]), 3) if (main and clean_best(d) is not None) else None,
         "test_data": bool(m.get("test_data")),
         "event_id": str(m.get("event_id") or ""),
+        "source": "pc" if m.get("source") == "pc" else "garage61",   # 2.34: built from this PC's telemetry files
         # v2 fields (all optional: None/absent on reviews made before Debrief v2)
         "track_id": _int(ids.get("track_id")), "car_id": _int(ids.get("car_id")),
         "irating": _int(d.get("irating")),

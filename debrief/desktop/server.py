@@ -378,6 +378,8 @@ def review_rebuild_params(review_dir: Path) -> dict:
         raise ValueError("This review's saved data can't be read, so Debrief can't tell which race to rebuild. "
                          "Use Review last race, or Review on the All sessions page.")
     m = d.get("meta") if isinstance(d, dict) and isinstance(d.get("meta"), dict) else {}
+    if m.get("source") == "pc":       # 2.34: a review built from this PC is made again from its telemetry files
+        return {"local": True, "subsession": _sub(m.get("subsession")), "rebuild": True}
     ids = d.get("combo_ids") if isinstance(d, dict) and isinstance(d.get("combo_ids"), dict) else {}
     st = {"practice": 1, "qualifying": 2}.get(library.session_kind(m.get("session")), 3)
     ev = str(m.get("event_id") or "")
@@ -390,6 +392,26 @@ def review_rebuild_params(review_dir: Path) -> dict:
         if isinstance(v, int) and not isinstance(v, bool) and v > 0:
             out[k] = v
     return out
+
+
+def _sub(v):
+    return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else None
+
+
+def review_upgrade_params(review_dir: Path) -> dict:
+    """2.34: POST api/review {"review": <folder>, "upgrade": true} on a review built from this PC: the Garage 61 review
+    of the same race (comparison laps added). ValueError when it isn't a PC review or has no iRacing session number."""
+    try:
+        m = json.loads((Path(review_dir) / "review.json").read_text(encoding="utf-8")).get("meta") or {}
+    except (OSError, ValueError, AttributeError):
+        raise ValueError("This review's saved data can't be read.")
+    if m.get("source") != "pc":
+        raise ValueError("This review already comes from Garage 61.")
+    sub = _sub(m.get("subsession"))
+    if sub is None:
+        raise ValueError("This review doesn't say which iRacing race it was, so Garage 61 can't find it. "
+                         "Use Review on the All sessions page.")
+    return {"upgrade": True, "subsession": sub}
 
 
 def clean_goal(raw) -> dict:
@@ -681,6 +703,8 @@ class Jobs:
                 title = "Reviewing your " + {1: "practice session", 2: "qualifying session"}.get((params or {}).get("session_type"), "race")
             if kind == "review" and (params or {}).get("rebuild"):
                 title = "Rebuilding this review"
+            if kind == "review" and (params or {}).get("upgrade"):
+                title = "Adding comparison laps from Garage 61"
             self.st = {"state": "running", "kind": kind, "id": self.seq, "title": title, "frac": 0.0,
                        "message": "Starting...", "steps": [], "started": time.time()}
             jid = self.seq
@@ -732,11 +756,18 @@ class Jobs:
             cfg = app.load_settings()
             if kind == "review":
                 info = {}
-                page = app.cmd_review(cfg, params.get("event"), open_after=False, progress=cb,
-                                      session_kind=params.get("session_type"), track_id=params.get("track_id"),
-                                      car_id=params.get("car_id"), rebuild=bool(params.get("rebuild")), info=info)
+                if params.get("local"):        # 2.34: from the telemetry files on this PC, no Garage 61
+                    page = app.cmd_review_local(cfg, open_after=False, progress=cb, rebuild=bool(params.get("rebuild")),
+                                                subsession=params.get("subsession"), info=info)
+                elif params.get("upgrade"):    # 2.34: Add comparison laps (the Garage 61 review replaces the PC one)
+                    page = app.cmd_review_upgrade(cfg, params.get("subsession"), progress=cb, info=info)
+                else:
+                    page = app.cmd_review(cfg, params.get("event"), open_after=False, progress=cb,
+                                          session_kind=params.get("session_type"), track_id=params.get("track_id"),
+                                          car_id=params.get("car_id"), rebuild=bool(params.get("rebuild")), info=info)
                 result = {"review": Path(page).parent.name, "saved": bool(info.get("saved")),
-                          "changes": info.get("changes")}
+                          "changes": info.get("changes"), "local": bool(info.get("local")),
+                          "local_because": info.get("local_because"), "upgraded": bool(params.get("upgrade"))}
             elif kind == "rebuildall":
                 result = _rebuild_all(cfg, params.get("items") or [], cb)
             elif kind == "scan":
@@ -2871,7 +2902,20 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 a, b = sync._parse(saved["started_at"]), sync._parse(newest["start"])
                 instant = a is not None and b is not None and a >= b
-        out = {"ok": True, "saved": saved, "instant": instant,
+        # 2.34: a newer race on this PC that has no review yet (Garage 61 may not have it yet) is never skipped
+        local_newer = False
+        try:
+            from .. import localrace
+            lr = localrace.newest()
+            if lr is not None:
+                ls = float(lr.get("sort") or 0)
+                ss = sync._parse(saved["started_at"]) if saved else None
+                newer = ss is None or ls > ss.timestamp() + 600
+                if newer and app.saved_review_dir(lib, localrace.event_id(lr), 3) is None and not app._g61_has(lib, lr):
+                    local_newer, instant = True, False
+        except Exception:  # noqa: BLE001  (no telemetry folder or an odd file: the usual rules)
+            pass
+        out = {"ok": True, "saved": saved, "instant": instant, "local_newer": local_newer,
                "newest_synced": ({"event": newest.get("event"), "start": newest.get("start")} if newest else None)}
         if q.get("check") != "1":
             return self._json(out)
@@ -3437,12 +3481,20 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if isinstance(body, dict) and body.get("review") and body.get("rebuild") is True:
                     params = review_rebuild_params(self._review_dir(self._cfg(), body.get("review")))
+                elif isinstance(body, dict) and body.get("review") and body.get("upgrade") is True:
+                    params = review_upgrade_params(self._review_dir(self._cfg(), body.get("review")))
                 else:
                     params = clean_review_params(body)
+                    if isinstance(body, dict) and body.get("local") is True and not params:
+                        params = {"local": True}
             except ValueError as e:
                 return self._json({"ok": False, "error": str(e)}, 400)
             if not self._token_saved():
-                return self._json({"ok": False, "error": FINISH_SETUP, "setup": True}, 400)
+                # 2.34 "No token needed": your newest race (or a PC review's rebuild) comes from this PC's telemetry
+                if not params or params.get("local"):
+                    params = {**params, "local": True}
+                else:
+                    return self._json({"ok": False, "error": FINISH_SETUP, "setup": True}, 400)
             return self._json(self.server.jobs.start("review", params))
         if r == "api/rebuild-all":   # 2.33: every review saved without lap traces, made again from Garage 61
             if not self._token_saved():

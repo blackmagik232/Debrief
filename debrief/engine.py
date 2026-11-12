@@ -139,6 +139,18 @@ def parse_csv(text: str, _fast: bool = True) -> dict:
     if parsed is None:
         parsed = _csv_tolerant(text)
     _cols, n, arrays = parsed
+    return raw_from_columns(arrays, n)
+
+
+def raw_from_columns(arrays: dict, n: int | None = None) -> dict:
+    """2.34: parse_csv's cleaning for one lap given as columns (Garage 61's column names, iRacing's channel names:
+    Speed, LapDistPct, Lat, Lon, Brake, Throttle, Gear, ABSActive, LatAccel, LongAccel, SteeringWheelAngle, RPM), so a
+    lap read from an .ibt file goes through exactly the same rules as a Garage 61 CSV. Arrays are copied."""
+    arrays = {k: np.array(v, dtype=float) for k, v in arrays.items() if v is not None}
+    if n is None:
+        n = len(next(iter(arrays.values()))) if arrays else 0
+    if "Speed" not in arrays:
+        raise ValueError("telemetry has no Speed channel")
     missing = []
 
     def col(name, default=0.0):
@@ -693,6 +705,11 @@ def few_laps_message(missing, unreadable, readable: int) -> str:
     return " ".join(parts)
 
 
+def flagger(meta) -> str:
+    """2.34: who marked laps not clean: iRacing for a review read from this PC's .ibt files, else Garage 61."""
+    return "iRacing" if isinstance(meta, dict) and meta.get("source") == "pc" else "Garage 61"
+
+
 def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, track_length: float | None = None, log=None) -> dict:
     """
     meta: {driver, car, track, event_name, started_at, ...}
@@ -718,7 +735,7 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
             no_tel.append(numbers.get(lid))
             continue
         try:
-            raw = parse_csv(my_tel[lid])
+            raw = my_tel[lid] if isinstance(my_tel[lid], dict) else parse_csv(my_tel[lid])   # 2.34: .ibt laps come parsed
         except (ValueError, IndexError) as e:
             bad_tel.append(numbers.get(lid))
             if log and not warned:
@@ -998,7 +1015,7 @@ def analyze(meta: dict, my_laps: list, my_tel: dict, refs: list, ref_tel: dict, 
         findings.insert(1, f"Lap(s) {where} lost time in one short stretch that your other laps didn't: possibly "
                            "traffic (a lapped or slower car), possibly a mistake. They stay in your off-pace and "
                            "consistency numbers; check them in Compare laps.")
-    plan = build_plan(ranked, sl, span, slow, coach_refs, unclean=unclean_all)
+    plan = build_plan(ranked, sl, span, slow, coach_refs, unclean=unclean_all, by=flagger(meta))
 
     segments = build_segments(corner_out, laps, ref_out, L, eligible_ns=[x["n"] for x in pace])
     no_corners = None
@@ -1215,7 +1232,7 @@ def build_findings(laps, best, median, unclean, slow, excluded, sl, span, optima
     return f
 
 
-def build_plan(ranked, sl, span, outlier, refs, unclean=()):
+def build_plan(ranked, sl, span, outlier, refs, unclean=(), by="Garage 61"):
     """outlier: the off-pace (slow) laps to point the driver at. Lap 1 is left out (standing or rolling
     start), at most 5 are listed, and Garage 61-flagged laps get their own line."""
     plan = []
@@ -1246,7 +1263,7 @@ def build_plan(ranked, sl, span, outlier, refs, unclean=()):
     unclean = sorted(set(unclean or []))
     if unclean:
         plan.append({"title": "Flagged laps", "gain": "",
-                     "text": f"Garage 61 flagged {len(unclean)} lap(s) for track limits or an incident"
+                     "text": f"{by} flagged {len(unclean)} lap(s) for track limits or an incident"
                              + (f": {', '.join(map(str, unclean[:8]))}" + (" ..." if len(unclean) > 8 else "") if len(unclean) < 12 else "")
                              + ". They're left out of your corner numbers."})
     return plan

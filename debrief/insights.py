@@ -292,6 +292,11 @@ VERDICT_PHASES = {"braking": "under braking", "entry": "on the way into the corn
                "mid": "through the middle of the corners", "exit": "on the way out of the corners"}
 
 
+def _flagger(data) -> str:
+    m = data.get("meta") if isinstance(data, dict) else None
+    return "iRacing" if isinstance(m, dict) and m.get("source") == "pc" else "Garage 61"
+
+
 def _verdict_sentence(fix, con, skills) -> str:
     """What to work on, as one sentence with no figures in it."""
     if not fix:
@@ -548,7 +553,7 @@ def build(data: dict) -> dict:
     flagged_share = 0.0
     if len(unclean) >= 2:
         flagged_share = len(unclean) / total_full if total_full else 0.0
-        add("bad", "unclean", "Incidents or track limits", f"Garage 61 flagged {_laps(unclean)}.",
+        add("bad", "unclean", "Incidents or track limits", f"{_flagger(data)} flagged {_laps(unclean)}.",
             "Each one is a lap you can't use, and a safety-rating risk.",
             f"Try: next race, open {_laps(unclean)} in Compare laps, find where it went wrong, and take that spot a touch "
             "more carefully until the lap is clean.",

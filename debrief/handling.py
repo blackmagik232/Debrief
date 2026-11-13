@@ -23,6 +23,8 @@ coach. Sureness uses the app's own scale (Sure, Likely, A hint, A guess; today.S
   Sure    80 % of laps or more, 12 or more laps, 3 or more corners
   Likely  70 % of laps or more, 8 or more laps
   A hint  every other setup issue, and every driving issue
+2.36: these thresholds were tuned on made-up laps, so while TUNED_ON_REAL_LAPS is False the shown sureness is capped at
+A hint ("sureness_raw" keeps the uncapped one) and the report carries early_advice, the line the pages show.
 2.23.2: understeer and oversteer are SETUP issues only when the Balance map's own family-wise test (balance.py,
 with the fit's error in its margin) also calls at least two of the group's corners; instability and traction must
 beat chance with a binomial test corrected across groups (Holm). Sureness rests on the lower end of an interval of
@@ -41,7 +43,13 @@ import numpy as np
 
 from . import balance as bl
 
-VERSION = 1
+VERSION = 2                 # 2: sureness capped at A hint while TUNED_ON_REAL_LAPS is False (2.36)
+# 2.36: these thresholds were tuned on made-up (test) laps, never on real cars, so until the owner checks them against
+# real laps no handling item or setup advice shows "Sure" or "Likely": the shown sureness is capped at "A hint" and the
+# page says so (EARLY_ADVICE). The numbers underneath are unchanged (each item keeps "sureness_raw"). Set this True to
+# lift the cap everywhere at once.
+TUNED_ON_REAL_LAPS = False
+EARLY_ADVICE = "Early advice: not yet checked on real cars."
 MIN_LAPS = 6                # clean laps needed before anything is said
 MIN_CELL_LAPS = 5           # laps with a number in a corner and phase before that place counts
 SETUP_FRAC = 0.6            # a place "shows" when this share of its laps do
@@ -237,6 +245,16 @@ def _judge(cells: dict, n_laps: int, confirm: dict | None = None, relative_entry
     return out
 
 
+def early_advice_line():
+    """The line every page shows beside handling items and setup advice while they are capped, else None."""
+    return None if TUNED_ON_REAL_LAPS else EARLY_ADVICE
+
+
+def shown_sureness(sure: str) -> str:
+    """The sureness that is shown: capped at A hint while TUNED_ON_REAL_LAPS is False."""
+    return "hint" if (not TUNED_ON_REAL_LAPS and sure in ("sure", "likely")) else sure
+
+
 def _sureness(j: dict) -> str:
     if j["verdict"] != "setup":
         return "hint"
@@ -263,7 +281,8 @@ def _title(kind: str, phase: str, cls: str | None) -> str:
 
 
 def _issue(kind, phase, cls, j, names, total_corners_in_group):
-    sure = _sureness(j)
+    raw = _sureness(j)
+    sure = shown_sureness(raw)
     where = _names([names[ci] for ci in (j["strong"] or j["weak"])])
     title = _title(kind, phase, cls)
     k, n = j["laps_showing"], j["laps"]
@@ -283,7 +302,7 @@ def _issue(kind, phase, cls, j, names, total_corners_in_group):
                 f"setup. The corner coach has the detail for {where}.")
     return {"id": f"{kind}:{phase}:{cls or 'any'}", "kind": kind, "phase": phase, "class": cls, "title": title,
             "verdict": j["verdict"], "why_driving": j.get("why"), "corners": [names[ci] for ci in (j["strong"] or j["weak"])],
-            "laps_showing": k, "laps": n, "sureness": sure, "map_neutral": bool(j.get("map_neutral")), "sure_words": SURE_WORDS[sure],
+            "laps_showing": k, "laps": n, "sureness": sure, "sureness_raw": raw, "map_neutral": bool(j.get("map_neutral")), "sure_words": SURE_WORDS[sure],
             "share": round(float(np.mean([j["frac"][ci] for ci in (j["strong"] or j["weak"])])), 2),
             "text": text}
 
@@ -299,7 +318,7 @@ def analyze(laps, info=None, series_setup=None, prefix: str = "T") -> dict:
     info = dict(info or {})
     rep = {"ok": False, "version": VERSION, "laps": 0, "needed": MIN_LAPS, "left_out": {}, "corners": [],
            "issues": [], "setup_issues": [], "driving_issues": [], "channels": {}, "summary": "", "message": "",
-           "series_setup": series_setup}
+           "series_setup": series_setup, "early_advice": early_advice_line()}
     try:
         given = [x for x in (laps or []) if isinstance(x, dict) and bl._num(x.get("time"))]
         left = {}
@@ -536,13 +555,13 @@ def analyze(laps, info=None, series_setup=None, prefix: str = "T") -> dict:
                      "exit": "Swinging between understeer and oversteer on the way out"}[ph]
             issues.append({"id": f"swing:{ph}:any", "kind": "swing", "phase": ph, "class": None, "title": title,
                            "verdict": "driving", "why_driving": "swing", "corners": [names[ci] for ci in sorted(cis)],
-                           "laps_showing": 0, "laps": nP, "sureness": "hint", "sure_words": SURE_WORDS["hint"],
+                           "laps_showing": 0, "laps": nP, "sureness": "hint", "sureness_raw": "hint", "sure_words": SURE_WORDS["hint"],
                            "map_neutral": False, "share": 0.0,
                            "text": (f"{title} at {nm}: the car pushes on some laps and steps out on others, so the "
                                     f"cause is how the corner is driven, not the setup. The corner coach has the "
                                     f"detail for {nm}.")})
         order = {"setup": 0, "driving": 1}
-        issues.sort(key=lambda i: (order[i["verdict"]], -SURE_ORDER.index(i["sureness"]), -i["share"],
+        issues.sort(key=lambda i: (order[i["verdict"]], -SURE_ORDER.index(i.get("sureness_raw") or i["sureness"]), -i["share"],
                                    -len(i["corners"])))
         rep["issues"] = issues
         rep["setup_issues"] = [i for i in issues if i["verdict"] == "setup"]

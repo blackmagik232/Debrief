@@ -8,6 +8,8 @@
 
 Reviews your iRacing races from the telemetry files iRacing saves on your PC (and from Garage 61, if you connect it) and keeps a library of every review, in its own window.
 
+**New in 2.36:** **Both sources.** **Add comparison laps** keeps your own laps, result, charts and Setup section from your PC and asks Garage 61 only for other drivers' laps; the comparison lap is the one set in conditions like yours, and the page says why. Setup Lab: deleted telemetry files drop out, one answer to "open or fixed setup?" everywhere, setup advice capped at "A hint" with an early-advice note until it is checked on real cars, a faster Car balance, and Share what changed lets you pick the two setups.
+
 **New in 2.35:** **See it.** **Review a session** (Ctrl+Enter) opens your sessions with the newest highlighted; each row has its own **Review**. Race reviews draw fuel, position, gaps, pit stops, tyres, driver aids and incidents as charts (the tables are under **Show the numbers**), give one answer for every fact, add a **Setup** section, and mark races against AI **vs AI**.
 
 **New in 2.34:** **No token needed.** Review last race works without Garage 61: Debrief builds the review from your race's telemetry file and fills in the result (start, finish, field size, SOF, incidents) from iRacing's own session data. Connect Garage 61 later and **Add comparison laps** adds your teammates' and followed drivers' laps to the same race.

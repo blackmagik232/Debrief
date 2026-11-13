@@ -42,7 +42,7 @@ sections: [
     ['Fuel', 'Debrief\'s recorder while you drive (**Settings > Live data**); the telemetry file when there is no recording'],
     ['Position, gaps, every car\'s pit stops', 'Debrief\'s recorder while you drive (**Settings > Live data**)'],
     ['Practice, Coach, Setup Lab', 'Your PC'],
-    ['Comparing with OTHER drivers\' laps (teammates and drivers you follow)', 'Garage 61'],
+    ['Comparing with OTHER drivers\' laps (teammates and drivers you follow)', 'Garage 61. Press **Add comparison laps** on a review from your PC: your own laps, result and setup stay from your PC, and only the other drivers\' laps are fetched from Garage 61 (none of your laps\' telemetry is downloaded; if the track can\'t be matched by name, Debrief looks up your recent lap list, times only)'],
     ['Your laps from before you installed Debrief', 'Garage 61'],
     ['Team pages and leaderboards', 'Garage 61']]}, go: 'settings', label: 'Open Settings'},
   {h: 'When to connect Garage 61'},
@@ -129,7 +129,7 @@ sections: [
   {lede: `Pace wins qualifying; races are won on lap 1, in clean laps and in the pits. Debrief looks at your races as a whole as well as one at a time.`},
   {h: 'After every race'},
   {steps: [
-    {t: 'Review a session', d: `Press it (or Ctrl+Enter) after the race, then press **Review** on the race in the list. It reads your telemetry file on this PC; with Garage 61 connected it uses Garage 61 once the race is there, and **Add comparison laps** upgrades a review made from your PC. **What to work on** comes first: **Fix first**, ranked by time per lap, then **Keep doing**.`},
+    {t: 'Review a session', d: `Press it (or Ctrl+Enter) after the race, then press **Review** on the race in the list. It reads your telemetry file on this PC; with Garage 61 connected it uses Garage 61 once the race is there, and **Add comparison laps** adds other drivers' laps from Garage 61 to a review made from your PC (your own laps stay from your PC). **What to work on** comes first: **Fix first**, ranked by time per lap, then **Keep doing**.`},
     {t: 'Add the result', d: `**Add race result**, then **Load iRacing results file**: your finish, lap 1 position, pit stops and incidents, with little or nothing to type. It also feeds Car vs car.`},
     {t: 'Scan this race', d: `With the race's replay loaded in iRacing, Debrief fast-forwards through it and adds a race log: every pass, fight, incident and pit stop. It records nothing.`},
     {t: 'Read Race craft', d: `A strip with one box per lap: where you lost time and probably why (traffic, an incident, a pit stop), and your lap 1 against your typical lap.`}]},

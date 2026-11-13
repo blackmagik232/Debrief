@@ -81,7 +81,7 @@ CORNERS = ("LF", "RF", "LR", "RR")
 
 def make(path, laps, setup=None, session="Practice", rate=60, lead=5.0, offs=(), pits=(), incidents=(), untimed=(),
          corner=None, brake_at=None, traffic=(), pit_temps=None, pressure=None, ride=None, fuel=None, track_temp=None,
-         start_date=1_790_000_000, pace=None, air_temp=None, **kw):
+         start_date=1_790_000_000, pace=None, air_temp=None, wetness=None, **kw):
     """A file of consecutive laps (seconds each) after a `lead`-second out lap. offs/pits/incidents/untimed are lap
     indexes (0 = first timed lap). corner: optional function (lap_index, pct) -> (speed m/s, brake 0..1) to shape a
     lap; default is a simple two-corner lap. Extra channels: tyre carcass temps change only in pits.
@@ -99,6 +99,7 @@ def make(path, laps, setup=None, session="Practice", rate=60, lead=5.0, offs=(),
       pace:      function (lap_index, pct) -> relative speed (> 0) that shapes how LapDistPct moves through the lap
                  (the lap time stays as given), so different laps can be quick in different parts of the lap.
       air_temp:  adds a live AirTemp channel (deg C).
+      wetness:   adds a live TrackWetness channel (iRacing's 1 dry .. 7 extremely wet).
       subsession / fuel_max (session text): SubSessionID, and DriverCarFuelMaxLtr (tank size, litres)."""
     times = [lead] + list(laps)
     n = int(sum(times) * rate) + 4 * rate
@@ -201,5 +202,7 @@ def make(path, laps, setup=None, session="Practice", rate=60, lead=5.0, offs=(),
         cols["TrackTempCrew"] = ("f", np.full(n, float(track_temp), np.float32))
     if air_temp is not None:
         cols["AirTemp"] = ("f", np.full(n, float(air_temp), np.float32))
+    if wetness is not None:
+        cols["TrackWetness"] = ("i", np.full(n, int(wetness), np.int32))
     ibt.write_fake(path, session_text(setup=setup, session=session, **kw), cols, tick_rate=rate, start_date=start_date)
     return path

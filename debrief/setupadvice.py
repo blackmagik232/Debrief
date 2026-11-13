@@ -275,7 +275,7 @@ def feel_key(issue_id: str) -> str:
 
 # ---------------------------------------------------------------- the advice
 def _strength(i: dict) -> tuple:
-    return (hd.SURE_ORDER.index(i["sureness"]), i.get("share") or 0.0, len(i.get("corners") or []))
+    return (hd.SURE_ORDER.index(i.get("sureness_raw") or i["sureness"]), i.get("share") or 0.0, len(i.get("corners") or []))
 
 
 def advise(report: dict, setup: dict | None, series_setup=None, last_change: dict | None = None, dials=None,
@@ -287,7 +287,8 @@ def advise(report: dict, setup: dict | None, series_setup=None, last_change: dic
     item: {"issue_id", "title", "verdict", "sureness", "sure_words", "corners", "laps_showing", "laps",
            "change": {"key","label","from","to","text"} | None, "dial": {...} | None, "driving": text | None,
            "coach": text | None, "why", "expect", "watch", "text", "then", "first", "rank", "feel", "feel_note"}"""
-    out = {"ok": False, "empty": None, "items": [], "top": None, "card": "", "series_setup": series_setup}
+    out = {"ok": False, "empty": None, "items": [], "top": None, "card": "", "series_setup": series_setup,
+           "early_advice": hd.early_advice_line()}
     try:
         feel = feel or {}
         if not report or not report.get("ok"):

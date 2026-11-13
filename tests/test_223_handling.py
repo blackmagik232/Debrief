@@ -86,7 +86,9 @@ check(all(len(i["corners"]) >= 2 for i in mu), "in several corners of the same k
 check(not any(i["kind"] == "oversteer" for i in ru["issues"]), "and no oversteer is invented")
 check(all(i["sureness"] in hd.SURE_WORDS for i in ru["issues"]), "sureness is on the app's own scale")
 rus = hd.analyze(laps_with(2, 14, extra=mids(40.0)), info=INFO)
-check(any(i["sureness"] in ("likely", "sure") for i in rus["setup_issues"]), "14 laps, 100 %: Likely or Sure")
+check(any(i["sureness_raw"] in ("likely", "sure") for i in rus["setup_issues"]), "14 laps, 100 %: the threshold still reads Likely or Sure underneath")
+check(all(i["sureness"] in ("hint", "guess") for i in rus["setup_issues"]) and rus["early_advice"],
+      "2.36: shown at A hint at most while the thresholds are untested on real cars")
 # oversteer is the mirror image
 ro = hd.analyze(laps_with(3, 10, extra=mids(-40.0)), info=INFO)
 check(any(i["kind"] == "oversteer" and i["phase"] == "mid" and i["verdict"] == "setup" for i in ro["issues"]),

@@ -422,10 +422,16 @@ def index(folder, cache_path=None, progress=None, stop=None) -> dict:
                 progress(k + 1, total, p.name)
             except Exception:  # noqa: BLE001
                 pass
-    if cache_path and out["read"]:
-        if out["stopped"]:                       # keep what we had for the files we did not reach
+    # 2.36: the saved index is also written when files have gone (deleted or moved), or the gone files would stay in it
+    # for ever as ghost cars, tracks and counts
+    gone = (not out["stopped"]) and any(k not in new_cache for k in cache)
+    if cache_path and (out["read"] or gone):
+        if out["stopped"]:                       # keep what we had for the files we did not reach (and that still exist)
+            reached = {p.name for p in paths[:k]}      # k: the file the stop came at, not yet read
             for key, rec in cache.items():
-                new_cache.setdefault(key, rec)
+                nm = rec.get("file") if isinstance(rec, dict) else None
+                if isinstance(nm, str) and nm not in reached and (folder / nm).exists():
+                    new_cache.setdefault(key, rec)
         _save_json(Path(cache_path), {"version": CACHE_VERSION, "files": new_cache})
     out["files"].sort(key=lambda r: (r.get("sort") or 0, r["file"]))
     out["files"] = merge_track_codes(out["files"])
@@ -1252,6 +1258,57 @@ def series_setup_guess(recs: list, car_path, car_name=None) -> tuple[str, str]:
     if known:
         return "fixed", known
     return kind, source
+
+
+def series_truth(recs: list, car_path, car_name=None, saved=None, track=None, series_id=None, scheduled=None,
+                 prefer=None) -> dict:
+    """2.36: the ONE place that decides whether a car's series is open or fixed setup. Setup Lab's page, Car balance and
+    the race review's Setup section all ask here, so they can never disagree. In this order:
+      1. the telemetry of THIS race (`prefer`, e.g. this race's own files: WeekendOptions.IsFixedSetup of an official session)
+      2. his own answer for this car + track (or the picked series): the same car can run a fixed and an open series at
+         one track, so another session's file must not overrule what he said
+      3. the flag in the other telemetry files at this car + track (`recs`)
+      4. the season schedule (`scheduled` = (kind, source) from the window's schedule, when it knows)
+      5. his answer for this car at another track
+      6. the list of cars known to race fixed setups only (matched on the car's iRacing path)
+      7. a guess from the car's screen name (the only case that is not "confirmed")
+    Returns {"kind": "open" | "fixed" | "unknown", "source": plain words, "confirmed": bool, "origin": "telemetry" |
+    "answer" | "schedule" | "car_answer" | "list" | "guess" | "none", "answer": his own answer for this car + track
+    or series (or None)}. Never raises."""
+    answer = None
+    try:
+        saved = saved if isinstance(saved, dict) else {}
+        answer = saved_choice(saved, car_path, track, series_id) if (track or series_id) else None
+
+        def pack(kind, source, origin, confirmed=True):
+            return {"kind": kind, "source": source, "confirmed": confirmed, "origin": origin, "answer": answer}
+        for r in sorted(prefer or [], key=lambda r: (r.get("sort") or 0), reverse=True):
+            det = r.get("detail") or {}
+            if det.get("fixed_setup") is not None and det.get("official"):
+                kind = "fixed" if det["fixed_setup"] else "open"
+                return pack(kind, f"this race's telemetry says it was {kind} setup", "telemetry")
+        if answer:
+            return pack(answer, "you set this", "answer")
+        kind, source = series_setup_from_files(recs or [])
+        if kind != "unknown":
+            return pack(kind, source, "telemetry")
+        if scheduled and scheduled[0] in ("open", "fixed"):
+            return pack(scheduled[0], scheduled[1] or "the season schedule", "schedule")
+        mine = remembered_for_car(saved, car_path)
+        if mine:
+            return pack(mine, "you set this for this car at another track", "car_answer")
+        car_name = car_name or next(((r.get("car") or {}).get("name") for r in reversed(recs or [])
+                                     if (r.get("car") or {}).get("name")), "")
+        path, name = str(car_path or "").lower().strip(), str(car_name or "").lower()
+        for p, n, words in KNOWN_FIXED:
+            if path.startswith(p):
+                return pack("fixed", known_fixed(car_path, car_name), "list")
+        known = known_fixed(car_path, car_name)
+        if known:
+            return pack("fixed", known + ", guessed from the car's name", "guess", False)
+        return pack("unknown", source, "none", False)
+    except Exception:  # noqa: BLE001
+        return {"kind": "unknown", "source": "", "confirmed": False, "origin": "none", "answer": answer}
 
 
 def _setting_value(setup: dict, corner_key: str, leaf: str):

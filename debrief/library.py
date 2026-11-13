@@ -396,6 +396,7 @@ def _row_from(d, p: Path) -> dict | None:
         "event_id": str(m.get("event_id") or ""),
         "vs_ai": _vs_ai(d),     # 2.35: raced against AI cars (a tag only: no field strength or iRating shown)
         "source": "pc" if m.get("source") == "pc" else "garage61",   # 2.34: built from this PC's telemetry files
+        "refs_from": "garage61" if m.get("source") == "pc" and m.get("refs_from") == "garage61" else None,   # 2.36
         # v2 fields (all optional: None/absent on reviews made before Debrief v2)
         "track_id": _int(ids.get("track_id")), "car_id": _int(ids.get("car_id")),
         "irating": None if _vs_ai(d) else _int(d.get("irating")),

@@ -636,7 +636,7 @@ def test_practice_before_reading():
     s = srv()
     make_files()
     old = s.setuplab.load
-    s.setuplab.load = lambda path: (None, frozenset())
+    s.setuplab.load = lambda path, folder=None: (None, frozenset())
     with s.practice.lock:
         s.practice.list_key = None
     r = page()

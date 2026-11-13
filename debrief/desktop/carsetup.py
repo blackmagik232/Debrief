@@ -65,6 +65,8 @@ class State:
         self.mem = {}                 # cache key -> value
         self.busy = {}                # cache key -> lock while being worked out
         self.made = 0                 # results worked out (not read back): for tests
+        self.laps = {}                # 2.36: laps key -> (laps, info) read from the .ibt files, shared by balance and handling
+        self.loads = 0                # .ibt loads actually done (not shared): for tests
         self.team = {}                # (car, track) -> the teammate entry in use (see _team_entry)
         self.team_all = {}            # 2.21: (car, track, driver) -> every teammate lap loaded, so two teammates never overwrite each other
         self.team_cards = {}          # (car, track, paths key) -> corner coach report against the teammate
@@ -171,7 +173,7 @@ def _combo(q):
 
 def _index(server, cfg):
     from .server import setuplab_cache_path
-    idx, _keys = server.setuplab.load(setuplab_cache_path(cfg))
+    idx, _keys = server.setuplab.load(setuplab_cache_path(cfg), settings_io.telemetry_folder(cfg))
     if idx is None:
         raise ValueError("Read your telemetry first.")
     return idx
@@ -211,10 +213,44 @@ def balance_setups(recs: list) -> list:
     return out
 
 
-def balance_report(paths: list) -> dict:
-    """The balance map over these files (no setup ideas for a fixed series: see _apply_series)."""
+LAPS_KEPT = 2                     # sets of laps kept in memory (they are big); the newest two combos/setups
+
+
+def shared_laps(server, key: str, paths: list) -> tuple:
+    """2.36: (laps, info) of balance.load_laps over these files, read ONCE for the balance map and the handling read
+    together (they used to read the same twenty files each, on first open and on every setup switch). A second request
+    for the same files waits for the first and shares its result. Never raises (load_laps doesn't)."""
     from .. import balance
-    rep = balance.analyze_files([str(p) for p in paths])
+    st = state(server)
+    with st.lock:
+        if key in st.laps:
+            v = st.laps.pop(key)
+            st.laps[key] = v
+            return v
+        klock = st.busy.setdefault("laps-" + key, threading.Lock())
+    with klock:
+        with st.lock:
+            if key in st.laps:
+                return st.laps[key]
+        v = balance.load_laps([str(p) for p in paths])
+        with st.lock:
+            st.loads += 1
+            st.laps[key] = v
+            while len(st.laps) > LAPS_KEPT:
+                st.laps.pop(next(iter(st.laps)))
+            st.busy.pop("laps-" + key, None)
+    return v
+
+
+def balance_report(paths: list, loaded=None) -> dict:
+    """The balance map over these files (no setup ideas for a fixed series: see _apply_series). loaded: the shared
+    (laps, info) from shared_laps, else the files are read here."""
+    from .. import balance
+    if loaded is not None:
+        laps, info = loaded
+        rep = balance.analyze_laps(laps, info=info, setup=(info or {}).get("setup"))
+    else:
+        rep = balance.analyze_files([str(p) for p in paths])
     rep.pop("params", None)
     rep.pop("method", None)
     cs = rep.get("countersteer") or {}
@@ -234,6 +270,12 @@ def _apply_series(rep: dict, kind, setup: dict | None = None, last_change: dict 
                                                  dials=(rep.get("info") or {}).get("dials"))
     rep["series_setup"] = kind
     return rep
+
+
+def _early_line():
+    """2.36: 'Early advice: not yet checked on real cars.' while handling.TUNED_ON_REAL_LAPS is False, else None."""
+    from .. import handling
+    return handling.early_advice_line()
 
 
 def balance_laps_note(bal_laps, table_laps, label: str, files_used: int, files_all: int) -> str | None:
@@ -281,6 +323,7 @@ def _selection(h, q):
     paths = [Path(folder) / n for n in reversed(names)]
     try:
         key = cache_key("balance", paths)
+        lkey = cache_key("laps", paths)
     except OSError:
         raise ValueError("Some telemetry files have gone. Press Read my telemetry again.")
     kind = _series_kind(car, track, idx)
@@ -289,7 +332,7 @@ def _selection(h, q):
     last = setuplab.change_into(recs, chosen) if chosen != "all" and kind != "fixed" else None
     mine = recs if chosen == "all" else [r for r in recs if r["file"] in set(pick["files"])]
     return {"none": False, "car": car, "track": track, "idx": idx, "recs": recs, "setups": setups, "pub": pub,
-            "pick": pick, "chosen": chosen, "paths": paths, "key": key, "kind": kind, "setup": setup, "last": last,
+            "pick": pick, "chosen": chosen, "paths": paths, "key": key, "lkey": lkey, "kind": kind, "setup": setup, "last": last,
             "mine": mine}
 
 
@@ -302,13 +345,14 @@ def get_balance(h, q):
                         "message": "No telemetry with a setup for this car and track yet."})
     from .. import setuplab
     paths, pick, chosen, recs, mine = S["paths"], S["pick"], S["chosen"], S["recs"], S["mine"]
-    rep, hit = cached(server, cfg["cache_dir"], S["key"], lambda: balance_report(paths))
+    rep, hit = cached(server, cfg["cache_dir"], S["key"], lambda: balance_report(paths, shared_laps(server, S["lkey"], paths)))
     last, kind, setup = S["last"], S["kind"], S["setup"]
     table, _d = setuplab.pace_laps(mine)
     note = balance_laps_note(rep.get("laps") if rep.get("ok") else None, len(table),
                              "all setups" if chosen == "all" else pick["label"], len(paths), len(mine))
     return h._json({"ok": True, "report": _apply_series(rep, kind, setup or {}, last), "setups": S["pub"],
                     "setup": chosen, "cached": hit, "files": len(paths), "laps_note": note,
+                    "early_advice": _early_line(),
                     "last_change": ({k: last[k] for k in ("from", "to", "verdict", "slower")} if last else None)})
 
 
@@ -316,10 +360,11 @@ def get_balance(h, q):
 HANDLING_STORE = "handling"          # settings_io extra: {"feel": {car|track: {issue id: {answer, at}}}, "history": {...}}
 
 
-def handling_report(paths: list, kind) -> dict:
-    """The handling read over these files (cached by file; the advice is worked out again on it, which is cheap)."""
+def handling_report(paths: list, kind, loaded=None) -> dict:
+    """The handling read over these files (cached by file; the advice is worked out again on it, which is cheap).
+    loaded: the shared (laps, info) from shared_laps, else the files are read here."""
     from .. import balance, handling
-    laps, info = balance.load_laps([str(p) for p in paths])
+    laps, info = loaded if loaded is not None else balance.load_laps([str(p) for p in paths])
     rep = handling.analyze(laps, info=info, series_setup=kind)
     rep["files"] = len(paths)
     rep["dials"] = list(info.get("dials") or [])
@@ -363,7 +408,7 @@ def get_handling(h, q):
         return h._json({"ok": True, "report": None, "advice": {"ok": False, "empty": msg, "items": [], "top": None,
                                                               "card": "Car balance: " + msg}, "message": msg})
     rep, hit = cached(server, cfg["cache_dir"], cache_key("handling", S["paths"], extra=[handling.VERSION]),
-                      lambda: handling_report(S["paths"], S["kind"]))
+                      lambda: handling_report(S["paths"], S["kind"], shared_laps(server, S["lkey"], S["paths"])))
     st = _store()
     hk = setupadvice.history_key(S["car"], S["track"])
     feel = (st["feel"].get(hk) or {})
@@ -392,6 +437,7 @@ def get_handling(h, q):
         _save_store(st)
     return h._json({"ok": True, "report": {k: v for k, v in rep.items() if k != "dials"}, "advice": advice,
                     "setups": S["pub"], "setup": S["chosen"], "cached": hit, "series_setup": S["kind"],
+                    "early_advice": _early_line(),
                     "history": setupadvice.history_view(st["history"], hk), "feel": feel})
 
 
@@ -426,40 +472,32 @@ def post_handling_feel(h, body):
     return h._json({"ok": True, "feel": mine})
 
 
-def _series_confirmed(car, track, idx) -> bool:
-    """True when the series' setup rules are known for sure: his own answer, or the season schedule."""
+def _series_truth(car, track, idx) -> dict:
+    """What Setup Lab's page, Car balance and the race review all use: setuplab.series_truth (the telemetry, then his
+    answer, then the season schedule, then the lists and the guess). Never raises."""
     from .. import setuplab
     from . import server as S
     try:
         saved = settings_io.load_extra("setuplab").get("series") or {}
-        if isinstance(saved, dict) and saved.get(S.series_key(car, track)) in ("open", "fixed"):
-            return True
+        recs = _records(idx, car, track)
         combo = next((c for c in setuplab.combos(idx) if (c.get("car_path") or "").lower() == car.lower()
                       and (c.get("track_code") or "").lower() == track.lower()), None)
-        return S.schedule_series_setup(combo, None)[0] in ("open", "fixed")
+        return setuplab.series_truth(recs, car, (combo or {}).get("car"), saved, track, None,
+                                     scheduled=S.schedule_series_setup(combo, None))
     except Exception:  # noqa: BLE001
-        return False
+        return {"kind": "unknown", "source": "", "confirmed": False, "origin": "none", "answer": None}
+
+
+def _series_confirmed(car, track, idx) -> bool:
+    """False only for a pure guess or nothing known (see setuplab.series_truth); Car balance then asks him."""
+    t = _series_truth(car, track, idx)
+    return bool(t["confirmed"]) and t["kind"] in ("open", "fixed")
 
 
 def _series_kind(car, track, idx):
-    """open | fixed | None, as Setup Lab decides it (his own choice first, else the season schedule, else the
-    telemetry and the cars known to race fixed setups only)."""
-    from .. import setuplab
-    from . import server as S
-    try:
-        saved = settings_io.load_extra("setuplab").get("series") or {}
-        v = saved.get(S.series_key(car, track)) if isinstance(saved, dict) else None
-        if v in ("open", "fixed"):
-            return v
-        combo = next((c for c in setuplab.combos(idx) if (c.get("car_path") or "").lower() == car.lower()
-                      and (c.get("track_code") or "").lower() == track.lower()), None)
-        kind = S.schedule_series_setup(combo, None)[0]
-        if kind in ("open", "fixed"):
-            return kind
-        guess = setuplab.series_setup_guess(_records(idx, car, track), car, (combo or {}).get("car"))[0]
-        return guess if guess in ("open", "fixed") else setuplab.remembered_for_car(saved, car)
-    except Exception:  # noqa: BLE001
-        return None
+    """open | fixed | None, as Setup Lab decides it (setuplab.series_truth)."""
+    k = _series_truth(car, track, idx)["kind"]
+    return k if k in ("open", "fixed") else None
 
 
 # ---------------------------------------------------------------- tyre pressures over time

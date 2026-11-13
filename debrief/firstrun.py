@@ -175,15 +175,22 @@ def _cache_dir() -> Path:
     return Path(os.environ.get("DEBRIEF_CACHE_DIR") or Path(app.HERE) / ".cache")
 
 
-def _index_records(cache_file: Path) -> list:
-    """Records of the files Setup Lab's index has read OK ([] when there's no index or it's damaged / old)."""
+def _index_records(cache_file: Path, folder=None) -> list:
+    """Records of the files Setup Lab's index has read OK ([] when there's no index or it's damaged / old). With `folder`
+    (2.36), a file that has gone from the telemetry folder since is left out."""
     try:
         from . import setuplab
         raw = json.loads(Path(cache_file).read_text(encoding="utf-8"))
         if not isinstance(raw, dict) or raw.get("version") != setuplab.CACHE_VERSION:
             return []
+        names = None
+        if folder is not None:
+            try:
+                names = {e.name for e in os.scandir(folder) if e.is_file()}
+            except OSError:
+                names = None
         return [r for r in (raw.get("files") or {}).values() if isinstance(r, dict) and r.get("ok")
-                and isinstance(r.get("file"), str)]
+                and isinstance(r.get("file"), str) and (names is None or r["file"] in names)]
     except Exception:  # noqa: BLE001
         return []
 
@@ -194,6 +201,7 @@ def gather(raw_settings: dict | None = None, cache_file=None, state_path=None, f
     (from the settings when None). Never raises."""
     facts = {"token": False, "folder": False, "folder_path": "", "ibt_files": 0, "files": 0, "best_clean": 0,
              "voice_tested": False, "token_rejected": False, "ensure_telemetry": False}
+    tf = None
     try:
         from .desktop import settings_io
         raw = raw_settings
@@ -209,7 +217,8 @@ def gather(raw_settings: dict | None = None, cache_file=None, state_path=None, f
     except Exception:  # noqa: BLE001
         pass
     try:
-        recs = _index_records(Path(cache_file) if cache_file else _cache_dir() / SETUPLAB_CACHE)
+        recs = _index_records(Path(cache_file) if cache_file else _cache_dir() / SETUPLAB_CACHE,
+                              tf if facts["folder"] else None)
         facts["files"] = len(recs)
         if recs:
             from . import sessionibt

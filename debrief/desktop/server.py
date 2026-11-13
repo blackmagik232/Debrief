@@ -380,6 +380,8 @@ def review_rebuild_params(review_dir: Path) -> dict:
     m = d.get("meta") if isinstance(d, dict) and isinstance(d.get("meta"), dict) else {}
     if m.get("source") == "pc":       # 2.34: a review built from this PC is made again from its telemetry files
         out = {"local": True, "subsession": _sub(m.get("subsession")), "rebuild": True}
+        if m.get("refs_from") == "garage61":   # 2.36: its comparison laps are asked for again (and kept if Garage 61 can't be reached)
+            out["refs_from"] = "garage61"
         if out["subsession"] is None and _pc_event(m.get("event_id")):   # 2.35: AI/offline race: find it by its PC id
             out["pc_event"] = _pc_event(m.get("event_id"))
         return out
@@ -408,7 +410,7 @@ def _sub(v):
 
 def review_upgrade_params(review_dir: Path) -> dict:
     """2.34: POST api/review {"review": <folder>, "upgrade": true} on a review built from this PC: the Garage 61 review
-    of the same race (comparison laps added). ValueError when it isn't a PC review or has no iRacing session number."""
+    of the same race (comparison laps added; 2.36: your own laps stay from this PC). ValueError when it isn't a PC review or has no iRacing session number."""
     try:
         m = json.loads((Path(review_dir) / "review.json").read_text(encoding="utf-8")).get("meta") or {}
     except (OSError, ValueError, AttributeError):
@@ -767,8 +769,8 @@ class Jobs:
                 if params.get("local"):        # 2.34: from the telemetry files on this PC, no Garage 61
                     page = app.cmd_review_local(cfg, open_after=False, progress=cb, rebuild=bool(params.get("rebuild")),
                                                 subsession=params.get("subsession"), info=info,
-                                                event_id=params.get("pc_event"))
-                elif params.get("upgrade"):    # 2.34: Add comparison laps (the Garage 61 review replaces the PC one)
+                                                event_id=params.get("pc_event"), refs_from=params.get("refs_from"))
+                elif params.get("upgrade"):    # 2.34/2.36: Add comparison laps (your laps stay from this PC; Garage 61 adds the comparison laps)
                     page = app.cmd_review_upgrade(cfg, params.get("subsession"), progress=cb, info=info)
                 else:
                     page = app.cmd_review(cfg, params.get("event"), open_after=False, progress=cb,
@@ -776,7 +778,10 @@ class Jobs:
                                           car_id=params.get("car_id"), rebuild=bool(params.get("rebuild")), info=info)
                 result = {"review": Path(page).parent.name, "saved": bool(info.get("saved")),
                           "changes": info.get("changes"), "local": bool(info.get("local")),
-                          "local_because": info.get("local_because"), "upgraded": bool(params.get("upgrade"))}
+                          "local_because": info.get("local_because"), "upgraded": bool(params.get("upgrade")),
+                          "refs": info.get("refs"), "kept_pc": bool(info.get("upgraded_from_pc")),
+                          "unmatched": bool(info.get("unmatched")), "failed": bool(info.get("failed")),
+                          "own_list": bool(info.get("own_list"))}
             elif kind == "rebuildall":
                 result = _rebuild_all(cfg, params.get("items") or [], cb)
             elif kind == "scan":
@@ -959,29 +964,49 @@ class SetupLabIndex:
 
     def __init__(self):
         self.lock = threading.Lock()
-        self.key, self.idx, self.keys = None, None, frozenset()
+        self.key = None            # (path, mtime, size) of the cache file the parse below is of
+        self.raw = None            # its parsed "files" dict
+        self.views = {}            # file names present (frozenset | None) -> (idx, keys); cleared when the file changes
 
-    def load(self, cache_path: Path):
+    def load(self, cache_path: Path, folder=None):
         """(index dict shaped like setuplab.index()'s, the set of cached file keys), or (None, empty) before the
-        first read."""
+        first read. With `folder` (2.36), a file that has gone from the folder since the last read is left out, so a
+        deleted telemetry file stops counting at once (the list of names is cheap; no file is opened). The cache file is
+        parsed once per change however callers alternate between with and without a folder."""
         from .. import setuplab
         try:
             st = Path(cache_path).stat()
         except OSError:
             return None, frozenset()
+        names = None
+        if folder is not None:
+            try:
+                names = frozenset(e.name for e in os.scandir(folder) if e.is_file())
+            except OSError:
+                names = None                      # the folder itself is gone: show what the index has
         key = (str(cache_path), st.st_mtime_ns, st.st_size)
         with self.lock:
-            if key == self.key:
-                return self.idx, self.keys
-        try:
-            raw = json.loads(Path(cache_path).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None, frozenset()
-        if not isinstance(raw, dict) or raw.get("version") != setuplab.CACHE_VERSION or not isinstance(raw.get("files"), dict):
-            return None, frozenset()
+            if key == self.key and self.raw is not None:
+                if names in self.views:
+                    return self.views[names]
+                raw_files = self.raw
+            else:
+                raw_files = None
+        if raw_files is None:
+            try:
+                raw = json.loads(Path(cache_path).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return None, frozenset()
+            if not isinstance(raw, dict) or raw.get("version") != setuplab.CACHE_VERSION or not isinstance(raw.get("files"), dict):
+                return None, frozenset()
+            raw_files = raw["files"]
+            with self.lock:
+                self.key, self.raw, self.views = key, raw_files, {}
         files, bad = [], []
-        for rec in raw["files"].values():
+        for rec in raw_files.values():
             if not isinstance(rec, dict) or not isinstance(rec.get("file"), str):
+                continue
+            if names is not None and rec["file"] not in names:
                 continue
             if rec.get("ok"):
                 files.append(rec)
@@ -990,9 +1015,12 @@ class SetupLabIndex:
         files.sort(key=lambda r: (r.get("sort") or 0, r["file"]))
         idx = {"folder": None, "files": files, "read": 0, "cached": len(files), "bad": bad, "stopped": False,
                "missing_folder": False}
-        keys = frozenset(raw["files"])
+        keys = frozenset(raw_files)
         with self.lock:
-            self.key, self.idx, self.keys = key, idx, keys
+            if key == self.key:
+                if len(self.views) > 4:
+                    self.views.clear()
+                self.views[names] = (idx, keys)
         return idx, keys
 
 
@@ -1239,8 +1267,12 @@ def _rebuild_all(cfg, items, cb) -> dict:
         def sub(frac, msg, i=i):
             cb((i + (frac or 0.0)) / max(1, n), msg)
         try:
-            app.cmd_review(cfg, params.get("event"), open_after=False, progress=sub, session_kind=params.get("session_type"),
-                           track_id=params.get("track_id"), car_id=params.get("car_id"), rebuild=True, info={})
+            if params.get("local"):   # 2.36: a review from this PC is made from its telemetry files (comparison laps asked for again)
+                app.cmd_review_local(cfg, open_after=False, progress=sub, rebuild=True, subsession=params.get("subsession"),
+                                     event_id=params.get("pc_event"), refs_from=params.get("refs_from"), info={})
+            else:
+                app.cmd_review(cfg, params.get("event"), open_after=False, progress=sub, session_kind=params.get("session_type"),
+                               track_id=params.get("track_id"), car_id=params.get("car_id"), rebuild=True, info={})
             done.append(name)
         except JobCancelled:
             raise
@@ -1934,10 +1966,10 @@ class DebriefServer(ThreadingHTTPServer):
         if si is None:
             raise ValueError("Practice isn't available right now. Details were saved to debrief.log in "
                              + app.data_folder_label() + ".")
-        idx, _keys = self.setuplab.load(setuplab_cache_path(cfg))
+        folder = settings_io.telemetry_folder(cfg)
+        idx, _keys = self.setuplab.load(setuplab_cache_path(cfg), folder)
         if idx is None:
             return [], None
-        folder = settings_io.telemetry_folder(cfg)
         with self.setuplab.lock:
             lk = (self.setuplab.key, str(folder))
         with self.practice.lock:
@@ -2235,7 +2267,7 @@ class DebriefServer(ThreadingHTTPServer):
                 tf = settings_io.telemetry_folder(cfg)
                 folder = tf if tf.is_dir() else None
                 cache = setuplab_cache_path(cfg)
-                index_of = lambda: self.setuplab.load(cache)[0]       # noqa: E731  (Setup Lab's saved index)
+                index_of = lambda: self.setuplab.load(cache, tf)[0]   # noqa: E731  (Setup Lab's saved index, without files since deleted)
             except (SystemExit, OSError, KeyError):
                 pass
             self.coach_weak_info = None
@@ -4255,7 +4287,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---------- Setup Lab (2.12): read only, from the telemetry iRacing saves on this PC
     def _setuplab_index(self, cfg):
-        return self.server.setuplab.load(setuplab_cache_path(cfg))
+        return self.server.setuplab.load(setuplab_cache_path(cfg), settings_io.telemetry_folder(cfg))
 
     def _get_setuplab_combos(self, q):
         """The cars and tracks in the saved index, newest first, and where the telemetry folder is. Never reads a
@@ -4302,13 +4334,16 @@ class Handler(BaseHTTPRequestHandler):
                       and (c.get("track_code") or "").lower() == track.lower()), None)
         saved = settings_io.load_extra("setuplab").get("series") or {}
         override = setuplab.saved_choice(saved, car, track, sid)
-        kind, source = (override, "you set this") if override else schedule_series_setup(combo, sid)
-        if not kind:      # 2.19.2: nothing else knows: what he said for this car at another track
-            kind = setuplab.remembered_for_car(saved, car)
-            source = "you set this for this car at another track" if kind else source
-        rep = setuplab.report(folder, car, track, series_setup=kind, idx=dict(idx, missing_folder=not folder.is_dir()))
-        if kind:
+        recs = [r for r in idx.get("files") or [] if setuplab._match(r, car, track)]
+        truth = setuplab.series_truth(recs, car, (combo or {}).get("car"), saved, track, sid,
+                                      scheduled=schedule_series_setup(combo, sid))
+        kind, source = truth["kind"], truth["source"]
+        rep = setuplab.report(folder, car, track, series_setup=kind if kind in ("open", "fixed") else None,
+                              idx=dict(idx, missing_folder=not folder.is_dir()))
+        if kind in ("open", "fixed"):
+            rep["series_setup"] = kind
             rep["series_setup_source"] = source
+        rep["series_confirmed"] = bool(truth["confirmed"])
         rep["series_override"] = override
         return self._json(_jsonable({"ok": True, "report": rep}))
 
@@ -4466,6 +4501,7 @@ class Handler(BaseHTTPRequestHandler):
                 "session_types", "laps", "valid_laps", "clean_laps", "best", "median", "surface_temp")
         return self._json(_jsonable({
             "ok": True, "folder": str(folder), "folder_ok": folder_ok, "indexed": idx is not None,
+            "bad": len(_idx["bad"]) if _idx else 0,
             "unread": unread_files(folder, keys) if folder_ok else None, "running": self.server.jobs.kind == "setuplab",
             "sessions": [{**{k: x.get(k) for k in keep}, "event_id": localrace.event_id(x)} for x in ss]}))
 

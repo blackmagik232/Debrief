@@ -553,7 +553,7 @@ function rebuildReview(dir){const r=reviewRow(dir);if(!g61Ready()&&!(r&&r.source
 // 2.34: a review built from this PC can gain your teammates' comparison laps once Garage 61 has the race
 function addComparison(dir){if(!g61Ready()){needToken();return}startJob('review',{review:dir,upgrade:true})}
 const offeredUpgrade=new Set();
-function offerUpgrade(dir){const r=reviewRow(dir);if(!r||r.source!=='pc'||!g61Ready()||offeredUpgrade.has(dir))return;offeredUpgrade.add(dir);
+function offerUpgrade(dir){const r=reviewRow(dir);if(!r||r.source!=='pc'||r.refs_from==='garage61'||!g61Ready()||offeredUpgrade.has(dir))return;offeredUpgrade.add(dir);
   bannerAction('This review comes from your PC.','Add comparison laps',()=>addComparison(dir),15000)}
 $('btnReview').addEventListener('click',reviewASession);
 
@@ -620,7 +620,8 @@ function render(s){
       else if(s.kind==='review')loadReviews().then(()=>{const R=s.result||{};if(!R.review)return;
         if(R.saved){openReview(R.review);bannerAction('You\'ve already reviewed this race, so here is the saved review. Nothing was downloaded.','Rebuild',()=>rebuildReview(R.review))}
         else if(Array.isArray(R.changes)){if(stay||current.dir===R.review)openReview(R.review);if(current.dir===R.review)reloadFrame();banner('Review rebuilt. '+R.changes.filter(x=>typeof x==='string').join(' '),false,12000)}
-        else if(R.upgraded){if(stay||current.dir===R.review)openReview(R.review);banner('Comparison laps added from Garage 61. The review from your PC was replaced by this one (its result is kept).',false,12000)}
+        else if(R.upgraded){if(stay||current.dir===R.review)openReview(R.review);if(current.dir===R.review)reloadFrame();
+          banner(R.kept_pc?(R.failed?'Garage 61 couldn\'t be reached, or its comparison laps couldn\'t be downloaded, so none were added. Your review is as it was. Try again later.':R.unmatched?'Debrief couldn\'t match this race\'s track and car on Garage 61, so no comparison laps were added. Your review is as it was.':R.refs?'Comparison laps added from Garage 61 ('+plural(R.refs,'lap')+'). Your own laps, result and setup are still from your PC. '+(R.own_list?'Debrief looked up your recent lap list to match the track; none of your laps\' telemetry was downloaded.':'None of your laps were downloaded from Garage 61.'):'Garage 61 had no comparison laps from your teammates or followed drivers for this race. Your review is from your PC as before.'):'Comparison laps added from Garage 61. This PC no longer has the telemetry file, so the review now comes from Garage 61 and replaced the one from your PC (its result is kept).',false,12000)}
         else if(R.local){offeredUpgrade.add(R.review);if(stay)openReview(R.review);
           banner(R.local_because==='garage61_missing'?'Garage 61 doesn\'t have this race yet, so this review comes from your telemetry files. Open it again later and press Add comparison laps.':
             g61Ready()?'Review ready, from your telemetry files.':'Review ready, from your telemetry files. Connect Garage 61 to add your teammates\' comparison laps.',false,12000)}
@@ -1994,9 +1995,11 @@ async function loadSetupLab(withReport){let j;try{j=await api('setuplab/combos')
   if(!j.folder_ok)slEmpty('Debrief can\'t find your telemetry folder','iRacing saves telemetry in Documents\\iRacing\\telemetry; if yours is somewhere else, set the folder in Settings.',TEL_FIX);
   else if(!j.indexed&&j.unread===0&&!j.running)slEmpty('No telemetry files yet',TEL_HOW);
   else if(!j.indexed)slEmpty(j.running?'Reading your telemetry...':'Not read yet','The first time reads every file, so a few hundred files take a few minutes; after that only new ones.',j.running?null:['Read my telemetry',()=>$('slRead').click()]);
-  else if(!combos.length)slEmpty('No telemetry files yet',TEL_HOW);
+  else if(!combos.length)slEmpty(...(j.bad>0?telUnreadable(j.bad):['No telemetry files yet',TEL_HOW]));
   else loadSlReport()}
 // 2.18: iRacing records no telemetry until it is turned on; every telemetry page's empty state says so the same way
+// 2.36: files exist but none could be read: say how many, instead of "no telemetry files yet"
+function telUnreadable(n){return ['Debrief couldn\'t read your telemetry files',(n===1?'1 telemetry file was found but it':n+' telemetry files were found but none of them')+' could not be read (damaged, or iRacing was still writing '+(n===1?'it':'them')+'). Close iRacing, then press Read my telemetry again.']}
 const TEL_HOW='iRacing doesn\'t save telemetry until you turn it on: tick Settings > Live data > Make iRacing save my telemetry, or press Alt+L in the car, then drive a few laps.';
 function slEmpty(title,text,act){$('slReport').replaceChildren(emptyState(title,text,act))}
 function renderSlTel(){const j=sl.data;if(!j)return;const pill=$('slPill'),run=!!j.running||(lastJob&&lastJob.state==='running'&&lastJob.kind==='setuplab');
@@ -2548,7 +2551,7 @@ function renderPrList(){const j=pr.data,host=$('prSessions'),ss=(j&&j.sessions)|
   const READ=['Read my telemetry',()=>$('prRead').click()];
   if(!j.indexed&&j.unread===0&&!j.running){prEmpty(host,'No telemetry files yet',TEL_HOW,null);return}
   if(!j.indexed){prEmpty(host,j.running?'Reading your telemetry...':'Not read yet','A few hundred files take a few minutes the first time; after that only new ones are read.',j.running?null:READ);return}
-  if(!ss.length){prEmpty(host,'No telemetry files yet',TEL_HOW,null);return}
+  if(!ss.length){const u=j.bad>0?telUnreadable(j.bad):['No telemetry files yet',TEL_HOW];prEmpty(host,u[0],u[1],null);return}
   const box=h('div','panel'),top=h('div','phead');top.append(h('h3',null,'Your sessions'),h('span','note','Newest first'));box.append(top);
   const ul=h('ul','prlist');ul.setAttribute('aria-label','Your sessions, newest first');
   (pr.more?ss:ss.slice(0,PR_NEWEST)).forEach(x=>{const li=h('li'),b=h('button','prrow');b.type='button';b.dataset.id=x.id;
@@ -3103,6 +3106,9 @@ const BAL_WORD={push:['Pushes','push'],rotate:['Rotates','rot'],neutral:['Neutra
 const BAL_PHASE=[['entry','On the way in'],['mid','In the middle'],['exit','On the way out']];
 // 2.18 shared scale: an idea comes from a balance finding and is never tested on the laps, so it is only A hint (or A guess)
 const IDEA_CONF={'worth a try':['A hint','no','A hint: worth a try, from a clear finding in your laps, but the idea itself is untested'],'a guess':['A guess','no','A guess: from a likely finding']};
+// 2.36: the balance map and the handling read share one read of the laps; say what is happening while it runs
+function csWorkingText(){const sel=cs.balSetup;let n=(sel&&sel!=='all'&&cs.sets&&cs.sets[sel])||cs.nfiles||0;n=Math.min(n,20);
+  return 'Working: reading '+(n?'the laps in '+plural(n,'telemetry file'):'your laps')+'. This takes a few seconds the first time.'}
 const csQ=(car,track,extra)=>new URLSearchParams(Object.assign({car,track},extra||{}));
 const csTurn=t=>turnWords(String(t||''));
 
@@ -3112,7 +3118,7 @@ function csSetupLab(R){
   if(!R||!R.files||!R.car_path)return;
   const combo={car:R.car_path,track:R.track_code};
   if(!cs.combo||cs.combo.car!==combo.car||cs.combo.track!==combo.track)cs.balSetup=null;
-  cs.combo=combo;
+  cs.combo=combo;cs.nfiles=R.files;cs.sets={};(R.setups||[]).forEach(x=>{cs.sets[x.id]=Array.isArray(x.files)?x.files.length:(+x.files||0)});
   const host=$('slReport'),before=$('slNotes');
   const put=el=>{if(before&&before.parentNode===host)host.insertBefore(el,before);else host.append(el)};
   csShareButton(R);
@@ -3122,7 +3128,7 @@ function csSetupLab(R){
 
 async function csLoadBalance(){const sec=$('slBalance'),c=cs.combo;if(!sec||!c)return;const seq=++cs.seq;
   const body=h('div','balbody');sec.replaceChildren(h('h3',null,'How the car handles'),body);
-  body.append(h('p','note','Working out how the car handles from your laps. This takes a few seconds the first time.'));sec.classList.add('busy');
+  body.append(h('p','note',csWorkingText()));sec.classList.add('busy');
   const extra=cs.balSetup?{setup:cs.balSetup}:{};let j;
   try{j=await api('balance?'+csQ(c.car,c.track,extra))}catch(e){connectionLost();return}
   if(seq!==cs.seq||!$('slBalance'))return;sec.classList.remove('busy');
@@ -3174,6 +3180,7 @@ function csLegend(){const p=h('p','ballegend');
 
 function csIdeas(R,j){const fixedSeries=R.series_setup==='fixed',box=h('div','balideas');box.append(h('h4',null,fixedSeries?'What you can still change':'Setup ideas'));
   const I=R.setup_ideas||[];
+  if(I.length&&j&&typeof j.early_advice==='string'&&j.early_advice){const e=h('p','balsmall hdlearly',j.early_advice);e.id='balEarly';box.append(e)}
   if(!I.length){box.append(h('p','note',R.ok&&(R.findings||[]).length?'This car\'s setup has nothing Debrief knows how to change for this.':'No setup idea until the car clearly pushes or rotates somewhere.'));return box}
   const fixed=I.length===1&&!I[0].finding&&!I[0].change&&!I[0].dial&&!I[0].driving;
   if(fixed){box.append(h('p','note warn',csTurn(I[0].text)));return box}
@@ -3195,7 +3202,7 @@ function csIdeas(R,j){const fixedSeries=R.series_setup==='fixed',box=h('div','ba
 const HDL_VERDICT={setup:['The setup','Looks like the setup: it shows on most laps and in several corners of the same kind.'],driving:['Driving','Looks like driving: it comes and goes, or shows in only one or a few corners. The corner coach has the detail.']};
 async function csLoadHandling(sec,c,mode){if(!sec||!c)return;const seq=(sec._seq=(sec._seq||0)+1);
   const body=h('div','hdlbody');sec.replaceChildren(h('h3',null,mode==='card'?'Car balance':'Car balance: what to try next'),body);
-  body.append(h('p','note','Reading your laps to see how the car behaves. A few seconds the first time.'));
+  body.append(h('p','note',csWorkingText()));
   const extra=(mode==='full'&&cs.balSetup)?{setup:cs.balSetup}:{};let j;
   try{j=await api('handling?'+csQ(c.car,c.track,extra))}catch(e){connectionLost();return}
   if(sec._seq!==seq||!sec.isConnected)return;
@@ -3203,10 +3210,11 @@ async function csLoadHandling(sec,c,mode){if(!sec||!c)return;const seq=(sec._seq
   csRenderHandling(sec,body,j,c,mode)}
 function csRenderHandling(sec,body,j,c,mode){body.replaceChildren();const A=j.advice||{},R=j.report||{};
   const reload=()=>csLoadHandling(sec,c,mode);
-  if(mode==='card'){body.append(h('p','hdlcardtxt',csTurn(A.card||j.message||'')));
+  const early=()=>{if(typeof j.early_advice==='string'&&j.early_advice&&(A.items||[]).length){const e=h('p','balsmall hdlearly',j.early_advice);e.id=mode==='card'?'hdlEarlyCard':'hdlEarly';return e}return null};
+  if(mode==='card'){body.append(h('p','hdlcardtxt',csTurn(A.card||j.message||'')));const e0=early();if(e0)body.append(e0);
     if(A.top&&A.top.verdict==='setup')body.append(csFeelPicker(A.top,c,reload));
     body.append(h('p','balsmall','Worked out automatically from your laps. Setup Lab has the full list.'));return}
-  body.append(h('p','balsum',csTurn(A.card||R.message||j.message||'')));
+  body.append(h('p','balsum',csTurn(A.card||R.message||j.message||'')));const e1=early();if(e1)body.append(e1);
   const lo=R.left_out||{},lk=Object.keys(lo);
   if(R.ok&&lk.length)body.append(h('p','balsmall','Left out of this read: '+lk.map(k=>lo[k]+' '+k).join(', ')+'. Only clean laps count.'));
   const I=A.items||[];
@@ -3288,10 +3296,17 @@ function csPredictForm(){const f=document.createElement('form');f.className='pre
 function csShareButton(R){const dc=$('slDiffs');if(!dc||!(R.diffs||[]).length)return;
   const row=h('div','row'),b=h('button','btn','Share what changed');b.type='button';b.id='slShare';
   const st=h('span','msg');st.id='slShareMsg';st.setAttribute('role','status');
+  const SU=(R.setups||[]).filter(x=>x&&typeof x.id==='string'&&/^[A-Z]{1,3}$/.test(x.id));
+  // 2.36: pick which two setups to describe (default: the newest change); only offered with two or more setups
+  const pick=(id,label)=>{const l=h('label','field sharepick');l.htmlFor=id;l.append(h('span',null,label));const sel=document.createElement('select');sel.id=id;
+    const o0=h('option',null,'Latest change');o0.value='';sel.append(o0);SU.forEach(x=>{const o=h('option',null,String(x.label||('Setup '+x.id)));o.value=x.id;sel.append(o)});l.append(sel);return l};
+  if(SU.length>=2)row.append(pick('slShareA','From'),pick('slShareB','To'));
   row.append(b,h('span','note','Copies a short text to paste in your team\'s Discord. Debrief never posts it for you.'),st);
   const out=h('div','shareout');out.id='slShareOut';out.hidden=true;
   b.addEventListener('click',async()=>{const c=cs.combo;if(!c)return;b.disabled=true;let r;
-    try{r=await api('setuplab/share?'+csQ(c.car,c.track))}catch(e){connectionLost();return}finally{b.disabled=false}
+    const sa=$('slShareA'),sb=$('slShareB'),pr={};if(sa&&sb&&!!sa.value!==!!sb.value){b.disabled=false;out.replaceChildren(h('p','note warn','Pick both setups (From and To), or leave both on Latest change.'));out.hidden=false;return}
+    if(sa&&sb&&sa.value&&sb.value){if(sa.value===sb.value){b.disabled=false;out.replaceChildren(h('p','note warn','Pick two different setups.'));out.hidden=false;return}pr.a=sa.value;pr.b=sb.value}
+    try{r=await api('setuplab/share?'+csQ(c.car,c.track,pr))}catch(e){connectionLost();return}finally{b.disabled=false}
     out.replaceChildren();out.hidden=false;
     if(!r.ok){out.append(h('p','note warn',r.error||'That didn\'t work.'));return}
     out.append(csCopyBox('Plain text',r.text,'shareText'));

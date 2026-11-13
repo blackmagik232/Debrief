@@ -123,7 +123,10 @@ def race_context(raw_laps):
                        ("wetness", ("trackWetness", "track_wetness")), ("track_usage", ("trackUsage", "track_usage"))):
         m = _median([_num(_g(l, *names)) for l in laps])
         cond[key] = _r(m, 1) if m is not None else None
-    conditions = cond if any(v is not None for v in cond.values()) else None
+    temps = [l for l in laps if _num(_g(l, "trackTemp", "track_temp")) is not None]
+    if temps and all(_g(l, "trackTempForecast") for l in temps):
+        cond["track_temp_forecast"] = True      # 2.36: only a forecast of the track temperature was known
+    conditions = cond if any(v is not None for k, v in cond.items() if k != "track_temp_forecast") else None
     return combo, ir, season, conditions
 
 

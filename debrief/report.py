@@ -16,7 +16,7 @@ def _embed(obj) -> str:
             .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
 
 
-LAYOUT = "2.35.0"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
+LAYOUT = "2.36.0"   # bump when review.html changes so saved reviews are re-rendered (no requests needed)
 
 # Review-dict extras worked out on every write (so saved reviews get them when refresh_all re-renders them),
 # in this order, before insights.build (which reads them): (key, module, function). Each is guarded: a module
@@ -122,6 +122,21 @@ def _setup(data: dict, log=None) -> None:
             log(f"  Couldn't work out the Setup section: {type(e).__name__}: {e}")
 
 
+def _refresh_setup(data: dict) -> None:
+    """2.36: a saved Setup section whose open / fixed question was unanswered (change held back) picks up his later answer
+    from Setup Lab on every write, re-renders included. Reads no telemetry file (racesetup.refresh_series). Never raises."""
+    sec = data.get("setup")
+    if not isinstance(sec, dict):
+        return
+    try:
+        from . import racesetup
+        new = racesetup.refresh_series(sec)
+        if new is not sec:
+            data["setup"] = new
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _vsai_tag() -> dict:
     """2.35: the "vs AI" tag's words for the page (vsai.py owns them)."""
     try:
@@ -157,6 +172,7 @@ def write(out_dir: Path, data: dict, log=None, setup: bool = True) -> Path:
     _extras(data, log)
     _from_iracing(out_dir, data, log)
     _agree(data, log)
+    _refresh_setup(data)
     if setup:
         _setup(data, log)
     try:   # the coaching summary at the top of the page; never worth losing the review over

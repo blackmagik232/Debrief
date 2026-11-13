@@ -485,9 +485,10 @@ def _depth_context(laps):
         return None
 
 
-def pick_refs(api: Garage61, car, track, my_best: float, my_slug: str, limit: int, me=None):
+def pick_refs(api: Garage61, car, track, my_best: float, my_slug: str, limit: int, me=None, note=None):
     """Comparison laps from teammates and followed drivers only (all the API allows). me: your laps' conditions
-    and session type (depth.context_of), which the main comparison is matched on when given."""
+    and session type (depth.context_of), which the main comparison is matched on when given. note (a dict) gets
+    note["failed"] when Garage 61 couldn't be reached (2.36: that is not the same as "it had no laps")."""
     if limit <= 0:
         return []
     teams = [g(t, "slug", "id") for t in api.teams() if g(t, "slug", "id")]
@@ -498,6 +499,8 @@ def pick_refs(api: Garage61, car, track, my_best: float, my_slug: str, limit: in
         cands = api.find_laps(**params)
     except Garage61Error as e:
         say(f"  Couldn't load comparison laps: {e}")
+        if isinstance(note, dict):
+            note["failed"] = True
         return []
     from . import team   # lazy: team imports app
     cands = [c for c in cands if g(g(c, "driver", default={}) or {}, "slug") != my_slug
@@ -525,7 +528,9 @@ def pick_refs(api: Garage61, car, track, my_best: float, my_slug: str, limit: in
 
     quicker = [c for c in cands if lap_time(c) < my_best]
     from . import depth   # lazy: only this lookup needs it
-    main = depth.pick_main(quicker, my_best, me, lap_time) if quicker else cands[0]
+    # 2.36: with nobody quicker the main comparison is still the lap in the most similar conditions (when both are
+    # known), then the quickest; without conditions on either side it stays the quickest, as before
+    main = depth.pick_main(quicker, my_best, me, lap_time) if quicker else depth.pick_quickest(cands, me, lap_time)
     add(main, "Main comparison", main=True)
     add(cands[0], "Fastest teammate or followed driver")
     add(min(cands, key=lambda c: abs(lap_time(c) - (my_best - 0.3))), "Close to your pace")
@@ -1176,10 +1181,12 @@ def _newest_local_unseen(cfg, api, step):
 
 
 def cmd_review_local(cfg, session=None, open_after=True, progress=None, rebuild=False, info=None, subsession=None,
-                     event_id=None):
+                     event_id=None, refs_from=None):
     """2.34: review your newest race (or the race with this subsession or PC event id) from the telemetry files on this PC: no
     Garage 61 needed. Same page, folder rules and library as a Garage 61 review; meta.source is "pc". A saved review of
-    the race opens at once unless rebuild (info["saved"] = True, like cmd_review)."""
+    the race opens at once unless rebuild (info["saved"] = True, like cmd_review).
+    2.36: refs_from "garage61" (a rebuild of a review that has comparison laps) asks Garage 61 for them again, as the click
+    allows; when Garage 61 can't be reached or gives none, the review is left as it is so its comparison laps are kept."""
     from . import localrace
     info = info if isinstance(info, dict) else {}
     info["local"] = True
@@ -1206,7 +1213,12 @@ def cmd_review_local(cfg, session=None, open_after=True, progress=None, rebuild=
             info["saved"] = True
             step("Already reviewed: opening the saved review.", 1.0)
             return d / "index.html"
-    data, out_dir = localrace.build(cfg, session, progress=progress, info=info)
+    refs_for, note = None, {}
+    if rebuild and refs_from == localrace.REFS_FROM:
+        refs_for = _rebuild_refs_provider(cfg, session, step, note)
+    data, out_dir = localrace.build(cfg, session, progress=progress, info=info, refs_for=refs_for)
+    if refs_for is not None and (note.get("failed") or note.get("unmatched")):
+        raise SystemExit(KEEP_REFS_MSG)
     if rebuild:
         try:
             old = json.loads((out_dir / "review.json").read_text(encoding="utf-8"))
@@ -1227,17 +1239,160 @@ def cmd_review_local(cfg, session=None, open_after=True, progress=None, rebuild=
     return page
 
 
+G61_COMBO_LOOKUPS = 3   # 2.36: at most this many recent track+car pairs are tried by the race's own lap list
+
+
+KEEP_REFS_MSG = ("Debrief couldn't reach Garage 61 to fetch the comparison laps again, so this review is left as it is "
+                 "and keeps the comparison laps it has. Try Rebuild again later.")
+
+
+def _rebuild_refs_provider(cfg, session, step, note):
+    """2.36: the refs_for callable of a Rebuild of a "both sources" review (Garage 61 is asked for the comparison laps
+    again). SystemExit(KEEP_REFS_MSG) when there is no token, no connection or Garage 61 doesn't have the race."""
+    if not str(cfg.get("token") or "").strip():
+        raise SystemExit(KEEP_REFS_MSG.replace("couldn't reach Garage 61 to fetch", "has no Garage 61 token to fetch"))
+    try:
+        api = make_api(cfg)
+        sub = session.get("subsession")
+        ev = api.event_for_subsession(sub) if sub else None
+        slug = g(api.me() or {}, "slug", default="")
+    except Garage61Error as e:
+        if getattr(e, "fatal", False) or getattr(e, "status", None) == 401:
+            raise
+        say(f"  Rebuild: Garage 61 couldn't be reached: {e}")
+        raise SystemExit(KEEP_REFS_MSG)
+    if not ev:
+        raise SystemExit(KEEP_REFS_MSG)
+    return pc_refs_provider(cfg, api, ev, slug, step, note)
+
+
+def _g61_combo(api, ev, track_name, car_name, looked_up=None):
+    """(Garage 61 track id, car id) of a race read from this PC. Matched by name first (Garage 61's track and car lists,
+    cached for a week, so usually no request); when a name doesn't match, the ids come from the race's own lap list on
+    Garage 61 (lap details only, never a telemetry file; at most G61_COMBO_LOOKUPS recent pairs are tried). looked_up
+    (a dict) gets looked_up["own_list"] = True when that fallback asked for your lap list. (None, None) when neither works."""
+    from . import names
+
+    def find(items, want, norm):
+        w = norm(want)
+        hits = [_id(it) for it in items or [] if norm(item_name(it)) == w]
+        return hits[0] if len(set(hits)) == 1 else None
+    track = find(api.tracks(), track_name, names.track)
+    car = find(api.cars(), car_name, names.car)
+    if track is not None and car is not None:
+        return track, car
+    for t, c in recent_combos(api, 60)[:G61_COMBO_LOOKUPS]:
+        if isinstance(looked_up, dict):
+            looked_up["own_list"] = True
+        found = laps_for(api, t, c, event=ev, unclean=True, limit=1000)
+        if found:
+            return _id(g(found[0], "track_id", "trackId", "track")), _id(g(found[0], "car_id", "carId", "car"))
+    return None, None
+
+
+def pc_refs_provider(cfg, api, ev, slug, step, note=None):
+    """2.36 "Both sources": the refs_for callable localrace.build takes. Given your laps from this PC, it asks Garage 61
+    for the comparison laps only (pick_refs, then each one's telemetry) and for who else was on track. It never asks for
+    a lap of yours: your laps, telemetry, result and setup stay what this PC has. note (a dict) gets what was found."""
+    note = note if isinstance(note, dict) else {}
+
+    def provide(laps, tel, meta):
+        with_tel = [l for l in laps if g(l, "id") in tel]
+        my_best = full_lap_best(with_tel) or min((lap_time(l) for l in with_tel if lap_time(l)), default=None)
+        looked = {}
+        try:
+            track, car = _g61_combo(api, ev, meta.get("track"), meta.get("car"), looked)
+        except Garage61Error as e:
+            if getattr(e, "fatal", False) or getattr(e, "status", None) == 401:
+                raise
+            say(f"  Couldn't match this race on Garage 61: {e}")
+            note["failed"] = True
+            return {"refs": [], "ref_tel": {}, "on_track": None, "requests": api.requests_made, "failed": True,
+                    "own_list": bool(looked.get("own_list"))}
+        note["own_list"] = bool(looked.get("own_list"))
+        if track is None or car is None or not my_best:
+            say("  Couldn't match this race's track and car on Garage 61, so no comparison laps were added.")
+            note["unmatched"] = True
+            return {"refs": [], "ref_tel": {}, "on_track": None, "requests": api.requests_made, "unmatched": True,
+                    "own_list": note["own_list"]}
+        step("Looking for comparison laps from your teammates and followed drivers...", 0.3)
+        refs, ref_tel = [], {}
+        try:
+            refs = pick_refs(api, car, track, my_best, slug, cfg["max_reference_laps"], me=_depth_context(with_tel),
+                             note=note)
+            for r in refs:
+                csv = api.lap_csv(g(r, "id"))
+                if csv:
+                    ref_tel[g(r, "id")] = csv
+        except Garage61Error as e:
+            if getattr(e, "fatal", False) or getattr(e, "status", None) == 401:
+                raise
+            say(f"  Comparison laps failed: {e}")
+            note["failed"] = True
+        if refs and not ref_tel:
+            note["failed"] = True          # 2.36: laps were chosen but none could be downloaded: not "Garage 61 had none"
+        refs = [r for r in refs if g(r, "id") in ref_tel]
+        classes = None
+        try:
+            from . import schedule
+            starts = [lap_start_dt(l) for l in laps if lap_start_dt(l)]
+            classes = schedule.class_lookup(schedule.load_current(min(starts).date() if starts else None))
+        except Exception:  # noqa: BLE001  (no schedule loaded: classes stay unknown)
+            classes = None
+        others = on_track(api, track, ev, slug, car, classes)
+        note["refs"] = len(refs)
+        return {"refs": refs, "ref_tel": ref_tel, "on_track": others, "requests": api.requests_made,
+                "failed": bool(note.get("failed")), "own_list": note["own_list"]}
+    return provide
+
+
 def cmd_review_upgrade(cfg, subsession, open_after=False, progress=None, info=None):
-    """2.34 "Add comparison laps": the Garage 61 review of a race reviewed from this PC (same race, found by its iRacing
-    subsession). It replaces the PC review (retire_local_twin keeps its result)."""
+    """"Add comparison laps" on a review made from this PC. 2.36: your own laps, telemetry, result, From iRacing and Setup
+    stay what this PC read (the review is made again from the telemetry files, so every number is worked out the one
+    way); only the comparison laps of teammates and followed drivers come from Garage 61, and not one of your own laps is
+    downloaded from it. meta.source stays "pc" and meta.refs_from is "garage61".
+    When the telemetry files are no longer on this PC, the 2.34 way is used instead: the whole review is made from
+    Garage 61, and it replaces the PC review (retire_local_twin keeps its result)."""
+    from . import localrace
+    info = info if isinstance(info, dict) else {}
     step = _stepper(progress)
+    session = None
+    try:
+        folder = localrace.telemetry_folder()
+        session = next((r for r in localrace.races(folder) if str(r.get("subsession")) == str(subsession)), None) \
+            if folder and Path(folder).is_dir() else None
+    except Exception:  # noqa: BLE001  (no telemetry files to use: the Garage 61 way below)
+        session = None
     step("Connecting to Garage 61...", 0.02)
     api = make_api(cfg)
     ev = api.event_for_subsession(subsession) if subsession else None
     if not ev:
         raise SystemExit("Garage 61 doesn't have this race yet. Once it has uploaded (usually a few minutes after the "
                          "race), press Add comparison laps again.")
-    return cmd_review(cfg, ev, open_after=open_after, progress=progress, session_kind=3, rebuild=True, info=info)
+    if session is None:
+        say("  This race's telemetry file isn't on this PC any more, so the review is made from Garage 61 instead.")
+        return cmd_review(cfg, ev, open_after=open_after, progress=progress, session_kind=3, rebuild=True, info=info)
+    slug = g(api.me() or {}, "slug", default="")
+    note = {}
+    data, out_dir = localrace.build(cfg, session, progress=progress, info=info,
+                                    refs_for=pc_refs_provider(cfg, api, ev, slug, step, note))
+    info["upgraded_from_pc"] = True
+    info["refs"] = int(note.get("refs") or 0)
+    info["unmatched"] = bool(note.get("unmatched"))
+    info["failed"] = bool(note.get("failed"))
+    info["own_list"] = bool(note.get("own_list"))
+    step("Saving the review and updating the library...", 0.95)
+    page = report.write(out_dir, data)
+    try:
+        library.rebuild(cfg["library_folder"])
+    except Exception:  # noqa: BLE001
+        import traceback
+        say("  Couldn't update the library page (it will refresh next time it's opened):\n" + traceback.format_exc())
+    step(f"Done. Review saved to {page}", 1.0)
+    say(f"Garage 61 requests this run: {api.requests_made} (none for your own laps' telemetry)")
+    if open_after:
+        webbrowser.open(page.as_uri())
+    return page
 
 
 def learn_from_for(library_folder, data) -> list:

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Debrief Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a pit-wall command screen. Header with the release state, tabs, then one working view per tab.
+   Live status and the game plan come from the page's database; the code map is built into the page at each push. */
+:root{
+  --bg:#eef0ef; --panel:#ffffff; --ink:#15191c; --muted:#5b656a; --line:#d4d9d7; --soft:#f4f6f5;
+  --accent:#c8321c; --good:#1d7a48; --warn:#a86400; --bad:#b3261e; --info:#2a5d8c;
+  --display:"Barlow Condensed","Arial Narrow",sans-serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1113; --panel:#171b1e; --ink:#e7ebe9; --muted:#8e989d; --line:#2a3135; --soft:#1d2225;
+  --accent:#ff5a3c; --good:#4cc68a; --warn:#f0a83a; --bad:#ff6b5e; --info:#7fb2e0; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1113; --panel:#171b1e; --ink:#e7ebe9; --muted:#8e989d; --line:#2a3135; --soft:#1d2225;
+  --accent:#ff5a3c; --good:#4cc68a; --warn:#f0a83a; --bad:#ff6b5e; --info:#7fb2e0; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+[hidden]{display:none!important}
+a{color:var(--info)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:1320px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-left)) 48px;display:grid;gap:16px}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:10px 24px;border-bottom:3px solid var(--ink);padding-bottom:12px}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(2rem,4vw,2.8rem);line-height:1;margin:0;text-transform:uppercase;letter-spacing:.01em;text-wrap:balance}
+h1 span{color:var(--accent)}
+h2{font-family:var(--display);font-weight:700;font-size:1.35rem;margin:0;text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+h2 small{font-family:var(--mono);font-size:.72rem;color:var(--muted);letter-spacing:0;text-transform:none;font-weight:400}
+h3{font-family:var(--display);font-weight:700;font-size:1.1rem;margin:0;text-transform:uppercase;letter-spacing:.04em}
+.meta{font-family:var(--mono);font-size:.78rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px}
+.live{font-family:var(--mono);font-size:.75rem;padding:3px 8px;border:1px solid currentColor;border-radius:2px;white-space:nowrap}
+.live.ok{color:var(--good)}.live.warn{color:var(--warn)}.live.mut{color:var(--muted)}
+nav.tabs{display:flex;flex-wrap:wrap;gap:6px}
+nav.tabs button{background:var(--panel);border:1px solid var(--line);padding:8px 14px;font-family:var(--display);font-weight:700;font-size:1rem;letter-spacing:.06em;text-transform:uppercase;border-radius:2px}
+nav.tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+section.panel{background:var(--panel);border:1px solid var(--line);padding:16px 18px;display:grid;gap:12px;min-width:0;align-content:start}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+@media (max-width:900px){.grid2,.grid3{grid-template-columns:minmax(0,1fr)}}
+.note{color:var(--muted);font-size:.86rem;margin:0}
+p{margin:0}
+.mono{font-family:var(--mono)}
+/* state tiles */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.tile{background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--line);padding:12px 14px;display:grid;gap:4px;align-content:start;min-width:0}
+.tile .l{font-family:var(--mono);font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.tile b{font-family:var(--display);font-size:1.7rem;font-weight:800;line-height:1.05;overflow-wrap:anywhere}
+.tile .s{font-size:.84rem;color:var(--muted);overflow-wrap:anywhere}
+.tile.pub{border-left-color:var(--good)}.tile.wait{border-left-color:var(--warn)}.tile.next{border-left-color:var(--info)}.tile.risk{border-left-color:var(--bad)}
+ul.plain{margin:0;padding-left:18px;display:grid;gap:3px}
+.chip{display:inline-block;font-family:var(--mono);font-size:.7rem;padding:1px 7px;border:1px solid currentColor;border-radius:2px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.c-planned{color:var(--muted)}.c-building{color:var(--warn)}.c-built{color:var(--info)}.c-published{color:var(--good)}.c-open{color:var(--warn)}.c-decided{color:var(--good)}.c-parked{color:var(--muted)}
+/* game plan */
+.lane{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.card{border:1px solid var(--line);border-top:5px solid var(--line);background:var(--soft);padding:10px 12px;display:grid;gap:6px;align-content:start;min-width:0}
+.card.s-building{border-top-color:var(--warn)}.card.s-built{border-top-color:var(--info)}.card.s-published{border-top-color:var(--good)}
+.card .num{font-family:var(--mono);font-size:.72rem;color:var(--muted)}
+.card h4{margin:0;font-family:var(--display);font-size:1.15rem;line-height:1.1}
+.card p{font-size:.88rem}
+.card .done{font-size:.8rem;color:var(--muted)}
+.card select,.dec select{background:var(--panel);border:1px solid var(--line);padding:3px 6px;font-size:.8rem;border-radius:2px}
+.dec{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;padding:10px 0;border-top:1px solid var(--line);align-items:start}
+.dec:first-child{border-top:0}
+.dec .ans{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}
+.dec input{flex:1;min-width:180px;background:var(--panel);border:1px solid var(--line);padding:5px 8px;border-radius:2px}
+.btn{background:var(--panel);border:1px solid var(--ink);padding:5px 12px;border-radius:2px;font-weight:600;font-size:.85rem}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+/* components */
+.pages{display:flex;flex-wrap:wrap;gap:6px}
+.pages button{background:var(--panel);border:1px solid var(--line);padding:5px 10px;border-radius:14px;font-size:.84rem}
+.pages button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.areas{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.area{border:1px solid var(--line);background:var(--soft);padding:10px;display:grid;gap:8px;align-content:start}
+.area header{border:0;padding:0;display:grid;gap:2px}
+.area header h3 span{font-family:var(--mono);font-size:.72rem;color:var(--muted);font-weight:400;letter-spacing:0;margin-left:6px}
+.area header p{font-size:.78rem;color:var(--muted)}
+.mods{display:flex;flex-wrap:wrap;gap:4px}
+.mod{border:1px solid var(--line);background:var(--panel);padding:2px 7px;font-family:var(--mono);font-size:.74rem;border-radius:2px;position:relative}
+.mod i{display:block;height:3px;background:var(--muted);opacity:.35;margin-top:2px}
+.mod.sel{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.mod.imp{border-color:var(--info);box-shadow:inset 0 0 0 1px var(--info)}
+.mod.by{border-color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn)}
+.mod.pg{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.mod.dim{opacity:.35}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.78rem;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border:2px solid;margin-right:5px;vertical-align:-2px}
+.detail{display:grid;gap:8px}
+.detail dl{display:grid;grid-template-columns:120px minmax(0,1fr);gap:4px 12px;margin:0;font-size:.86rem}
+.detail dt{color:var(--muted);font-family:var(--mono);font-size:.74rem;text-transform:uppercase;padding-top:2px}
+.detail dd{margin:0;overflow-wrap:anywhere}
+.linkish{background:none;border:0;padding:0;color:var(--info);text-decoration:underline;font-family:var(--mono);font-size:.8rem}
+/* code map */
+.search{display:flex;gap:8px;flex-wrap:wrap}
+.search input{flex:1;min-width:220px;background:var(--panel);border:1px solid var(--ink);padding:9px 12px;font-family:var(--mono);border-radius:2px}
+.cmd{font-family:var(--mono);font-size:.78rem;background:var(--soft);border:1px solid var(--line);padding:8px 10px;overflow-x:auto;white-space:pre-wrap;word-break:break-all}
+.res{display:grid;gap:8px}
+.hit{border:1px solid var(--line);padding:10px 12px;display:grid;gap:4px;background:var(--soft)}
+.hit .k{font-family:var(--mono);font-size:.7rem;color:var(--muted);text-transform:uppercase}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.84rem}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:.7rem;color:var(--muted);text-transform:uppercase;font-weight:600}
+td.n{font-variant-numeric:tabular-nums;font-family:var(--mono);white-space:nowrap}
+/* history */
+.bus{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px}
+.stop{flex:0 0 auto;border:1px solid var(--line);background:var(--soft);padding:6px 8px;min-width:96px;display:grid;gap:2px;text-align:left;border-radius:2px}
+.stop b{font-family:var(--display);font-size:1.05rem}
+.stop span{font-size:.72rem;color:var(--muted)}
+.stop.sel{background:var(--ink);color:var(--bg)}.stop.sel span{color:var(--bg)}
+.stop.w{border-color:var(--warn)}
+.foot{font-size:.78rem;color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){.mod,.card,.stop{transition:background .15s,opacity .15s}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Debrief <span>Command Center</span></h1>
+      <div class="meta"><span>One hub for the Debrief project</span><span id="codeVer"></span><span id="updated">Status: loading</span></div>
+    </div>
+    <span class="live mut" id="live">Connecting</span>
+  </header>
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button role="tab" id="t-overview" aria-selected="true" data-v="overview">Overview</button>
+    <button role="tab" id="t-plan" aria-selected="false" data-v="plan">Game plan</button>
+    <button role="tab" id="t-components" aria-selected="false" data-v="components">Components</button>
+    <button role="tab" id="t-codemap" aria-selected="false" data-v="codemap">Code map</button>
+    <button role="tab" id="t-board" aria-selected="false" data-v="board">System board</button>
+    <button role="tab" id="t-links" aria-selected="false" data-v="links">Links and rules</button>
+  </nav>
+
+  <!-- OVERVIEW -->
+  <div id="v-overview" class="view" style="display:grid;gap:16px">
+    <div class="tiles" id="stateTiles"></div>
+    <div class="grid2">
+      <section class="panel"><h2>Next up <small>from the game plan</small></h2><div id="ovNext"></div></section>
+      <section class="panel"><h2>Decisions for you <small id="decCount"></small></h2><div id="ovDec"></div></section>
+    </div>
+    <div class="grid2">
+      <section class="panel"><h2>Not proven yet <small>needs your PC and real races</small></h2><ul class="plain" id="ovRisk"></ul></section>
+      <section class="panel"><h2>After every push <small>8 items, same in CLAUDE.md</small></h2><ol class="plain" id="ovPush"></ol></section>
+    </div>
+    <section class="panel"><h2>Code at a glance <small id="ovCodeNote"></small></h2><div class="tiles" id="ovCode"></div></section>
+  </div>
+
+  <!-- GAME PLAN -->
+  <div id="v-plan" class="view" hidden style="display:grid;gap:16px">
+    <section class="panel"><h2>Next up, in order <small>change a card's state here; every chat sees it</small></h2><div class="lane" id="laneNext"></div></section>
+    <div class="grid2">
+      <section class="panel"><h2>Later</h2><div class="lane" id="laneLater"></div></section>
+      <section class="panel"><h2>Parked</h2><div class="lane" id="laneParked"></div></section>
+    </div>
+    <section class="panel"><h2>Decisions <small>open first; type the answer and press Decide</small></h2><div id="decList"></div><p class="note" id="planMsg" role="status"></p></section>
+  </div>
+
+  <!-- COMPONENTS -->
+  <div id="v-components" class="view" hidden style="display:grid;gap:16px">
+    <section class="panel">
+      <h2>Pages in the window <small>pick one to light up the code behind it</small></h2>
+      <div class="pages" id="pageBtns"></div>
+    </section>
+    <div class="grid2" style="grid-template-columns:minmax(0,1.7fr) minmax(0,1fr)">
+      <section class="panel">
+        <h2>Every part of Debrief <small id="compNote"></small></h2>
+        <div class="legend"><span><i style="border-color:var(--ink);background:var(--ink)"></i>picked</span><span><i style="border-color:var(--info)"></i>uses</span><span><i style="border-color:var(--warn)"></i>used by</span><span><i style="border-color:var(--accent)"></i>behind the picked page</span><span>bar under a name: its size in lines</span></div>
+        <div class="areas" id="areas"></div>
+      </section>
+      <section class="panel" style="position:sticky;top:8px;max-height:calc(100vh - 16px);overflow:auto">
+        <h2>Details</h2><div class="detail" id="detail"><p class="note">Pick a part or a page.</p></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- CODE MAP -->
+  <div id="v-codemap" class="view" hidden style="display:grid;gap:16px">
+    <section class="panel">
+      <h2>Which tests do I run? <small>the same answers as tools/codemap.py --which</small></h2>
+      <div class="search"><label for="q" class="note" style="align-self:center">Find</label><input id="q" type="search" placeholder="a file, function, #element, .class, nav:page or api/route" autocomplete="off"></div>
+      <div class="res" id="qres"><p class="note">Type at least two letters.</p></div>
+    </section>
+    <section class="panel"><h2>Hotspots <small>most used by other files, then biggest</small></h2><div class="tbl"><table><thead><tr><th>File</th><th>Area</th><th>Used by</th><th>Lines</th><th>Test files</th></tr></thead><tbody id="hot"></tbody></table></div></section>
+    <section class="panel"><h2>Window routes <small id="routeNote"></small></h2><div class="tbl" style="max-height:420px;overflow:auto"><table><thead><tr><th>Route</th><th>Method</th><th>Answered by</th><th>Called from</th></tr></thead><tbody id="routes"></tbody></table></div></section>
+  </div>
+
+  <!-- SYSTEM BOARD -->
+  <div id="v-board" class="view" hidden style="display:grid;gap:16px">
+    <section class="panel"><h2>Every release <small>newest last; pick one</small></h2><div class="bus" id="bus"></div><div id="relDetail"></div></section>
+    <div class="grid2">
+      <section class="panel"><h2>Chats <small>who built what</small></h2><div class="tbl" style="max-height:520px;overflow:auto"><table><thead><tr><th>Date</th><th>Chat</th><th>Releases</th></tr></thead><tbody id="chats"></tbody></table></div></section>
+      <section class="panel"><h2>Standing decisions <small>these still hold</small></h2><div class="tbl" style="max-height:520px;overflow:auto"><table><thead><tr><th>Date</th><th>Decision</th></tr></thead><tbody id="dlog"></tbody></table></div></section>
+    </div>
+  </div>
+
+  <!-- LINKS -->
+  <div id="v-links" class="view" hidden style="display:grid;gap:16px">
+    <div class="grid2">
+      <section class="panel"><h2>Artifacts</h2><div class="tbl"><table><thead><tr><th>Name</th><th>What it answers</th></tr></thead><tbody id="links"></tbody></table></div></section>
+      <section class="panel"><h2>Project docs <small>in the Debrief project</small></h2><ul class="plain" id="docs"></ul></section>
+    </div>
+    <section class="panel"><h2>When brainstorming</h2><ol class="plain" id="brain"></ol></section>
+    <section class="panel"><h2>How this page stays current</h2>
+      <p>Status, the game plan, decisions and every release, chat and standing decision from 2.36 on live in this page's own database (2.35 and earlier are built in from the old System Board). Any chat in the Debrief project updates them directly, and the page shows the change within seconds. The code map and components are built from the code at each push with <span class="mono">python tools/commandcenter.py</span>, then republished.</p>
+      <p class="note">Older hubs (the game plan Whiteboard and the System Board) are history now and are no longer updated.</p>
+    </section>
+  </div>
+  <p class="foot" id="foot"></p>
+</div>
+<script type="application/json" id="code">__CODE_JSON__</script>
+<script>
+(function(){
+'use strict';
+const CODE=JSON.parse(document.getElementById('code').textContent);
+const $=id=>document.getElementById(id);
+function h(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+const S={status:null,plan:[],decisions:[],releases:[],chats:[],dlog:[],meta:{},db:null,canWrite:true,view:'overview',selMod:null,selPage:null,selRel:null};
+const short=p=>String(p||'').replace(/^debrief\//,'').replace(/^tests\//,'');
+const base=p=>String(p||'').split('/').pop();
+
+// ---------- tabs (hash routing: #overview, #plan, ...)
+const VIEWS=['overview','plan','components','codemap','board','links'];
+function show(v){if(VIEWS.indexOf(v)<0)v='overview';S.view=v;
+  VIEWS.forEach(x=>{$('v-'+x).hidden=x!==v;$('t-'+x).setAttribute('aria-selected',x===v?'true':'false')});
+  try{if(location.hash.slice(1)!==v)history.replaceState(null,'','#'+v)}catch(e){}}
+document.querySelectorAll('nav.tabs button').forEach(b=>b.addEventListener('click',()=>show(b.dataset.v)));
+window.addEventListener('hashchange',()=>show(location.hash.slice(1)));
+
+// ---------- overview
+function renderStatus(){const st=S.status||{};
+  $('updated').textContent=st.updated?'Status updated '+st.updated:'Status: not written yet';
+  const T=[];
+  const tile=(cls,l,b,s)=>{const d=h('div','tile '+cls);d.append(h('span','l',l),h('b',null,b||'--'),h('span','s',s||''));T.push(d)};
+  const p=st.published||{},w=st.waiting||{};
+  tile('pub','Published',p.v?('v'+p.v+(p.name?' '+p.name:'')):'--',p.note||'');
+  tile('wait','Built, waiting for "publish"',w.v?(w.v+(w.name?' '+w.name:'')):'Nothing waiting',w.note||'');
+  tile('next','Building next',st.next_build||'--',st.next_note||'');
+  tile('risk','Not proven yet',(st.not_proven||[]).length?String((st.not_proven||[]).length)+' checks':'None',st.risk_note||'Real-PC checks waiting');
+  $('stateTiles').replaceChildren(...T);
+  $('ovRisk').replaceChildren(...((st.not_proven||[]).length?(st.not_proven).map(x=>h('li',null,x)):[h('li','note','Nothing waiting on a real race.')]));
+  $('ovPush').replaceChildren(...(st.after_push||[]).map(x=>h('li',null,x)));
+  $('brain').replaceChildren(...(st.brainstorm||[]).map(x=>h('li',null,x)));
+  $('links').replaceChildren(...(st.links||[]).map(l=>{const tr=h('tr'),a=h('a',null,l.title);a.href=l.url;a.target='_blank';a.rel='noopener';const td=h('td');td.append(a);tr.append(td,h('td',null,l.what||''));return tr}));
+  $('docs').replaceChildren(...(st.docs||[]).map(d=>{const li=h('li');li.append(h('span','mono',d.path),document.createTextNode(d.what?': '+d.what:''));return li}));
+  $('foot').textContent=st.note||'';}
+const STATES=['planned','building','built','published'];
+function planCard(c,i){const d=h('div','card s-'+(c.state||'planned'));
+  d.append(h('span','num',(c.lane==='next'?String(i+1)+'. ':'')+(c.version||'')));d.append(h('h4',null,c.title||''));
+  if(c.text)d.append(h('p',null,c.text));if(c.done_when)d.append(h('span','done','Done when: '+c.done_when));
+  const row=h('div');row.style.display='flex';row.style.gap='8px';row.style.alignItems='center';
+  const chip=h('span','chip c-'+(c.state||'planned'),c.state||'planned');row.append(chip);
+  if(S.db&&S.canWrite){const sel=h('select');sel.id='st-'+c.id;sel.setAttribute('aria-label','State of '+(c.title||''));
+    STATES.forEach(s=>{const o=h('option',null,s);o.value=s;sel.append(o)});sel.value=c.state||'planned';
+    sel.addEventListener('change',()=>writeDoc('plan/'+c.id,{state:sel.value},'Saved: '+(c.title||'')+' is '+sel.value+'.'));row.append(sel)}
+  d.append(row);return d}
+function renderPlan(){const by=l=>S.plan.filter(c=>(c.lane||'next')===l).sort((a,b)=>(a.order||0)-(b.order||0));
+  const next=by('next');
+  $('laneNext').replaceChildren(...(next.length?next.map(planCard):[h('p','note','No steps yet.')]));
+  $('laneLater').replaceChildren(...(by('later').map(planCard)));
+  $('laneParked').replaceChildren(...(by('parked').map(planCard)));
+  $('ovNext').replaceChildren(...(next.filter(c=>c.state!=='published').slice(0,4).map((c,i)=>{const r=h('div','dec');
+    const l=h('div');l.append(h('b',null,c.title||''),h('p','note',c.done_when?'Done when: '+c.done_when:(c.text||'')));
+    r.append(l,h('span','chip c-'+(c.state||'planned'),c.state||'planned'));return r})));
+  renderDecisions()}
+function renderDecisions(){const ds=S.decisions.slice().sort((a,b)=>((a.state==='decided')-(b.state==='decided'))||((a.order||0)-(b.order||0)));
+  const open=ds.filter(d=>d.state!=='decided');$('decCount').textContent=open.length+' open';
+  $('ovDec').replaceChildren(...(open.length?open.map(d=>{const r=h('div','dec');r.append(h('span',null,d.text||''),h('span','chip c-open','open'));return r}):[h('p','note','Nothing waiting on you.')]));
+  $('decList').replaceChildren(...ds.map(d=>{const r=h('div','dec');r.append(h('span',null,d.text||''),h('span','chip c-'+(d.state||'open'),d.state||'open'));
+    const a=h('div','ans');
+    if(d.state==='decided'){a.append(h('span','note','Answer: '+(d.answer||'')+(d.date?' ('+d.date+')':'')))}
+    else if(S.db&&S.canWrite){const inp=h('input');inp.id='ans-'+d.id;inp.placeholder='Your answer';inp.setAttribute('aria-label','Answer to: '+(d.text||''));
+      const b=h('button','btn pri','Decide');b.type='button';b.addEventListener('click',()=>{const v=inp.value.trim();if(!v){inp.focus();return}
+        writeDoc('decisions/'+d.id,{state:'decided',answer:v,date:new Date().toISOString().slice(0,10)},'Saved your decision.')});a.append(inp,b)}
+    r.append(a);return r}))}
+async function writeDoc(path,data,ok){const m=$('planMsg');try{await S.db.doc(path).update(data);m.textContent=ok}
+  catch(e){if(e&&e.code==='invalid_argument'){S.canWrite=false;renderPlan()}m.textContent='That did not save'+(e&&e.code?' ('+e.code+')':'')+'.'}}
+
+// ---------- code at a glance + components
+const NODES=CODE.nodes,AREAS=CODE.areas||{},PAGES=CODE.pages||{};
+const mods=Object.values(NODES).filter(n=>n.area!=='tests');
+function renderCode(){$('codeVer').textContent='Code: v'+CODE.version+' ('+String(CODE.commit||'').split(' ')[0]+')';
+  const t=CODE.totals||{};const T=[['Python files',t.modules],['Window files',t.ui_files],['Test files',t.tests],['Window routes',t.routes],['App lines',(t.lines||0).toLocaleString()],['Test lines',(t.test_lines||0).toLocaleString()]];
+  $('ovCode').replaceChildren(...T.map(([l,v])=>{const d=h('div','tile');d.append(h('span','l',l),h('b',null,String(v)));return d}));
+  $('ovCodeNote').textContent='built '+(CODE.built||'')+' from '+String(CODE.commit||'').split(' ')[0];
+  $('compNote').textContent=mods.length+' files in '+Object.keys(AREAS).filter(a=>a!=='tests').length+' areas';
+  const maxL=Math.max(...mods.map(n=>n.lines||1));
+  $('areas').replaceChildren(...Object.keys(AREAS).filter(a=>a!=='tests').map(a=>{const box=h('div','area'),hd=h('header'),t=h('h3',null,a);
+    const ms=mods.filter(n=>n.area===a).sort((x,y)=>(y.lines||0)-(x.lines||0));t.append(h('span',null,ms.length+' files'));hd.append(t,h('p',null,AREAS[a]));box.append(hd);
+    const wrap=h('div','mods');ms.forEach(n=>{const b=h('button','mod',base(n.id));b.type='button';b.dataset.id=n.id;b.title=(n.doc||'')+' ('+n.lines+' lines)';
+      const bar=h('i');bar.style.width=Math.max(8,Math.round(100*(n.lines||1)/maxL))+'%';b.append(bar);b.addEventListener('click',()=>pickMod(n.id));wrap.append(b)});
+    box.append(wrap);return box}));
+  $('pageBtns').replaceChildren(...Object.keys(PAGES).map(p=>{const b=h('button',null,PAGES[p].label);b.type='button';b.dataset.p=p;b.addEventListener('click',()=>pickPage(p));return b}));
+  const hot=mods.slice().sort((a,b)=>((b.imported_by||[]).length-(a.imported_by||[]).length)||((b.lines||0)-(a.lines||0))).slice(0,15);
+  $('hot').replaceChildren(...hot.map(n=>{const tr=h('tr');const td=h('td');const b=h('button','linkish',short(n.id));b.type='button';b.addEventListener('click',()=>{show('components');pickMod(n.id)});td.append(b);
+    tr.append(td,h('td',null,n.area),h('td','n',String((n.imported_by||[]).length)),h('td','n',String(n.lines)),h('td','n',String((n.tests||[]).length)));return tr}));
+  const R=CODE.routes||{};$('routeNote').textContent=Object.keys(R).length+' routes';
+  $('routes').replaceChildren(...Object.keys(R).sort().map(r=>{const x=R[r],tr=h('tr');tr.append(h('td','mono',r),h('td',null,x.method||''),h('td','mono',short(x.handler)),h('td','mono',(x.callers||[]).map(short).join(', ')||'-'));return tr}))}
+function marks(sel,imp,by,pg){document.querySelectorAll('#areas .mod').forEach(b=>{const id=b.dataset.id;b.className='mod'+(id===sel?' sel':imp.has(id)?' imp':by.has(id)?' by':pg.has(id)?' pg':'')+((sel||pg.size)&&id!==sel&&!imp.has(id)&&!by.has(id)&&!pg.has(id)?' dim':'');
+  b.setAttribute('aria-pressed',id===sel?'true':'false')})}
+function pickMod(id){const n=NODES[id];if(!n)return;S.selMod=id;S.selPage=null;document.querySelectorAll('#pageBtns button').forEach(b=>b.classList.remove('on'));
+  marks(id,new Set(n.imports||[]),new Set(n.imported_by||[]),new Set());
+  const pages=Object.keys(PAGES).filter(p=>(PAGES[p].modules||[]).indexOf(id)>=0).map(p=>PAGES[p].label);
+  const d=$('detail');const dl=h('dl');
+  const row=(k,v)=>{dl.append(h('dt',null,k));const dd=h('dd');if(v instanceof Node)dd.append(v);else dd.textContent=v||'-';dl.append(dd)};
+  const list=arr=>{const s=h('span');(arr||[]).forEach((x,i)=>{if(i)s.append(document.createTextNode(', '));if(NODES[x]){const b=h('button','linkish',short(x));b.type='button';b.addEventListener('click',()=>pickMod(x));s.append(b)}else s.append(document.createTextNode(short(x)))});if(!(arr||[]).length)s.textContent='-';return s};
+  row('Area',n.area+' · '+n.lines+' lines');row('What it does',n.doc||'');row('Pages',pages.join(', ')||'-');row('Uses',list(n.imports));row('Used by',list(n.imported_by));
+  row('Answers',(n.routes||[]).join(', ')||'-');row('Key functions',(n.public||[]).slice(0,14).join(', ')||'-');row('Tests',(n.tests||[]).map(short).join(' ')||'none');
+  const cmd=h('div','cmd',(n.tests||[]).length?'python3 tests/run_all.py '+(n.tests||[]).join(' '):'No direct tests: run the full suite.');
+  d.replaceChildren(h('h3',null,short(id)),dl,h('span','note','Run these tests after changing it:'),cmd)}
+function pickPage(p){const P=PAGES[p];S.selPage=p;S.selMod=null;document.querySelectorAll('#pageBtns button').forEach(b=>b.classList.toggle('on',b.dataset.p===p));
+  const set=new Set(P.modules||[]);marks(null,new Set(),new Set(),set);
+  const d=$('detail');const tests=new Set();(P.modules||[]).forEach(m=>((NODES[m]||{}).tests||[]).forEach(t=>tests.add(t)));(CODE.navs&&CODE.navs[p]||[]).forEach(t=>tests.add(t));
+  const ul=h('ul','plain');(P.modules||[]).forEach(m=>{const li=h('li');const b=h('button','linkish',short(m));b.type='button';b.addEventListener('click',()=>pickMod(m));li.append(b,document.createTextNode(NODES[m]?': '+(NODES[m].doc||'').slice(0,90):''));ul.append(li)});
+  d.replaceChildren(h('h3',null,P.label),h('p',null,P.what||''),h('span','note','The code behind it:'),ul,h('span','note','Window tests that open this page: '+((CODE.navs&&CODE.navs[p]||[]).length)))}
+
+// ---------- code map search (the same table codemap.py --which reads)
+const W=CODE.window||{};
+function which(q){q=q.trim();const out=[];if(q.length<2)return out;const ql=q.toLowerCase();
+  const add=(kind,name,tests,extra)=>{out.push({kind,name,tests:[...new Set(tests||[])].sort(),extra:extra||''})};
+  if(q.startsWith('#')){const k=q.slice(1);Object.keys(W.elements||{}).filter(x=>x.toLowerCase().includes(k.toLowerCase())).slice(0,12).forEach(x=>add('element','#'+x,W.elements[x]));return out}
+  if(q.startsWith('.')){const k=q.slice(1);Object.keys(W.classes||{}).filter(x=>x.toLowerCase().includes(k.toLowerCase())).slice(0,12).forEach(x=>add('class','.'+x,W.classes[x]));return out}
+  if(q.startsWith('nav:')){const k=q.slice(4);Object.keys(W.navs||{}).filter(x=>x.includes(k)).forEach(x=>add('page','nav:'+x,W.navs[x]));return out}
+  if(q.startsWith('api/')){Object.keys(CODE.routes||{}).filter(r=>r.includes(q)).slice(0,12).forEach(r=>{const x=CODE.routes[r],hn=NODES[x.handler]||{};add('route',r,hn.tests,'answered by '+short(x.handler))});return out}
+  Object.values(NODES).filter(n=>n.id.toLowerCase().includes(ql)).slice(0,10).forEach(n=>add(n.area==='tests'?'test file':'file',n.id,n.area==='tests'?[n.id]:n.tests,n.doc));
+  Object.values(NODES).forEach(n=>{(n.public||[]).forEach(f=>{if(f.toLowerCase()===ql||(ql.length>3&&f.toLowerCase().includes(ql)))add('function',short(n.id)+' '+f,n.tests,'in '+short(n.id))})});
+  Object.keys(W.functions||{}).filter(f=>f.toLowerCase()===ql||(ql.length>3&&f.toLowerCase().includes(ql))).slice(0,10).forEach(f=>{const x=W.functions[f];add('window function',f,(x.tests||[]).concat(x.via||[]),'in '+short(x.file))});
+  return out.slice(0,30)}
+let qT=null;$('q').addEventListener('input',()=>{clearTimeout(qT);qT=setTimeout(()=>{const r=which($('q').value);const box=$('qres');
+  if(!r.length){box.replaceChildren(h('p','note',$('q').value.trim().length<2?'Type at least two letters.':'Nothing matches. Try a file name, a function, #element, .class, nav:page or api/route.'));return}
+  box.replaceChildren(...r.map(x=>{const d=h('div','hit');d.append(h('span','k',x.kind),h('b','mono',x.name));if(x.extra)d.append(h('span','note',x.extra));
+    d.append(h('div','cmd',x.tests.length?'python3 tests/run_all.py '+x.tests.join(' '):'No test touches it directly: run the full suite.'));return d}))},150)});
+
+// ---------- system board
+const HIST=CODE.history||{};
+function merged(base,live,key){const m=new Map();(base||[]).forEach(x=>m.set(x[key],x));(live||[]).forEach(x=>m.set(x[key],x));return [...m.values()]}
+function renderBoard(){const R=merged(HIST.releases,S.releases,'v').sort((a,b)=>verCmp(a.v,b.v));const CH=merged(HIST.chats,S.chats,'id'),DL=merged(HIST.decisions,S.dlog,'title');
+  $('bus').replaceChildren(...R.map(r=>{const b=h('button','stop'+(r.state==='waiting'?' w':'')+(S.selRel===r.v?' sel':''));b.type='button';b.append(h('b',null,r.v),h('span',null,r.name||''),h('span',null,r.state==='waiting'?'waiting for publish':(r.date||'')));
+    b.addEventListener('click',()=>{S.selRel=r.v;renderBoard()});return b}));
+  const r=R.find(x=>x.v===S.selRel)||R[R.length-1];const d=$('relDetail');
+  if(r){const box=h('div','detail');box.append(h('h3',null,r.v+' '+(r.name||'')+(r.state==='waiting'?' (built, waiting for publish)':'')));
+    if(r.lede)box.append(h('p',null,r.lede));if((r.points||[]).length){const ul=h('ul','plain');r.points.forEach(p=>ul.append(h('li',null,p)));box.append(ul)}
+    const chats=CH.filter(c=>(c.rels||[]).indexOf(r.v)>=0);if(chats.length){const p=h('p','note','Built in: ');chats.forEach((c,i)=>{if(i)p.append(document.createTextNode(', '));const a=h('a',null,c.title);a.href=c.url;a.target='_blank';a.rel='noopener';p.append(a)});box.append(p)}
+    if((r.mods||[]).length)box.append(h('p','note','Files: '+r.mods.map(short).join(', ')));box.append(h('p','note','Commit '+(r.commit||'-')+(r.date?' · '+r.date:'')));d.replaceChildren(box)}
+  else d.replaceChildren(h('p','note','No releases in the database yet.'));
+  const C=CH.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  $('chats').replaceChildren(...C.map(c=>{const tr=h('tr'),td=h('td');const a=h('a',null,c.title);a.href=c.url;a.target='_blank';a.rel='noopener';td.append(a,h('div','note',c.sum||''));tr.append(h('td','n',c.date||''),td,h('td','mono',(c.rels||[]).join(', ')));return tr}));
+  const D=DL.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  $('dlog').replaceChildren(...D.map(x=>{const tr=h('tr'),td=h('td');td.append(h('b',null,x.title),h('div','note',x.text||''));tr.append(h('td','n',x.date||''),td);return tr}))}
+function verCmp(a,b){const A=String(a).split('.').map(Number),B=String(b).split('.').map(Number);for(let i=0;i<3;i++){if((A[i]||0)!==(B[i]||0))return (A[i]||0)-(B[i]||0)}return 0}
+
+// ---------- live data
+function setLive(t,c){const e=$('live');e.textContent=t;e.className='live '+c}
+async function connect(){let db=null;try{db=await claude.use('db')}catch(e){db=null}
+  if(!db){setLive('Live data unavailable here: showing the code map only','warn');return}
+  S.db=db;let got=0;const timer=setTimeout(()=>{if(!got)setLive('Live data not reached yet','warn')},10000);
+  const fresh=m=>{if(m&&!m.fromCache){got=1;clearTimeout(timer);setLive('Live','ok')}};
+  const err=e=>{clearTimeout(timer);setLive('Live data stopped ('+((e&&e.code)||'error')+')','warn')};
+  db.doc('status/now').onSnapshot(s=>{S.status=s.exists?s.data():null;renderStatus();fresh(s.metadata)},err);
+  db.collection('plan').onSnapshot(q=>{S.plan=q.docs.map(d=>Object.assign({id:d.id},d.data()));renderPlan();fresh(q.metadata)},err);
+  db.collection('decisions').onSnapshot(q=>{S.decisions=q.docs.map(d=>Object.assign({id:d.id},d.data()));renderDecisions();fresh(q.metadata)},err);
+  db.collection('releases').onSnapshot(q=>{S.releases=q.docs.map(d=>d.data());renderBoard();fresh(q.metadata)},err);
+  db.collection('chats').onSnapshot(q=>{S.chats=q.docs.map(d=>d.data());renderBoard()},err);
+  db.collection('dlog').onSnapshot(q=>{S.dlog=q.docs.map(d=>d.data());renderBoard()},err);
+  try{const u=await claude.use('user');if(u&&u.can){const c=await u.can('data.write');if(c===false){S.canWrite=false;renderPlan()}}}catch(e){}}
+renderCode();renderStatus();renderPlan();renderBoard();show(location.hash.slice(1)||'overview');connect();
+})();
+</script>
+</body>
+</html>

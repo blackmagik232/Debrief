@@ -26,7 +26,7 @@ AREAS = {
     "prep": "prep prepare intel strategy practiceplan today replan endurance endureview schedule series",
     "car": "setuplab setupadvice setupshare balance handling pressurelearn",
     "live": "livecoach livedata liverec livetray coachvoice voice voicepack audioin audioout cuelog overlay perfmeter "
-            "crewchief raceroom endurancelog wheelmute noterec notes recordings iracing cornernotes ibt sessionibt",
+            "crewchief raceroom roomlive roomboard endurancelog wheelmute noterec notes recordings iracing cornernotes ibt sessionibt",
     "team": "team teamref teamsync members cards discord",
     "core": "app g61 sync library fsutil names units xlsx brand credits whatsnew updater ed25519 report firstrun "
             "racecap_link",

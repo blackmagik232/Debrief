@@ -14,10 +14,28 @@ words and say what he will see differently in the window.
 ## Code map
 - Before changing code, read the project doc `claude/debrief-codemap.md` (or run `python tools/codemap.py`, which writes
   `codemap.json` and `CODEMAP.md`; both are generated, so don't commit them). It lists every module, what it imports, what
-  imports it, the window routes it answers and the exact test files to run. The visual version is the "Debrief Code
-  Constellation" artifact. Regenerate both after every release.
+  imports it, the window routes it answers and the exact test files to run. The visual version is the "Debrief System
+  Board" artifact (the older Code Constellation is its Sky view). Regenerate both after every push (see below).
 - Before a change, `python tools/codemap.py --which <thing>` (a module, function or method, #element, .class, nav:page or
   api/route; repeat --which for several) prints the test files to run for it. Run those first, then the full suite before a release.
+
+## After every push (owner's rule, 12 Nov 2026)
+Every push to this repo (a release branch, main, or a work-in-progress branch) is followed, in the same session, by
+bringing the project's tracking up to date. Do all of these before telling him the work is done:
+1. **Handoff doc** (project `claude/debrief-handoff-<date>.md`): where things stand, the branch and commit pushed, the next
+   steps, and a "Start here" block a new chat can paste. A new chat starts from the newest one.
+2. **Status doc** (project `claude/debrief-status-<date>.md`, new one per session): what's built, pushed, published, and
+   Not proven yet.
+3. **Code map**: `python tools/codemap.py`, then upload `CODEMAP.md` as project `claude/debrief-codemap.md`.
+4. **History index** (project `claude/debrief-history-index.md`): the chat that did the work, any release, any new
+   decision (date, chat, files it governs).
+5. **System Board** artifact (https://claude.ai/artifact/MXMaE1K9QstX8N1TQeDNPd): rebuild its embedded JSON
+   (code = codemap.json minus `window` and node `methods`; releases; chats; decisions) and republish.
+6. **Roadmap doc** (https://claude.ai/artifact/LSqCxCqT1spRdHa5SmzJoS): move items between built, published and next;
+   add the Discord post for a new release.
+7. **Game plan Whiteboard** (https://claude.ai/artifact/6Z7eKPKpZXUKMU8WU33sdW): update the step boxes and decisions.
+8. **The Paddock** (https://claude.ai/artifact/664XggfeYjNdBHBU6M9x9H): its `boards/roadmap` document.
+If one can't be updated (no access, a tool refused), say which in the handoff doc and in the reply.
 
 ## Commands
 - `python3 tests/run_all.py`: all tests (about 6 minutes). Must be 100% green before every commit.

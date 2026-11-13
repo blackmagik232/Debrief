@@ -311,7 +311,7 @@ def test_sidebar_owns_navigation_keys_and_loading_bar():
         # 2.18: Debrief opens on Today; the sidebar is grouped, Settings and Help sit at its foot
         pg.wait_for_function("() => !document.getElementById('vToday').hidden")
         names = pg.evaluate("() => [...document.querySelectorAll('.nav .navbtn')].map(b => b.textContent.trim())")
-        assert names == ["Today", "Prepare", "Coach", "Race Room", "All sessions", "Practice", "Racing", "Setup Lab", "Car vs car", "Progress", "Season", "Skills", "Goals", "Team"], names
+        assert names == ["Today", "Prepare", "Race Room", "Coach", "All sessions", "Practice", "Racing", "Setup Lab", "Car vs car", "Progress", "Season", "Skills", "Goals", "Team"], names
         assert pg.evaluate("() => [...document.querySelectorAll('.sidefoot .navbtn')].map(b => b.textContent.trim())") == ["Settings", "Help"]
         wait_nav(pg, "today")
         pg.click(".navbtn[data-nav=library]")

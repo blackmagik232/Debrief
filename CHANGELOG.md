@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.36.0 "Race Room"
+
+The Race Room is now your live pit board, straight from iRacing on your PC. It's the screen we used on the 8 November weekend, built into Debrief. It works in practice, qualifying and races, and it doesn't need the coach, Garage 61 or a browser.
+
+- **It opens by itself.** When an iRacing session starts, Debrief switches to the Race Room once for that session. A coloured label at the top shows which session you're in: **Practice**, **Qualifying** or **Race**. If you go to another page, it won't pull you back. Don't want it to open by itself? Untick the box at the bottom of the page.
+- **The call at the top** tells you the one thing to know now. That's the crew chief's call (box this lap, a car closing) or, when there is none, the strategy crew's most urgent point.
+- **Eight tiles**: in a race, Position, Laps left, Box by (the latest lap, the window and what to add), Car ahead and Car behind (the gap, closing or opening a second a lap, and when you meet), Last lap against your Target, and Time left. In practice and qualifying: the session, your place on best lap, best and last lap, laps, fuel in laps, pace and time left.
+- **Rivals**: the cars around you in your class, with the gap, how fast it changes and how many laps until you meet. Each one is tagged threat, catchable, on track together, in the pits, pulling away, holding or safe. In practice and qualifying this becomes the **Timesheet** by best lap.
+- **Pace and stints**: each stint's median and best lap, spread, trend a lap (tyres going off shows here) and time lost to your best. There's also a bar for every lap, with lines for the cars around you and the class top 10.
+- **Pit and fuel bar**: laps done, fuel in the tank, the pit window and the flag on one bar, from your real fuel gauge. Plus your **Position** lap by lap.
+- **Strategy crew**: four desks (Pit and fuel, Rivals, Pace and tyres, Race engineer), each with one headline and a red, amber or green mark. On the weekend these were AI helpers. Now they're written rules that Debrief runs on your PC every second.
+- **Team races** still show the stint, the driver swap, the rest of the race worked out again, and every stop in your class. On a teammate's PC the fuel is always marked estimated.
+- Race Room has its own place in the sidebar, under **Drive** with Prepare and Coach (the Ctrl+number keys don't change). Help has a new chapter, **Using the Race Room**.
+
+### For the record
+
+- New `debrief/roomboard.py`: session words (practice, qualify, race, warm-up); `LapBook` (our laps in any session, from the CarIdx arrays and fuel); `pace`, `stints`, `lap_chart`, `read_tag` and `read_rivals` (the weekend's rules); `timesheet`; `fuel_bar` (from the crew chief's pit window); `strategy_crew` (four rule-based desks); `build`; `waiting`.
+- New `debrief/roomlive.py`: the window's own live link (`livecoach.IrsdkSource`, 5 readings a second, field 4 a second) feeding a silent `CrewChief`, a `RaceRoom` and the board. It writes the team-race log, one file per race session. The coach no longer writes a second copy (`_crew_kwargs` `room_log` is None), and the coach still makes the spoken calls.
+- Server: `DebriefServer.get_roomlive()` / `stop_roomlive()` (started on the first ask, stopped on close); `api/raceroom` returns `board`; `api/raceroom?peek=1` returns the session for opening the page by itself; POST action `auto_open` is saved in `raceroom.json` next to settings. Delay and work-it-out-again act on both Race Rooms and need a race running.
+- Window: `index.html` `#vRoom` rebuilt to the weekend layout (no Start the coach button). `raceroom.js` draws the tiles, rivals or timesheet, stints and lap chart, fuel bar, position chart and desks, and runs `rrPeek` every 3 s. The sidebar's Race Room is a page of its own (`.nokey`, so Ctrl+number keys are unchanged). Help chapter `room`.
+- Measured on the scripted 90-minute team race: about 0.5 ms of CPU a reading, roughly 0.3% of one core at 5 readings a second.
+- Tests: new `tests/test_236_raceroom.py`. `tests/test_230_roomui.py` was rewritten for the board (waiting, driver, crew, practice timesheet, no plan, opening by itself once per session, switched off), with updated expectations in test_230_raceroom, test_28_shell, test_218_home, test_212_page and test_231_help. The sidebar group "Before you drive" is now "Drive", and rows tighten a little more when the sidebar is tight (`body.navtight`), so it still fits at 1280x720.
+- Not proven yet: a real iRacing session on the PC (practice, qualifying and a race), the page opening by itself when a real session starts, real rival gap rates and pit-window numbers against the coach's crew chief, practice laps and fuel per lap from real data, a team race on two PCs, and CPU use on the real PC.
+
 ## 2.35.0 "See it"
 
 Your race review now shows the race at a glance, never contradicts itself, and tells you about your setup. The button you press after driving is now **Review a session**.

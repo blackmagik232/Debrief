@@ -1196,6 +1196,40 @@ def clean_coach_settings(raw) -> dict:
     return out
 
 
+def room_auto_open() -> bool:
+    """2.36: open the Race Room by itself when an iRacing session starts (on unless he switched it off)."""
+    return settings_io.load_extra("raceroom").get("auto_open", True) is not False
+
+
+def _make_roomlive():
+    """The Race Room's live link with the saved stint plans, who this PC's user is, the team-race log and Settings > Units."""
+    from .. import crewchief, endurance, endurancelog, raceroom, roomlive
+
+    def lib():
+        try:
+            return app.load_settings()["library_folder"]
+        except (SystemExit, OSError, KeyError):
+            return None
+
+    def plan_for(track):
+        L = lib()
+        return endurance.load_inputs(L, track) if L else None
+
+    def chief_plan_for(track):
+        L = lib()
+        return crewchief.load_plan(L, track) if L else None
+
+    def iam():
+        L = lib()
+        return raceroom.load_iam(L) if L else ""
+
+    def new_log():
+        return endurancelog.RaceLog(library_fn=lib, recording_fn=lambda: crewchief.recording_folder(lib()) if lib() else None,
+                                    log=app.say)
+    return roomlive.RoomLive(plan_for=plan_for, chief_plan_for=chief_plan_for, iam=iam, log_factory=new_log,
+                             units=settings_io.units, say=app.say)
+
+
 def saved_coach_settings() -> dict:
     d = settings_io.load_extra("coach").get("settings")
     return d if isinstance(d, dict) else {}
@@ -1813,6 +1847,9 @@ class DebriefServer(ThreadingHTTPServer):
         self.coach_lock = threading.Lock()
         self.coach = None             # livecoach.LiveRunner while started
         self.recorder = None          # liverec.Recorder when this window records for itself (2.27)
+        self.roomlive = None          # roomlive.RoomLive: the Race Room's own live link to iRacing (2.36), started on first use
+        self.roomlive_lock = threading.Lock()
+        self.roomlive_factory = None  # tests only: () -> roomlive.RoomLive with a stand-in source
         self.coach_voice = None
         self.coach_hotkey = None
         self.coach_last = None        # the last status of a stopped runner (what it said stays on the page)
@@ -1884,11 +1921,33 @@ class DebriefServer(ThreadingHTTPServer):
         except Exception:  # noqa: BLE001
             app.say("ERROR stopping the coach:\n" + traceback.format_exc())
         coach2.on_shutdown(self)
+        self.stop_roomlive()
         super().shutdown()
+
+    def get_roomlive(self):
+        """The Race Room's live link (2.36), started the first time the window asks for it. None after shutdown."""
+        with self.roomlive_lock:
+            if self.roomlive is None and not self.stopping.is_set():
+                self.roomlive = self.roomlive_factory() if self.roomlive_factory else _make_roomlive()
+                self.roomlive.start()
+            return self.roomlive
+
+    def stop_roomlive(self):
+        with self.roomlive_lock:
+            rl, self.roomlive = self.roomlive, None
+        if rl is not None:
+            try:
+                rl.stop()
+            except Exception:  # noqa: BLE001
+                app.say("ERROR stopping the Race Room link:\n" + traceback.format_exc())
 
     def server_close(self):
         try:
             self.stop_coach()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.stop_roomlive()
         except Exception:  # noqa: BLE001
             pass
         super().server_close()
@@ -2289,15 +2348,16 @@ class DebriefServer(ThreadingHTTPServer):
             lib = app.load_settings()["library_folder"]
         except (SystemExit, OSError, KeyError):
             return {}
-        from .. import endurance, endurancelog, raceroom
+        from .. import endurance, raceroom
         return {"crew_plan_for": lambda track, lib=lib: crewchief.load_plan(lib, track),
                 "crew_log": crewchief.CrewLog(lambda lib=lib: crewchief.recording_folder(lib), coach2.logs_dir(),
                                               log=app.say),
                 # 2.30 Race Room: the saved stint plan, who this PC's user is in it, and the team-race log
                 "room_plan_for": lambda track, lib=lib: endurance.load_inputs(lib, track),
                 "room_iam": lambda lib=lib: raceroom.load_iam(lib),
-                "room_log": endurancelog.RaceLog(library_fn=lambda lib=lib: lib,
-                                                 recording_fn=lambda lib=lib: crewchief.recording_folder(lib), log=app.say)}
+                # 2.36: the team-race log is written by the window's own Race Room (roomlive), which runs whenever
+                # Debrief is open, so the coach no longer writes a second copy
+                "room_log": None}
 
     @staticmethod
     def _close_coach_parts(runner, hotkey, voice, timeout=3.0) -> bool:
@@ -3757,49 +3817,65 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "car": saved})
         raise ValueError("Bad request.")
 
-    # ---------- 2.30 Race Room
+    # ---------- 2.30 Race Room; 2.36: its own live link, no coach needed
     def _room_runner(self):
         with self.server.coach_lock:
             r = self.server.coach
         return r if r is not None and r.running() and getattr(r, "room", None) is not None else None
 
     def _get_raceroom(self, q):
-        """The Race Room page's picture: the live runner's room, or a 'start the coach' answer. Never a request."""
+        """The Race Room page's picture, from the window's own live link to iRacing (roomlive). peek=1: only whether
+        iRacing is connected and which session it is in (the window asks every few seconds to open the page itself)."""
         from .. import raceroom
-        r = self._room_runner()
+        rl = self.server.get_roomlive()
+        auto = room_auto_open()
+        if q.get("peek"):
+            pk = rl.peek() if rl is not None else {"connected": False, "session": None}
+            return self._json({"ok": True, "auto_open": auto, **pk})
         lib = self._library_folder()
         iam = raceroom.load_iam(lib) if lib else ""
-        if r is None:
-            return self._json({"ok": True, "running": False, "iam": iam,
-                               "room": {"state": "waiting", "text": "Start the coach to open the Race Room in a race."}})
-        return self._json({"ok": True, "running": True, "iam": iam, "room": r.room_state()})
+        st = rl.state() if rl is not None else {}
+        return self._json({"ok": True, "running": True, "coach": self._room_runner() is not None, "iam": iam,
+                           "auto_open": auto, "board": st})
 
     def _post_raceroom(self, body):
-        """Race Room: action "iam" (which plan driver you are), "delay" (a driver is late), "replan" (work it out again now)."""
+        """Race Room: action "iam" (which plan driver you are), "delay" (a driver is late), "replan" (work it out again now),
+        "auto_open" (open the page by itself when an iRacing session starts)."""
         from .. import raceroom
         act = body.get("action")
-        r = self._room_runner()
+        rl = self.server.get_roomlive()
+        rooms = [x.room for x in (rl, self._room_runner()) if x is not None and getattr(x, "room", None) is not None]
+        if act == "auto_open":
+            on = bool(body.get("on"))
+            data = settings_io.load_extra("raceroom")
+            data["auto_open"] = on
+            settings_io.save_extra("raceroom", data)
+            return self._json({"ok": True, "auto_open": on})
         if act == "iam":
             lib = self._library_folder()
             if lib is None:
                 raise ValueError("Set the library folder first.")
             name = raceroom.save_iam(lib, body.get("name"))
-            if r is not None:
-                r.room.set_iam(name)
+            for rm in rooms:
+                rm.set_iam(name)
             return self._json({"ok": True, "iam": name})
-        if r is None:
-            raise ValueError("Start the coach first.")
+        live = rl is not None and rl.peek().get("connected") and rl.room.race
+        if not live:
+            raise ValueError("That works once a race is running in iRacing.")
         if act == "delay":
             try:
                 minutes = float(body.get("minutes") or 0)
             except (TypeError, ValueError):
                 raise ValueError("Type the minutes as a number.")
-            n = r.room.set_delay(str(body.get("driver") or ""), min(max(minutes, 0.0), 600.0))
+            n = None
+            for rm in rooms:
+                n = rm.set_delay(str(body.get("driver") or ""), min(max(minutes, 0.0), 600.0)) or n
             if not n:
                 raise ValueError("That driver isn't in the saved plan.")
             return self._json({"ok": True, "driver": n, "minutes": minutes})
         if act == "replan":
-            r.room.force_replan()
+            for rm in rooms:
+                rm.force_replan()
             return self._json({"ok": True})
         raise ValueError("Unknown Race Room action.")
 

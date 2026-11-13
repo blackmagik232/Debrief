@@ -988,3 +988,61 @@ dialog.helpdlg[open]{display:block}
 .hbox .hsteps{margin:12px 0 0}
 .hbox .hstep:last-child{padding-bottom:0}
 .hbox>p{margin:0}
+/* ---------- 2.36 Race Room: the live pit board (the 8 Nov weekend layout) */
+#vRoom .rrcol{max-width:1180px;grid-template-columns:minmax(0,1fr)}
+.rrhead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:10px 20px;border-bottom:2px solid var(--fg);padding-bottom:10px}
+.rrtitle h1{text-transform:uppercase;letter-spacing:.01em}
+.rrmeta{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin-top:6px;font-family:var(--mono);font-size:var(--fs-13);color:var(--muted)}
+.rrsess{font-family:var(--display);font-weight:700;font-size:var(--fs-16);letter-spacing:.08em;text-transform:uppercase;padding:2px 10px;border-radius:3px;border:2px solid var(--axis);color:var(--fg)}
+.rrsess.race{border-color:var(--bad);color:var(--bad)}
+.rrsess.qualify{border-color:var(--warn);color:var(--warn)}
+.rrsess.practice,.rrsess.warmup{border-color:var(--good);color:var(--good)}
+.rrcall{background:var(--fg);color:var(--bg);border-left:8px solid var(--me);padding:12px 16px;display:grid;gap:4px;border-radius:2px}
+.rrcall .eyebrow{color:inherit;opacity:.7}
+.rrcall b{font-size:var(--fs-21);line-height:1.25;font-weight:600;overflow-wrap:anywhere}
+.rrcall.hot{border-left-color:var(--bad)}
+.rrcall small{opacity:.75}
+.rrcalls{margin:0;padding-left:18px;display:grid;gap:2px;font-size:var(--fs-13);opacity:.9}
+.rrcalls:empty{display:none}
+.rrtiles{margin:8px 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.rrtile{background:var(--panel);border:1px solid var(--grid);border-left:4px solid var(--axis);padding:8px 12px;display:grid;gap:2px;align-content:start;min-width:0}
+.rrtile b{font-family:var(--display);font-weight:700;font-size:clamp(24px,2.8vw,34px);line-height:1.05;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.rrtile small{font-family:var(--mono);font-size:var(--fs-11);color:var(--muted);overflow-wrap:anywhere}
+.rrtile.hot{border-left-color:var(--bad)}.rrtile.hot b{color:var(--bad)}
+.rrtile.good{border-left-color:var(--good)}
+.rrtbl td{white-space:nowrap;font-variant-numeric:tabular-nums}
+.rrtbl tr.us td,#rrStops tr.us td{background:var(--band);font-weight:600}
+.rrtag{display:inline-block;font-size:var(--fs-11);padding:1px 6px;border:1px solid currentColor;border-radius:2px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.rrtag.bad{color:var(--bad)}.rrtag.warn{color:var(--warn)}.rrtag.good{color:var(--good)}.rrtag.info,.rrtag.me{color:var(--me)}.rrtag.mut{color:var(--muted)}
+.rrgrid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+@media (max-width:860px){.rrgrid2{grid-template-columns:minmax(0,1fr)}}
+.rrfuelwrap{padding:20px 0}
+.rrfuel .lb.up{bottom:auto;top:-19px}
+.rrfuel{position:relative;height:46px;background:var(--band);border:1px solid var(--grid)}
+.rrfuel .seg{position:absolute;top:0;bottom:0}
+.rrfuel .done,.rrk.done{background:color-mix(in srgb,var(--muted) 35%,transparent)}
+.rrfuel .tank,.rrk.tank{background:color-mix(in srgb,var(--good) 35%,transparent)}
+.rrfuel .win,.rrk.win{background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--warn) 55%,transparent) 0 6px,transparent 6px 12px)}
+.rrfuel .mk{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--fg)}
+.rrfuel .lb{position:absolute;bottom:-19px;transform:translateX(-50%);font-family:var(--mono);font-size:var(--fs-11);color:var(--muted);white-space:nowrap}
+.rrlegend{display:flex;flex-wrap:wrap;gap:12px;font-size:var(--fs-11);color:var(--muted)}
+.rrk{display:inline-block;width:10px;height:10px;margin-right:5px;vertical-align:-1px}
+.rrk.d0,.rrbar.d0{fill:var(--me);background:var(--me)}.rrk.d1,.rrbar.d1{fill:var(--fg);background:var(--fg)}
+.rrk.d2,.rrbar.d2{fill:var(--warn);background:var(--warn)}.rrk.d3,.rrbar.d3{fill:var(--good);background:var(--good)}
+.rrbar{opacity:.9}.rrbar.faded{opacity:.3}
+.rrref{stroke-dasharray:4 3;stroke-width:1.5}.rrref.warn{stroke:var(--warn)}.rrref.good{stroke:var(--good)}
+.rrtick{fill:var(--muted);font:10px var(--mono)}.rrtick.warn{fill:var(--warn)}.rrtick.good{fill:var(--good)}
+.rrline{fill:none;stroke:var(--axis);stroke-width:1.2;opacity:.7}.rrline.me{stroke:var(--me);stroke-width:3;opacity:1}
+.rrcrew{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.rrdesk{border:1px solid var(--grid);border-top:4px solid var(--good);padding:10px 12px;display:grid;gap:4px;align-content:start;min-width:0}
+.rrdesk.watch{border-top-color:var(--warn)}.rrdesk.act{border-top-color:var(--bad)}
+.rrdesk b{font-family:var(--display);font-weight:700;font-size:var(--fs-16);line-height:1.2;overflow-wrap:anywhere}
+.rrdesk p{margin:0;font-size:var(--fs-13);color:var(--fg2)}
+.rrdtop{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.rrdtop h4{margin:0;font-family:var(--display);font-size:var(--fs-16);text-transform:uppercase;letter-spacing:.04em}
+#rrLapChart{overflow-x:auto}
+.rriam span{white-space:nowrap}
+/* 2.36: Race Room is a page of its own now (one row more): when the sidebar is tight, the rows tighten a little more too */
+body.navtight .nav .navgroup{padding-top:1px;line-height:1.2}
+body.navtight .nav .navbtn{padding-top:3px;padding-bottom:3px}
+body.navtight .nav .navbtn.sub{padding-top:2px;padding-bottom:2px}

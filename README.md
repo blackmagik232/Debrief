@@ -8,6 +8,8 @@
 
 Reviews your iRacing races from the telemetry files iRacing saves on your PC (and from Garage 61, if you connect it) and keeps a library of every review, in its own window.
 
+**New in 2.36:** **Race Room.** A live pit board straight from iRacing on your PC, in practice, qualifying and races, with no coach or Garage 61 needed. It opens by itself when a session starts and shows the session you're in, the crew chief's call, eight tiles (position, laps left, box by, car ahead and behind, last lap, target, time left), your rivals or the timesheet, pace and stints with a lap chart, the pit and fuel bar, your position lap by lap, and a four-desk strategy crew.
+
 **New in 2.35:** **See it.** **Review a session** (Ctrl+Enter) opens your sessions with the newest highlighted; each row has its own **Review**. Race reviews draw fuel, position, gaps, pit stops, tyres, driver aids and incidents as charts (the tables are under **Show the numbers**), give one answer for every fact, add a **Setup** section, and mark races against AI **vs AI**.
 
 **New in 2.34:** **No token needed.** Review last race works without Garage 61: Debrief builds the review from your race's telemetry file and fills in the result (start, finish, field size, SOF, incidents) from iRacing's own session data. Connect Garage 61 later and **Add comparison laps** adds your teammates' and followed drivers' laps to the same race.

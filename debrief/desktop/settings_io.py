@@ -256,7 +256,7 @@ def clean_iracing_folder(v) -> str:
     return v
 
 
-EXTRA_FILES = {"setuplab": "setuplab.json", "coach": "coach.json", "handling": "handling.json"}
+EXTRA_FILES = {"setuplab": "setuplab.json", "coach": "coach.json", "handling": "handling.json", "raceroom": "raceroom.json"}
 
 
 def _extra_path(name: str) -> Path:

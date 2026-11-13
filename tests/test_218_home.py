@@ -173,16 +173,16 @@ def test_sidebar_groups_and_keys_in_order():
     assert [p for p, _ in pages] == ["today", "prep", "coach", "sessions", "practice", "racing", "setuplab", "cars", "library", "team"], pages
     assert [k for _, k in pages] == list("1234567890"), pages
     subs = re.findall(r'class="navbtn sub" data-nav="([a-z]+)"', nav)
-    assert subs == ["room", "season", "skills", "goals"], subs
+    assert subs == ["season", "skills", "goals"], subs           # 2.36: Race Room is a page of its own
     groups = re.findall(r'<span class="navgroup"[^>]*>([^<]+)</span>', nav)
-    assert groups == ["Before you drive", "After you drive", "Car", "Over time", "Team"], groups
+    assert groups == ["Drive", "After you drive", "Car", "Over time", "Team"], groups       # 2.36: Drive = Prepare, Race Room, Coach
     # Settings, Help and the theme stay outside the part that scrolls
     foot = html[html.index('<div class="sidefoot">'):html.index("</aside>")]
     assert 'data-nav="settings"' in foot and 'id="btnHelp"' in foot and 'data-theme-set="dark"' in foot
     assert html.index('id="btnReview"') < html.index('id="sideScroll"') < html.index('id="revlist"') < html.index('class="sidefoot"')
     assert "Ctrl+R" not in html and 'title="Review a session: pick one from your synced sessions (Ctrl+Enter)"' in html
     js = (UI / "app.js").read_text(encoding="utf-8")
-    assert "const PAGE_KEYS=[...document.querySelectorAll('.nav .navbtn[data-nav]:not(.sub)')]" in js
+    assert "const PAGE_KEYS=[...document.querySelectorAll('.nav .navbtn[data-nav]:not(.sub):not(.nokey)')]" in js
     from debrief.desktop import server as S
     assert "m='reviewgo'" in S.FRAME_BRIDGE and "m='help'" in S.FRAME_BRIDGE
 
@@ -299,8 +299,8 @@ def test_window_today_keys_and_returning_user():
         assert "New here" not in (pg.text_content("#bannerText") or "")
         # the keys follow the sidebar
         keys = pg.evaluate("() => window.debriefUi.pageKeys()")
-        side = pg.evaluate("() => [...document.querySelectorAll('.nav .navbtn:not(.sub)')].map(b => b.dataset.nav)")
-        assert keys == side[:10], (keys, side)
+        side = pg.evaluate("() => [...document.querySelectorAll('.nav .navbtn:not(.sub):not(.nokey)')].map(b => b.dataset.nav)")
+        assert keys == side[:10], (keys, side)           # 2.36: Race Room sits in the sidebar without a number key
         for key, view in (("6", "vRacing"), ("8", "vCars"), ("4", "vSessions"), ("7", "vSetupLab"), ("1", "vToday")):
             pg.keyboard.press("Control+" + key)
             pg.wait_for_function(f"() => !document.getElementById('{view}').hidden")

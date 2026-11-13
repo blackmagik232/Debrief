@@ -30,7 +30,7 @@ sections: [
     {t: 'After your next race', d: `Press **Review a session** (Ctrl+Enter), then **Review** on the newest row. Without Garage 61 the review is built from the telemetry file iRacing saved on this PC, result included. Read **What to work on** at the top. Everything below it is the evidence.`},
     {t: 'End of the week', d: `Open **Progress** and **Skills** to see whether your typical laps are getting closer to your best ones. That gap is the easiest time you have.`, go: 'library', label: 'Open Progress'}]},
   {h: 'Where things are'},
-  {p: `The sidebar follows the order you use it in: **Before you drive** (Prepare, Coach, Race Room), **After you drive** (All sessions, Practice, Racing), **Car** (Setup Lab, Car vs car), **Over time** (Progress, Season, Skills, Goals) and **Team**. **Today** at the top shows your one thing right now, your last race and your last practice. Every page is explained under **Every page** in this Help.`},
+  {p: `The sidebar follows the order you use it in: **Drive** (Prepare, Race Room, Coach), **After you drive** (All sessions, Practice, Racing), **Car** (Setup Lab, Car vs car), **Over time** (Progress, Season, Skills, Goals) and **Team**. **Today** at the top shows your one thing right now, your last race and your last practice. Every page is explained under **Every page** in this Help.`},
   {p: `Ctrl+1 to Ctrl+9 and Ctrl+0 open the pages in the sidebar's order, Ctrl+Enter is Review a session, and **F1** opens the keyboard keys.`}]},
 
 /* ---------------------------------------------------------------- Where your data comes from */
@@ -143,8 +143,27 @@ sections: [
   {h: 'During the race'},
   {list: [
     `The **crew chief** calls fuel laps left, laps to go, when to box and how much to add, the cheap stop under a caution, and a car closing or alongside. It stays quiet under braking and with a car alongside.`,
-    `The **Race Room** (under Coach) is the pit board for team and long races, for the driver and for teammates on their own PCs.`,
+    `The **Race Room** is your live pit board, straight from iRacing on this PC: in practice, qualifying and races, solo or with a team. It opens by itself when a session starts. See **Using the Race Room**.`,
     `**Live data** quietly records each iRacing session while you drive (fuel, pit stops, tyres, incidents) and adds it to your reviews.`], go: 'room', label: 'Open the Race Room'}]},
+
+/* ---------------------------------------------------------------- Using the Race Room (2.36) */
+{id: 'room', group: 'Learn', title: 'Using the Race Room', blocks: [
+  {lede: `The Race Room is your pit wall: one screen with everything a race engineer watches, worked out live from iRacing on this PC about once a second. It needs no Garage 61, no browser and no coach.`},
+  {box: 'Use it in a race', lede: `Put Debrief on a second screen, or glance at it under a caution or on a straight.`, steps: [
+    {t: 'Open iRacing and join a session', d: `Debrief switches to the Race Room by itself when a practice, qualifying or race session starts (once per session, so it never pulls you back from another page). The coloured label at the top says which session you are in.`, go: 'room', label: 'Open the Race Room'},
+    {t: 'Read the bar at the top first', d: `The dark bar is the one thing to know right now: the crew chief's call when there is one (box this lap, a car closing), otherwise the strategy crew's most urgent point. Calls from this lap and the last one are listed under it.`},
+    {t: 'Then the tiles', d: `**Position**, **Laps left**, **Box by** (the latest lap to stop, the window and what to add), **Car ahead** and **Car behind** (the gap, and whether it is closing or opening a second a lap), **Last lap** against your **Target**, and **Time left**.`},
+    {t: 'Glance at the strategy crew', d: `Four desks, each with one headline: **Pit and fuel**, **Rivals**, **Pace and tyres** and **Race engineer**. Red **act now** means do something this lap, amber **watch** means keep an eye on it, green **all good** means nothing to do.`}]},
+  {h: 'What each part shows'},
+  {list: [
+    `**Rivals**: the cars around you in your class. **Gap** is in seconds (minus: ahead of you). **s a lap** is how fast the gap changes (plus: it is shrinking). **Laps to** is how many laps until you meet at that rate. **Read** sums it up: **threat** (a car behind that reaches you within 6 laps), **catchable** (a car ahead you catch before the flag), **on track together** (within 1.5 s), **in the pits**, **pulling away**, **holding**, **closing slowly** or **safe**.`,
+    `**Timesheet** (practice and qualifying): the class by best lap around your car, with each best lap against yours.`,
+    `**Pace and stints**: a row for each stint (a run between stops, or a driver's turn in a team race): median and best lap, spread (how far apart your laps are), trend a lap (plus: getting slower, which usually means tyres or traffic) and the time lost to your own best lap. The bars below are every lap; faded bars are in, out or traffic laps. The dashed lines are the cars around you and the class top 10.`,
+    `**Pit and fuel**: a bar in laps. Grey is done, green is the fuel in the tank, the striped part is the pit window, and the marks are now, the lap the tank runs dry and the flag. The words under it say how many stops are left, when, and what to add.`,
+    `**Position**: your class place lap by lap (your car is the thick line).`,
+    `In a **team race** the stint panels show too: who is driving, the stint timer, the next driver, the swap card, the rest of the race worked out again, and every stop in your class. On a teammate's PC the fuel is always marked **estimated**.`]},
+  {tip: `Debrief reads iRacing about 5 times a second for this page, which costs well under 1% of one CPU core. The page shows its own number at the bottom.`},
+  {p: `Don't want it to open by itself? Untick **Open the Race Room by itself when an iRacing session starts** at the bottom of the page.`}]},
 
 /* ---------------------------------------------------------------- Reading the numbers */
 {id: 'numbers', group: 'Reference', title: 'Reading the numbers', blocks: [
@@ -173,8 +192,8 @@ sections: [
 pages: [
   {go: 'today', t: 'Today', what: 'Your one thing to work on right now, your last race and your last practice.', when: 'Every time you open Debrief.'},
   {go: 'prep', t: 'Prepare', what: "This week's race: schedule, your history at the track, track card notes, Plan fuel and Plan stints.", when: 'The days before a race.'},
+  {go: 'room', t: 'Race Room', what: 'Your live pit board from iRacing: the call, position, laps left, box by, the cars around you, your pace and stints, the pit and fuel bar, your position lap by lap and the strategy crew. In a team race also the stints, swaps and the rest of the race.', when: 'While you drive: practice, qualifying and races. It opens by itself when a session starts.'},
   {go: 'coach', t: 'Coach', what: 'Short spoken cues while you drive, from your own best lap. Also the crew chief, overlay, driving view and corner notes.', when: 'Every time you drive.'},
-  {go: 'room', t: 'Race Room', what: 'The pit board for team and long races: driver, stint timer, fuel, box calls and every stop in your class.', when: 'During team and endurance races.'},
   {go: 'sessions', t: 'All sessions', what: 'Every race, qualifying and practice session Garage 61 has for you, newest first. Press Review on a row: a race opens its race review, practice and qualifying open in Practice. This is where the Review a session button takes you.', when: 'After you drive, and to review an older session.'},
   {go: 'practice', t: 'Practice', what: 'Every time you drove, from your telemetry files: best and typical lap, best possible lap, the Corner coach and One thing this session.', when: 'Straight after you drive.'},
   {go: 'racing', t: 'Racing', what: 'Your starts and incidents across all your races, and the patterns in them.', when: 'Every few races.'},

@@ -1,4 +1,4 @@
-"""Debrief 2.30 Race Room page: loads with no live data ("Waiting for iRacing"), with driver data and with crew data
+"""Debrief 2.30 Race Room page (2.36: the live board, laid out like the 8 Nov weekend screen, with no coach): loads with no live data ("Waiting for iRacing"), with driver data and with crew data
 (taken from the scripted team-race simulator), the Race review tab, no console errors, keyboard use and no sideways scroll
 at a narrow width. Browser checks use Playwright + Chromium (skipped when missing); the API is mocked.
 Run: python3 tests/ci_run.py tests/test_230_roomui.py"""
@@ -33,26 +33,56 @@ def _browser():
     return b
 
 
-def sim_state(pc_user, at_s):
-    """The Race Room picture at about at_s seconds of the scripted race, read on the PC of driver pc_user."""
-    key = (pc_user, at_s)
+def sim_state(pc_user, at_s, plan=True, practice=False):
+    """2.36: the Race Room board at about at_s seconds, read on the PC of driver pc_user through the window's own live link
+    (roomlive) fed by the scripted team race (or a solo practice from crew_sim)."""
+    key = (pc_user, at_s, plan, practice)
     if key in _STATES:
         return _STATES[key]
-    import endu_sim as ES
-    sim = ES.standard_sim(pc_user=pc_user)
-    box = {}
+    from debrief import roomlive
+    if practice:
+        import crew_sim as CS
+        sim = CS.RaceSim(laps=40, tank=60, burn=2.0, lap_s=60.0, cars=10, session_type="Practice")
+        sections = lambda: (1, sim.sections())          # noqa: E731
+        plan_for, iam = None, (lambda: "")
+    else:
+        import endu_sim as ES
+        sim = ES.standard_sim(pc_user=pc_user)
+        sections = lambda: (sim.info_version, sim.sections())          # noqa: E731
+        saved = {"inputs": ES.plan_inputs(), "title": "Test plan", "saved": "now"}
+        plan_for = (lambda track: saved) if plan else None
+        who = ES.DRIVERS[pc_user]
+        iam = lambda: who          # noqa: E731
 
-    def on_step(room, chief, own, f):
+    class Src:
+        state = "connected"
+
+        def __init__(self):
+            self.it = sim.run(None)
+
+        def read(self):
+            try:
+                own, f = next(self.it)
+            except StopIteration:
+                return None
+            own = dict(own)
+            own["_field"] = f
+            return own
+
+        def info_sections(self):
+            return sections()
+
+        def close(self):
+            pass
+    rl = roomlive.RoomLive(source=Src(), plan_for=plan_for, iam=iam, clock=lambda: sim.t, wall=lambda: 1.8e9 + sim.t)
+    while rl.tick():
         if sim.t >= at_s:
-            box["st"] = json.loads(json.dumps(room.state()))
-            raise StopIteration
-
-    try:
-        ES.run(sim, on_step=on_step)
-    except StopIteration:
-        pass
-    _STATES[key] = box["st"]
-    return box["st"]
+            break
+    rl._state_t = -1e9
+    rl.tick()
+    st = json.loads(json.dumps(rl.state()))
+    _STATES[key] = st
+    return st
 
 
 REVIEW = {"ok": True, "track": "Test Track", "team": "Test Team", "who": "Ben Baker", "used": ["race.jsonl.gz"], "skipped": [],
@@ -67,7 +97,7 @@ REVIEW = {"ok": True, "track": "Test Track", "team": "Test Team", "who": "Ben Ba
                       "avg_lane_s": 40.5, "under_caution": 0, "median_lap": 60.0, "best_lap": 59.0}]}
 
 
-def _window(room, running=True, viewport=(1280, 860), review=REVIEW):
+def _window(board, viewport=(1280, 860), review=REVIEW, peek=None, start=None):
     b = _browser()
     if not b:
         return None
@@ -76,7 +106,8 @@ def _window(room, running=True, viewport=(1280, 860), review=REVIEW):
     errs = []
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.on("console", lambda m: errs.append(m.text) if m.type == "error" and "fonts" not in m.text and "Failed to load resource" not in m.text else None)
-    api = {"raceroom": {"ok": True, "running": running, "iam": "Ben Baker", "room": room},
+    api = {"raceroom": {"ok": True, "running": True, "coach": False, "iam": "Ben Baker", "auto_open": True, "board": board},
+           "raceroom?peek=1": peek or {"ok": True, "connected": False, "session": None, "auto_open": True},
            "endurance-review": {"ok": True, "races": [{"id": "Endurance/2026-11-01_x", "title": "2026-11-01_x", "files": ["race.jsonl.gz"], "mtime": 1}],
                                 "review": review, "id": "Endurance/2026-11-01_x"}}
 
@@ -94,6 +125,8 @@ def _window(room, running=True, viewport=(1280, 860), review=REVIEW):
                                  content_type="text/javascript" if path.endswith(".js") else "text/css")
         if path.startswith("api/"):
             name = path[4:]
+            if name == "raceroom" and qs == "peek=1":
+                return route.fulfill(body=json.dumps(api["raceroom?peek=1"]), content_type="application/json")
             if name == "endurance-review" and "id=" in qs:
                 return route.fulfill(body=json.dumps({"ok": True, "review": review, "id": "x"}), content_type="application/json")
             return route.fulfill(body=json.dumps(api.get(name, {"ok": True})), content_type="application/json")
@@ -102,7 +135,8 @@ def _window(room, running=True, viewport=(1280, 860), review=REVIEW):
     pg.route("**/fonts.g*/**", lambda r: r.abort())
     pg.goto(BASE)
     pg.wait_for_function("() => typeof window.DebriefRoom === 'object'")
-    pg.evaluate("() => document.querySelector('.navbtn[data-nav=room]').click()")
+    if start is None:
+        pg.evaluate("() => document.querySelector('.navbtn[data-nav=room]').click()")
     return ctx, pg, errs
 
 
@@ -110,28 +144,26 @@ def _noscroll(pg):
     return pg.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
 
 
-def test_no_live_data_says_waiting():
-    r = _window({"state": "waiting", "text": "Waiting for iRacing.", "role": {"role": "none"}})
+def _waiting():
+    from debrief import roomboard
+    return json.loads(json.dumps(roomboard.waiting("Waiting for iRacing.", "Open iRacing and join a session: this page fills in by itself.")))
+
+
+def test_no_live_data_shows_the_whole_board_waiting():
+    r = _window(_waiting())
     if not r:
         return
     ctx, pg, errs = r
     try:
         pg.wait_for_function("() => !document.getElementById('vRoom').hidden && document.getElementById('rrText').textContent.includes('Waiting for iRacing')")
-        assert pg.evaluate("() => document.getElementById('rrBoard').hidden && document.getElementById('rrBody').hidden")
+        assert pg.text_content("#rrPill") == "Waiting for iRacing"
+        assert pg.evaluate("() => document.querySelectorAll('#rrTiles .rrtile').length") == 8
+        assert pg.evaluate("() => [...document.querySelectorAll('#rrTiles .rrtile b')].every(b => b.textContent === '--')")
+        assert pg.evaluate("() => document.querySelectorAll('#rrCrew .rrdesk').length") == 0
+        assert pg.is_visible("#rrRivals") and pg.is_visible("#rrStints")
+        assert pg.evaluate("() => document.getElementById('rrBody').hidden")
         assert pg.get_attribute(".navbtn[data-nav=room]", "aria-current") == "page"
-        assert not errs, errs
-    finally:
-        ctx.close()
-
-
-def test_coach_off_offers_start():
-    r = _window({"state": "waiting", "text": "x"}, running=False)
-    if not r:
-        return
-    ctx, pg, errs = r
-    try:
-        pg.wait_for_function("() => !document.getElementById('rrStart').hidden")
-        assert "Start the coach" in pg.text_content("#rrText")
+        assert not pg.query_selector("#rrStart"), "no Start the coach button: the page needs no coach"
         assert not errs, errs
     finally:
         ctx.close()
@@ -140,17 +172,25 @@ def test_coach_off_offers_start():
 def test_driver_data():
     st = sim_state(1, 3200.0)                       # Ben is in the car from lap 29 (about 1740 s)
     assert st["role"]["role"] == "driver", st["role"]
+    assert st["session"]["kind"] == "race" and st["team"]
     r = _window(st)
     if not r:
         return
     ctx, pg, errs = r
     try:
-        pg.wait_for_function("() => !document.getElementById('rrBoard').hidden")
-        assert "Ben" in pg.text_content("#rrStint")
-        assert pg.text_content("#rrFuelLbl") == "Fuel"
-        assert pg.evaluate("() => document.querySelectorAll('#rrRivals tr').length") >= 1
-        assert pg.evaluate("() => !!document.querySelector('#rrChart svg path')")
-        assert "estimated" not in pg.text_content("#rrFuelLbl").lower()
+        pg.wait_for_function("() => document.querySelectorAll('#rrCrew .rrdesk').length === 4")
+        assert pg.text_content("#rrSess") == "Race" and "Live" in pg.text_content("#rrPill")
+        assert pg.evaluate("() => document.querySelectorAll('#rrTiles .rrtile').length") == 8
+        assert pg.text_content("#rrTiles [data-k=pos] b").startswith("P")
+        assert pg.evaluate("() => document.querySelectorAll('#rrRivals tr').length") >= 2
+        assert pg.evaluate("() => !!document.querySelector('#rrRivals tr.us')")
+        assert pg.evaluate("() => document.querySelectorAll('#rrStints tr').length") >= 2          # Alex's stint and Ben's
+        assert pg.evaluate("() => document.querySelectorAll('#rrLapChart rect').length") > 10
+        assert pg.evaluate("() => !!document.querySelector('#rrChart svg path.me')")
+        assert pg.evaluate("() => document.querySelectorAll('#rrFuelBar .seg').length") >= 2
+        assert "Ben" in pg.text_content("#rrStint")                  # the team panels show in a team race
+        assert "estimated" not in pg.text_content("#rrPfNote").lower()
+        assert pg.text_content("#rrCall").strip() not in ("", "--")
         assert _noscroll(pg)
         assert not errs, errs
     finally:
@@ -165,29 +205,37 @@ def test_crew_data_is_estimated_and_narrow_has_no_sideways_scroll():
         return
     ctx, pg, errs = r
     try:
-        pg.wait_for_function("() => !document.getElementById('rrBoard').hidden")
-        assert "estimated" in pg.text_content("#rrFuelLbl").lower()
-        assert "text only" in pg.text_content("#rrCallSub").lower()
+        pg.wait_for_function("() => document.querySelectorAll('#rrTiles .rrtile').length === 8 && document.getElementById('rrPill').textContent.includes('crew')")
+        assert "estimated" in (pg.text_content("#rrPfNote") + pg.text_content("#rrTiles [data-k=box]")).lower()
         assert _noscroll(pg)
         assert not errs, errs
     finally:
         ctx.close()
 
 
-def test_no_plan_offers_make_a_plan():
-    import endu_sim as ES
-    sim = ES.standard_sim(pc_user=1)
-    box = {}
-
-    def on_step(room, chief, own, f):
-        if sim.t >= 600:
-            box["st"] = json.loads(json.dumps(room.state()))
-            raise StopIteration
+def test_practice_shows_the_timesheet():
+    st = sim_state(None, 900.0, practice=True)
+    assert st["session"]["kind"] == "practice" and not st["team"]
+    r = _window(st)
+    if not r:
+        return
+    ctx, pg, errs = r
     try:
-        ES.run(sim, plan=False, on_step=on_step)
-    except StopIteration:
-        pass
-    r = _window(box["st"])
+        pg.wait_for_function("() => document.getElementById('rrSess').textContent === 'Practice'")
+        assert pg.text_content("#rrRvTitle") == "Timesheet"
+        assert "Best" in pg.text_content("#rrRvHead")
+        assert pg.text_content("#rrTiles [data-k=session] b") == "Practice"
+        assert pg.text_content("#rrTiles [data-k=best] b") not in ("", "--")
+        assert pg.evaluate("() => document.getElementById('rrBody').hidden")          # no team panels in practice
+        assert pg.evaluate("() => document.querySelectorAll('#rrCrew .rrdesk').length") == 4
+        assert not errs, errs
+    finally:
+        ctx.close()
+
+
+def test_no_plan_offers_make_a_plan():
+    st = sim_state(1, 600.0, plan=False)
+    r = _window(st)
     if not r:
         return
     ctx, pg, errs = r
@@ -200,8 +248,39 @@ def test_no_plan_offers_make_a_plan():
         ctx.close()
 
 
+def test_opens_by_itself_once_per_session():
+    peek = {"ok": True, "connected": True, "auto_open": True, "session": {"key": "4242:1", "kind": "practice", "label": "Practice"}}
+    r = _window(_waiting(), peek=peek, start="today")
+    if not r:
+        return
+    ctx, pg, errs = r
+    try:
+        pg.wait_for_function("() => !document.getElementById('vRoom').hidden", timeout=10000)
+        pg.evaluate("() => document.querySelector('.navbtn[data-nav=coach]').click()")
+        pg.wait_for_function("() => !document.getElementById('vCoach').hidden")
+        pg.wait_for_timeout(4000)                     # the next peeks: the same session does not pull him back
+        assert pg.evaluate("() => document.getElementById('vRoom').hidden")
+        assert not errs, errs
+    finally:
+        ctx.close()
+
+
+def test_switched_off_stays_put():
+    peek = {"ok": True, "connected": True, "auto_open": False, "session": {"key": "4242:2", "kind": "race", "label": "Race"}}
+    r = _window(_waiting(), peek=peek, start="today")
+    if not r:
+        return
+    ctx, pg, errs = r
+    try:
+        pg.wait_for_timeout(4500)
+        assert pg.evaluate("() => document.getElementById('vRoom').hidden")
+        assert not errs, errs
+    finally:
+        ctx.close()
+
+
 def test_keyboard_tabs_and_review():
-    r = _window({"state": "waiting", "text": "Waiting for iRacing.", "role": {"role": "none"}})
+    r = _window(_waiting())
     if not r:
         return
     ctx, pg, errs = r

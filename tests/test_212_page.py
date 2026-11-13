@@ -727,7 +727,7 @@ def test_pages_in_the_window():
                 pg.wait_for_function("() => document.querySelector('.navbtn[data-nav=setuplab]')")
                 names = pg.evaluate("() => [...document.querySelectorAll('.nav .navbtn')].map(b => b.textContent.trim())")
                 # 2.18: grouped (Before you drive: Prepare, Coach; Car: Setup Lab, Car vs car); Settings sits at the foot
-                assert names[names.index("Prepare"):][:2] == ["Prepare", "Coach"] and names[names.index("Setup Lab") + 1] == "Car vs car", names
+                assert names[names.index("Prepare"):][:3] == ["Prepare", "Race Room", "Coach"] and names[names.index("Setup Lab") + 1] == "Car vs car", names
                 # Setup Lab by key (Ctrl+8), newest car and track picked, the report drawn
                 pg.keyboard.press("Control+7")
                 pg.wait_for_selector("#vSetupLab", state="visible")

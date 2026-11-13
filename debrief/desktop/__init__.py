@@ -51,7 +51,9 @@ FEATURE_MODULES = ("race_analysis", "racecap_link", "replay_scan", "results_csv"
                    # 2.29 Crew chief: fuel, pit window, rivals, calls
                    "crewchief",
                    # 2.30 Endurance Race Room: pit board for the team, live re-plan, team-race log and review
-                   "raceroom", "replan", "endurancelog", "endureview")
+                   "raceroom", "replan", "endurancelog", "endureview",
+                   # 2.36 Race Room: the live pit board with its own link to iRacing
+                   "roomboard", "roomlive")
 
 
 _REFRESH_DONE: set = set()

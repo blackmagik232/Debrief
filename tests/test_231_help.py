@@ -74,7 +74,7 @@ def test_guide_is_complete_and_plain():
     if g is None:
         return
     ids = [s["id"] for s in g["sections"]]
-    assert ids == ["start", "data", "improve", "car", "race", "numbers"], ids   # 2.35: Where your data comes from
+    assert ids == ["start", "data", "improve", "car", "race", "room", "numbers"], ids   # 2.35: Where your data comes from; 2.36: Using the Race Room
     for s in g["sections"]:
         assert s["title"] and s["group"] and len(s["blocks"]) >= 5, s["id"]
         assert "lede" in s["blocks"][0], s["id"] + " starts with a lede"

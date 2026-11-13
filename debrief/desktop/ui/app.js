@@ -124,7 +124,7 @@ new MutationObserver(()=>$('btnMenu').setAttribute('aria-expanded',String(docume
    Progress have no key), Ctrl+Enter = Review a session, Ctrl+, = Settings, F1 or ? = the key list, J and K step through
    your reviews. Ctrl+R no longer starts a review (a slow job on a key you might press to reload); it doesn't reload
    either, since a reload drops the window's place and can close Debrief, so it says where Review a session went. */
-const PAGE_KEYS=[...document.querySelectorAll('.nav .navbtn[data-nav]:not(.sub)')].map(b=>b.dataset.nav).slice(0,10);
+const PAGE_KEYS=[...document.querySelectorAll('.nav .navbtn[data-nav]:not(.sub):not(.nokey)')].map(b=>b.dataset.nav).slice(0,10);
 const keyOfPage=n=>{const i=PAGE_KEYS.indexOf(n);return i<0?null:'Ctrl+'+(i===9?0:i+1)};
 const KEY_MSG=/^(review|reviewgo|settings|help|prev|next|rebuild|rebuildall|page[0-9])$/;
 let oldKeyShown=false;

@@ -586,7 +586,7 @@ def test_server_pages():
     try:
         code, body = call("api/raceroom")
         j = json.loads(body)
-        check(code == 200 and j["ok"] and j["running"] is False and j["room"]["state"] == "waiting", "server: Race Room before the coach runs says to start it")
+        check(code == 200 and j["ok"] and j["coach"] is False and j["board"]["state"] == "waiting", "server: Race Room with no iRacing (and no coach) shows the waiting board (2.36)")
         code, body = call("api/raceroom", headers=False)
         check(code in (400, 401, 403, 404), f"server: the page API needs the Debrief header ({code})")
         code, body = call("api/raceroom", {"action": "iam", "name": "Ben Baker"})
@@ -595,6 +595,7 @@ def test_server_pages():
         check(json.loads(body)["iam"] == "Ben Baker", "server: 'I am' comes back")
         code, body = call("api/raceroom", {"action": "delay", "driver": "Ben Baker", "minutes": 5})
         check(code != 200 or not json.loads(body).get("ok"), "server: a delay with no race running is refused in words")
+        check("race is running" in json.loads(body).get("error", ""), "server: ... and says a race must be running")
         code, body = call("static/raceroom.js")
         check(code == 200 and b"DebriefHost" in body, "server: raceroom.js is served")
         code, body = call("api/endurance-review")

@@ -10,7 +10,8 @@ need Garage 61, and those are added later with "Add comparison laps".
     build(cfg, session, progress=None, info=None) -> (review dict, out dir) ready for report.write
     event_id(session)                            -> "ir<subsession>" (meta.event_id of a review made here)
 
-Read only: never writes, moves or copies a telemetry file. Makes no network requests.
+Read only: never writes, moves or copies a telemetry file. Makes no network requests itself (the comparison laps
+2.36 adds are fetched by app.cmd_review_upgrade and handed to build).
 """
 from __future__ import annotations
 
@@ -20,10 +21,13 @@ import statistics as st
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
+
 from . import engine, ibt, vsai
 
 SOURCE = "pc"                       # meta.source of a review built here ("garage61" is implied when absent)
 SOURCE_LABEL = "From your PC"
+REFS_FROM = "garage61"              # meta.refs_from of a PC review that has comparison laps from Garage 61 (2.36)
 MIN_LAPS = 2                        # laps with telemetry a race needs to be reviewed (the Garage 61 rule)
 COLUMNS = {"Speed": "Speed", "LapDistPct": "LapDistPct", "Lat": "Lat", "Lon": "Lon", "Brake": "Brake",
            "Throttle": "Throttle", "Gear": "Gear", "ABSActive": "BrakeABSactive", "LatAccel": "LatAccel",
@@ -100,6 +104,49 @@ def _raw(ib, lap: dict) -> dict:
     return engine.raw_from_columns(cols, b - a)
 
 
+def _wet_percent(v) -> float | None:
+    """iRacing's TrackWetness channel (1 dry ... 7 extremely wet; 0 unknown) as a 0-100 figure, the scale Garage 61's
+    trackWetness is compared on (depth.SIMILAR_WETNESS). 1 (dry) and 2 (mostly dry) are both 0: iRacing's "mostly dry" is
+    not a wet track, and 16.7 % would read as different from dry."""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return None
+    if v < 1:
+        return None
+    return 0.0 if v < 3 else round((min(7.0, v) - 1.0) / 6.0 * 100.0, 1)
+
+
+def _lap_conditions(ib, a: int, b: int, track: dict) -> dict:
+    """2.36: the track and air temperature (deg C) and wetness (0-100) of one lap, in the keys Garage 61's laps carry
+    (trackTemp, airTemp, trackWetness) so one set of rules reads both. Live channels (the median over the lap) when the
+    file has them; otherwise the session text's temperatures (a forecast at the start, the same for every lap). A figure
+    the file doesn't have is left out, never guessed."""
+    out = {}
+
+    def med(name):
+        if not ib.has(name):
+            return None
+        col = np.asarray(ib.col(name)[a:b], float)
+        col = col[np.isfinite(col)]
+        return float(np.median(col)) if len(col) else None
+    tt = med("TrackTempCrew") if ib.has("TrackTempCrew") else med("TrackTemp")
+    at = med("AirTemp")
+    forecast = tt is None and track.get("surface_temp") is not None
+    tt = tt if tt is not None else track.get("surface_temp")
+    at = at if at is not None else track.get("air_temp")
+    wet = _wet_percent(med("TrackWetness"))
+    if isinstance(tt, (int, float)) and math.isfinite(tt):
+        out["trackTemp"] = round(float(tt), 1)
+        if forecast:
+            out["trackTempForecast"] = True     # only the session text's forecast was known: never shown as measured
+    if isinstance(at, (int, float)) and math.isfinite(at):
+        out["airTemp"] = round(float(at), 1)
+    if wet is not None:
+        out["trackWetness"] = wet
+    return out
+
+
 def read_laps(session: dict, eid: str) -> tuple:
     """(laps in the Garage 61 shape the engine reads, {lap id: parsed telemetry}, facts) for the race of this session.
     facts: {"session_info", "player", "car", "track", "rate", "files"} from the file with the most race laps."""
@@ -130,7 +177,8 @@ def read_laps(session: dict, eid: str) -> tuple:
                     tel[lid] = _raw(ib, x)
                 except (ValueError, IndexError):
                     continue
-                laps.append({"id": lid, "lap_number": x["lap"], "lap_time": float(x["time"]), "clean": bool(x["clean"]),
+                laps.append({**_lap_conditions(ib, x["start"], x["end"], ib.track()),
+                             "id": lid, "lap_number": x["lap"], "lap_time": float(x["time"]), "clean": bool(x["clean"]),
                              "start_time": _iso(t0 + x["start"] / rate), "event": eid, "session_type": 3,
                              "incidents": x.get("incidents", 0), "pit": bool(x.get("pit")), "off": bool(x.get("off")),
                              "start_lap": bool(x.get("start_lap")), "timed_by": x.get("timed_by")})
@@ -250,9 +298,14 @@ def track_name(track: dict) -> str:
     return f"{nm} ({cfg})" if cfg and cfg.lower() not in nm.lower() else nm
 
 
-def build(cfg: dict, session: dict, progress=None, info=None) -> tuple:
+def build(cfg: dict, session: dict, progress=None, info=None, refs_for=None) -> tuple:
     """(review data, review folder) for a race session from races(). Raises SystemExit with a plain sentence when the
-    race can't be reviewed."""
+    race can't be reviewed.
+
+    2.36 "Both sources": refs_for(laps, tel, meta) -> {"refs", "ref_tel", "on_track", "requests"} fetches comparison
+    laps from Garage 61 once your own laps are read (app.cmd_review_upgrade). They go through the engine beside your
+    own laps from this PC, which stay the review's laps, telemetry, result, From iRacing and Setup. meta.source stays
+    "pc" (where your laps are from); meta.refs_from says "garage61" (where the comparison laps are from)."""
     from . import app, library, results
     step = app._stepper(progress)
     eid = event_id(session)
@@ -276,19 +329,38 @@ def build(cfg: dict, session: dict, progress=None, info=None) -> tuple:
             "ai_cars": vsai.ai_count(facts.get("session_info")),
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     meta["vs_ai"] = meta["ai_cars"] > 0
+    got = {}
+    if refs_for is not None:
+        step("Looking for comparison laps on Garage 61...", 0.4)
+        got = refs_for(laps, tel, meta) or {}
+        if got.get("failed"):
+            meta["refs_failed"] = REFS_FROM                   # Garage 61 couldn't be reached: not the same as "it had none"
+        elif not got.get("unmatched"):
+            meta["refs_checked"] = REFS_FROM                  # Garage 61 was asked (the page says so when it had none)
+        if got.get("own_list"):
+            meta["own_list"] = True                           # the track was matched by your recent lap list (no telemetry)
+    refs = [r for r in got.get("refs") or [] if isinstance(r, dict)]
+    ref_tel, on_track = got.get("ref_tel") or {}, got.get("on_track")
+    if refs:
+        meta["refs_from"] = REFS_FROM
     for l in laps:
         if app.lap_start_dt(l):
             l["_start"] = app.lap_start_dt(l).timestamp()
     step(f"{len(laps)} race laps read. Analysing...", 0.5)
     length_m = (track.get("length_km") or 0) * 1000 or None
     try:
-        data = engine.analyze(meta, laps, tel, [], {}, track_length=length_m, log=app.say)
+        data = engine.analyze(meta, laps, tel, refs, ref_tel, track_length=length_m, log=app.say)
     except ValueError as e:
         raise SystemExit(f"Couldn't build the review: {e}")
     except IndexError:
         raise SystemExit(app.BROKEN_SPEED_MSG)
-    data["on_track"] = {"drivers": [], "multiclass": multiclass, "local": True}
-    data["meta"]["requests"] = 0
+    if refs and not data.get("refs"):
+        data["meta"].pop("refs_from", None)               # every comparison lap was left out: nothing came from Garage 61
+    if isinstance(on_track, dict):
+        data["on_track"] = dict(on_track, multiclass=bool(on_track.get("multiclass")) or multiclass)
+    else:
+        data["on_track"] = {"drivers": [], "multiclass": multiclass, "local": True}
+    data["meta"]["requests"] = int(got.get("requests") or 0)
     out_dir = library.review_dir(cfg["library_folder"], laps, tname, cname)
     try:
         data["pb"] = library.pb_for(cfg["library_folder"], data, exclude_dir=out_dir.name)

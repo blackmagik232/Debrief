@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 import time
 from pathlib import Path
 
@@ -290,17 +291,40 @@ def _ids(recs: list, folder: Path | None, before: float) -> dict:
 
 
 # ---------------------------------------------------------------- the parts of the section
-def _series(race_recs: list, history: list, car_path: str, car_name: str) -> tuple:
-    """('open' | 'fixed' | 'unknown', where that came from)."""
-    for r in sorted(race_recs, key=_start, reverse=True):
-        det = r.get("detail") or {}
-        if det.get("fixed_setup") is not None and det.get("official"):
-            kind = "fixed" if det["fixed_setup"] else "open"
-            return kind, f"this race's telemetry says it was {kind} setup"
+def _saved_answers() -> dict:
+    """His open / fixed answers saved by Setup Lab (settings_io extra "setuplab", "series"). Never raises."""
     try:
-        return sl.series_setup_guess(history, car_path, car_name)
+        from .desktop import settings_io
+        v = settings_io.load_extra("setuplab").get("series")
+        return v if isinstance(v, dict) else {}
     except Exception:  # noqa: BLE001
-        return "unknown", ""
+        return {}
+
+
+def _scheduled(car_path: str, car_name: str, track_name: str):
+    """(kind, source) from the season schedule, or None. Never raises."""
+    try:
+        from .desktop import server
+        return server.schedule_series_setup({"car": car_name, "car_path": car_path, "track": track_name}, None)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _series(race_recs: list, history: list, car_path: str, car_name: str, track_code: str = "",
+            track_name: str = "") -> dict:
+    """setuplab.series_truth for this race: the SAME decision Setup Lab's page and Car balance make (this race's own
+    telemetry first, then his answer, the schedule, the lists). A pure guess from the car's name is not acted on here:
+    the series stays "unknown" (and the suggestion held) until he answers, as Car balance does."""
+    t = sl.series_truth(history, car_path, car_name, _saved_answers(), track_code, None,
+                        scheduled=_scheduled(car_path, car_name, track_name), prefer=race_recs)
+    if not t["confirmed"] and t["kind"] != "unknown":
+        t = dict(t, kind="unknown")
+    return t
+
+
+FIXED_TRY_TEXT = ("Fixed setup series: the garage is locked, so there is no setup change to try. The in-car dials "
+                 "and the driving are what is yours.")
+FIXED_RACE_TEXT = "Fixed setup series: everyone runs the same locked setup, so only the in-car dials and fuel were yours."
 
 
 def _setup_part(g: dict, race_id: str, race_rec: dict, fixed: bool) -> dict:
@@ -308,7 +332,7 @@ def _setup_part(g: dict, race_id: str, race_rec: dict, fixed: bool) -> dict:
     det = race_rec.get("detail") or {}
     name = (det.get("setup_name") or race_rec.get("setup_name") or "").strip()
     if fixed:
-        text = "Fixed setup series: everyone runs the same locked setup, so only the in-car dials and fuel were yours."
+        text = FIXED_RACE_TEXT
         return {"id": race_id, "label": "Fixed setup", "name": name, "text": text}
     if not s or not s.get("fingerprint"):
         return {"id": None, "label": "No setup recorded", "name": name,
@@ -529,7 +553,14 @@ def _fuel_part(race_recs: list, setup: dict) -> dict | None:
     return out
 
 
-def _try_part(rep: dict, info: dict, setup: dict, kind: str, last_change, car_path, track_code) -> dict:
+def _suggest_text(what: str, title: str, sure_words, then) -> str:
+    return (f"One change to try ({SUGGESTION.lower()}): {what[:1].lower() + what[1:]}"
+            + (f", for {title[:1].lower() + title[1:]} ({sure_words})" if title else "")
+            + f". {then or ''}").strip()
+
+
+def _try_part(rep: dict, info: dict, setup: dict, kind: str, last_change, car_path, track_code,
+              confirmed: bool = True) -> dict:
     from . import setupadvice as sa
     advice = sa.advise(rep, setup, series_setup=kind if kind in ("open", "fixed") else None, last_change=last_change,
                        dials=(info or {}).get("dials"))
@@ -539,18 +570,19 @@ def _try_part(rep: dict, info: dict, setup: dict, kind: str, last_change, car_pa
            "open_setup_lab": {"car_path": car_path, "track_code": track_code, "route": "api/setuplab/report",
                               "query": {"car": car_path, "track": track_code}}}
     if top and (top.get("change") or top.get("dial")) and top.get("verdict") == "setup":
-        if kind not in ("open", "fixed"):
+        what = top["change"]["text"] if top.get("change") else top["dial"]["text"]
+        # kept so a re-render can show it, without reading the telemetry again, once he has said open or fixed
+        pending = {"what": what, "garage": bool(top.get("change")), "title": top.get("title") or "",
+                   "sure_words": top.get("sure_words"), "then": top.get("then") or "", "detail": top.get("text"),
+                   "setting": (top.get("change") or top.get("dial") or {}).get("label")}
+        if kind not in ("open", "fixed") or not confirmed:
             out["held"] = True
             out["text"] = HELD
+            out["pending"] = pending
             return out
-        what = top["change"]["text"] if top.get("change") else top["dial"]["text"]
-        out["setting"] = (top.get("change") or top.get("dial") or {}).get("label")
-        out["sure_words"] = top.get("sure_words")
-        title = top.get("title") or ""
-        out["text"] = (f"One change to try ({SUGGESTION.lower()}): {what[:1].lower() + what[1:]}"
-                       + (f", for {title[:1].lower() + title[1:]} ({top['sure_words']})" if title else "")
-                       + f". {top.get('then') or ''}").strip()
-        out["detail"] = top.get("text")
+        out["setting"], out["sure_words"] = pending["setting"], pending["sure_words"]
+        out["text"] = _suggest_text(what, pending["title"], pending["sure_words"], pending["then"])
+        out["detail"] = pending["detail"]
         return out
     if top and top.get("verdict") == "driving":
         out["text"] = ("Nothing here points at the setup: what the car did looks like driving. "
@@ -562,6 +594,158 @@ def _try_part(rep: dict, info: dict, setup: dict, kind: str, last_change, car_pa
     why = advice.get("empty") or "nothing clear enough to change."
     out["text"] = "No setup change to suggest. " + why
     return out
+
+
+def _early_line(out: dict):
+    """The 'Early advice: not yet checked on real cars.' line, when this section shows handling items or a change to try."""
+    from . import handling
+    line = handling.early_advice_line()
+    if not line:
+        return None
+    issues = ((out.get("handling") or {}).get("issues")) or []
+    t = out.get("try") or {}
+    return line if (issues or t.get("setting") or t.get("pending")) else None
+
+
+def _assemble_lines(out: dict) -> list:
+    """Every sentence of the section in order (one place, so a re-render that changes the series rebuilds it the same)."""
+    fixed = bool(out.get("fixed"))
+    su = out.get("setup") or {}
+    lines = [su.get("text")]
+    if not fixed and su.get("id"):
+        ch, fa = out.get("changes") or {}, out.get("faster") or {}
+        lines += [ch.get("text")] + list(ch.get("lines") or []) + [fa.get("text")]
+    lines.append((out.get("handling") or {}).get("text"))
+    if out.get("early_advice"):
+        lines.append(out["early_advice"])
+    if not fixed:
+        lines += list((out.get("tyres") or {}).get("lines") or [])
+    if fixed:
+        lines += [d["text"] for d in out.get("dials") or []] or ["No brake bias, traction control or ABS setting in this "
+                                                                 "car's telemetry."]
+        if out.get("fuel"):
+            lines.append(out["fuel"]["text"])
+    lines.append((out.get("try") or {}).get("text"))
+    return [x for x in lines if x]
+
+
+_SURE_PAREN = re.compile(r"(\(|; )(Sure|Likely)(\))")
+_RECHECK = ("answer", "schedule", "car_answer", "list")   # origins that a later answer or schedule can change
+REBUILD_FOR_OPEN = "Rebuild to see the full setup comparison."
+
+
+def _cap_text(v):
+    return _SURE_PAREN.sub(lambda m: m.group(1) + "A hint" + m.group(3), v)
+
+
+def _cap_walk(v):
+    """(copy of v with "Sure" / "Likely" in a sureness place capped to "A hint", changed?)."""
+    if isinstance(v, str):
+        n = _cap_text(v)
+        return n, n != v
+    if isinstance(v, list):
+        out = [_cap_walk(x) for x in v]
+        return [x for x, _c in out], any(c for _x, c in out)
+    if isinstance(v, dict):
+        res, ch = {}, False
+        for k, x in v.items():
+            if k == "sure_words" and x in ("Sure", "Likely"):
+                res[k], ch = "A hint", True
+            elif k == "sureness" and x in ("sure", "likely"):
+                res[k], ch = "hint", True
+                if "sureness_raw" not in v:
+                    res["sureness_raw"] = x
+            else:
+                res[k], c = _cap_walk(x)
+                ch = ch or c
+        return res, ch
+    return v, False
+
+
+def cap_early(sec):
+    """2.36: a Setup section saved by 2.35 carries "Sure" / "Likely" in its handling items and its change to try, and no
+    early-advice line. While handling.TUNED_ON_REAL_LAPS is False this caps those words to "A hint" and adds the line,
+    from the saved text alone (no telemetry read). Returns the same object when nothing changes. Never raises."""
+    try:
+        from . import handling
+        if handling.TUNED_ON_REAL_LAPS or not isinstance(sec, dict) or sec.get("ok") is not True:
+            return sec
+        out, changed = _cap_walk(sec)
+        if not out.get("early_advice"):
+            line = _early_line(out)
+            if line:
+                out["early_advice"] = line
+                lines = list(out.get("lines") or [])
+                htxt = (out.get("handling") or {}).get("text")
+                at = lines.index(htxt) + 1 if htxt in lines else max(0, len(lines) - 1)
+                lines.insert(at, line)
+                out["lines"] = lines
+                changed = True
+        return out if changed else sec
+    except Exception:  # noqa: BLE001
+        return sec
+
+
+def refresh_series(sec):
+    """A saved Setup section brought up to date from saved data alone, WITHOUT reading any telemetry: (1) 2.35's "Sure" /
+    "Likely" are capped and the early-advice line added (cap_early); (2) the series part is worked out again from his saved
+    answer (and the schedule): a section that was held, whose series was unknown / a guess, or that was built from his answer,
+    the schedule or the list follows a later answer. Returns the same object when nothing changes; never raises."""
+    sec = cap_early(sec)
+    try:
+        if not isinstance(sec, dict) or sec.get("ok") is not True or sec.get("series_origin") == "telemetry":
+            return sec
+        t0 = sec.get("try") if isinstance(sec.get("try"), dict) else {}
+        if t0.get("held") and not isinstance(t0.get("pending"), dict):
+            return sec                                   # saved before 2.36: nothing to show instead, so it stays held
+        if not (t0.get("held") or sec.get("series_setup") not in ("open", "fixed") or sec.get("series_confirmed") is False
+                or sec.get("series_origin") in _RECHECK):
+            return sec
+        car_path, track_code = sec.get("car_path") or "", sec.get("track_code") or ""
+        t = sl.series_truth([], car_path, sec.get("car"), _saved_answers(), track_code, None,
+                            scheduled=_scheduled(car_path, sec.get("car") or "", sec.get("track") or ""))
+        if t["kind"] not in ("open", "fixed") or not t["confirmed"]:
+            return sec
+        same = t["kind"] == sec.get("series_setup") and bool(sec.get("fixed")) == (t["kind"] == "fixed")
+        if same and not t0.get("held") and sec.get("series_confirmed") is not False:
+            if t["origin"] == sec.get("series_origin") and t["source"] == sec.get("series_setup_source"):
+                return sec
+            out = json.loads(json.dumps(sec))
+            out.update(series_setup_source=t["source"], series_origin=t["origin"])
+            return out
+        out = json.loads(json.dumps(sec))
+        out.update(series_setup=t["kind"], series_setup_source=t["source"], series_origin=t["origin"],
+                   series_confirmed=True, fixed=t["kind"] == "fixed")
+        if out["fixed"] and not sec.get("fixed"):
+            su = dict(out.get("setup") or {})
+            su.update(label="Fixed setup", text=FIXED_RACE_TEXT)
+            out["setup"] = su
+            out["changes"] = out["faster"] = out["tyres"] = None
+        elif sec.get("fixed") and not out["fixed"]:
+            su = dict(out.get("setup") or {})            # the open parts (changes, tyres) were never worked out
+            su.update(id=None, label="Open setup", text=REBUILD_FOR_OPEN)
+            out["setup"] = su
+            out["changes"] = out["faster"] = out["tyres"] = None
+        tr = out.get("try") if isinstance(out.get("try"), dict) else {}
+        pend = tr.pop("pending", None) if tr.get("held") else None
+        if pend:
+            if out["fixed"] and pend.get("garage"):
+                tr.update(held=False, text=FIXED_TRY_TEXT, detail=None, setting=None, sure_words=None)
+            else:
+                tr.update(held=False, setting=pend.get("setting"), sure_words=pend.get("sure_words"),
+                          text=_suggest_text(pend["what"], pend.get("title") or "", pend.get("sure_words"),
+                                             pend.get("then")), detail=pend.get("detail"))
+        elif out["fixed"] and not sec.get("fixed") and tr.get("setting"):
+            dial_labels = {d.get("label") for d in out.get("dials") or []}
+            if tr.get("setting") not in dial_labels:    # a garage change to try has no place in a fixed setup series
+                tr.update(text=FIXED_TRY_TEXT, detail=None, setting=None, sure_words=None)
+        out["try"] = tr
+        out["early_advice"] = _early_line(out)
+        out["lines"] = _assemble_lines(out)
+        return cap_early(out)
+    except Exception:  # noqa: BLE001
+        _LOG.exception("racesetup: the saved Setup section could not be refreshed")
+        return sec
 
 
 # ---------------------------------------------------------------- the section
@@ -631,9 +815,11 @@ def _for_review(data, telemetry_folder, setuplab_index):
     if len(race_recs) < len(names):
         out["notes"].append("Part of this race's telemetry couldn't be read, so this uses the rest.")
 
-    kind, source = _series(race_h, history, car_path, car_name)
+    truth = _series(race_h, history, car_path, car_name, track_code, out["track"])
+    kind, source = truth["kind"], truth["source"]
     fixed = kind == "fixed"
-    out.update(series_setup=kind, series_setup_source=source, fixed=fixed)
+    out.update(series_setup=kind, series_setup_source=source, fixed=fixed, series_origin=truth["origin"],
+               series_confirmed=bool(truth["confirmed"]))
     g = sl.group(history)
     newest_h = max(race_h, key=_start)
     race_id = newest_h.get("setup_id")
@@ -668,8 +854,9 @@ def _for_review(data, telemetry_folder, setuplab_index):
             last = sl.change_into(history, race_id)
         except Exception:  # noqa: BLE001
             last = None
-    out["try"] = _try_part(rep, info, setup, kind, last, car_path, track_code)
+    out["try"] = _try_part(rep, info, setup, kind, last, car_path, track_code, bool(truth["confirmed"]))
     lines.append(out["try"]["text"])
-    out["lines"] = [x for x in lines if x]
+    out["early_advice"] = _early_line(out)
+    out["lines"] = _assemble_lines(out)
     out["ok"] = True
     return _clean(out)

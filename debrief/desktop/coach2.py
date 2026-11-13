@@ -824,7 +824,8 @@ def get_result(h, q):
         raise ValueError("Bad request.")
     ref = None
     try:
-        idx, _k = h.server.setuplab.load(setuplab_cache_path(h._cfg()))
+        cfg = h._cfg()
+        idx, _k = h.server.setuplab.load(setuplab_cache_path(cfg), settings_io.telemetry_folder(cfg))
         ref = livecoach.reference_choice(idx, car, track) if idx else None
     except (OSError, SystemExit, KeyError, ValueError):
         ref = None

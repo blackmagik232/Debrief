@@ -1,5 +1,40 @@
 # Changelog
 
+## 2.37.0 "Both sources"
+
+Debrief now uses your PC and Garage 61 each for what they're best at, and Setup Lab is fixed up and more honest.
+
+### Both sources
+
+**Add comparison laps now keeps your own laps from your PC.** Before, pressing it threw away the review built from your telemetry files and downloaded your whole race again from Garage 61. Now your laps, result, From iRacing and Setup sections stay exactly as they were. Debrief asks Garage 61 only for the other drivers' laps (your teammates and the drivers you follow) and adds them. None of your own laps' telemetry is downloaded, so it is much quicker and uses far fewer Garage 61 requests. If Debrief can't match the track and car by name, it looks up your recent lap list on Garage 61 (a few requests, lap times only) to find them, and the window and the review say so. When it is done the window says how many comparison laps were added, or plainly that Garage 61 couldn't be reached or its laps couldn't be downloaded (try again later); that is never worded as "Garage 61 had none".
+
+**Rebuild keeps the comparison laps.** Rebuild and Rebuild all of a review that has comparison laps ask Garage 61 for them again (you pressed it, so that is allowed). If Garage 61 can't be reached, or there is no token saved, the review is left exactly as it is, with its comparison laps, and the window says so.
+
+**The comparison lap now matches your conditions.** The main comparison lap is the one set in conditions like your race (track temperature within 8 C and about the same wetness), then the quickest. The Your comparison lap panel says why, for example "Similar conditions to your race: track 31 C vs your 33 C, both dry". If Debrief can't tell the conditions, it picks as before and says nothing new. Reviews made from your PC now know their own track and air temperature and wetness, read from the telemetry file. iRacing's "mostly dry" counts as dry. When the file has no track temperature and only the session text's forecast is known, the review says "forecast track temperature", and no gap line is shown on it.
+
+**A line on the gap, only when Debrief can back it up.** When your own earlier dry races at the same track and car (eight or more, or six with a very strong link) show a clear link between track temperature and your lap times, and the comparison lap was set at a different temperature, Debrief says roughly how much of the gap the conditions may explain and how much is left. It is a hint, never a cause. Garage 61 does not know the other driver's fuel load, so the line says fuel can't be split out. With no solid basis, no line is shown.
+
+If your telemetry file is no longer on this PC, Add comparison laps works as it did before and the review comes from Garage 61.
+
+### Setup Lab
+
+Setup Lab is more honest and a little faster.
+
+- **Deleted telemetry files disappear.** If you delete an .ibt file, Debrief stops counting it straight away. Car balance no longer says "Some telemetry files have gone"; it just works with the files you still have.
+- **If no file can be read, it says so.** Instead of "No telemetry files yet", Setup Lab and Practice now tell you how many files were found but could not be read, and what to try (close iRacing, press Read my telemetry).
+- **One answer to "open or fixed setup?".** The telemetry's own flag comes first, then your answer, then the season schedule, then Debrief's list of fixed-setup cars. Setup Lab's header, Car balance and the race review's Setup section now all use the same answer. If you answer for a car at one track, Debrief does not ask again at another track. Another session's flag at that track does not overrule your own answer (one car can run a fixed and an open series there); only this race's own telemetry does. A saved review follows a changed answer too, without reading your telemetry (a fixed answer hides the open parts; going back to open says "Rebuild to see the full setup comparison."). If a race review was holding back its "One change to try", it shows it after you answer in Setup Lab, without reading your telemetry again.
+- **Setup advice never claims more than "A hint".** The handling and setup advice were tuned on practice (made-up) laps, not real cars yet, so nothing says "Sure" or "Likely" for now. A line "Early advice: not yet checked on real cars." sits beside the advice in Setup Lab, on the Practice card and in the race review. Reviews saved by 2.35 lose their "Sure" and "Likely" the same way when they are opened.
+- **Faster Car balance.** "How the car handles" and "Car balance: what to try next" now share one read of your laps, and the page says "Working: reading the laps in N telemetry files" while it runs.
+- **Share what changed** lets you pick which two setups to describe (From and To), or leave both on Latest change; picking only one asks you to pick both.
+
+### For the record
+
+- Both sources: Files: debrief/localrace.py (per-lap conditions from the .ibt; build() takes refs_for; meta.refs_from, meta.refs_checked), debrief/app.py (cmd_review_upgrade, pc_refs_provider, _g61_combo, pick_refs uses depth.pick_quickest), debrief/depth.py (match_refs adds why/mine/theirs/ref_t, why_similar, pick_quickest, temp_sensitivity, gap_note, depth.gap), debrief/templates/review.html (reason and gap lines, source notes, no-comparison-laps message), debrief/library.py (row refs_from), debrief/desktop/server.py (upgrade result fields), debrief/desktop/ui/app.js (no re-offer, new banners), debrief/desktop/ui/help.js (Where your data comes from), tests/fake_ibt.py (wetness channel), tests/test_236_both.py.
+  - Tests: tests/test_236_both.py, plus test_234_notoken, test_235_consistency, test_235_seeit, test_235_fixes, test_235_setup_page, test_28_depth, test_analysis, test_218_onetruth.
+  - 
+  - Not proven yet: Garage 61's real track and car names matching the PC's names (the fallback looks at up to 3 recent track and car pairs by the race's own lap list); the real trackWetness scale (assumed 0-100; the PC's 1-7 wetness channel is mapped onto it); real TrackWetness/TrackTempCrew channels in a real .ibt; that real teammates' laps carry trackTemp/airTemp/trackWetness; the gap line on real history (needs 8 dry races here spread over 8 C, or 6 with a very strong link); fuel is never split because Garage 61 has no fuel. The new banner wording and the window flow on Windows.
+- Setup Lab: Files: debrief/setuplab.py (index saves when files vanished, keeps only existing unreached files when stopped; series_truth), debrief/desktop/server.py (SetupLabIndex.load(cache, folder), setuplab report uses series_truth, practice route sends bad), debrief/desktop/carsetup.py (_series_truth/_series_kind/_series_confirmed, shared_laps, early_advice), debrief/racesetup.py (_series, refresh_series, pending, early line), debrief/report.py (_refresh_setup on every write), debrief/handling.py (TUNED_ON_REAL_LAPS, EARLY_ADVICE, sureness_raw, VERSION 2), debrief/setupadvice.py, debrief/templates/review.html, debrief/desktop/ui/app.js and app.css. Tests: new tests/test_236_setuplab.py. Changed: test_223_handling (the "Likely or Sure" check now reads sureness_raw and checks the shown one is capped), test_213_page and test_214_page (a stub of SetupLabIndex.load takes the new folder argument). Not proven yet: deleted files and the "could not be read" wording on a real telemetry folder; the series answer on real schedule data; the early-advice line and the Working message as drawn in the window and a real review page; timing of the shared lap read on 20 real files. CHANGELOG 2.12 says Ctrl+8 where the app uses Ctrl+7 (not fixed).
+- report.LAYOUT 2.37.0 so saved reviews are drawn again once (the early-advice line, the comparison-lap reason).
 ## 2.36.0 "Race Room"
 
 The Race Room is now your live pit board, straight from iRacing on your PC. It's the screen we used on the 8 November weekend, built into Debrief. It works in practice, qualifying and races, and it doesn't need the coach, Garage 61 or a browser.

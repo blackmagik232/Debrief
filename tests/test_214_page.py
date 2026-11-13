@@ -157,7 +157,7 @@ def stage_scored():
 def test_plan_before_reading():
     s = srv()
     old = s.setuplab.load
-    s.setuplab.load = lambda path: (None, frozenset())
+    s.setuplab.load = lambda path, folder=None: (None, frozenset())
     with s.practice.lock:
         s.practice.list_key = None
     try:

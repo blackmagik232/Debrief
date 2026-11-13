@@ -798,6 +798,8 @@ D.sector_names=Array.isArray(D.sector_names)?D.sector_names:[];
 const BRAND=(D.brand&&typeof D.brand==='object')?D.brand:{};const TEAM_NAME='Team';
 // 2.34: a review built from this PC's telemetry files says iRacing where a Garage 61 review says Garage 61
 const PC=(D.meta||{}).source==='pc',FLAGGER=PC?'iRacing':'Garage 61';
+// 2.36: your laps from this PC, comparison laps from Garage 61 (meta.refs_from)
+const BOTH=PC&&(D.meta||{}).refs_from==='garage61';
 // 2.35 "no contradictions": D.agree (recordings.agree, made in Python on every write) gives each fact that shows in more
 // than one place one owner and the words the other places use. SHOWN collects what each section actually printed, and
 // checkFacts() at the end says plainly, near the top, if two places still differ. Without D.agree the page is as before.
@@ -977,7 +979,10 @@ function setPair(a,b,keepZoom){if(!TR[a]||(!isMe(a)&&!refs.find(r=>r.key===a))){
   if(!isMe(a)){// lap A select only lists your laps; allow a comparison lap in A after a swap by adding it on demand
     if(![...selA.options].some(o=>o.value===a)){const o=document.createElement('option');o.value=a;o.textContent=TR[a].label+'  ·  '+fmt(TR[a].t);selA.append(o)}}
   state.a=a;state.b=b;if(!keepZoom){state.x0=0;state.x1=L;state.seg=null}selA.value=a;selB.value=b;renderCompare()}
-if(!refs.length&&PC){const n=$('noRefs');n.hidden=false;n.className='empty';n.append(h('b',null,'This review comes from your PC, so it has no comparison laps.'),h('span',null,'Your teammates\' and followed drivers\' laps come from Garage 61. With Garage 61 connected, Add comparison laps (in the Debrief window) adds them to this race. Until then, compare your own laps: your best against a typical lap shows where your average lap loses time.'))}
+if(!refs.length&&PC){const n=$('noRefs');n.hidden=false;n.className='empty';
+  if((D.meta||{}).refs_failed)n.append(h('b',null,'Debrief couldn\'t get comparison laps from Garage 61 this time.'),h('span',null,'Your laps are from your PC. Garage 61 couldn\'t be reached, or its comparison laps couldn\'t be downloaded, so this says nothing about who you follow. Try Add comparison laps again later. Until then, compare your own laps: your best against a typical lap shows where your average lap loses time.'));
+  else if((D.meta||{}).refs_checked)n.append(h('b',null,'Garage 61 had no comparison laps for this race.'),h('span',null,'Your laps are from your PC. Garage 61 only shares laps from your teammates and drivers you follow in this car and track, and it had none when they were looked for. Follow a few drivers there, then press Add comparison laps again. Until then, compare your own laps: your best against a typical lap shows where your average lap loses time.'));
+  else n.append(h('b',null,'This review comes from your PC, so it has no comparison laps.'),h('span',null,'Your teammates\' and followed drivers\' laps come from Garage 61. With Garage 61 connected, Add comparison laps (in the Debrief window) adds them to this race. Until then, compare your own laps: your best against a typical lap shows where your average lap loses time.'))}
 else if(!refs.length){const n=$('noRefs');n.hidden=false;n.className='empty';n.append(h('b',null,'No comparison laps for this car and track.'),h('span',null,'Garage 61 only shares laps from your teammates and the drivers you follow. Follow a few drivers who race the '+carShort+' here and the next review will include their laps. Until then, compare your own laps: your best against a typical lap shows where your average lap loses time.'))}
 // open one of your laps in Compare (against your best lap, or against a typical lap when it IS your best)
 function openLap(n){if(!TR['me'+n])return;const a='me'+n;const b=a===bestKey?(pickMedianLap()||myKeys.find(k=>k!==a)):bestKey;if(!b)return;openDeep();setPair(a,b);$('compare').scrollIntoView()}
@@ -1304,7 +1309,7 @@ safe('practice plan',()=>{const host=$('planList');const firstSentence=s=>{const
     d.append(h('span','rk',String(i+1)),h('h3',null,String(p.title||'')),g,body);host.append(d)});
   if(!PL.length)host.append(h('p','note','No clear practice item stood out in this race.'))},'plan');
 safe('notes',()=>{
-  [(PC?'Source: your own telemetry files (.ibt) for this race, read on this PC'+(Array.isArray(M.files)&&M.files.length?' ('+M.files.join(', ')+')':'')+', and the result from iRacing\'s session data. Nothing was downloaded. Laps':'Source: Garage 61 laps and telemetry for this race, downloaded with your personal API token. Laps')+' are resampled to a shared 5 m grid, so gaps are accurate to about ±0.05 s.',
+  [(BOTH?'Source: your own laps and telemetry come from your telemetry files (.ibt) for this race, read on this PC'+(Array.isArray(M.files)&&M.files.length?' ('+M.files.join(', ')+')':'')+', and the result from iRacing\'s session data. The comparison laps (teammates and followed drivers) come from Garage 61, downloaded with your personal API token; '+(M.own_list?'Debrief looked up your recent lap list to match the track; none of your laps\' telemetry was downloaded':'none of your own laps were downloaded from it')+'. Laps':PC?'Source: your own telemetry files (.ibt) for this race, read on this PC'+(Array.isArray(M.files)&&M.files.length?' ('+M.files.join(', ')+')':'')+', and the result from iRacing\'s session data. Nothing was downloaded. Laps':'Source: Garage 61 laps and telemetry for this race, downloaded with your personal API token. Laps')+' are resampled to a shared 5 m grid, so gaps are accurate to about ±0.05 s.',
    refs.length?'Comparison laps come only from your teammates and drivers you follow, because the Garage 61 API only shares those. Different cars have different gearing and brakes.':'No comparison laps: follow some drivers on Garage 61 or add teammates to get comparisons.',
    'Corners are found automatically from the speed trace of your fastest lap, so the numbering is Debrief’s, not the official turn numbers.',
    'Coaching notes describe what tended to happen on your quicker laps. They are patterns in your data, not proof of cause: the numbers quoted are what your quicker laps did, not targets.',
@@ -1313,7 +1318,7 @@ safe('notes',()=>{
    'Personal bests, progress and the skills profile in the library count race sessions only; a practice or qualifying review is listed but doesn\u2019t set a personal best unless you tick \u201cInclude practice and qualifying\u201d there.',
    (D.counts&&Array.isArray(D.counts.traffic_possible)&&D.counts.traffic_possible.length)?'Single-class race: laps marked \u201cpossibly traffic\u201d lost their time in one short stretch your other laps didn\u2019t. That can be a lapped car or a mistake, so they stay in your off-pace numbers.':'',
    CH_MISSING.length?'This race’s telemetry had no '+andList(CH_MISSING)+' data, so the numbers that need '+(CH_MISSING.length===1?'it':'them')+' are left out (shown as –).':'',
-   (()=>{const g=M.generated_at?new Date(M.generated_at):null;const when=g&&!isNaN(g)?'Generated '+g.toLocaleString():'Generated by an older version of Debrief';return when+(PC?' from the files on this PC.':typeof M.requests==='number'?' using '+M.requests+' Garage 61 requests.':'.')})()].filter(Boolean).forEach(n=>$('notes').append(h('li',null,n)))});
+   (()=>{const g=M.generated_at?new Date(M.generated_at):null;const when=g&&!isNaN(g)?'Generated '+g.toLocaleString():'Generated by an older version of Debrief';return when+(BOTH?' from the files on this PC'+(typeof M.requests==='number'?', with '+M.requests+' Garage 61 requests for the comparison laps.':'.'):PC?' from the files on this PC.':typeof M.requests==='number'?' using '+M.requests+' Garage 61 requests.':'.')})()].filter(Boolean).forEach(n=>$('notes').append(h('li',null,n)))});
 
 // ---------- v2: shared helpers (every v2 block guards for missing keys so old reviews still render)
 const num=v=>typeof v==='number'&&isFinite(v);
@@ -1340,7 +1345,7 @@ safe('context chips',()=>{const host=$('ctxChips');const add=(txt,title,cls)=>{c
   const irb=RES&&RES.irating_before!=null&&RES.irating_before!==''&&num(+RES.irating_before)?+RES.irating_before:null;   // 2.35: the race result owns it
   if(VS_AI){}else if(irb!=null)add('iRating '+irb,'Your iRating going into this race (from the race result)','ir');else if(num(D.irating))add('iRating '+D.irating,'Your iRating going into this race (from '+FLAGGER+')','ir');
   const C=D.conditions;if(C&&typeof C==='object'){
-    if(num(C.track_temp_c))add(Math.round(cToF(C.track_temp_c))+'°F track',C.track_temp_c.toFixed(1)+' °C track temperature (middle value over your laps)');
+    if(num(C.track_temp_c))add(Math.round(cToF(C.track_temp_c))+'°F track',C.track_temp_c.toFixed(1)+(C.track_temp_forecast?' °C forecast track temperature (from the session text; not measured)':' °C track temperature (middle value over your laps)'));
     if(num(C.air_temp_c))add(Math.round(cToF(C.air_temp_c))+'°F air',C.air_temp_c.toFixed(1)+' °C air temperature');
     if(num(C.wetness))add(wetLabel(C.wetness),'Track surface')}
   const S=D.season;if(S&&(S.name||S.shortName))add(String(S.name||S.shortName),'iRacing season');
@@ -1842,7 +1847,7 @@ safe('depth',()=>{const X=isObj(D.depth)?D.depth:null;if(!X)return;const host=$(
   block('What a slower exit went with on the next straight','Measured from where exit speed is read to your earliest clean brake point for the next corner.',list('costs').map(third));
   block('The same mistake in earlier races','A mistake here is a lap that lost clearly more than your normal spread in one corner. Your opening lap and possible traffic laps are not counted.',list('same_mistakes').map(c=>c.sentence));
   block('Compared with earlier races','Similar means track and air temperature within 8 C and about the same wetness. Other races are left out.',[isObj(X.baseline)&&X.baseline.sentence]);
-  block('Your comparison lap',null,[isObj(X.ref_match)&&X.ref_match.sentence]);
+  block('Your comparison lap',isObj(X.gap)?'A split like this is a hint from your own earlier races, not a measurement: tyres, fuel, setup and driving all feed into a lap time.':null,[isObj(X.ref_match)&&X.ref_match.sentence,isObj(X.ref_match)&&X.ref_match.why,isObj(X.gap)&&X.gap.sentence]);
   if(host.children.length)$('depth').hidden=false},'depth');
 
 // ---------- 2.35 "See it": the From iRacing charts. recordings.py makes every number (X.charts); this only draws them.
@@ -2226,11 +2231,11 @@ safe('setup',()=>{const S=D.setup;if(S===undefined||S===null||!isObj(S))return;c
   else{const p=panel('What you raced');para(p,txt(su.text));const C=isObj(S.changes)?S.changes:null;if(C){para(p,txt(C.text));list(p,C.lines)}
     const F=isObj(S.faster)?S.faster:null;if(F&&txt(F.text)){const fp=panel('Faster?');para(fp,F.text)}
     const H=isObj(S.handling)?S.handling:null;if(H){const hp=panel('How the car handled');const is=(Array.isArray(H.issues)?H.issues:[]).filter(isObj);
-      if(!is.length)para(hp,txt(H.text));else is.forEach(i=>{const q=h('p');q.append(h('b',null,txt(i.title)),h('span','sutag',i.looks_like==='setup'?'looks like setup':'looks like driving'));hp.append(q);para(hp,txt(i.text),'note')})}
+      if(!is.length)para(hp,txt(H.text));else is.forEach(i=>{const q=h('p');q.append(h('b',null,txt(i.title)),h('span','sutag',i.looks_like==='setup'?'looks like setup':'looks like driving'));hp.append(q);para(hp,txt(i.text),'note')});if(is.length)para(hp,txt(S.early_advice),'note')}
     const T=isObj(S.tyres)?S.tyres:null;if(T&&Array.isArray(T.lines)&&T.lines.length){const tp=panel('Tyre pressures and temperatures','from iRacing\u2019s pit readings and your laps');list(tp,T.lines);
       if(isObj(D.from_iracing))para(tp,'Tyre wear at the end is in From iRacing.','note')}
     dialP('In-car dials')}
-  const TR0=isObj(S.try)?S.try:null;if(TR0&&txt(TR0.text)){const tp=panel('One change to try',TR0.held?null:'a suggestion, not a sure fix');para(tp,TR0.text);para(tp,txt(TR0.detail),'note');
+  const TR0=isObj(S.try)?S.try:null;if(TR0&&txt(TR0.text)){const tp=panel('One change to try',TR0.held?null:'a suggestion, not a sure fix');para(tp,TR0.text);para(tp,txt(TR0.detail),'note');if(TR0.setting||TR0.held)para(tp,txt(S.early_advice),'note');
     const O=isObj(TR0.open_setup_lab)?TR0.open_setup_lab:null;if(O&&txt(O.car_path)){
       if(parent!==window){const b=h('button',null,'Open in Setup Lab');b.type='button';b.id='btnSetupLab';b.onclick=()=>{try{parent.postMessage({type:'debrief-open-setuplab',car:String(O.car_path),track:String(O.track_code||'')},'*')}catch(_){}};tp.append(b)}
       else para(tp,'Open Setup Lab in the Debrief window to look at this car and track.','note')}}

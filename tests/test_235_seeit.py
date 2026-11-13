@@ -78,7 +78,7 @@ def test_template_draws_charts_and_keeps_tables_under_show_the_numbers():
         assert k in t[t.index("const FI_DRAW={"):], k
     assert "'Show the numbers'" in t and "details.finums" in t
     assert "data-units" in t, "fuel follows Settings > Units"
-    assert report.LAYOUT == "2.35.0", "saved reviews are drawn again once with the charts"
+    assert report.LAYOUT >= "2.35.0", "saved reviews are drawn again once with the charts"
 
 
 def _loop(n=360):

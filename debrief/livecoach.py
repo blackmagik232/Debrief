@@ -182,6 +182,7 @@ class Settings:
     # 2.29 Crew chief (fuel, pit window, rivals): the calls in the window, and the voice for them
     crew_calls: bool = True
     crew_voice: bool = True
+    voice_on: bool = True               # 2.38 the one Voice switch: off = the coach starts muted (still counts and logs)
 
     def to_dict(self) -> dict:
         return asdict(self)

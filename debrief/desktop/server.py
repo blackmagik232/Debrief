@@ -1159,7 +1159,7 @@ def _jsonable(o):
 
 
 COACH_FIELDS = {"in_races": bool, "markers": bool, "feedback": bool, "lap_delta": bool, "brake_beep": bool,
-                "notes": bool, "learn_cues": bool, "crew_calls": bool, "crew_voice": bool,
+                "notes": bool, "learn_cues": bool, "crew_calls": bool, "crew_voice": bool, "voice_on": bool,
                 "top_n": (1, 3, "Focus corners must be 1, 2 or 3."), "volume": (0, 100, "Volume must be 0 to 100."),
                 "rate": (-10, 10, "Speaking speed must be -10 to 10."), "level": lambda v: clean_level(v),
                 "lap_times": lambda v: clean_lap_times(v),
@@ -1737,6 +1737,24 @@ class PracticeStore:
                 pass
 
 
+def _name_key(x) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(x or "").casefold())
+
+
+def _combo_by_names(sessions: list, car_name, track_name) -> tuple:
+    """2.38: (car path, track code) of the newest telemetry session whose car and track names match a race review's
+    (Garage 61 and iRacing spell them a little differently: compared without spaces and punctuation, and a track
+    name may carry its layout on one side only). (None, None) when nothing matches."""
+    c, t = _name_key(car_name), _name_key(track_name)
+    if not c or not t:
+        return None, None
+    for s in sessions or []:
+        sc, st = _name_key(s.get("car")), _name_key(s.get("track"))
+        if sc == c and st and (st == t or st.startswith(t) or t.startswith(st)):
+            return s.get("car_path"), s.get("track_code")
+    return None, None
+
+
 def _same_combo(s: dict, car_path, track_code) -> bool:
     return (str(s.get("car_path") or "").lower() == str(car_path or "").lower()
             and str(s.get("track_code") or "").lower() == str(track_code or "").lower())
@@ -2124,6 +2142,61 @@ class DebriefServer(ThreadingHTTPServer):
                 plans = pp.load_plans(plans_folder(), car, track)
             return cur, plans
 
+    def pick_plan(self, cfg, b: dict) -> dict:
+        """2.38 Coach this (see _post_plan_pick). Never raises for bad input: a miss is {"ok": True, "picked": False,
+        "message"} in plain words, with the car + track when they were found so the Coach page can still open on them."""
+        pp = app.optional_module("practiceplan")
+        if pp is None:
+            return {"ok": True, "picked": False, "message": "The practice plan isn't available right now."}
+        car, track = b.get("car"), b.get("track")
+        corner = b.get("corner") if isinstance(b.get("corner"), str) else None
+        corner = corner.strip()[:40] if corner else None
+        apex = b.get("apex_m") if isinstance(b.get("apex_m"), (int, float)) and not isinstance(b.get("apex_m"), bool) else None
+        apex = float(apex) if apex is not None and math.isfinite(float(apex)) else None
+        ss, idx = self.practice_sessions(cfg)
+        if idx is None:
+            return {"ok": True, "picked": False, "message": "Read your telemetry first (Practice > Read my telemetry). "
+                                                             "Then the coach can watch one corner for you."}
+        if not (isinstance(car, str) and IDENT_OK.match(car) and isinstance(track, str) and IDENT_OK.match(track)):
+            car, track = _combo_by_names(ss, b.get("car_name"), b.get("track_name"))
+        if not car:
+            nm = " at ".join(str(x) for x in (b.get("car_name"), b.get("track_name")) if isinstance(x, str) and x)
+            return {"ok": True, "picked": False,
+                    "message": "No telemetry files of " + (nm or "this car at this track") + " on this PC yet. Drive it "
+                               "with telemetry on, then the coach can watch this corner."}
+        base = {"ok": True, "picked": False, "car_path": car, "track_code": track}
+        if not corner and apex is None:
+            return dict(base, message="Pick a corner.")
+        mine = [x for x in ss if _same_combo(x, car, track) and all(Path(f).exists() for f in (x.get("paths") or []))]
+        if not mine:
+            return dict(base, message="No telemetry files of this car at this track on this PC yet.")
+        rep = self.corner_coach_for(cfg, ss, car, track)
+        hit = pp.find_corner(rep, corner, apex)
+        label = corner or "that corner"
+        if hit is None:
+            return dict(base, message=f"Debrief couldn't find {label} in your telemetry of this car at this track, so "
+                                      "the coach keeps your current one thing.")
+        with self.plan_lock:
+            plan = pp.plan_for_corner(rep, hit["id"], car=car, track=track)
+            if plan is None:
+                laps = int(rep.get("laps") or 0)
+                why = (f"the corner coach needs at least {pp.WANT_LAPS} clean laps here first (you have {laps})"
+                       if laps < pp.WANT_LAPS else "your best and typical laps are already close there, so there is "
+                       "nothing it could count")
+                return dict(base, message=f"The coach can't watch {hit['corner']} yet: {why}. It keeps your current "
+                                          "one thing.")
+            plan.update({"car_path": car, "track_code": track, "car_name": mine[0].get("car") or car,
+                         "track_name": mine[0].get("track") or track, "after_sort": float(mine[0].get("sort") or 0),
+                         "after_date": mine[0].get("date"), "made_ts": time.time(), "matched_by": hit["by"]})
+            plan = _jsonable(plan)
+            if not pp.save_plan(plans_folder(), car, track, plan):
+                app.say(f"Practice plan: couldn't save the picked corner for {car} at {track}.")
+                return dict(base, message="That couldn't be saved. Details were saved to debrief.log.")
+        self._refresh_coach_focus()
+        app.say(f"Coach this: {hit['corner']} for {car} at {track} (matched by {hit['by']}).")
+        return dict(base, picked=True, plan=plan_view(plan), corner=hit["corner"],
+                    message=f"Your one thing is now {hit['corner']}. The coach watches it while you drive.")
+
     def score_session(self, cfg, me: dict, ss: list, auto=False) -> dict | None:
         """Score this car + track's current plan on one session (me: a sessions-ibt row with its paths), save the
         score, and make the next plan. auto: only when the plan is unscored and the session is newer than it (else
@@ -2352,6 +2425,11 @@ class DebriefServer(ThreadingHTTPServer):
             self._close_coach_parts(r, None, vc)
             app.say("Coach not started: " + ("Debrief is closing." if closing else "stopped while it was starting."))
             return {"ok": False, "error": "Debrief is closing." if closing else "The coach was stopped while it was starting."}
+        if not getattr(settings, "voice_on", True):     # 2.38 Voice off: silent, still counting the one thing and logging
+            try:
+                r.set_muted(True, "Voice off")
+            except Exception:  # noqa: BLE001
+                app.say("ERROR muting the coach for Voice off:\n" + traceback.format_exc())
         hk = None
         try:   # Windows only; elsewhere, or if another program has the key, the mute button still works
             hk = coach2.hotkeys(self, settings, r)      # mute, repeat (2.17), quiet for a minute (2.17)
@@ -3660,7 +3738,7 @@ class Handler(BaseHTTPRequestHandler):
                  "api/strategy", "api/racecap-link", "api/intel-preview", "api/intel-import", "api/weekly", "api/discord-post", "api/team-load",
                  "api/discord-check", "api/setuplab/read", "api/setuplab/stop", "api/setuplab/series", "api/coach/start",
                  "api/coach/stop", "api/coach/mute", "api/coach/settings", "api/coach/test-voice", "api/plan/new",
-                 "api/plan/score", "api/coach/wheel-learn", "api/coach/wheel-clear", "api/firstrun/dismiss", "api/firstrun/skip",
+                 "api/plan/score", "api/plan/pick", "api/coach/wheel-learn", "api/coach/wheel-clear", "api/firstrun/dismiss", "api/firstrun/skip",
                  "api/endurance", "api/raceroom"):
             try:
                 return getattr(self, "_post_" + r[4:].replace("-", "_").replace("/", "_"))(body)
@@ -4551,6 +4629,8 @@ class Handler(BaseHTTPRequestHandler):
         if r is not None:
             try:
                 r.update_settings(new)
+                if "voice_on" in new:       # 2.38 the Voice switch acts at once on a running coach
+                    r.set_muted(not new["voice_on"], "Voice off" if not new["voice_on"] else "Voice on")
             except Exception:  # noqa: BLE001
                 app.say("ERROR applying the coach settings:\n" + traceback.format_exc())
         return self._json({"ok": True, "settings": keep})
@@ -4695,6 +4775,14 @@ class Handler(BaseHTTPRequestHandler):
         b = body if isinstance(body, dict) else {}
         q = {k: b[k] for k in ("car", "track") if k in b}
         return self._json(_jsonable(self._plan_reply(self._cfg(), q, fresh=True)))
+
+    def _post_plan_pick(self, body):
+        """2.38 Coach this: make one corner he picked (on Practice, a race review's Fix first or Prepare) this car +
+        track's one thing, so the live coach watches it. {"car", "track"} (iRacing's ids) or {"car_name",
+        "track_name"} (a race review's names), and {"corner"} and/or {"apex_m"}. Always answers ok with "picked"
+        true or false and plain words; the window opens the Coach page either way."""
+        b = body if isinstance(body, dict) else {}
+        return self._json(_jsonable(self.server.pick_plan(self._cfg(), b)))
 
     def _post_plan_score(self, body):
         """Score this car + track's current plan on one telemetry session (?session= or {"session"})."""

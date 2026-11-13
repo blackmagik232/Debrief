@@ -165,6 +165,28 @@ sections: [
   {tip: `Debrief reads iRacing about 5 times a second for this page, which costs well under 1% of one CPU core. The page shows its own number at the bottom.`},
   {p: `Don't want it to open by itself? Untick **Open the Race Room by itself when an iRacing session starts** at the bottom of the page.`}]},
 
+/* ---------------------------------------------------------------- 2.38 Using the coach */
+{id: 'coach', group: 'Learn', title: 'Using the coach', blocks: [
+  {lede: `The coach helps you practise **one thing** at a time and tells you afterwards whether you did it. Three steps: **Pick** what to work on, **Drive** with the coach watching it, **Check** how it went. It works from the telemetry files iRacing saves on this PC; Garage 61 is not needed.`},
+  {box: 'One practice with the coach', lede: `About 20 minutes on track. Do this once and you know the whole coach.`, steps: [
+    {t: 'Pick: press Coach this', d: `Find one corner to work on and press **Coach this** next to it. It is on **One thing this session** and each **Corner coach** card in a Practice session, on each **Fix first** card in a race review, and on each corner under **Corners that keep costing you** in Prepare. That corner becomes your **one thing** for this car and track, with a number to aim for (for example "brake at the 100 m board").`, go: 'practice', label: 'Open Practice'},
+    {t: 'Drive: Start coaching, then 10 clean laps', d: `On the Coach page press **Start coaching**, get in the car and drive. Work on that one corner only. The coach measures it on every clean lap and keeps a count ("6 of 9"). Done is **7 of your last 10 laps**.`, go: 'coach', label: 'Open Coach'},
+    {t: 'Voice on or off: your choice', d: `The **Voice** switch on the Coach page decides whether the coach talks. **On**: a short word after the corner now and then ("Good, 84", "Brake later"). **Off**: it says nothing, but still counts your one thing and logs every lap, so the Check step works the same.`},
+    {t: 'Check: open the session', d: `Get out of the car (iRacing saves the telemetry file when the session ends). On **Practice**, press **Read my telemetry** and open the newest session. **Your one thing** says how many laps you hit it on, whether those laps were quicker through the corner, and whether to **keep it** (not a habit yet) or **move on**.`, go: 'practice', label: 'Open Practice'}]},
+  {h: 'What "Coach this" can and can\'t pick'},
+  {list: [
+    `It needs **10 clean laps** of that car at that track in your telemetry files. Fewer, and it says so and keeps your current one thing.`,
+    `From a race review or Prepare, Debrief finds the same corner in your telemetry by where it is on the lap (corner names from Garage 61 and iRacing can differ). If it can't find it, it says so.`,
+    `The number to aim for comes from your own best laps. When the Corner coach found a clear difference, the one thing says **Sure**, **Likely** or **A hint**. When it found none, the one thing is **A guess**: drive the corner the same way every lap and see whether it helps.`,
+    `A corner where your typical laps are already close to your best has nothing to count, so it can't be picked.`]},
+  {h: 'While you drive'},
+  {list: [
+    `**Mute** (Ctrl+Shift+M or a wheel button) silences it for now; **Repeat that** says the last cue again; **How's my pace?** answers with your last lap and the corner that cost the most.`,
+    `**Coaching level** decides how much it says, from **Quiet** (your one thing and focus corners only) to **Busy**. Start with Quiet.`,
+    `**Driving view** is a big screen to glance at from the car, on a second monitor: the state, your one thing and its count, the last cues.`]},
+  {tip: `Don't change your one thing in the middle of a session. One corner, one number, ten laps: that is how it turns into a habit.`},
+  {p: `Everything else on the Coach page (crew chief, corner notes, overlay, rehearsal, voice packs) is optional and folded away under **More coach tools**.`}]},
+
 /* ---------------------------------------------------------------- Reading the numbers */
 {id: 'numbers', group: 'Reference', title: 'Reading the numbers', blocks: [
   {lede: `Debrief would rather say "not sure yet" than tell you something wrong. Every finding carries the same four words for how sure it is, on every page.`},

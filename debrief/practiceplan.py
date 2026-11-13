@@ -476,6 +476,69 @@ def _make_plan(report, history, car, track, avoid=frozenset()):
     return _closed_note(p, closed_msg)
 
 
+PICK_NEAR_M = 80.0            # 2.38 Coach this: a corner from a race review or Prepare matches the corner coach's
+                              # corner whose apex is nearest, within this many metres (Garage 61's ids aren't iRacing's)
+
+
+def find_corner(report: dict | None, corner=None, apex_m=None) -> dict | None:
+    """2.38: the corner coach's corner for a "Coach this" from another page: {"id", "corner", "apex_m", "by"}.
+    By apex position when given (nearest within PICK_NEAR_M), else by the corner coach's id ("C4") or name ("T4").
+    None when nothing matches. Never raises."""
+    try:
+        cs = [c for c in (report or {}).get("corners") or [] if isinstance(c, dict) and c.get("id")
+              and _num(c.get("apex_m")) is not None]
+        names = {}
+        for c in list((report or {}).get("cards") or []) + list((report or {}).get("unclear") or []):
+            if isinstance(c, dict) and c.get("id") and c.get("corner"):
+                names[c["id"]] = c["corner"]
+        a = _num(apex_m)
+        if a is not None and cs:
+            best = min(cs, key=lambda c: abs(float(c["apex_m"]) - a))
+            if abs(float(best["apex_m"]) - a) <= PICK_NEAR_M:
+                return {"id": best["id"], "corner": names.get(best["id"]) or best.get("name") or best["id"],
+                        "apex_m": float(best["apex_m"]), "by": "apex"}
+            return None
+        want = str(corner or "").strip().casefold()
+        if not want:
+            return None
+        for c in cs:
+            nm = str(names.get(c["id"]) or c.get("name") or "").casefold()
+            if want in (str(c["id"]).casefold(), nm):
+                return {"id": c["id"], "corner": names.get(c["id"]) or c.get("name") or c["id"],
+                        "apex_m": float(c["apex_m"]), "by": "name"}
+        for cid, nm in names.items():           # a card whose corner has no apex row still matches by name
+            if want in (str(cid).casefold(), str(nm).casefold()):
+                return {"id": cid, "corner": nm, "apex_m": None, "by": "name"}
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+def plan_for_corner(corner_report: dict | None, cid: str, car=None, track=None) -> dict | None:
+    """2.38 Coach this: a plan on ONE corner he picked, under the same honesty rules as make_plan: from that
+    corner's corner coach card (its main rule, else its second one), else a consistency experiment for it when its
+    best laps are clearly quicker than its typical ones. None when the corner coach has nothing it could check there
+    (too few laps, or the corner is already close to his best). Never raises."""
+    try:
+        report = corner_report or {}
+        if not report.get("ok") or int(report.get("laps") or 0) < cc.MIN_LAPS or not cid:
+            return None
+        card = next((c for c in report.get("cards") or [] if isinstance(c, dict) and c.get("id") == cid), None)
+        p = (_card_plans(report, card, car, track) or [None])[0] if card else None
+        if p is None:
+            others = {u.get("id") for u in report.get("unclear") or [] if isinstance(u, dict) and u.get("id") != cid}
+            p = _consistency(report, car, track, avoid=others)
+            if p is not None and p.get("id") != cid:
+                p = None
+        if p is None:
+            return None
+        p["picked"] = True
+        p["reason"] = f"You picked {p.get('corner') or 'this corner'}. " + str(p.get("reason") or "")
+        return p
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _kept(report, card, metric, car=None, track=None):
     """(plan, closed) for keeping last session's focus. plan: today's numbers for it from the same card, only on a
     number that card's main or second rule still tests (never more sure than a second rule), else None (the card is

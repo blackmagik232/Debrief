@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.38.0 "Coach, explained"
+
+The coach is now simple to use: pick one thing, drive, check how it went. And you decide whether it talks.
+
+- **Coach this, wherever you find a corner to work on.** Press **Coach this** on a Practice session's **Corner coach** cards, on each **Fix first** card in a race review, or next to a corner under **Corners that keep costing you** in Prepare (it was already on **One thing this session** in Practice). That corner becomes your **one thing** for that car and track, with a number to aim for, and the Coach page opens on it. A corner from a race review or Prepare is found in your telemetry files by where it is on the lap, because Garage 61 and iRacing don't always number corners the same way. If Debrief can't do it (fewer than 10 clean laps there, the corner already close to your best, or no telemetry of that car at that track yet), it says why in plain words and keeps your current one thing.
+- **The Coach page in three steps.** At the top: **1 Pick** (your one thing, or where to pick one), **2 Drive** (Start coaching, and the count of laps you hit it on as you go) and **3 Check** (where to see the verdict after you drive). The step you're on is highlighted.
+- **One Voice switch.** On the Drive step. **On**: the coach gives a short word now and then. **Off**: it says nothing at all (crew chief included), but it still counts your one thing and logs every lap, so Check works the same. Flip it any time, even while coaching.
+- **Tidier page.** The crew chief, corner notes and microphone, overlay and rehearsal are folded under **More coach tools**. Nothing was removed. In a race the crew chief unfolds by itself.
+- **New Help chapter: Using the coach.** One practice with the coach, start to finish, in four steps, plus what Coach this can and can't pick. Open it from Help, or from **Read Using the coach** on the Coach page.
+
+### For the record
+
+- Files: debrief/practiceplan.py (find_corner, plan_for_corner, PICK_NEAR_M = 80 m), debrief/desktop/server.py (api/plan/pick, DebriefServer.pick_plan, _combo_by_names, coach setting voice_on: the coach starts muted "Voice off" and the switch acts at once on a running coach), debrief/livecoach.py (Settings.voice_on), debrief/prep.py (Prepare's corners carry apex_m), debrief/templates/review.html (Coach this on Fix first cards, message debrief-coach-this), debrief/desktop/ui/index.html, app.js, app.css (Pick / Drive / Check, Voice switch, More coach tools, Coach this buttons), debrief/desktop/ui/help.js (Using the coach).
+- A picked plan follows the same honesty rules as before: only from that corner's corner coach card (never more sure than the card), else a "Try this and see" experiment when its best laps are clearly quicker there. Nothing new is said by voice; no microphone or recording work.
+- Tests: new tests/test_238_coach.py (9 tests), plus the practice plan, coach and Prepare tests (codemap --which practiceplan, nav:coach, prep) and the full suite.
+- Not proven yet: Coach this on a real race review and a real Prepare corner (corner positions from Garage 61 against iRacing's own, within 80 m); the Voice switch with real speech on Windows; one real practice run using only the Help guide and the coach scoring the one thing (the "done when" for this release); the new layout as drawn on Swazi's screen.
+
 ## 2.37.0 "Both sources"
 
 Debrief now uses your PC and Garage 61 each for what they're best at, and Setup Lab is fixed up and more honest.

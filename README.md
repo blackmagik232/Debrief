@@ -8,6 +8,8 @@
 
 Reviews your iRacing races from the telemetry files iRacing saves on your PC (and from Garage 61, if you connect it) and keeps a library of every review, in its own window.
 
+**New in 2.38:** **Coach, explained.** **Coach this** on Practice's Corner coach cards, a race review's Fix first cards and Prepare's corners makes that corner your one thing; the Coach page now reads **Pick, Drive, Check**, with one **Voice** switch (off: silent, still counting) and the extra tools folded under More coach tools. New Help chapter: Using the coach.
+
 **New in 2.37:** **Both sources.** **Add comparison laps** keeps your own laps, result, charts and Setup section from your PC and asks Garage 61 only for other drivers' laps; the comparison lap is the one set in conditions like yours, and the page says why. Setup Lab: deleted telemetry files drop out, one answer to "open or fixed setup?" everywhere, setup advice capped at "A hint" with an early-advice note until it is checked on real cars, a faster Car balance, and Share what changed lets you pick the two setups.
 **New in 2.36:** **Race Room.** A live pit board straight from iRacing on your PC, in practice, qualifying and races, with no coach or Garage 61 needed. It opens by itself when a session starts and shows the session you're in, the crew chief's call, eight tiles (position, laps left, box by, car ahead and behind, last lap, target, time left), your rivals or the timesheet, pace and stints with a lap chart, the pit and fuel bar, your position lap by lap, and a four-desk strategy crew.
 

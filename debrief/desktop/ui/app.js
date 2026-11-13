@@ -394,6 +394,8 @@ async function loadPages(){try{const j=await api('pages');if(j.ok)pages=j}catch(
 addEventListener('message',e=>{const f=$('frame');if(!f||e.source!==f.contentWindow)return;const m=e.data;
   if(m&&typeof m==='object'&&m.type==='debrief-key'&&KEY_MSG.test(String(m.key))){shortcut(m.key);return}
   if(m&&typeof m==='object'&&m.type==='debrief-team-load'&&typeof m.track==='string'&&typeof m.car==='string'){startJob('teamload',{track:m.track.slice(0,200),car:m.car.slice(0,200)});return}
+  if(m&&typeof m==='object'&&m.type==='debrief-coach-this'&&typeof m.car==='string'&&typeof m.track==='string'&&typeof m.corner==='string'){   // 2.38 a Fix first card's Coach this
+    coachThis(Object.assign({car_name:m.car.slice(0,120),track_name:m.track.slice(0,120),corner:m.corner.slice(0,40)},typeof m.apex_m==='number'&&isFinite(m.apex_m)?{apex_m:m.apex_m}:{}));return}
   if(m&&typeof m==='object'&&m.type==='debrief-open-setuplab'&&typeof m.car==='string'&&typeof m.track==='string'){openSetupLab({car_path:m.car.slice(0,120),track_code:m.track.slice(0,120)});return}   // 2.35: the review's Setup section
   if(!m||typeof m!=='object'||m.type!=='debrief-frame'||typeof m.href!=='string')return;
   frameHref=m.href;themeFrame(getTheme());framePlace(noQuery(m.href),typeof m.title==='string'?m.title:'')});
@@ -1089,7 +1091,8 @@ function pacePart(d){const sec=pvSection('Your laps here'),P=d.pace;
 function cornerPart(d){const sec=pvSection('Corners that keep costing you');
   if(!d.corners.length){sec.append(h('p','note',d.reviewed_races>=2?'No corner keeps repeating. That\'s a good sign.':'This shows after two or more saved race reviews here in this car.'));return sec}
   const ul=h('ul','pvlist');d.corners.forEach(c=>{const li=h('li');li.append(h('b',null,c.id),
-    h('span','sub2','Top three to find in '+c.top3+' of '+c.races+' races'+(ok(c.last_avail)?', last cost about '+c.last_avail.toFixed(2)+' s a lap on '+fmtDate(c.last_date)+(c.last_wet?' (wet)':''):'')+'.'));ul.append(li)});
+    h('span','sub2','Top three to find in '+c.top3+' of '+c.races+' races'+(ok(c.last_avail)?', last cost about '+c.last_avail.toFixed(2)+' s a lap on '+fmtDate(c.last_date)+(c.last_wet?' (wet)':''):'')+'.'));
+    if(d.car&&d.track&&!/^older /.test(String(c.id)))li.append(coachThisBtn(Object.assign({car_name:String(d.car),track_name:String(d.track),corner:String(c.id)},ok(c.apex_m)?{apex_m:c.apex_m}:{})));ul.append(li)});
   sec.append(ul);return sec}
 function warmPart(d){if(!d.warmups.length)return null;const sec=pvSection('Extra laps first');const ul=h('ul','pvlist');
   d.warmups.forEach(x=>{const li=h('li');li.append(h('b',null,x.series),h('span','sub2',(x.week?'Week '+x.week+', from ':'From ')+fmtDate(x.start).replace(/, \d{4}$/,'')+(x.same_cars?', same cars':', different cars')));ul.append(li)});
@@ -2206,7 +2209,39 @@ function renderCoach(st){co.st=st;const run=!!st.running,state=CO_STATE[st.state
   coPlanShow(!(run&&W.length));
   renderCoFocus(st);renderWheel(st.wheel);
   if(!co.filled||!co.dirty){fillCoachSettings(st.settings||{});co.filled=true}
-  coLevelShow(st);coTestResult(st.test_voice);csCoach(st);co2Render(st);cdRender(st);crewRender(st);ovRender(st.overlay)}
+  coLevelShow(st);coTestResult(st.test_voice);csCoach(st);co2Render(st);cdRender(st);crewRender(st);ovRender(st.overlay);coStepsRender(st)}
+// 2.38 Coach, explained: the three steps at the top of the Coach page (Pick, Drive, Check) and the one Voice switch
+function coVoiceShow(on){const c=$('coVoiceOn');c.checked=!!on;c.setAttribute('aria-checked',String(!!on));$('coVoiceWord').textContent=on?'on':'off';
+  $('csVoiceNote').textContent=on?'On: a short word after your corner now and then. Off: silent, but it still counts and logs every lap.':'Off: the coach says nothing, but it still counts your one thing and logs every lap. The Check step works the same.'}
+$('coVoiceOn').addEventListener('change',async()=>{const on=$('coVoiceOn').checked;coVoiceShow(on);co.voiceBusy=true;setMsg('csVoiceMsg','Saving...');let r;
+  try{r=await post('coach/settings',{settings:{voice_on:on}})}catch(e){co.voiceBusy=false;connectionLost();return}
+  co.voiceBusy=false;if(!r.ok){coVoiceShow(!on);setMsg('csVoiceMsg',r.error||'That wasn\'t saved.','bad');return}
+  setMsg('csVoiceMsg',on?'Voice on.':'Voice off: silent, still counting.','ok');coachPoll()});
+$('csStart').addEventListener('click',()=>{const b=$('coStart');if(b&&!b.disabled)b.click()});
+$('csGuide').addEventListener('click',()=>openHelp('coach'));
+function coStepsRender(st){if(!$('coSteps'))return;const run=!!(st&&st.running),F=st&&st.focus,P=co.focusPlan;
+  const pk=$('csPick'),dr=$('csDrive'),ck=$('csCheck');
+  const thing=F&&F.text?F.text:P&&P.text?P.text:'';
+  $('csPickText').textContent=thing?'Your one thing: '+mphText(turnWords(thing)):'No one thing yet for this car and track.';
+  $('csPickNote').hidden=!!thing&&run;$('csPickBtn').textContent=thing?'Pick another on Practice':'Pick on Practice';
+  const sb=$('csStart');sb.textContent=run?'Stop coaching':'Start coaching';sb.classList.toggle('primary',!run);sb.disabled=!!co.busy;
+  const vo=(st&&st.settings&&st.settings.voice_on===false);
+  $('csDriveText').textContent=run?(F&&F.count_text?'Coaching'+(vo?' (voice off)':'')+': '+F.count_text+'. '+coDoneLine(F)+'.':'Coaching'+(vo?' (voice off)':'')+'. Drive clean laps through your one thing; it counts each one.')
+    :'Press Start coaching, then drive 10 clean laps. Work on your one thing only.';
+  const measured=F&&F.measured;
+  $('csCheckText').textContent=measured&&!run?'Last drive: '+(F.count_text||'')+'. For the full verdict: Practice > Read my telemetry, then open the newest session.'
+    :'After you drive: Practice > Read my telemetry, then open the newest session. Your one thing says how many laps you hit it on and whether to keep it or move on.';
+  pk.classList.toggle('done',!!thing);dr.classList.toggle('now',!!thing&&!measured||run);dr.classList.toggle('done',!!measured&&!run);ck.classList.toggle('now',!!measured&&!run);
+  pk.classList.toggle('now',!thing)}
+// 2.38 Coach this: one corner he picked (Practice, a race review's Fix first, Prepare) becomes the one thing, then the Coach page opens on it
+async function coachThis(q,btn){if(btn)btn.disabled=true;let r;
+  try{r=await post('plan/pick',q)}catch(e){if(btn)btn.disabled=false;connectionLost();return}
+  if(btn)btn.disabled=false;
+  if(!r||!r.ok){banner((r&&r.error)||'That didn\'t work.',true,9000);return}
+  banner(turnWords(r.message||''),!r.picked,r.picked?7000:12000);
+  if(r.car_path)openCoach({car_path:r.car_path,track_code:r.track_code});else openCoach()}
+function coachThisBtn(q,label){const b=h('button','btn coachthis',label||'Coach this');b.type='button';
+  b.title='Make this your one thing: the live coach watches it while you drive';b.addEventListener('click',()=>coachThis(q,b));return b}
 // 2.17.2 Coaching level (Quiet / Normal / Busy / Only when I ask): saved as soon as it is picked; the coach uses it at once
 function coLevelShow(st){const lv=(st.settings||{}).level||st.level||'normal';
   if(!co.levelBusy)document.querySelectorAll('input[name=coLevel]').forEach(r=>{r.checked=r.value===lv});
@@ -2228,6 +2263,7 @@ function crRival(who,r,idle){const b=$(who),sub=$(who+'Sub'),card=$(who+'Card');
   if(t.indexOf('threat')>=0)card.className='crcard hot';else if(t.indexOf('catchable')>=0)card.className='crcard good'}
 function crewRender(st){if(current.view!=='coach')return;const c=st.crew||{},pill=$('crPill');
   const on=!!c.enabled&&st.running;
+  if(on&&c.state==='racing'&&!co.moreOpened){const m=$('coMore');if(m)m.open=true;co.moreOpened=true}   // 2.38: the crew chief is folded under More coach tools; a race unfolds it once
   $('crGrid').hidden=!on;$('crCalls').hidden=!on;$('crPlan').hidden=!(on&&c.plan&&c.plan.text);
   pill.className='pill'+(on&&c.state==='racing'?' ok':on&&c.state==='lost'?' no':'');
   pill.textContent=!c.enabled?'Off':!st.running?'Coach off':c.state==='racing'?'Racing':c.state==='lost'?'Data lost':c.race?'Waiting':'Numbers only';
@@ -2252,7 +2288,7 @@ function crewRender(st){if(current.view!=='coach')return;const c=st.crew||{},pil
   const PL=c.plan;if(PL&&PL.text)$('crPlan').textContent=PL.text+(c.plan_note?' ('+c.plan_note+')':'');
   const ul=$('crCalls');ul.replaceChildren(...((c.calls||[]).length?c.calls.slice(0,6).map(x=>{const li=h('li');li.append(h('span','cot','L'+(x.lap==null?'?':x.lap)),h('span',null,x.text+(x.spoken===false&&x.why?'  (not said: '+x.why+')':'')));return li}):[h('li','dnone','No calls yet.')]));
   const pf=c.perf,pe=$('crPerf');pe.hidden=!(pf&&ok(pf.cpu_pct));if(!pe.hidden)pe.textContent='Crew chief uses about '+pf.cpu_pct.toFixed(2)+'% of one core.'}
-function fillCoachSettings(s){$('coCrewCalls').checked=s.crew_calls!==false;$('coCrewVoice').checked=s.crew_voice!==false;$('coLapTimes').value=s.lap_times==='full'?'full':'short';$('coInRaces').checked=!!s.in_races;$('coMarkers').checked=s.markers!==false;$('coFeedback').checked=s.feedback!==false;
+function fillCoachSettings(s){if(!co.voiceBusy)coVoiceShow(s.voice_on!==false);$('coCrewCalls').checked=s.crew_calls!==false;$('coCrewVoice').checked=s.crew_voice!==false;$('coLapTimes').value=s.lap_times==='full'?'full':'short';$('coInRaces').checked=!!s.in_races;$('coMarkers').checked=s.markers!==false;$('coFeedback').checked=s.feedback!==false;
   $('coLapDelta').checked=s.lap_delta!==false;$('coBeep').checked=!!s.brake_beep;$('coNotes').checked=s.notes!==false;$('coLearn').checked=s.learn_cues!==false;$('coTopN').value=String(Math.max(1,Math.min(3,s.top_n||2)));
   $('coVol').value=String(ok(s.volume)?s.volume:100);$('coRate').value=String(ok(s.rate)?s.rate:0);coRanges()}
 function coRanges(){$('coVolV').textContent=$('coVol').value+'%';const r=+$('coRate').value;$('coRateV').textContent=r<0?'slower':r>0?'faster':'normal'}
@@ -2593,7 +2629,7 @@ function turnName(x){const n=turnNum(x);return n!==null?'Turn '+n:String(x||'')}
 function turnEl(tag,cls,name,id){const e=h(tag,cls,turnName(name));const n=turnNum(id||name);
   if(n!==null&&turnNum(name)!==null)e.title=TURN_NOTE;return e}
 const TURN_NOTE='Debrief numbers the corners itself, from the speed trace, so Turn 3 here may not be the track map\u2019s Turn 3.';
-function ccCard(c){const card=h('article','cccard'),top=h('div','cchead');
+function ccCard(c,q){const card=h('article','cccard'),top=h('div','cchead');
   // 2.18: a teammate's card says the gap between the two drivers (their lap against your typical laps)
   const ref=!!c.reference,ls=h('span','cclost num',ok(c.lost_s)?(ref&&c.gap_text?c.gap_text:'best laps '+c.lost_s.toFixed(2)+' s quicker'):'');
   if(ok(c.lost_s))ls.title=ref?cap(String(c.reference))+' was about '+c.lost_s.toFixed(2)+' s quicker through this corner than your typical laps. One lap of theirs, so treat it as a hint.':'Your best laps were about '+c.lost_s.toFixed(2)+' s quicker here than your typical ones (this corner\'s share of the gap between your quickest laps and the rest). Not a promise of lap time.';
@@ -2601,6 +2637,7 @@ function ccCard(c){const card=h('article','cccard'),top=h('div','cchead');
   const row=(k,v,cls)=>{const p=h('p',cls||null);p.append(h('b',null,k+': '),document.createTextNode(cap(v)));return p};
   card.append(row('What\'s different',c.different),row('How to try it',c.how));if(c.gets)card.append(row('What it gets you',c.gets));
   if(c.why)card.append(row('Why',c.why,'note'));if(c.evidence)card.append(row('Evidence',c.evidence,'note'));
+  if(q&&!ref&&c.id){const r=h('div','row');r.append(coachThisBtn(Object.assign({corner:String(c.id)},q)));card.append(r)}
   return card}
 function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{},out=document.createDocumentFragment();
   const head=h('div','panel slhead'),tt=h('div','pvtt');
@@ -2630,7 +2667,7 @@ function renderPrSession(j){const R=j.review||{},S=R.summary||{},C=j.corners||{}
   const cc=slSec('Corner coach','prCorners'),cards=C.cards||[];
   const gu=(C.groups||[]).filter(g=>g.used).map(g=>String(g.label||'').replace(/ only$/,''));const grp=gu.length>1?gu.slice(0,-1).join(', ')+' and '+gu[gu.length-1]+', each compared only with its own kind':gu.join('');
   cc.append(h('p','note',C.ok?'From your last '+plural(C.laps||0,'clean lap')+' here ('+(grp?grp+', ':'')+plural(C.files||0,'telemetry file')+' of this car at this track). Your best laps through each corner against your typical ones; a tip only when it passes the shuffle test (Help explains).':(C.message||'Not enough clean laps here yet.')));
-  if(cards.length){const box=h('div','cccards');cards.forEach(c=>box.append(ccCard(c)));cc.append(box);cc.append(h('p','note',TURN_NOTE))}
+  if(cards.length){const box=h('div','cccards');cards.forEach(c=>box.append(ccCard(c,R.car_path&&R.track_code?{car:R.car_path,track:R.track_code}:null)));cc.append(box);cc.append(h('p','note',TURN_NOTE))}
   else if(C.ok)cc.append(h('p',null,C.message||'No corner shows a clear pattern yet.'));
   const U=C.unclear||[];if(U.length){cc.append(h('h4',null,'No clear pattern yet'));const ul=h('ul','pvlist');U.forEach(u=>{const li=h('li','note'),t=String(u.text||''),m=/^[CT]\d+:\s*/.exec(t);
     if(m&&turnNum(u.corner)!==null){const sp=h('span');sp.append(turnEl('b',null,u.corner,u.id),': '+t.slice(m[0].length));li.append(sp)}

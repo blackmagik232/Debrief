@@ -1355,7 +1355,7 @@ def test_review_page_keeps_every_section_and_number():
 
 def test_layout_is_bumped_and_saved_reviews_are_refreshed_once():
     from debrief import report
-    assert report.LAYOUT == "2.37.0"
+    assert report.LAYOUT == "2.38.0"
     lib = TMP / "layoutlib"
     MFL.main(str(lib))
     (lib / ".layout").write_text("2.18.0", encoding="utf-8")

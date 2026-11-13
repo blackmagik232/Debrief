@@ -521,7 +521,8 @@ def brief(rows: list, track: str, car: str, hist: dict | None, weak: list, wet=f
         pace.update({"typical": round(st.median(meds), 3) if meds else None, "typical_dry": True, "typical_races": len(meds),
                      "wet_races": len(wets), "wet_best": min((r["best"] for r in wets if r.get("best_clean", True)), default=None),
                      "best_wet": not clean_dry})
-    repeat = [{"id": w.get("label") or w["id"], "top3": w["top3"], "races": w["races"], "avg_avail": w["avg_avail"], **_last_cost(w, wet)}
+    repeat = [{"id": w.get("label") or w["id"], "top3": w["top3"], "races": w["races"], "avg_avail": w["avg_avail"],
+               "apex_m": w.get("apex_m"), **_last_cost(w, wet)}   # 2.38: apex_m lets Coach this find the corner in iRacing's files
               for w in weak if w.get("in_latest") and w["top3"] >= 2 and w["avg_avail"] > 0.02][:BRIEF_CORNERS]
     scanned, _ = profile.scanned_rows(here)
     who = {}

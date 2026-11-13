@@ -846,6 +846,7 @@ if browser is not None:
             pg.wait_for_selector("#vCoach", state="visible")
             check(pg.locator("#coLvNotes").count() == 1 and "Notes only" in pg.text_content("#coLevel"), "Coach: the Notes only level")
             check(pg.locator("#coRec").is_visible() and "Recording: off" in pg.text_content("#coRec") and pg.locator("#coRec.off").count() == 1, "Coach: the Recording light shows \"off\" while the microphone is off")
+            pg.evaluate("() => { document.getElementById('coMore').open = true }")   # 2.38: folded under More coach tools
             check(pg.locator("#coMicTest").is_enabled() and "Ctrl+Shift+L" in pg.text_content("#coUseLap"),
                   "Coach: Mic test and Use my last lap")
             pg.click("#coMicTest")

@@ -542,7 +542,18 @@
     <div class="col" id="coFull">
       <span class="eyebrow">While you drive</span>
       <h1>Coach</h1>
-      <p class="lede">Short spoken cues while you drive: a word after corners where you lost or gained time, sector times, your lap against your best, and a brake marker before the corners that cost you most. Only from your own laps.</p>
+      <p class="lede">Practise one thing at a time: pick it, drive with the coach watching it, then check how it went. It can talk to you while you drive, or stay silent and just count. Only from your own laps.</p>
+      <div class="panel costeps" id="coSteps" aria-label="Using the coach in three steps">
+        <ol class="costeps3">
+          <li class="costep" id="csPick"><span class="cstepn" aria-hidden="true">1</span><div class="cstepb"><h3>Pick</h3><p id="csPickText">Loading your one thing...</p><p class="note" id="csPickNote">Press <b>Coach this</b> on Practice, a race review's Fix first card or a Prepare corner.</p><div class="row"><button type="button" class="btn" id="csPickBtn" data-nav="practice">Pick on Practice</button></div></div></li>
+          <li class="costep" id="csDrive"><span class="cstepn" aria-hidden="true">2</span><div class="cstepb"><h3>Drive</h3><p id="csDriveText">Press Start coaching, then drive 10 clean laps.</p>
+            <div class="row"><button type="button" class="btn primary" id="csStart">Start coaching</button>
+            <label class="check covoicesw" for="coVoiceOn"><input id="coVoiceOn" type="checkbox" role="switch" checked><span><b>Voice</b> <span id="coVoiceWord">on</span></span></label></div>
+            <p class="note" id="csVoiceNote">On: a short word after your corner now and then. Off: silent, but it still counts and logs every lap.</p><span class="msg" id="csVoiceMsg" role="status"></span></div></li>
+          <li class="costep" id="csCheck"><span class="cstepn" aria-hidden="true">3</span><div class="cstepb"><h3>Check</h3><p id="csCheckText">After you drive: Practice > Read my telemetry, then open the newest session.</p><div class="row"><button type="button" class="btn" id="csCheckBtn" data-nav="practice">Open Practice</button></div></div></li>
+        </ol>
+        <p class="note">New to the coach? <button type="button" class="linkbtn" id="csGuide">Read Using the coach</button> (one practice, start to finish).</p>
+      </div>
       <div class="panel comain">
         <div class="phead"><h3>Status</h3><span class="pill" id="coPill">Off</span><span class="reclight off" id="coRec" role="status"><i></i><span id="coRecWord">Recording: off</span></span><button type="button" class="btn codrivebtn" id="coDriveBtn" title="A big view to glance at from the car, on a second monitor">Driving view</button></div>
         <p class="comuted" id="coMuted" hidden></p>
@@ -572,6 +583,33 @@
         <p class="note" id="coVoiceLine"></p>
         <p class="note warn">Keep Debrief open while you drive.</p>
       </div>
+      <div class="cogrid">
+        <div class="panel">
+          <div class="phead"><h3>Your reference lap</h3></div>
+          <p class="coref" id="coRef">None yet</p>
+          <p class="note" id="coLearnNote">Learning the track: your first clean lap becomes your reference. Until then the coach compares you to your best so far.</p>
+          <p class="note" id="coRefNote">Debrief uses your best clean lap for the car and track iRacing shows, from your telemetry files. No lap yet? Drive a clean one and it becomes the reference.</p>
+          <p class="note" id="coLast" hidden></p>
+        </div>
+        <div class="panel cofocus" id="coFocus" hidden>
+          <div class="phead"><h3>This session's one thing</h3><span class="pill" id="coFocusPill"></span></div>
+          <p id="coFocusText"></p>
+          <p class="coprog num" id="coFocusProg"></p>
+          <p class="note" id="coFocusNote"></p>
+        </div>
+        <div class="panel">
+          <div class="phead"><h3>Focus corners</h3></div>
+          <ul class="pvlist" id="coWeak"></ul>
+          <p class="note" id="coWeakNote">From your race reviews of this car at this track: the corners that keep costing you time.</p>
+          <div class="coplan" id="coPlan" hidden></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="phead"><h3>Last cues</h3><span class="note" id="coSpokenNote"></span></div>
+        <ul class="cospoken" id="coSpoken"></ul>
+      </div>
+      <details class="panel prepmore comore" id="coMore">
+        <summary><h3>More coach tools</h3><span class="note">Crew chief, corner notes and microphone, overlay, rehearsal</span></summary>
       <div class="panel crewpanel" id="crPanel">
         <div class="phead"><h3>Crew chief</h3><span class="pill" id="crPill">Off</span></div>
         <p class="costatus" id="crText" role="status">Start the coach to use the crew chief in a race.</p>
@@ -644,31 +682,6 @@
           </div>
         </div>
       </div>
-      <div class="cogrid">
-        <div class="panel">
-          <div class="phead"><h3>Your reference lap</h3></div>
-          <p class="coref" id="coRef">None yet</p>
-          <p class="note" id="coLearnNote">Learning the track: your first clean lap becomes your reference. Until then the coach compares you to your best so far.</p>
-          <p class="note" id="coRefNote">Debrief uses your best clean lap for the car and track iRacing shows, from your telemetry files. No lap yet? Drive a clean one and it becomes the reference.</p>
-          <p class="note" id="coLast" hidden></p>
-        </div>
-        <div class="panel cofocus" id="coFocus" hidden>
-          <div class="phead"><h3>This session's one thing</h3><span class="pill" id="coFocusPill"></span></div>
-          <p id="coFocusText"></p>
-          <p class="coprog num" id="coFocusProg"></p>
-          <p class="note" id="coFocusNote"></p>
-        </div>
-        <div class="panel">
-          <div class="phead"><h3>Focus corners</h3></div>
-          <ul class="pvlist" id="coWeak"></ul>
-          <p class="note" id="coWeakNote">From your race reviews of this car at this track: the corners that keep costing you time.</p>
-          <div class="coplan" id="coPlan" hidden></div>
-        </div>
-      </div>
-      <div class="panel">
-        <div class="phead"><h3>Last cues</h3><span class="note" id="coSpokenNote"></span></div>
-        <ul class="cospoken" id="coSpoken"></ul>
-      </div>
       <div class="panel" id="coRehearse">
         <div class="phead"><h3>Rehearse with a session</h3></div>
         <p class="note">Plays one of your Practice sessions through the coach as if you were driving it: the same voice, sound device and rules. Hear what it would say before you go on track. Not while you coach live.</p>
@@ -682,6 +695,7 @@
         </div>
         <p class="note">At 2x and 4x the words still play at their own speed, so the car covers 2 or 4 times as much track while a cue is said. The coach allows for that (every cue still ends before its brake point), so fewer cues fit than at 1x. Next lap and Next cue skip ahead with nothing said; Next cue looks 3 laps ahead at most. Use 1x to hear exactly what you would hear in the car.</p>
       </div>
+      </details>
       <details class="panel prepmore" id="coVoice">
         <summary><h3>Voice and sound</h3><span class="note">Which voice, which headset, audio delay</span></summary>
         <div class="gridf covoice">

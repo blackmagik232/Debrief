@@ -466,6 +466,7 @@ td.d b{color:var(--ink);font-weight:600}
 #rcTimeline svg g.kf rect.cell{stroke:var(--ink);stroke-width:2px}
 #rlTimeline svg g.rlsel circle:last-child{stroke:var(--ink);stroke-width:3px}
 .fuelrows{display:grid;gap:6px;font-size:var(--t-md)}
+#setupBody .panel p{margin:0 0 6px}#setupBody ul{margin:4px 0 6px;padding-left:18px}.sutag{display:inline-block;margin-left:6px;font-size:var(--t-xs);color:var(--ink2);border:1px solid var(--axis);border-radius:999px;padding:0 7px}
 .fuelrows b{font-family:var(--mono);font-weight:600}
 .fuelrows .src{color:var(--muted);font-size:var(--t-sm)}
 
@@ -529,12 +530,13 @@ th,td{white-space:normal!important;overflow-wrap:break-word;max-width:none!impor
   </div>
 </header>
 
+<div class="empty" id="agreeNote" role="status" hidden><b>Not every source agrees on this race.</b></div>
 <div class="empty" id="failNote" role="status" hidden><b>Some parts of this review couldn't be drawn.</b><span>It was probably made by an older version of Debrief. Open Sessions in the app and click Review again on this race to rebuild it; the rest of the page below still works.</span></div>
 
 <nav class="jump" id="jump" aria-label="Sections">
   <div class="jumplinks" id="jumpLinks"><a href="#raceTl" id="jumpTl" hidden>Your race</a><a href="#summary">Summary</a><a href="#coach">What to work on</a><a href="#session">Runs</a><a href="#race">Race story</a><a href="#racecraft">Race craft</a><a href="#racelog" id="jumpRaceLog" hidden>Racecraft</a><a href="#rlPace" id="jumpPace" hidden>Pace</a></div>
   <div class="jumpmenu"><button type="button" id="jumpMore" aria-expanded="false" aria-controls="jumpPanel">All the numbers <span aria-hidden="true">▾</span></button>
-    <div class="jumppanel" id="jumpPanel"><a href="#deep">Start of the numbers</a><a href="#compare">Compare laps</a><a href="#depth">Deeper coaching</a><a href="#fromIracing" id="jumpFi" hidden>From iRacing</a><a href="#possible">Best sectors</a><a href="#corners">Corners</a><a href="#technique">Technique</a><a href="#bestworst">Best vs worst</a><a href="#pace">Pace</a><a href="#consistency">Consistency</a><a href="#stint">Stint</a><a href="#habits">Driving style</a><a href="#plan">Practice plan</a></div></div>
+    <div class="jumppanel" id="jumpPanel"><a href="#deep">Start of the numbers</a><a href="#compare">Compare laps</a><a href="#depth">Deeper coaching</a><a href="#fromIracing" id="jumpFi" hidden>From iRacing</a><a href="#possible">Best sectors</a><a href="#corners">Corners</a><a href="#technique">Technique</a><a href="#bestworst">Best vs worst</a><a href="#pace">Pace</a><a href="#consistency">Consistency</a><a href="#setupSec">Setup</a><a href="#stint">Stint</a><a href="#habits">Driving style</a><a href="#plan">Practice plan</a></div></div>
 </nav>
 
 <section id="raceTl" hidden aria-label="Your race">
@@ -718,6 +720,12 @@ th,td{white-space:normal!important;overflow-wrap:break-word;max-width:none!impor
   </div>
 </section>
 
+<section id="setupSec" hidden>
+  <div class="sechead"><h2>Setup</h2><p class="lede" id="setupLede"></p></div>
+  <div class="rlgrid" id="setupBody"></div>
+  <div id="setupNotes"></div>
+</section>
+
 <section id="stint" hidden>
   <div class="sechead"><h2 id="stintTitle">Stint and tyre wear</h2><p class="lede" id="stintLede"></p></div>
   <div class="panel" id="fuelPanel" hidden><h3>Fuel <span class="note">from the fuel data on your laps</span></h3><div class="fuelrows" id="fuelRows"></div><p class="note" id="fuelPlanNote">Plan your next race's fuel on the Prepare page.</p></div>
@@ -790,6 +798,14 @@ D.sector_names=Array.isArray(D.sector_names)?D.sector_names:[];
 const BRAND=(D.brand&&typeof D.brand==='object')?D.brand:{};const TEAM_NAME='Team';
 // 2.34: a review built from this PC's telemetry files says iRacing where a Garage 61 review says Garage 61
 const PC=(D.meta||{}).source==='pc',FLAGGER=PC?'iRacing':'Garage 61';
+// 2.35 "no contradictions": D.agree (recordings.agree, made in Python on every write) gives each fact that shows in more
+// than one place one owner and the words the other places use. SHOWN collects what each section actually printed, and
+// checkFacts() at the end says plainly, near the top, if two places still differ. Without D.agree the page is as before.
+const AGREE=isObj(D.agree)?D.agree:{};const AG_FIN=isObj(AGREE.finish)?AGREE.finish:null;const AG_BLOCKS=isObj(AGREE.blocks)?AGREE.blocks:{};
+const SHOWN={};function shown(fact,val,where,owner){if(val==null||val===''||(typeof val==='number'&&!isFinite(val)))return;(SHOWN[fact]=SHOWN[fact]||[]).push({v:String(val),where,owner:!!owner})}
+// 2.35: a race against AI cars (meta.vs_ai / meta.ai_cars, as vsai.is_vs_ai reads them): one small tag, and no strength
+// of field or iRating anywhere on the page. Everything else is as in any race.
+const VS_AI=(()=>{const m=D.meta||{};if(m.vs_ai===true)return true;if(m.vs_ai===false)return false;return typeof m.ai_cars==='number'&&isFinite(m.ai_cars)&&m.ai_cars>0})();
 const M=D.meta,L=typeof D.L==='number'&&D.L>0?D.L:1000,STEP=typeof D.step==='number'&&D.step>0?D.step:10,bestKey='me'+D.best.n;
 const NO_LAPS=typeof D.best.n!=='number'||typeof D.best.t!=='number'||!isFinite(D.best.t),NO_LAPS_TXT='No usable laps in this race, so there is nothing to compare.';   // 2.19.1: never print null / NaN for a missing best lap
 const trOk=t=>isObj(t)&&Array.isArray(t.tt)&&t.tt.length>1&&Array.isArray(t.v);
@@ -865,6 +881,8 @@ function kbChart(host,label){if(!host||host._kb)return;host._kb=true;host.tabInd
 
 // ---------- header
 safe('header',()=>{$('chipSess').textContent=M.session||'Session';
+if(VS_AI){const T=isObj(D.vsai_tag)?D.vsai_tag:{};const c=h('span','chip vsai',typeof T.tag==='string'&&T.tag?T.tag:'vs AI');c.id='chipAi';
+  c.title=typeof T.help==='string'&&T.help?T.help:'You raced against AI cars. Strength of field and iRating don\u2019t apply, so they are not shown.';$('chipSess').after(c)}
 if(M.started_at){const d=new Date(M.started_at);if(!isNaN(d))$('when').textContent=d.toLocaleDateString([], {weekday:'short',day:'numeric',month:'short',year:'numeric'})+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}
 $('title').textContent=trackShort+' · '+carShort;
 [M.track,M.car,typeof D.L==='number'?(L/1000).toFixed(2)+' km':null,plural(D.laps.length,'lap')+', '+cleanLaps.length+' clean',refs.length?plural(refs.length,'comparison lap'):'No comparison laps'].filter(Boolean).forEach(s=>$('sub').append(h('span',null,String(s))))});
@@ -919,7 +937,8 @@ safe('race summary',()=>{
   // 2.2.2: "excluded" is only the far-too-slow laps (a tow or a spin); pit laps are counted on their own in counts.pit
   const exTxt=c.excluded?' ('+(exl.length?(exl.length===1?'lap ':'laps ')+andList(exl.map(String))+(exl.length===1?' was':' were')+' far off the pace, likely a spin or a tow, and left out':plural(c.excluded,'very slow lap')+' left out')+')':'';
   P((_sal?_sal+', you':'You')+' completed '+plural(D.laps.length,'full lap')+' here and '+cleanLaps.length+' were clean'+exTxt+'.');
-  if(pit.length)P('Pit stop on '+(pit.length===1?'lap ':'laps ')+andList(pit.map(String))+(pit.length===1?'; that lap is':'; those laps are')+' left out of your pace numbers.');
+  if(typeof AGREE.pit_line==='string'&&AGREE.pit_line)P(AGREE.pit_line);   // 2.35: the stop laps from iRacing, the left-out laps from the review
+  else if(pit.length)P('Pit stop on '+(pit.length===1?'lap ':'laps ')+andList(pit.map(String))+(pit.length===1?'; that lap is':'; those laps are')+' left out of your pace numbers.');
   P('Your best was ',{b:fmt(D.best.t)},' on lap '+D.best.n+', '+ab(D.median-D.best.t)+' s quicker than your median lap.');
   if(D.std_clean!=null)P('Clean laps typically varied by about ',{b:'±'+D.std_clean.toFixed(2)+' s'},(cleanLaps.length>=5&&Math.abs(D.trend_total)>=0.2?', and by the trend line they got '+ab(D.trend_total)+' s '+(D.trend_total>0?'slower':'quicker')+' from start to finish, which tyres, fuel and track temperature all feed into.':'.'));
   const unclean=c.unclean||[],slow=c.slow||[],traffic=c.traffic||[];
@@ -1318,7 +1337,8 @@ const PB=D.pb&&typeof D.pb==='object'?D.pb:null;
 
 // ---------- v2: context chips (iRating, season, conditions)
 safe('context chips',()=>{const host=$('ctxChips');const add=(txt,title,cls)=>{const c=h('span','chip'+(cls?' '+cls:''),txt);if(title)c.title=title;host.append(c)};
-  if(num(D.irating))add('iRating '+D.irating,'Your iRating going into this race (from '+FLAGGER+')','ir');
+  const irb=RES&&RES.irating_before!=null&&RES.irating_before!==''&&num(+RES.irating_before)?+RES.irating_before:null;   // 2.35: the race result owns it
+  if(VS_AI){}else if(irb!=null)add('iRating '+irb,'Your iRating going into this race (from the race result)','ir');else if(num(D.irating))add('iRating '+D.irating,'Your iRating going into this race (from '+FLAGGER+')','ir');
   const C=D.conditions;if(C&&typeof C==='object'){
     if(num(C.track_temp_c))add(Math.round(cToF(C.track_temp_c))+'°F track',C.track_temp_c.toFixed(1)+' °C track temperature (middle value over your laps)');
     if(num(C.air_temp_c))add(Math.round(cToF(C.air_temp_c))+'°F air',C.air_temp_c.toFixed(1)+' °C air temperature');
@@ -1338,18 +1358,21 @@ safe('personal best',()=>{if(!PB||typeof D.best.t!=='number')return;const b=$('p
 // ---------- v2: race result (data.result, entered by you in the app)
 safe('race result',()=>{if(!RES)return;const host=$('resultStats');const add=(lab,v,ctx)=>{const d=h('div');d.append(h('span',null,lab),h('b',null,v));if(ctx)d.append(h('i',null,ctx));host.append(d)};
   const n=v=>v!=null&&v!==''&&isFinite(+v)?+v:null;const fp=n(RES.finish_pos),sp=n(RES.start_pos),fs=n(RES.field_size);
-  add('Finished','P'+fp,fs?'of '+fs:'');
+  // 2.35: the race result owns finish, start and incidents; the words ("P1 in your class of 12, P4 of 30 overall") are made in recordings.agree
+  if(AG_FIN&&typeof AG_FIN.value==='string'){add('Finished',AG_FIN.value,typeof AG_FIN.ctx==='string'?AG_FIN.ctx:'');shown('finish_class',AG_FIN.class_pos,'the race result',true);shown('finish_overall',AG_FIN.overall_pos,'the race result',true)}
+  else add('Finished','P'+fp,fs?'of '+fs:'');
   // 2.18: "held" only when the race never moved you; a race that went P5 to P7 and back says so (the chart shows it)
   const PS=((D.racecap&&Array.isArray(D.racecap.positions))?D.racecap.positions:[]).map(x=>x&&n(x.pos)).filter(x=>x!=null&&x>0);
-  const lo=PS.length?Math.min(...PS):null,hi=PS.length?Math.max(...PS):null;const moved=lo!=null&&hi>lo;
-  if(sp!=null){const g=sp-fp;add('Started','P'+sp,g>0?'Gained '+plural(g,'place')+' start to finish':g<0?'Lost '+plural(-g,'place')+' start to finish':moved?'Finished where you started, after running P'+lo+' to P'+hi:'Finished where you started')}
-  if(n(RES.incidents)!=null)add('Incidents',n(RES.incidents)+'x');
-  const ib=n(RES.irating_before),ia=n(RES.irating_after);if(ib!=null&&ia!=null)add('iRating',ib+' → '+ia,(ia-ib>=0?'+':'−')+Math.abs(ia-ib));else if(ia!=null)add('iRating',String(ia));
+  const lo=PS.length&&!AGREE.multi?Math.min(...PS):null,hi=PS.length?Math.max(...PS):null;const moved=lo!=null&&hi>lo;   // the scan's places are overall: not for a class result
+  if(sp!=null){const k=AG_FIN?AG_FIN.kind:(AGREE.multi?null:'overall');if(k==='class'||k==='overall')shown(k==='class'?'start_class':'start_overall',sp,'the race result',true);const g=sp-fp;add('Started','P'+sp,g>0?'Gained '+plural(g,'place')+' start to finish':g<0?'Lost '+plural(-g,'place')+' start to finish':moved?'Finished where you started, after running P'+lo+' to P'+hi:'Finished where you started')}
+  if(n(RES.incidents)!=null){add('Incidents',n(RES.incidents)+'x');shown('incidents',n(RES.incidents),'the race result',true)}
+  const ib=VS_AI?null:n(RES.irating_before),ia=VS_AI?null:n(RES.irating_after);if(ib!=null&&ia!=null)add('iRating',ib+' → '+ia,(ia-ib>=0?'+':'−')+Math.abs(ia-ib));else if(ia!=null)add('iRating',String(ia));
   const sb=n(RES.sr_before),sa=n(RES.sr_after);if(sb!=null&&sa!=null)add('Safety rating',sb.toFixed(2)+' → '+sa.toFixed(2),sg(sa-sb,2));else if(sa!=null)add('Safety rating',sa.toFixed(2));
-  if(n(RES.sof)!=null)add('Strength of field',String(n(RES.sof)));
+  if(!VS_AI&&n(RES.sof)!=null)add('Strength of field',String(n(RES.sof)));
   if(n(RES.laps_led)!=null)add('Laps led',String(n(RES.laps_led)));
   if(RES.notes){const p=h('p','rnotes');p.textContent=String(RES.notes).slice(0,500);$('resultPanel').append(p)}
-  $('resultSub').textContent='Entered by you';$('resultPanel').hidden=false});
+  const SRC={iracing:'From iRacing (the results in your telemetry file)',results_file:'From your iRacing results file',recording:'From iRacing (recorded by Debrief when the race ended)',you:'Entered by you',scan:'From the replay scan'};
+  $('resultSub').textContent=typeof AGREE.source_label==='string'&&AGREE.source_label?AGREE.source_label:(SRC[RES.source]||'Saved with this review');$('resultPanel').hidden=false});
 
 // ---------- v2.2: who else was on track (teammates and followed drivers only: all Garage 61 shares)
 safe('on track',()=>{const OT=D.on_track;if(!OT||!Array.isArray(OT.drivers))return;const host=$('otRows');
@@ -1531,7 +1554,7 @@ async function drawShareCard(){const W=1200,H=630;const cv=document.createElemen
   x.fillText(('Race review'+(when?' · '+when:'')).toUpperCase(),64,76);sp('0px');
   x.fillStyle=C.ink;const ts=fit(trackShort.toUpperCase(),'700 $px '+DISP,104,660);x.fillText(trackShort.toUpperCase(),60,76+ts*0.95);
   const yCar=76+ts*0.95+46;x.fillStyle=C.ink2;fit(String(M.car||carShort),'500 $px '+BOD,30,660);x.fillText(String(M.car||carShort),64,yCar);
-  const ctx2=[];if(num(D.irating))ctx2.push('iR '+D.irating);if(D.conditions&&num(D.conditions.track_temp_c))ctx2.push(Math.round(cToF(D.conditions.track_temp_c))+'°F track');if(D.season&&D.season.name)ctx2.push(D.season.name);ctx2.push(plural(D.laps.length,'lap')+', '+cleanLaps.length+' clean');
+  const ctx2=[];if(num(D.irating)&&!VS_AI)ctx2.push('iR '+D.irating);if(D.conditions&&num(D.conditions.track_temp_c))ctx2.push(Math.round(cToF(D.conditions.track_temp_c))+'°F track');if(D.season&&D.season.name)ctx2.push(D.season.name);ctx2.push(plural(D.laps.length,'lap')+', '+cleanLaps.length+' clean');
   x.fillStyle=C.muted;x.font='400 20px '+BOD;x.fillText(ctx2.join('  ·  '),64,yCar+38);
   // PB badge
   let badge=null;if(PB&&PB.is_pb)badge=['NEW PB',C.pb];else if(PB&&PB.first_time)badge=['FIRST RACE HERE',C.a];
@@ -1929,17 +1952,30 @@ const FI_DRAW={
   incidents(C,box,key,p){const ev=(Array.isArray(C)?C:[]).filter(e=>isObj(e)&&fin(e.lap));
     const where=ev.filter(e=>fin(e.d));if(where.length&&where.length<=10)p.insertBefore(h('p',null,'Where: '+andList(where.map(e=>'lap '+e.lap+' '+fiWhere(e.d)+(fin(e.n)?' (+'+e.n+')':'')))+'.'),box);
     if(!MAP||!where.length)return false;
-    const W=Math.max(260,Math.min(460,box.clientWidth||420)),H=Math.round(W*0.68);const pts=mapFit(W,H,24);if(pts.length<10)return false;
+    // 2.35: placed exactly as the corner maps on the fix cards place a corner: metres into the lap (d x L) on the map's own
+    // spacing (D.step), with the same start/finish tick and track line, so an incident in a corner sits where that card shows it
+    const W=Math.max(260,Math.min(460,box.clientWidth||420)),H=Math.round(W*Math.min(0.85,Math.max(0.5,MAP.h/MAP.w)));const P=mapFit(W,H,24);const n=P.length;if(n<10)return false;
+    const st=num(D.step)&&D.step>0?D.step:L/n;const idx=m=>((Math.round(m/st)%n)+n)%n;
     const svg=el('svg',{viewBox:'0 0 '+W+' '+H,width:W,height:H,role:'img','aria-label':'Track map with '+plural(where.length,'incident')});svg.style.maxWidth='100%';
-    const d='M'+pts.map(q=>q[0].toFixed(1)+','+q[1].toFixed(1)).join(' L')+' Z';
-    svg.append(el('path',{d,fill:'none',stroke:'var(--track)','stroke-width':10,'stroke-linejoin':'round'}),el('path',{d,fill:'none',stroke:'var(--axis)','stroke-width':1.5,'stroke-linejoin':'round'}));
-    svg.append(el('circle',{cx:pts[0][0],cy:pts[0][1],r:4,fill:'var(--ink)'}));
-    const seen={};where.forEach(e=>{const f=((e.d%1)+1)%1;const i=Math.min(pts.length-1,Math.round(f*(pts.length-1)));const k=Math.round(i/3);const o=(seen[k]=(seen[k]||0)+1)-1;
-      const [x,y]=pts[i];const r=fin(e.n)?Math.min(10,4+2*e.n):5;const c=el('circle',{cx:x+o*7,cy:y-o*7,r,fill:'var(--bad)','fill-opacity':.85,stroke:'var(--panel)','stroke-width':1.5});
-      hover(c,'Lap '+e.lap,[(fin(e.n)?'+'+e.n+' incident point'+(e.n===1?'':'s'):'An incident')+' at '+fiWhere(e.d)+'.']);svg.append(c)});
-    box.append(svg);fiKey(key,[['dot','var(--bad)','An incident (bigger means more points)'],['dot','var(--ink)','Start/finish line']]);return true}
+    svg.append(el('polyline',{points:P.map(q=>q[0].toFixed(1)+','+q[1].toFixed(1)).join(' ')+' '+P[0][0].toFixed(1)+','+P[0][1].toFixed(1),fill:'none',stroke:'var(--axis)','stroke-width':4,'stroke-linejoin':'round','stroke-linecap':'round'}));
+    if(n>2){const [x0,y0]=P[0],[x1,y1]=P[Math.min(2,n-1)];const l=Math.hypot(x1-x0,y1-y0)||1;const nx=-(y1-y0)/l,ny=(x1-x0)/l;svg.append(el('line',{x1:x0+nx*6,y1:y0+ny*6,x2:x0-nx*6,y2:y0-ny*6,stroke:'var(--ink2)','stroke-width':2}))}
+    const seen={},named={};where.forEach(e=>{const f=((e.d%1)+1)%1;const i=idx(f*L);const k=Math.round(i/3);const o=(seen[k]=(seen[k]||0)+1)-1;
+      const [x,y]=P[i];const r=fin(e.n)?Math.min(10,4+2*e.n):5;const c=el('circle',{class:'fiinc',cx:x+o*7,cy:y-o*7,r,fill:'var(--bad)','fill-opacity':.85,stroke:'var(--panel)','stroke-width':1.5});
+      c.dataset.i=String(i);const wh=fiWhere(e.d);hover(c,'Lap '+e.lap,[(fin(e.n)?'+'+e.n+' incident point'+(e.n===1?'':'s'):'An incident')+' at '+wh+'.']);svg.append(c);
+      const cn=cornerAt(f*L);if(cn&&!named[cn.id])named[cn.id]={i,id:String(cn.id)}});
+    // the corner names of the incidents, beside the first incident in each corner
+    const labels=labelPlacer(P,n,W,H,[18,26,34]);Object.values(named).forEach(({i,id})=>{const [ax,ay]=P[i];const [x,y]=labels.place(ax,ay,10);const dd=Math.hypot(x-ax,y-ay)||1;
+      svg.append(el('line',{x1:ax,y1:ay,x2:x-(x-ax)/dd*8,y2:y-(y-ay)/dd*8,stroke:'var(--ink2)','stroke-width':1}),el('text',{class:'fiinclab',x,y:y+4,'text-anchor':'middle','font-size':11.5,'font-weight':700,fill:'var(--ink)','font-family':MONO,stroke:'var(--panel)','stroke-width':3,'paint-order':'stroke'},id))});
+    box.append(svg);fiKey(key,[['dot','var(--bad)','An incident (bigger means more points)'],['line','var(--ink2)','Start/finish line']]);return true}
 };
 
+// 2.35: one position-by-lap chart on the page. The replay scan (Your race, overall order on the road) and the recording
+// (From iRacing, iRacing's live position) are both drawn only when one has more laps: the other section points to it.
+const POS_N={rc:(isObj(D.racecap)&&Array.isArray(D.racecap.laps)?D.racecap.laps:[]).filter(x=>isObj(x)&&typeof x.pos==='number'&&Number.isInteger(x.lap)&&x.lap>=1).length,
+  fi:(isObj(D.from_iracing)&&isObj(D.from_iracing.charts)&&isObj(D.from_iracing.charts.position)&&Array.isArray(D.from_iracing.charts.position.laps)?D.from_iracing.charts.position.laps:[]).filter(x=>isObj(x)&&fin(x.lap)&&fin(x.pos)).length};
+const POS_CHART=POS_N.rc>1&&POS_N.fi>1?(POS_N.fi>POS_N.rc?'fi':'rc'):null;
+// what actually happened: the From iRacing chart drew (FI_POS.drawn), or it waits for the scan's timeline (FI_POS.wait)
+const FI_POS={drawn:false,wait:null};
 // ---------- 2.27: what Debrief recorded from iRacing while you drove (D.from_iracing; built in recordings.py, all words and numbers are made there)
 safe('from iracing',()=>{const X=isObj(D.from_iracing)?D.from_iracing:null;if(!X||!Array.isArray(X.blocks))return;const host=$('fiBody');
   $('fromIracing').hidden=false;$('jumpFi').hidden=false;   // 2.35: shown first, so each chart can measure its width
@@ -1952,18 +1988,31 @@ safe('from iracing',()=>{const X=isObj(D.from_iracing)?D.from_iracing:null;if(!X
     // a "numbers of" block (fuel lap by lap) goes under its chart's Show the numbers when that chart was drawn
     if(typeof b.numbers_of==='string'&&nums[b.numbers_of]){if(tb){const d=nums[b.numbers_of];d.hidden=false;d.append(h('h4',null,String(b.h||'')),tableOf(tb))}return}
     const p=h('div','panel');p.append(h('h3',null,String(b.h||'')));host.append(p);
-    (Array.isArray(b.lines)?b.lines:[]).forEach(l=>p.append(h('p',null,String(l))));
+    // 2.35: where the race result owns the fact, recordings.agree gives this block's words (the same figure, or why it differs)
+    const ag=typeof b.key==='string'&&isObj(AG_BLOCKS[b.key])&&Array.isArray(AG_BLOCKS[b.key].lines)?AG_BLOCKS[b.key].lines:null;
+    (ag||(Array.isArray(b.lines)?b.lines:[])).forEach(l=>p.append(h('p',null,String(l))));
+    const skip=b.chart==='position'&&POS_CHART==='rc';
+    if(skip){const pn=h('p','note','Your position lap by lap is drawn once, under Your race at the top of the page: the replay scan has more of your laps (the order on the road, overall).');p.append(pn);FI_POS.wait={p,pn,C:CH.position}}
     // incidents: the corner, not "90% of the way round"
     if(b.chart==='incidents'&&tb&&Array.isArray(CH.incidents)&&CH.incidents.length===tb.rows.length)
       tb={cols:tb.cols,rows:tb.rows.map((r,i)=>{const w=isObj(CH.incidents[i])?fiWhere(CH.incidents[i].d):'';return w&&Array.isArray(r)&&r.length>2?[...r.slice(0,2),w,...r.slice(3)]:r})};
     let drawn=false;const fn=typeof b.chart==='string'&&FI_DRAW[b.chart];
-    if(fn&&CH[b.chart]!=null){const box=h('div','chart fichart');const key=h('div','legend');p.append(box);
+    if(fn&&CH[b.chart]!=null&&!skip){const box=h('div','chart fichart');const key=h('div','legend');p.append(box);
       try{drawn=fn(CH[b.chart],box,key,p)===true}catch(e){try{console.error('Debrief: the '+b.chart+' chart could not be drawn:',e)}catch(_){}drawn=false}
-      if(drawn){if(key.children.length)p.insertBefore(key,box.nextSibling)}else box.remove()}
-    if(drawn){const d=h('details','finums');d.append(h('summary',null,'Show the numbers'));if(tb)d.append(tableOf(tb));else d.hidden=true;p.append(d);nums[b.chart]=d}
+      if(drawn){if(key.children.length)p.insertBefore(key,box.nextSibling);if(b.chart==='position')FI_POS.drawn=true}else box.remove()}
+    if(drawn||(skip&&tb)){const d=h('details','finums');d.append(h('summary',null,'Show the numbers'));if(tb)d.append(tableOf(tb));else d.hidden=true;p.append(d);if(drawn)nums[b.chart]=d}
     else if(tb)p.append(tableOf(tb));
     if(typeof b.note==='string'&&b.note)p.append(h('p','note',b.note))});
-  (Array.isArray(X.notes)?X.notes:[]).forEach(n=>$('fiNotes').append(h('p','note',String(n))))},'fiBody');
+  (Array.isArray(X.notes)?X.notes:[]).forEach(n=>$('fiNotes').append(h('p','note',String(n))));
+  // what this section printed, for the check at the end (the race result's figure where agree gave this section its words)
+  const F=isObj(X.facts)?X.facts:{};const fu=isObj(F.fuel)?F.fuel:{},ic=isObj(F.incidents)?F.incidents:{},fn2=isObj(F.finish)?F.finish:null;
+  // the recording's own figures (never the race result's): fuel isn't compared, the Fuel panel takes the recording's figure
+  // in a team race the recording also has the team's total: the one of its two own figures that is defined as the result's is compared
+  if(fin(ic.total))shown('incidents',fin(ic.team_total)&&RES&&+RES.incidents===ic.team_total?ic.team_total:ic.total,'From iRacing');
+  if(fn2&&fn2.last_row===false){if(fn2.multi)shown('finish_class',fn2.cpos,'From iRacing');shown('finish_overall',fn2.pos,'From iRacing')}
+  if(fin(F.pit_stops_n)&&F.pit_stops_n>0)shown('pit_count',F.pit_stops_n,'From iRacing',true);
+  // a dial you never moved: the Setup section's reading of the same in-car dial is compared with it
+  const AID=isObj(F.aids)?F.aids:{};[['bb','bias'],['tc','tc'],['abs','abs']].forEach(([k,d])=>{const v=AID[k];if(Array.isArray(v)&&v.length===1&&fin(v[0]))shown('dial_'+d,String(+v[0].toFixed(1)),'From iRacing')})},'fiBody');
 
 // Save as PDF: the numbers, the race log and the extra corners are on paper too, with no way to unfold them there.
 // Anything else prints if you opened it. Folds go back to how they were after the print dialog closes.
@@ -1995,7 +2044,9 @@ safe('your race',()=>{const int=(v,lo,hi)=>typeof v==='number'&&Number.isInteger
     if(g.length)host.append(h('p','note','At the line: '+g.join(', ')+'.'));
     const ms=moments[n]||[];if(ms.length){const ul=h('ul');ms.forEach(m=>ul.append(h('li',null,m.text)));host.append(ul)}
     if(int(r.review_lap,1,5000)&&TR['me'+r.review_lap]){const b=h('button',null,'Open in Compare (your lap '+r.review_lap+')');b.type='button';b.onclick=()=>openLap(r.review_lap);host.append(b)}};
-  if(pos.length>1){$('raceTl').hidden=false;$('jumpTl').hidden=false;$('rlTlSub').textContent='lower on the chart is further back · on the road'+(R.official?', finish official':'');
+  if(pos.length>1&&POS_CHART==='fi'&&FI_POS.drawn){$('raceTl').hidden=false;$('jumpTl').hidden=false;   // 2.35: drawn once, in From iRacing
+    const pt=h('p','note','Your position lap by lap is drawn once, in ');const a=h('a',null,'From iRacing');a.href='#fromIracing';pt.append(a,document.createTextNode(' further down: iRacing\u2019s live data has more of your laps (overall'+(AGREE.multi?' and in your class':'')+').'));$('rlTimeline').append(pt)}
+  else if(pos.length>1){$('raceTl').hidden=false;$('jumpTl').hidden=false;$('rlTlSub').textContent='lower on the chart is further back · on the road'+(R.official?', finish official':'');
     const host=$('rlTimeline');const W=Math.max(320,host.clientWidth||900),H=210,ml=34,mr=16,top=16,bot=26;
     const L0=pos[0].lap,L1=pos[pos.length-1].lap,hi=Math.max(...pos.map(x=>x.pos)),lo=Math.min(...pos.map(x=>x.pos));
     const X=l=>ml+(W-ml-mr)*(l-L0)/Math.max(1,L1-L0),Y=v=>top+(H-top-bot)*(v-lo)/Math.max(1,hi-lo);
@@ -2018,10 +2069,11 @@ safe('your race',()=>{const int=(v,lo,hi)=>typeof v==='number'&&Number.isInteger
   $('racelog').hidden=false;$('jumpRaceLog').hidden=false;
   $('rlLede').textContent='From a replay scan of race '+String(R.subsession||'')+'. '+(R.official?'The finish is from the official results.':'Positions are the order on the road, not official results.')+' Positions are overall, across every class. Passes and fights cover the cars near yours, because iRacing only gives live data for cars near the replay camera. Lap numbers here are race laps.'+(V2?'':' This was linked with an older version: scan or link it again for corrected positions.');
   const chips=$('rlChips');const chip=t=>chips.append(h('span','chip',t));const C=isObj(R.craft)?R.craft:{};
-  if(R.start_type)chip(R.start_type==='rolling'?'Rolling start':'Standing start');if(V2&&R.grid)chip('Started P'+R.grid);if(V2&&R.pos_after_lap1)chip('P'+R.pos_after_lap1+' after lap 1');
-  if(R.finish)chip((int(R.class_finish,1,500)?'P'+R.class_finish+' in class, ':'Finished ')+'P'+R.finish+' overall'+(R.official?'':' on the road'));
+  if(R.start_type)chip(R.start_type==='rolling'?'Rolling start':'Standing start');if(V2&&R.grid){chip('Started P'+R.grid+(AGREE.multi?' overall':''));shown('start_overall',R.grid,'the replay scan')}if(V2&&R.pos_after_lap1)chip('P'+R.pos_after_lap1+' after lap 1');
+  if(R.finish){chip((int(R.class_finish,1,500)?'P'+R.class_finish+' in class, ':'Finished ')+'P'+R.finish+' overall'+(R.official?'':' on the road'));
+    if(R.official){shown('finish_overall',R.finish,'the replay scan');if(int(R.class_finish,1,500))shown('finish_class',R.class_finish,'the replay scan')}}
   const onT=list('passes').filter(p=>p.how==='on track'&&p.lap>1);chip(onT.filter(p=>p.made).length+' on-track passes after lap 1');chip(onT.filter(p=>!p.made).length+' suffered');if(R.ended)chip(String(R.ended));
-  const P=isObj(R.pit_cost)?R.pit_cost:{};const st=Array.isArray(P.stops)?P.stops.filter(isObj):[];if(st.length){$('rlPitPanel').hidden=false;const ul=h('ul','rcsum');st.forEach(s=>ul.append(h('li',null,'Lap '+s.lap+': '+(s.kind==='tow'?'looks like a tow or reset, then '+s.seconds+' s in the pits':s.kind==='drive'?s.seconds+' s through the pit lane, no stop':s.seconds+' s in the pit lane')+(int(s.before,1,500)&&int(s.after,1,500)?', P'+s.before+' to P'+s.after+' around it':''))));$('rlPits').append(h('p',null,'Total: '+Math.floor(P.total_s/60)+' min '+Math.round(P.total_s%60)+' s'),ul)}
+  const P=isObj(R.pit_cost)?R.pit_cost:{};const st=Array.isArray(P.stops)?P.stops.filter(isObj):[];if(st.length){/* tows and pass-throughs aren't stops in the recording's count */if(!st.some(s=>s.kind==='tow'||s.kind==='drive'))shown('pit_count',st.length,'the replay scan');$('rlPitPanel').hidden=false;const ul=h('ul','rcsum');st.forEach(s=>ul.append(h('li',null,'Lap '+s.lap+': '+(s.kind==='tow'?'looks like a tow or reset, then '+s.seconds+' s in the pits':s.kind==='drive'?s.seconds+' s through the pit lane, no stop':s.seconds+' s in the pit lane')+(int(s.before,1,500)&&int(s.after,1,500)?', P'+s.before+' to P'+s.after+' around it':''))));$('rlPits').append(h('p',null,'Total: '+Math.floor(P.total_s/60)+' min '+Math.round(P.total_s%60)+' s'),ul)}
   const pc=list('pass_corners');if(pc.length){$('rlCornerPanel').hidden=false;const ul=h('ul','rcsum');pc.forEach(c=>ul.append(h('li',null,String(c.corner)+': '+c.made+' made, '+c.lost+' suffered')));$('rlCorners').append(ul)}
   const tc=list('traffic_check');if(tc.length){$('rlTrafficPanel').hidden=false;tc.forEach(t=>$('rlTraffic').append(h('li',null,(t.review_lap?'Your lap '+t.review_lap+' (race lap '+t.lap+'): ':'Lap '+t.lap+': ')+String(t.text||''))))}
   const so=$('rlStories');list('stories').forEach(s=>{const p=h('div','panel');p.append(h('h3',null,String(s.title||'')));const ul=h('ul','rcsum');(Array.isArray(s.beats)?s.beats:[]).filter(isObj).forEach(b=>ul.append(h('li',null,(b.lap?'Lap '+b.lap+': ':'')+String(b.text||''))));p.append(ul);so.append(p)});
@@ -2032,9 +2084,15 @@ safe('your race',()=>{const int=(v,lo,hi)=>typeof v==='number'&&Number.isInteger
   const V=isObj(R.pace)?R.pace:{};if(num(V.typical)){$('rlPace').hidden=false;$('jumpPace').hidden=false;
     $('rlPaceLede').textContent=(int(V.peers,1,500)?'Compared with '+V.peers+' '+(V.peer_label==='your class'?'cars in your class':'cars within 4% of your best lap, since this scan has no class data')+', using the laps the replay showed of them.':'')+' Laps slower than 107% of your best are left out.';
     const sg=$('rlPaceStats');const tile=(lab,val,ctx)=>{const d=h('div','stat');d.append(h('span','lab',lab),h('span','v',val));if(ctx)d.append(h('span','ctx',ctx));sg.append(d)};
-    tile('Your typical lap',fmt(V.typical));if(num(V.peer_typical))tile('Their typical lap',fmt(V.peer_typical),num(V.vs_peers)?(V.vs_peers>0?'You: +':'You: −')+Math.abs(V.vs_peers).toFixed(2)+' s':'');if(int(V.peer_rank,1,500))tile('Your pace rank',V.peer_rank+' of '+(V.peers+1));
+    // 2.35: the scan's typical lap is its own (replay laps within 107% of your best); say so when it isn't the summary's
+    tile('Your typical lap',fmt(V.typical),num(D.median)&&Math.abs(V.typical-D.median)>=0.05?'From the replay\u2019s laps. The summary\u2019s '+fmt(D.median)+' is the middle of every lap in the review':'');if(num(V.peer_typical))tile('Their typical lap',fmt(V.peer_typical),num(V.vs_peers)?(V.vs_peers>0?'You: +':'You: −')+Math.abs(V.vs_peers).toFixed(2)+' s':'');if(int(V.peer_rank,1,500))tile('Your pace rank',V.peer_rank+' of '+(V.peers+1));
     if(num(V.clear))tile('In clear air',fmt(V.clear),V.n_clear+' laps');if(num(V.fight))tile('Near other cars',fmt(V.fight),V.n_fight+' laps'+(num(V.fight_cost)?' · '+(V.fight_cost>=0?'+':'−')+Math.abs(V.fight_cost).toFixed(2)+' s':''))}
 });
+// 2.35: the scan was to draw the position chart; if it didn't, From iRacing draws its own after all and drops its pointer
+safe('position chart fallback',()=>{const W0=FI_POS.wait;if(!W0||$('rlTimeline').querySelector('svg'))return;W0.pn.remove();
+  const box=h('div','chart fichart');const key=h('div','legend');const d=W0.p.querySelector('details.finums');W0.p.insertBefore(box,d||null);
+  let ok=false;try{ok=FI_DRAW.position(W0.C,box,key,W0.p)===true}catch(e){try{console.error('Debrief: the position chart could not be drawn:',e)}catch(_){}}
+  if(ok){if(key.children.length)W0.p.insertBefore(key,box.nextSibling)}else box.remove()});
 // ---------- 2.4: race craft (D.racecraft from the engine, D.result entered by you). Old reviews without
 // racecraft still get the lap strip, built from D.laps and D.counts, when a result was entered.
 const RC=isObj(D.racecraft)?D.racecraft:null;
@@ -2095,11 +2153,11 @@ function renderTimeline(){const sec=$('racecraft');if(!sec||sec.hidden||!RC_LAPS
 safe('race craft',()=>{const sec=$('racecraft');if(!RC&&!RX)return;if(SR)return;
   // chips: what you entered in the result dialog
   const chips=$('rcChips');const chip=(t,title,cls)=>{const c=h('span','chip'+(cls?' '+cls:''),t);if(title)c.title=title;chips.append(c)};
-  if(RX){const pl=RX.pos_after_lap1,sp=RX.start_pos;
-    if(int(pl,1,200)){let t='P'+pl+' after lap 1';const d=num(RX.positions_lap1)?RX.positions_lap1:(int(sp,1,200)?sp-pl:null);if(d!=null)t+=d>0?' (up '+d+')':d<0?' (down '+(-d)+')':' (held position)';chip(t,'Position after lap 1, entered by you')}
-    if(int(RX.pit_stops,0,50))chip(plural(RX.pit_stops,'pit stop'),'Entered by you');
-    if(int(RX.penalties,0,50)&&RX.penalties>0)chip(plural(RX.penalties,'penalty','penalties'),'Drive-throughs and other penalties, entered by you');
-    const FS={running:'Running at the finish',dnf:'Did not finish',dq:'Disqualified',disconnected:'Disconnected'};if(FS[RX.finish_status])chip(FS[RX.finish_status],'How the race ended, entered by you','st-'+RX.finish_status);
+  if(RX){const pl=RX.pos_after_lap1,sp=RX.start_pos;const by=RX.source==='iracing'||RX.source==='recording'||RX.source==='results_file'?'from iRacing':RX.source==='you'?'entered by you':'from the race result';   // 2.35
+    if(int(pl,1,200)){let t='P'+pl+' after lap 1';const d=num(RX.positions_lap1)?RX.positions_lap1:(int(sp,1,200)?sp-pl:null);if(d!=null)t+=d>0?' (up '+d+')':d<0?' (down '+(-d)+')':' (held position)';chip(t,'Position after lap 1, '+by)}
+    if(int(RX.pit_stops,0,50))chip(plural(RX.pit_stops,'pit stop'),by[0].toUpperCase()+by.slice(1));   // not compared: what counts as a stop is yours
+    if(int(RX.penalties,0,50)&&RX.penalties>0)chip(plural(RX.penalties,'penalty','penalties'),'Drive-throughs and other penalties, '+by);
+    const FS={running:'Running at the finish',dnf:'Did not finish',dq:'Disqualified',disconnected:'Disconnected'};if(FS[RX.finish_status])chip(FS[RX.finish_status],'How the race ended, '+by,'st-'+RX.finish_status);
     const nI=Object.values(INC).reduce((s,a)=>s+a.length,0);if(nI){const pts=Object.values(INC).flat().reduce((s,x)=>s+(x.points||0),0);chip(plural(nI,'incident')+' logged'+(pts?' ('+pts+'x)':''),'Incidents by lap, entered by you')}}
   chips.hidden=!chips.children.length;
   // summary sentences (engine-written, factual)
@@ -2124,27 +2182,59 @@ safe('race craft',()=>{const sec=$('racecraft');if(!RC&&!RX)return;if(SR)return;
     present.forEach(k=>{const sp=h('span');const sv=el('svg',{width:12,height:12,viewBox:'0 0 12 12','aria-hidden':'true'});sv.append(rcIcon(k,0,0));sp.append(sv,document.createTextNode(IC_LAB[k]));key.append(sp)});
     $('rcTlNote').textContent='Each square is one lap, coloured by its time against your typical lap. Dashed squares are pit or left-out laps, which have no comparable time. Hover or use the arrow keys for the details.'}
   if(chips.hidden&&su.hidden&&$('rcLap1').hidden&&$('rcTlPanel').hidden)return;
-  $('rcLede').textContent='How the start, traffic, pit stops and incidents shaped your race.'+(RX&&(RX.pos_after_lap1!=null||RX.incident_laps)?' Positions and incidents are what you entered for this race.':'');
+  $('rcLede').textContent='How the start, traffic, pit stops and incidents shaped your race.'+(RX&&(RX.pos_after_lap1!=null||RX.incident_laps)?(RX.source==='iracing'||RX.source==='recording'||RX.source==='results_file'?' Positions and incidents are from iRacing\u2019s result for this race.':' Positions and incidents are what you entered for this race.'):'');
   sec.hidden=false},'racecraft');
 
 // ---------- 2.4: fuel (D.strategy): fuel use per lap, start and end level, pit stop loss
 const STRAT=isObj(D.strategy)?D.strategy:null;
+let FUEL_FIG=null;   // 2.35: the litres-a-lap words the Fuel panel printed (the Setup section repeats them, never its own)
 const gal=l=>(l/3.785).toFixed(l/3.785<10?2:1);
 const litres=l=>l.toFixed(l<10?2:1)+' L ('+gal(l)+' gal)';
-safe('fuel',()=>{if(!STRAT)return;const host=$('fuelRows');const row=parts=>{const p=h('p');rich(p,parts);host.append(p);return p};
-  const B=isObj(STRAT.burn)&&num(STRAT.burn.median_l)?STRAT.burn:null;const LV=isObj(STRAT.level)?STRAT.level:null;const P=isObj(STRAT.pit)?STRAT.pit:null;
-  if(B){const extra=[];if(num(B.n))extra.push(plural(B.n,'lap'));if(num(B.p90_l)&&B.p90_l>B.median_l+0.005)extra.push(B.p90_l.toFixed(2)+' L on your thirstier laps');
+safe('fuel',()=>{const AF=isObj(AGREE.fuel)&&num(AGREE.fuel.median_l)?AGREE.fuel:null;if(!STRAT&&!AF)return;const host=$('fuelRows');const row=parts=>{const p=h('p');rich(p,parts);host.append(p);return p};
+  const S0=STRAT||{};const B=isObj(S0.burn)&&num(S0.burn.median_l)?S0.burn:null;const LV0=isObj(S0.level)?S0.level:null;const P=isObj(S0.pit)?S0.pit:null;
+  // 2.35: Debrief's recording owns fuel per lap and the starting level (it reads iRacing's fuel level every lap): one figure on the page
+  const LV=AF?(num(AF.start_l)?{start_l:AF.start_l}:null):LV0;   // with the recording, its own starting level only (Garage 61's end level isn't mixed in)
+  if(AF){FUEL_FIG=AF.median_l.toFixed(2)+' L ('+(AF.median_l/3.785).toFixed(2)+' gal) a lap';row(['Fuel use: ',{b:AF.median_l.toFixed(2)+' L ('+(AF.median_l/3.785).toFixed(2)+' gal)'},' a lap']).append(h('span','src',' · '+String(AF.src||'from iRacing, recorded by Debrief')));
+    const hd=document.querySelector('#fuelPanel h3 .note');if(hd)hd.textContent='from iRacing, recorded by Debrief'}
+  else if(B){const extra=[];if(num(B.n))extra.push(plural(B.n,'lap'));if(num(B.p90_l)&&B.p90_l>B.median_l+0.005)extra.push(B.p90_l.toFixed(2)+' L on your thirstier laps');
+    FUEL_FIG=B.median_l.toFixed(2)+' L ('+(B.median_l/3.785).toFixed(2)+' gal) a lap';
     const p=row(['Fuel use: ',{b:B.median_l.toFixed(2)+' L ('+(B.median_l/3.785).toFixed(2)+' gal)'},' a lap'+(extra.length?' ('+extra.join('; ')+')':'')]);
     if(B.source==='fuel_level')p.append(h('span','src',' · worked out from the drop in fuel level each lap'))}
   if(LV&&(num(LV.start_l)||num(LV.end_l))){const parts=['Fuel level: '];if(num(LV.start_l))parts.push({b:litres(LV.start_l)},' at the start');if(num(LV.start_l)&&num(LV.end_l))parts.push(', ');if(num(LV.end_l))parts.push({b:litres(LV.end_l)},' at the end');parts.push('.');row(parts)}
   if(P){const pl=(Array.isArray(P.laps)?P.laps:[]).filter(x=>isObj(x)&&int(x.n,1,2000));
     if(num(P.loss_s))row(['Pit stop loss: about ',{b:P.loss_s.toFixed(1)+' s'},(num(P.n)&&P.n>1?' a stop ('+P.n+' stops)':'')+', in and out lap against two typical laps. That includes refuelling time.']);
     else if(pl.length)row(['Pit laps: '+andList(pl.map(x=>String(x.n)+(x.kind==='in'?' (in)':x.kind==='out'?' (out)':'')))+'. The time lost couldn’t be measured from these laps.'])}
-  if(typeof STRAT.note==='string'&&STRAT.note)host.append(h('p','note',STRAT.note));
+  if(!AF&&typeof S0.note==='string'&&S0.note)host.append(h('p','note',S0.note));   // "fewer than 3 laps had a reading" is about the other source
   if(!host.children.length)return;
   const st=$('stint');if(st.hidden){st.hidden=false;$('stintTitle').textContent='Fuel';$('stintLede').textContent='';$('phases').hidden=true;const pg=st.querySelector('.pacegrid');if(pg)pg.hidden=true}
   $('fuelPanel').hidden=false},'stint');
 
+// ---------- 2.35: the Setup section (D.setup, racesetup.py makes every word). What you raced and what changed, whether it
+// was faster (only Setup Lab's own verdict), how the car handled, tyre readings and one change to try. Fixed setup: only
+// brake bias, traction control, ABS and fuel. Fuel per lap is the Fuel panel's figure, never a second one.
+safe('setup',()=>{const S=D.setup;if(S===undefined||S===null||!isObj(S))return;const sec=$('setupSec'),host=$('setupBody');
+  const txt=v=>typeof v==='string'&&v?v:'';const panel=(title,tag)=>{const p=h('div','panel');const t=h('h3',null,title);if(tag)t.append(h('span','sutag',tag));p.append(t);host.append(p);return p};
+  const para=(p,t,cls)=>{if(txt(t))p.append(h('p',cls||null,t))};const list=(p,a)=>{const xs=(Array.isArray(a)?a:[]).filter(x=>txt(x));if(!xs.length)return;const ul=h('ul');xs.forEach(x=>ul.append(h('li',null,x)));p.append(ul)};
+  sec.hidden=false;
+  if(S.ok!==true){$('setupLede').textContent=txt(S.reason)||'The Setup section couldn\u2019t be worked out for this race.';return}
+  $('setupLede').textContent=[txt(S.car),txt(S.track)].filter(Boolean).join(' at ');
+  const su=isObj(S.setup)?S.setup:{};const fuelLine=()=>{const F=isObj(S.fuel)?S.fuel:null;
+    if(FUEL_FIG)return 'Fuel: '+FUEL_FIG+', as in the Fuel panel.';return F?txt(F.text):''};
+  const dialP=title=>{const ds=(Array.isArray(S.dials)?S.dials:[]).filter(isObj);if(!ds.length)return null;const p=panel(title);list(p,ds.map(d=>txt(d.text)));
+    ds.forEach(d=>{if(d.from==='in-car dial'&&!/moved it/.test(String(d.text||''))&&fin(+d.value))shown('dial_'+d.dial,String(+(+d.value).toFixed(1)),'the Setup section')});return p};
+  if(S.fixed){const p=panel('Fixed setup');para(p,txt(su.text));const dp=dialP('Your dials');if(!dp)para(p,'No brake bias, traction control or ABS setting in this car\u2019s telemetry.');const fl=fuelLine();if(fl)para(dp||p,fl)}
+  else{const p=panel('What you raced');para(p,txt(su.text));const C=isObj(S.changes)?S.changes:null;if(C){para(p,txt(C.text));list(p,C.lines)}
+    const F=isObj(S.faster)?S.faster:null;if(F&&txt(F.text)){const fp=panel('Faster?');para(fp,F.text)}
+    const H=isObj(S.handling)?S.handling:null;if(H){const hp=panel('How the car handled');const is=(Array.isArray(H.issues)?H.issues:[]).filter(isObj);
+      if(!is.length)para(hp,txt(H.text));else is.forEach(i=>{const q=h('p');q.append(h('b',null,txt(i.title)),h('span','sutag',i.looks_like==='setup'?'looks like setup':'looks like driving'));hp.append(q);para(hp,txt(i.text),'note')})}
+    const T=isObj(S.tyres)?S.tyres:null;if(T&&Array.isArray(T.lines)&&T.lines.length){const tp=panel('Tyre pressures and temperatures','from iRacing\u2019s pit readings and your laps');list(tp,T.lines);
+      if(isObj(D.from_iracing))para(tp,'Tyre wear at the end is in From iRacing.','note')}
+    dialP('In-car dials')}
+  const TR0=isObj(S.try)?S.try:null;if(TR0&&txt(TR0.text)){const tp=panel('One change to try',TR0.held?null:'a suggestion, not a sure fix');para(tp,TR0.text);para(tp,txt(TR0.detail),'note');
+    const O=isObj(TR0.open_setup_lab)?TR0.open_setup_lab:null;if(O&&txt(O.car_path)){
+      if(parent!==window){const b=h('button',null,'Open in Setup Lab');b.type='button';b.id='btnSetupLab';b.onclick=()=>{try{parent.postMessage({type:'debrief-open-setuplab',car:String(O.car_path),track:String(O.track_code||'')},'*')}catch(_){}};tp.append(b)}
+      else para(tp,'Open Setup Lab in the Debrief window to look at this car and track.','note')}}
+  (Array.isArray(S.notes)?S.notes:[]).forEach(n=>{if(txt(n))$('setupNotes').append(h('p','note',n))})},'setupSec');
 // "All the numbers" starts open (it can still be folded away); links into it open it if it was folded
 const DEEP=$('deep');
 document.querySelectorAll('#jump a').forEach(a=>a.addEventListener('click',e=>{const id=a.getAttribute('href').slice(1);const t=$(id);if(t&&DEEP&&DEEP.contains(t)&&!DEEP.open){e.preventDefault();DEEP.open=true;setTimeout(()=>t.scrollIntoView(),50)}}));
@@ -2156,6 +2246,20 @@ if(DEEP)DEEP.addEventListener('toggle',()=>{document.body.classList.toggle('deep
 safe('order with a scan',()=>{if(!RCP||$('racelog').hidden||!DEEP)return;const pn=$('jumpPanel');let after=pn.firstElementChild;
   [['race','Race story'],['racecraft','Race craft by lap']].forEach(([id,lab])=>{DEEP.insertBefore($(id),$('compare'));const a=document.querySelector('#jumpLinks a[href="#'+id+'"]');if(a){a.textContent=lab;after.after(a);after=a}});
   const pa=pn.querySelector('a[href="#pace"]');if(pa)pa.textContent='Pace charts'});
+// ---------- 2.35: the consistency check. Every fact more than one section printed (SHOWN) is compared; where they still
+// differ, or recordings.agree found two sources that disagree, one plain note near the top says which figure the page
+// goes by. Consistent data shows nothing.
+const FACT_LAB={finish_overall:'Finishing place overall',finish_class:'Finishing place in your class',start_overall:'Starting place',start_class:'Starting place in your class',incidents:'Incident points',pit_count:'Pit stops',dial_bias:'Brake bias',dial_tc:'Traction control',dial_abs:'ABS'};
+const NOTE_FACTS={finish:['finish_overall','finish_class'],incidents:['incidents'],pit_laps:[]};
+function checkFacts(){const lines=[];const done=new Set();
+  // a note from recordings.agree already says how From iRacing differs: only From iRacing's entry is left out, every other source is still compared
+  (Array.isArray(AGREE.notes)?AGREE.notes:[]).filter(x=>isObj(x)&&typeof x.text==='string'&&x.text).forEach(x=>{lines.push(x.text);(NOTE_FACTS[x.fact]||[]).forEach(f=>done.add(f))});
+  const fv=(f,v)=>/^(finish|start)/.test(f)?'P'+v:v;const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
+  Object.keys(SHOWN).forEach(f=>{if(!FACT_LAB[f])return;const a=SHOWN[f].filter(x=>!(done.has(f)&&x.where==='From iRacing'));if(!a.length)return;const o=a.find(x=>x.owner)||a[0];const seen=new Set();
+    const rest=a.filter(x=>{const k=x.where+'|'+x.v;if(x.v===o.v||seen.has(k))return false;seen.add(k);return true});if(!rest.length)return;
+    lines.push(FACT_LAB[f]+': '+o.where+' says '+fv(f,o.v)+', but '+andList(rest.map(x=>x.where+' says '+fv(f,x.v)))+'. '+cap(o.where)+' is the one this page goes by.')});
+  if(!lines.length)return;const n=$('agreeNote');lines.forEach(t=>n.append(h('span',null,t)));n.hidden=false}
+safe('consistency check',checkFacts);
 // ---------- hide jump links for sections that aren't on this page (every section link shows, open or folded)
 [...document.querySelectorAll('#jump a')].forEach(a=>{const s=$(a.getAttribute('href').slice(1));a.hidden=!s||s.hidden});
 // ---------- the All the numbers menu

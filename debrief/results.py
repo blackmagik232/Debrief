@@ -11,6 +11,10 @@ Sign conventions for the derived fields (all "after minus before" / "start minus
 
 2.4 adds pos_after_lap1, pit_stops, penalties, finish_status and incident_laps (a list of
 {"lap", "kind", "points"}). Every one is optional, so older result.json files stay valid.
+2.35: a saved result carries "source" (SOURCES): "you" when typed or changed in the form (the default), "results_file"
+when the form was filled from iRacing's results file and saved unchanged; a result Debrief read from iRacing
+(localrace.result_from) carries "iracing" or "recording", and in a multi-class race "overall_pos" / "overall_size"
+beside finish_pos / field_size, which are your class's. A result.json without "source" is still read as before.
 """
 from __future__ import annotations
 
@@ -51,6 +55,9 @@ INCIDENT_KINDS = ("off", "spin", "contact", "other")
 INCIDENT_POINTS = (0, 1, 2, 4)
 MAX_INCIDENT_LAPS = 30
 INCIDENTS_LABEL = "Incidents by lap"
+# 2.35: where a result came from (the review page says so). "you": typed or changed in the form; "results_file": the
+# form filled from iRacing's results file and saved unchanged; "iracing" / "recording": read by Debrief (localrace.py)
+SOURCES = ("you", "results_file", "iracing", "recording", "scan")
 
 
 def _status(raw):
@@ -176,6 +183,15 @@ def validate(fields: dict) -> dict:
     il = _incident_laps(fields.get("incident_laps"))
     if il is not None:
         out["incident_laps"] = il
+    # 2.35: where the result came from, and (multi-class) the overall place beside your class place, kept when given
+    src = fields.get("source")
+    if isinstance(src, str) and src.strip().lower() in SOURCES:
+        out["source"] = src.strip().lower()
+    for k, label in (("overall_pos", "Overall position"), ("overall_size", "Cars in the whole race")):
+        if fields.get(k) not in (None, ""):
+            out[k] = _whole(fields.get(k), 1, 200, label)
+    if "overall_pos" in out and "overall_size" in out and out["overall_pos"] > out["overall_size"]:
+        raise ValueError("Overall position can't be higher than the number of cars in the whole race.")
     notes = fields.get("notes")
     notes = "" if notes is None else str(notes).strip()
     if len(notes) > NOTES_MAX:
@@ -215,7 +231,7 @@ def _rerender(d: Path, mutate) -> None:
     mutate(data)
     tmp = Path(tempfile.mkdtemp(prefix=".rerender-", dir=str(d)))
     try:
-        report.write(tmp, data)
+        report.write(tmp, data, setup=False)   # 2.35: saving a result never reads telemetry files
         fsutil.replace(tmp / "review.json", d / "review.json")
         fsutil.replace(tmp / "index.html", d / "index.html")
     finally:
@@ -228,6 +244,7 @@ def save(folder, review_dirname: str, fields: dict) -> dict:
     from . import library
     d = _review_dir(folder, review_dirname)
     res = validate(fields)
+    res.setdefault("source", "you")   # 2.35: the caller says when the numbers aren't typed (validate keeps a known source)
     res["saved_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     _atomic_json(d / FILE, res)
 

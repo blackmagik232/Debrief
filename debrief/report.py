@@ -69,15 +69,66 @@ def _from_iracing(out_dir: Path, data: dict, log=None) -> None:
     """2.27: the "From iRacing" section, when Debrief recorded this session (recordings.py). Only reviews inside a
     library's reviews folder look; one that finds nothing keeps what it already had (M7)."""
     try:
-        if out_dir.parent.name != "reviews":
-            return
         from . import recordings
+        if out_dir.parent.name != "reviews":
+            if isinstance(data.get("from_iracing"), dict):
+                data["from_iracing"] = recordings.upgrade_view(data["from_iracing"])
+            return
         fi = recordings.for_review(data, out_dir.parent.parent)
         if fi:
             data["from_iracing"] = fi
+        elif isinstance(data.get("from_iracing"), dict):   # 2.35: an older section whose recording is gone gets checked too
+            data["from_iracing"] = recordings.upgrade_view(data["from_iracing"])
     except Exception as e:  # noqa: BLE001
         if log:
             log(f"  Couldn't add the recording to the review: {type(e).__name__}: {e}")
+
+
+def _agree(data: dict, log=None) -> None:
+    """2.35: the words that keep every section of the page on one value per fact (recordings.agree), worked out again
+    on every write from the review itself; a review it has nothing to say about has no "agree"."""
+    try:
+        from . import recordings
+        a = recordings.agree(data)
+    except Exception as e:  # noqa: BLE001  (the page draws without it, as before)
+        a = None
+        if log:
+            log(f"  Couldn't check the review's figures against each other: {type(e).__name__}: {e}")
+    if a:
+        data["agree"] = a
+    else:
+        data.pop("agree", None)
+
+
+def _setup(data: dict, log=None) -> None:
+    """2.35: the Setup section (racesetup.for_review) for a race review, worked out once: a review that already has a
+    "setup" key (a section, a reason it couldn't be read, or null for "no telemetry file of this race") keeps it, so
+    re-rendering never reads the telemetry files again. Setup Lab's saved index is passed so known files aren't read.
+    Never raises."""
+    if "setup" in data:
+        return
+    meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+    if "race" not in str(meta.get("session") or "").lower():
+        return
+    try:
+        from . import firstrun, localrace, racesetup
+        tel = localrace.telemetry_folder()
+        if not tel or not Path(tel).is_dir():
+            return                                    # no folder yet: tried again on the next write
+        idx = firstrun._cache_dir() / firstrun.SETUPLAB_CACHE
+        data["setup"] = racesetup.for_review(data, tel, None, idx if idx.is_file() else None)
+    except Exception as e:  # noqa: BLE001  (the review stands without it)
+        if log:
+            log(f"  Couldn't work out the Setup section: {type(e).__name__}: {e}")
+
+
+def _vsai_tag() -> dict:
+    """2.35: the "vs AI" tag's words for the page (vsai.py owns them)."""
+    try:
+        from . import vsai
+        return {"tag": vsai.TAG, "help": vsai.TAG_HELP}
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def sanitize(obj):
@@ -99,10 +150,15 @@ def sanitize(obj):
     return obj
 
 
-def write(out_dir: Path, data: dict, log=None) -> Path:
+def write(out_dir: Path, data: dict, log=None, setup: bool = True) -> Path:
+    """setup=False (refresh_all) never reads telemetry files for the Setup section; otherwise it is worked out once,
+    when the review doesn't have it yet (_setup)."""
     out_dir = Path(out_dir)
     _extras(data, log)
     _from_iracing(out_dir, data, log)
+    _agree(data, log)
+    if setup:
+        _setup(data, log)
     try:   # the coaching summary at the top of the page; never worth losing the review over
         from . import insights
         data["insights"] = insights.build(data)
@@ -110,7 +166,7 @@ def write(out_dir: Path, data: dict, log=None) -> Path:
         data.pop("insights", None)
     sanitize(data)   # never write NaN / Infinity into review.json or the page (2.3.0 verification L1)
     # the page gets D.brand (team names for the header); review.json itself doesn't keep it
-    html = fill((TPL / "review.html").read_text(encoding="utf-8"), {"/*DATA*/null": _embed(dict(data, brand=brand()))})
+    html = fill((TPL / "review.html").read_text(encoding="utf-8"), {"/*DATA*/null": _embed(dict(data, brand=brand(), vsai_tag=_vsai_tag()))})
     # each file is written to a temp file and swapped in, so a crash or a forced close mid-write leaves
     # the old file whole (review.json is the only copy of an analysed review)
     atomic_write(out_dir / "review.json", json.dumps(data, allow_nan=False))
@@ -322,7 +378,7 @@ def refresh_all(library_folder, log=None, should_stop=None, done=None, progress=
                     except Exception as e:  # noqa: BLE001
                         if log:
                             log(f"  Couldn't update {p.parent.name}'s race log: {e}")
-                    write(p.parent, data, log=log)
+                    write(p.parent, data, log=log, setup=False)   # 2.35: no telemetry reads while re-rendering
                     n += 1
             done.add(p.parent.name)
         except Exception as e:  # noqa: BLE001  (one odd review mustn't stop the rest)

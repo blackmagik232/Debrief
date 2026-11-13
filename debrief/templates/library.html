@@ -531,7 +531,7 @@ $('testchip').classList.toggle('hidden',!R.some(r=>r.test_data));
   items.forEach(([l,v,s])=>{const k=h('div','stat');k.append(h('span','lab',l),h('span','v',String(v)),h('span','ctx',s));k.lastChild.title=s;host.append(k)});
 })();
 ['pbsec','progsec','weaksec'].forEach(id=>$(id).classList.toggle('hidden',!R.length));
-$('lede').textContent=R.length?LEDE0:'No reviews yet. Run "Review last race" after your next race and it will appear here.';
+$('lede').textContent=R.length?LEDE0:'No reviews yet. Press "Review a session" after your next race and it will appear here.';
 }
 renderHeader();
 
@@ -703,6 +703,7 @@ function table(){
     const dd=h('td','mono nw',fmtDate(r.date));if(r.test_data)dd.append(h('span','tchip','test'));
     const tdB=h('td','n nw',fmt(r.best));const pb=pbRow(r);
     if(!isRace(r))dd.append(h('span','sesschip',String(r.session)));
+    if(r.vs_ai){const c=h('span','sesschip','vs AI');c.title='You raced against AI cars. Strength of field and iRating don\u2019t apply, so they are not shown.';dd.append(c)}
     if(pb&&pb.is_pb){const c=h('span','pbchip','PB');c.title='New personal best here: '+fmtD(pb.delta)+' vs your previous best '+fmt(pb.previous_best)+(pb.previous_date?' ('+fmtDate(pb.previous_date)+')':'');tdB.prepend(c);c.style.margin='0 6px 0 0'}
     else if(pb&&pb.first_time){const c=h('span','firstchip','First');c.title='Your first reviewed race at this track and car';tdB.prepend(c);c.style.margin='0 6px 0 0'}
     else if(pb&&pb.session_excluded){tdB.title='Practice and qualifying laps don\u2019t set personal bests'+(ok(pb.previous_best)?' (race best here '+fmt(pb.previous_best)+')':'')}

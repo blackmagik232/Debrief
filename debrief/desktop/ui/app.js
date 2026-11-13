@@ -121,16 +121,16 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.class
 new MutationObserver(()=>$('btnMenu').setAttribute('aria-expanded',String(document.body.classList.contains('navopen')))).observe(document.body,{attributes:true,attributeFilter:['class']});
 
 /* ---------- keyboard (2.18): Ctrl+1 to Ctrl+9 and Ctrl+0 open the sidebar's pages in its order (the sub-pages under
-   Progress have no key), Ctrl+Enter = Review last race, Ctrl+, = Settings, F1 or ? = the key list, J and K step through
+   Progress have no key), Ctrl+Enter = Review a session, Ctrl+, = Settings, F1 or ? = the key list, J and K step through
    your reviews. Ctrl+R no longer starts a review (a slow job on a key you might press to reload); it doesn't reload
-   either, since a reload drops the window's place and can close Debrief, so it says where Review last race went. */
+   either, since a reload drops the window's place and can close Debrief, so it says where Review a session went. */
 const PAGE_KEYS=[...document.querySelectorAll('.nav .navbtn[data-nav]:not(.sub)')].map(b=>b.dataset.nav).slice(0,10);
 const keyOfPage=n=>{const i=PAGE_KEYS.indexOf(n);return i<0?null:'Ctrl+'+(i===9?0:i+1)};
 const KEY_MSG=/^(review|reviewgo|settings|help|prev|next|rebuild|rebuildall|page[0-9])$/;
 let oldKeyShown=false;
 function shortcut(k){if(/^(reviewgo|prev|next|rebuild|page[0-9])$/.test(k)&&!leaveOk())return true;
-  if(k==='reviewgo'){startReview();return true}if(k==='rebuild'){if(current.view==='review'&&current.dir)rebuildReview(current.dir);return true}if(k==='rebuildall'){rebuildAll();return true}if(k==='settings'){openSettings();return true}
-  if(k==='review'){if(!oldKeyShown){oldKeyShown=true;banner('Review last race is Ctrl+Enter now (or the button at the top of the sidebar). Ctrl+R does nothing in Debrief.',false,9000)}return true}
+  if(k==='reviewgo'){reviewASession();return true}if(k==='rebuild'){if(current.view==='review'&&current.dir)rebuildReview(current.dir);return true}if(k==='rebuildall'){rebuildAll();return true}if(k==='settings'){openSettings();return true}
+  if(k==='review'){if(!oldKeyShown){oldKeyShown=true;banner('Review a session is Ctrl+Enter now (or the button at the top of the sidebar). Ctrl+R does nothing in Debrief.',false,9000)}return true}
   if(k==='help'){if(!$('dlgHelp').open)openHelp('keys');else showHelp('keys');return true}
   if(document.querySelector('dialog[open]'))return false;
   if(k==='prev'||k==='next'){stepReview(k);return true}
@@ -150,7 +150,7 @@ document.addEventListener('keydown',e=>{if(e.key==='F1'&&!e.ctrlKey&&!e.metaKey&
   if(shortcut(k==='j'?'prev':'next'))e.preventDefault()});
 // the key list (Help > Keyboard keys, F1 or ?), made from the sidebar so it can't drift from it
 function keyList(){const nm=n=>{const b=document.querySelector('.nav .navbtn[data-nav="'+n+'"]');return b?b.textContent.trim():n};
-  return [['Ctrl+Enter','Review last race'],['Ctrl+,','Settings']].concat(PAGE_KEYS.map(n=>[keyOfPage(n),nm(n)]),
+  return [['Ctrl+Enter','Review a session'],['Ctrl+,','Settings']].concat(PAGE_KEYS.map(n=>[keyOfPage(n),nm(n)]),
     [['F1 or ?','This list of keys'],['J','The review before this one'],['K','The review after this one'],['Tab','Move to the next button or chart'],['Arrow keys','Move along a chart that has focus'],['Esc','Close a window like this one, or leave the driving view']])}
 
 /* ---------- views */
@@ -268,8 +268,8 @@ function renderToday(){const j=td.j;if(!j)return;
   const R=j.last_race,rb=$('tdRaceBody');$('tdRaceWhen').textContent=R?[R.session,fmtDate(R.date)].filter(Boolean).join(' · '):'';
   if(R){const top=h('p','tdwhat');top.append(h('b',null,[R.track,R.car].filter(Boolean).join(' · ')));if(R.best)top.append(h('span','num tdbest',' best '+R.best));
     const kids=[top];if(R.verdict)kids.push(h('p','note',R.verdict));const row=h('div','row');row.append(tdBtn({label:'Open the review',go:'review',dir:R.dir},false));kids.push(row);rb.replaceChildren(...kids)}
-  else{const kids=[h('p','note',tokenSaved?'No race reviews yet. When your race has uploaded to Garage 61, press Review last race.':'Race reviews come from Garage 61. Connect it in Settings; Practice, Coach and Setup Lab work without it.')];
-    const row=h('div','row');if(tokenSaved){const b=h('button','btn','Review last race');b.type='button';b.dataset.act='review';row.append(b)}else row.append(tdBtn({label:'Open Settings',go:'settings'},false));kids.push(row);rb.replaceChildren(...kids)}
+  else{const kids=[h('p','note',tokenSaved?'No race reviews yet. When your race has uploaded to Garage 61, press Review a session.':'Race reviews come from Garage 61. Connect it in Settings; Practice, Coach and Setup Lab work without it.')];
+    const row=h('div','row');if(tokenSaved){const b=h('button','btn','Review a session');b.type='button';b.dataset.act='review';row.append(b)}else row.append(tdBtn({label:'Open Settings',go:'settings'},false));kids.push(row);rb.replaceChildren(...kids)}
   // last practice
   const P=j.last_practice,pb=$('tdPracBody');$('tdPracWhen').textContent=P?slWhen(P.date):'';
   if(P){const top=h('p','tdwhat');top.append(h('b',null,[P.track,P.car].filter(Boolean).join(' · ')));
@@ -303,7 +303,7 @@ function tdPointer(hostId){const host=$(hostId);if(!host)return;const old=host.q
   const b=h('button','linkbtn','Open Today');b.type='button';b.dataset.nav='today';p.append(b);host.append(p)}
 /* ---------- welcome + first-run guide (shown until a token is saved, then for the rest of that session) */
 let guideOn=false,checkOk=false,checkFail=false,tokenRejected=false,firstName=null,installed=false;
-// 2.18: Garage 61's pages, Review last race and the guide's steps wait for a token Garage 61 accepted: a check that
+// 2.18: Garage 61's pages, Review a session and the guide's steps wait for a token Garage 61 accepted: a check that
 // failed (or a token it rejected, remembered by the server) turns nothing green and unlocks nothing
 const g61Ready=()=>tokenSaved&&!tokenRejected&&!checkFail;
 function greet(){$('welcomeTitle').textContent=firstName?'Welcome, '+firstName+'.':'Welcome.'}
@@ -321,7 +321,7 @@ function welcome(){
   $('guide').hidden=!guideOn;$('guideHead').hidden=!guideOn;$('welcomeActions').hidden=guideOn;
   if(guideOn){t.textContent=localOK?'Race reviews, Practice, Setup Lab, the Coach and Racing all work now, from the telemetry iRacing saves on this PC. Garage 61 is optional: it adds your teammates\' comparison laps, your older history and the Team page.':
     'Practice, Setup Lab, the Coach, Racing and race reviews work from the telemetry iRacing saves on this PC: turn it on in Settings > Live data, then race. Garage 61 is optional: it adds your teammates\' comparison laps, your older history and the Team page.';updateGuide()}
-  else t.textContent='No reviews yet. Click Review last race after your next race.';
+  else t.textContent='No reviews yet. Click Review a session after your next race.';
   const gl=$('gLocal');if(gl)gl.hidden=!(localOK&&!g61Ready());
   show('vWelcome');markNav()}
 
@@ -394,6 +394,7 @@ async function loadPages(){try{const j=await api('pages');if(j.ok)pages=j}catch(
 addEventListener('message',e=>{const f=$('frame');if(!f||e.source!==f.contentWindow)return;const m=e.data;
   if(m&&typeof m==='object'&&m.type==='debrief-key'&&KEY_MSG.test(String(m.key))){shortcut(m.key);return}
   if(m&&typeof m==='object'&&m.type==='debrief-team-load'&&typeof m.track==='string'&&typeof m.car==='string'){startJob('teamload',{track:m.track.slice(0,200),car:m.car.slice(0,200)});return}
+  if(m&&typeof m==='object'&&m.type==='debrief-open-setuplab'&&typeof m.car==='string'&&typeof m.track==='string'){openSetupLab({car_path:m.car.slice(0,120),track_code:m.track.slice(0,120)});return}   // 2.35: the review's Setup section
   if(!m||typeof m!=='object'||m.type!=='debrief-frame'||typeof m.href!=='string')return;
   frameHref=m.href;themeFrame(getTheme());framePlace(noQuery(m.href),typeof m.title==='string'?m.title:'')});
 $('frame').addEventListener('load',()=>themeFrame(getTheme()));
@@ -416,7 +417,7 @@ function framePlace(path,title){
 
 // 2.8: while setting up (no token and no saved reviews) Garage 61's pages have nothing to show, so the sidebar
 // keeps you on the steps for those. 2.18: only those: Practice, Setup Lab, the Coach, Racing, Car vs car and Prepare
-// read files on this PC and open straight away. Settings and Help stay open, and Review last race has its own gate.
+// read files on this PC and open straight away. Settings and Help stay open, and Review a session has its own gate.
 const G61_NAV=new Set(['library','season','skills','goals','sessions','team']);
 const onboarding=()=>!g61Ready()&&!groupsCache.some(g=>(g.reviews||[]).length);
 function navGate(){const off=onboarding();
@@ -435,7 +436,7 @@ document.addEventListener('click',e=>{
   const n=e.target.closest('[data-nav]');
   if(n){goNav(n.dataset.nav);return}
   const a=e.target.closest('[data-act]');if(!a)return;
-  if(a.dataset.act==='review')startReview();
+  if(a.dataset.act==='review')reviewASession();
   else if(a.dataset.act==='sync')startSync(false);
   else if(a.dataset.act==='team')startJob('team');
   else if(a.dataset.act==='retry'&&lastStart)startJob(lastStart.kind,lastStart.body);
@@ -508,11 +509,11 @@ async function startCheck(){
   $('gChkOut').hidden=true;$('gChkOut').replaceChildren();$('gChkProg').hidden=false;$('gChkBar').firstElementChild.style.width='4%';
   $('btnCheck').disabled=true;setMsg('chkMsg','Checking...');poll();
 }
-// 2.6: Review last race waits for a saved token (aria-disabled, so the tooltip still shows why)
-// 2.34 "No token needed": with iRacing telemetry on this PC, Review last race works without Garage 61
+// 2.6: Review a session waits for a saved token (aria-disabled, so the tooltip still shows why)
+// 2.34 "No token needed": with iRacing telemetry on this PC, Review a session works without Garage 61
 let localOK=false;
 function reviewGate(){const b=$('btnReview');const off=!g61Ready()&&!localOK;b.setAttribute('aria-disabled',String(off));
-  b.title=off?'Turn on iRacing telemetry (Settings > Live data) or connect Garage 61 first.':'Review last race (Ctrl+Enter)';if(!g61Ready())$('syncStrip').hidden=true;
+  b.title=off?'Turn on iRacing telemetry (Settings > Live data) or connect Garage 61 first.':'Review a session: pick one from your synced sessions (Ctrl+Enter)';if(!g61Ready())$('syncStrip').hidden=true;
   const gl=$('gLocal');if(gl)gl.hidden=!(localOK&&!g61Ready());navGate()}
 // 2.28: nothing to review with yet: say so where the token goes (scroll to the box, flash it) instead of doing nothing
 function flash(el){if(!el)return;el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),2600)}
@@ -529,11 +530,24 @@ async function startReview(){
   let j=null;try{j=await api('last-race')}catch(e){}
   if(j&&j.ok&&j.instant&&j.saved&&j.saved.dir){openReview(j.saved.dir);checkNewerRace();return}
   startJob('review',undefined,$('btnReview'))}
+/* 2.35 "Review a session": the big button, Ctrl+Enter and the welcome buttons open All sessions with the newest session
+   on top, highlighted and focused; each row has its own Review. Without Garage 61 there is no list to open, so these
+   keep the older behaviour: review the newest race from this PC's telemetry (or ask for the token). */
+let sessFocusNewest=false;
+async function reviewASession(){
+  if(jobRunning()&&lastJob.kind==='review'){openJob();return}   // the button reads "Reviewing... 30%" while a review builds: it shows that progress
+  if(!g61Ready()){startReview();return}
+  sessFilter='all';document.querySelectorAll('#sessFilter [data-f]').forEach(x=>{const on=x.dataset.f==='all';x.setAttribute('aria-checked',String(on));x.tabIndex=on?0:-1});
+  sessFocusNewest=true;await openSessions();checkNewerRace();
+  // a new Garage 61 user: nothing synced yet and no race on this PC to offer, so build the last race from Garage 61 as before
+  const sum=sessData&&sessData.summary;
+  if(current.view==='sessions'&&sessData&&!(sessData.sessions||[]).length&&$('sessPc').hidden&&!(sum&&sum.synced)&&!(lastJob&&lastJob.state==='running')){
+    banner('Nothing is synced yet, so Debrief is building your last race straight from Garage 61.',false,8000);startReview()}}   // Garage 61 is asked in the background; a newer race gets a one-click banner
 let newerSeq=0;
 async function checkNewerRace(){const seq=++newerSeq;let j;try{j=await api('last-race?check=1')}catch(e){return}
   if(seq!==newerSeq||!j||!j.ok||!j.newer||conflicting())return;const n=j.newer;
   bannerAction('Newer race found.','Review it',()=>startJob('review',n.track_id&&n.car_id&&n.session_type?{event:n.event,session_type:n.session_type,track_id:n.track_id,car_id:n.car_id}:undefined),0)}
-// 2.18: make a saved review again from Garage 61 (Review last race opens the saved one without downloading)
+// 2.18: make a saved review again from Garage 61 (a saved review opens without downloading)
 const reviewRow=dir=>{for(const g of groupsCache)for(const r of g.reviews||[])if(r.dir===dir)return r;return null};
 function rebuildReview(dir){const r=reviewRow(dir);if(!g61Ready()&&!(r&&r.source==='pc')){needToken();return}startJob('review',{review:dir,rebuild:true})}
 // 2.34: a review built from this PC can gain your teammates' comparison laps once Garage 61 has the race
@@ -541,7 +555,7 @@ function addComparison(dir){if(!g61Ready()){needToken();return}startJob('review'
 const offeredUpgrade=new Set();
 function offerUpgrade(dir){const r=reviewRow(dir);if(!r||r.source!=='pc'||!g61Ready()||offeredUpgrade.has(dir))return;offeredUpgrade.add(dir);
   bannerAction('This review comes from your PC.','Add comparison laps',()=>addComparison(dir),15000)}
-$('btnReview').addEventListener('click',startReview);
+$('btnReview').addEventListener('click',reviewASession);
 
 // 2.8: request counts live in Settings > About. The job's own lines are for the log too, so they keep
 // theirs and the window takes them out here.
@@ -549,7 +563,7 @@ const noCounts=t=>String(t==null?'':t).replace(/\s*\((?:no |about |up to )?\d*\s
 const countLine=t=>/^\s*Garage 61 requests\b/i.test(String(t));
 const CANCEL_KINDS=['scan','rival','review','prep','team','teamload','weekly'];   // 2.28: Cancel for review, prep, team and weekly jobs too
 function resetJobView(kind){
-  if(kind==='review'&&!(lastJob&&lastJob.title))TITLES.review=TITLES0.review;   // a plain "Review last race" never keeps an earlier job's title
+  if(kind==='review'&&!(lastJob&&lastJob.title))TITLES.review=TITLES0.review;   // a plain Review never keeps an earlier job's title
   $('jobStop').hidden=!CANCEL_KINDS.includes(kind);$('jobStop').disabled=false;$('jobStop').textContent=kind==='scan'||kind==='rival'?'Stop scan':'Cancel';
   $('jobTitle').textContent=TITLES[kind]||'Working';$('jobErrTitle').textContent=STOPPED[kind]||'It stopped';
   $('jobEyebrow').textContent='Working';$('jobErr').hidden=true;$('jobSteps').replaceChildren();delete $('jobSteps').dataset.n;{const d=$('jobDbg');if(d)d.remove()}
@@ -571,7 +585,7 @@ async function poll(){
 function render(s){
   const btn=$('btnReview');const busy=s.state==='running'&&s.kind==='review';
   btn.classList.toggle('busy',busy);
-  btn.querySelector('.lbl').textContent=busy?'Reviewing... '+Math.round((s.frac||0)*100)+'%':'Review last race';
+  btn.querySelector('.lbl').textContent=busy?'Reviewing... '+Math.round((s.frac||0)*100)+'%':'Review a session';
   btn.querySelector('.minibar i').style.width=Math.round((s.frac||0)*100)+'%';
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('busy',s.state==='running'&&NAV_OF[s.kind]===b.dataset.nav));
   if(s.kind==='sync')renderSync(s);else if(sessData)renderStrip(sessData.summary,s);
@@ -712,7 +726,7 @@ async function toggleFromIracing(btn,tx,s){
   let r;try{r=await api('recording?id='+encodeURIComponent(s.rec.id)+(s.recorded_only?'&alone=1':''))}catch(e){box.replaceChildren(h('p','note','Couldn\u2019t load the recording.'));return}
   box.replaceChildren();if(!r.ok){box.append(h('p','note',r.error||'Couldn\u2019t load the recording.'));return}
   renderFiBlocks(box,r.view)}
-function renderSessions(){
+function renderSessions(focusNewest){
   const j=sessData||{},sum=j.summary,busy=lastJob&&lastJob.state==='running'&&lastJob.kind==='sync';
   if(j.token===false){$('sessSyncNote').textContent='Add your Garage 61 token in Settings first.';$('btnSync').disabled=true}
   else{$('btnSync').disabled=!!busy;
@@ -729,7 +743,16 @@ function renderSessions(){
   $('btnSyncStop').hidden=!busy;$('sessProg').hidden=!busy;$('sessNow').hidden=!busy;
   const host=$('sessList');host.replaceChildren();
   const all=(j.sessions||[]).filter(s=>sessFilter==='all'||String(s.type)===sessFilter);
-  if(!all.length)host.append(h('p','note',(j.sessions||[]).length?(sessTotal(j)>(j.sessions||[]).length?'None of this kind in the sessions loaded so far. Press Show more to look further back.':'No sessions of this kind yet.'):(busy?'Your sessions will appear here when the sync finishes.':'No sessions yet. Click Sync now.')));
+  if(!all.length&&!(j.sessions||[]).length&&!busy){
+    // 2.35: no sessions at all: one line that says what to do, with the right button
+    const none=h('div','sessempty');none.id='sessEmpty';
+    none.append(h('p','note',j.token===false?'No sessions yet. Drive with telemetry on (Settings > Live data), or connect Garage 61 in Settings.':
+      'No sessions yet. Drive with telemetry on (Settings > Live data), or press Sync now to bring in your Garage 61 history.'));
+    const r=h('div','row');const b=h('button','btn',j.token===false?'Open Settings':'Sync now');b.type='button';
+    b.addEventListener('click',()=>j.token===false?goNav('settings'):startSync(false));r.append(b);none.append(r);host.append(none)}
+  else if(!all.length)host.append(h('p','note',(j.sessions||[]).length?(sessTotal(j)>(j.sessions||[]).length?'None of this kind in the sessions loaded so far. Press Show more to look further back.':'No sessions of this kind yet.'):(busy?'Your sessions will appear here when the sync finishes.':'No sessions yet. Click Sync now.')));
+  let newest=null;for(const s of all){const t=Date.parse(s.start||'');if(isFinite(t)&&(!newest||t>Date.parse(newest.start)))newest=s}
+  if(!newest&&all.length)newest=all[0];
   all.forEach(s=>{const row=h('div','item sess');const tx=h('div','itx');
     const top=h('span','row');top.append(h('span','when',localWhen(s.start)),h('span','kind '+(KIND[s.type]||''),s.session||'Session'));
     tx.append(top,h('b',null,s.track),h('span','sub2',s.car));
@@ -740,22 +763,64 @@ function renderSessions(){
     if(s.recorded_only)tx.append(h('span','sub2','Recorded by Debrief. Garage 61 doesn\u2019t have this session.'));
     if(s.rec&&s.rec.line)tx.append(h('span','sub2','From iRacing: '+s.rec.line));
     const acts=h('span','row');
+    // 2.35: one clear Review on every row. A race opens (or builds) its race review; practice and qualifying open in Practice.
+    const what={1:'practice',2:'qualifying',3:'race'}[s.type]||'session',nm=[s.track,s.car].filter(Boolean).join(', ');
+    const rv=h('button','btn primary revbtn','Review');rv.type='button';rv.setAttribute('aria-label','Review '+what+(nm?': '+nm:'')+' on '+localWhen(s.start));
+    rv.title=s.type===3?(s.review?'Open the race review':'Build the race review'):'Open this '+what+' session in Practice';
+    rv.addEventListener('click',()=>rowReview(rv,s));acts.append(rv);
     if(s.rec){const b=h('button','btn','From iRacing');b.type='button';b.setAttribute('aria-expanded','false');
       b.addEventListener('click',()=>toggleFromIracing(b,tx,s));acts.append(b)}
-    if(s.review){const b=h('button','btn','Open review');b.type='button';b.addEventListener('click',()=>openReview(s.review));acts.append(b)}
-    if(s.event&&[1,2,3].includes(s.type)&&s.track_id!=null&&s.car_id!=null){
-      // practice and qualifying get their own review (runs, targets, the qualifying lap strip)
-      const what={1:'practice',2:'qualifying'}[s.type];
-      const b=h('button','btn'+(s.review?'':' primary'),s.review?'Review again':(what?'Review '+what:'Review'));b.type='button';
-      if(what&&s.review)b.setAttribute('aria-label','Review '+what+' again');
-      b.addEventListener('click',()=>startJob('review',{event:s.event,session_type:s.type,track_id:s.track_id,car_id:s.car_id}));acts.append(b)}
+    if(s.review&&s.event&&s.type===3&&s.track_id!=null&&s.car_id!=null){
+      const b=h('button','btn','Rebuild');b.type='button';b.title='Make this review again from Garage 61';b.setAttribute('aria-label','Rebuild the race review: '+nm);
+      b.addEventListener('click',()=>rebuildReview(s.review));acts.append(b)}
+    if(s===newest){row.classList.add('newest');top.prepend(h('span','pill ok newestpill','Newest'))}
     row.append(tx,acts);host.append(row)});
   const loaded=(j.sessions||[]).length,total=sessTotal(j);
   $('sessMoreRow').hidden=loaded>=total;
   $('sessCount').textContent=total?'Showing '+loaded+' of '+total:'';
+  if(focusNewest){const nr=host.querySelector('.item.newest');
+    if(nr){if(nr.scrollIntoView)nr.scrollIntoView({block:'nearest'});const b=nr.querySelector('.revbtn');if(b)b.focus()}}
 }
+// 2.35: what a row's Review does. A practice or qualifying session is found among the telemetry sessions on this PC
+// (by start time and track) and opens in Practice; without a telemetry file it falls back to Garage 61's review of it.
+const alnum=t=>String(t||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+function sameName(a,b){const x=alnum(a),y=alnum(b);if(!x||!y)return false;if(x===y||x.indexOf(y)>=0||y.indexOf(x)>=0)return true;
+  const f=t=>t.split(' ').slice(0,2).join(' ');return f(x)===f(y)}
+// the telemetry session on this PC that IS this row: same track (always), same car (when both are known), the same kind of
+// session and a start within a short window. Nothing close enough means no match: a different session is never opened.
+function pcSessionFor(s,ibt){const t0=Date.parse(s.start||'')/1000;if(!isFinite(t0)||!ibt||!Array.isArray(ibt.sessions))return null;
+  const kind={1:'practice',2:'qualify',3:'race'}[s.type];if(!kind)return null;let best=null,bd=Infinity;
+  for(const x of ibt.sessions){const t=Number(x.sort);if(!isFinite(t))continue;const d=t-t0;if(d<-1800||d>7200)continue;
+    if(!sameName(s.track,x.track))continue;if(s.car&&x.car&&!sameName(s.car,x.car))continue;
+    if(!(Array.isArray(x.session_types)&&x.session_types.some(k=>String(k).toLowerCase().indexOf(kind)>=0)))continue;
+    if(Math.abs(d)<bd){bd=Math.abs(d);best=x}}
+  return best}
+async function rowReview(btn,s){
+  const g61=!!(s.event&&s.track_id!=null&&s.car_id!=null),job=()=>startJob('review',{event:s.event,session_type:s.type,track_id:s.track_id,car_id:s.car_id},btn);
+  if(s.type===3){if(s.review){openReview(s.review);return}if(g61){job();return}}
+  btn.disabled=true;let ibt=null;try{ibt=await api('sessions-ibt')}catch(e){}btn.disabled=false;
+  const m=ibt&&ibt.ok?pcSessionFor(s,ibt):null;
+  if(m&&s.type!==3){openPractice(m.id);return}
+  if(m&&Number.isInteger(m.subsession)&&m.subsession>0){startJob('review',{local:true,subsession:m.subsession},btn);return}   // THAT race, from this PC's telemetry
+  if(m&&s.type===3&&typeof m.event_id==='string'&&m.event_id){startJob('review',{local:true,pc_event:m.event_id},btn);return}   // a PC race with no iRacing session number (AI/offline): found by its PC id
+  if(s.type===3){banner('Garage 61 doesn\'t have this race, and no telemetry file on this PC matches it, so there is nothing to build a review from. Turn on Settings > Live data and drive, or try again after Garage 61 has it.',false,10000);return}
+  if(s.review)bannerAction('No telemetry file on this PC matches this session, so it can\'t open in Practice.','Open the Garage 61 review',()=>openReview(s.review),0);
+  else if(g61)bannerAction('No telemetry file on this PC matches this session, so it can\'t open in Practice.','Review from Garage 61',job,0);
+  else banner('No telemetry file on this PC matches this session. Open Practice and press Read my telemetry, then try again.',false,9000)}
+// 2.35: the newest race on this PC, for a race Garage 61 doesn't list (yet): reviewed from the telemetry file, no Garage 61 needed
+async function loadPcCard(){const host=$('sessPc');host.hidden=true;host.replaceChildren();if(!localOK)return;
+  let j;try{j=await api('last-race')}catch(e){return}
+  if(current.view!=='sessions'||!j||!j.ok)return;
+  const none=!sessData||!(sessData.sessions||[]).length;if(!(j.local_newer||none))return;
+  const b=h('button','btn primary','Review');b.type='button';b.id='sessPcReview';b.setAttribute('aria-label','Review the newest race on this PC');
+  b.addEventListener('click',()=>startJob('review',{local:true},b));
+  const hd=h('div','phead');hd.append(h('h3',null,'Newest race on this PC'));
+  host.append(hd,h('p','note',j.local_newer?'A race on this PC has no review yet. Garage 61 may not have it yet; this builds the review from the telemetry file iRacing saved.':
+    'Built from the telemetry file iRacing saved on this PC. Garage 61 is not needed.'));
+  const r=h('div','row');r.append(b);host.append(r);host.hidden=false}
 async function openSessions(){current={view:'sessions',dir:null};show('vSessions');markNav();
-  await loadSessions();if(current.view==='sessions')renderSessions()}
+  const focus=sessFocusNewest;sessFocusNewest=false;
+  await loadSessions();if(current.view==='sessions'){renderSessions(focus);await loadPcCard()}}
 function renderSync(s){
   renderStrip(sessData&&sessData.summary,s);
   if(current.view==='sessions'){$('btnSyncStop').hidden=s.state!=='running';$('sessProg').hidden=s.state!=='running';$('sessNow').hidden=s.state!=='running';
@@ -1661,17 +1726,22 @@ async function loadResult(dir){resultFor={dir,result:null};frameBar();
   let j;try{j=await api('result?review='+encodeURIComponent(dir))}catch(e){return}
   if(resultFor.dir!==dir)return;
   resultFor={dir,result:j.ok?j.result||null:null,scan:j.ok?j.scan||null:null};frameBar()}
+// 2.35: where a saved result's numbers came from. Untouched, a loaded results file is saved as results_file and a saved result keeps its
+// own source (and overall position / size); the moment any value changes it is "you".
+let resBase='',resFromCsv=false,resFromScan=false,resExisting=null;
+const resSnap=()=>JSON.stringify([RES_FIELDS.map(k=>$('r_'+k).value.trim()),Array.from($('incRows').children).map(r=>[r.querySelector('.inc-lap').value.trim(),r.querySelector('.inc-kind').value,r.querySelector('.inc-pts').value])]);
 function openResult(){const dir=current.dir;if(!dir)return;const r=(resultFor.dir===dir&&resultFor.result)||{};
   RES_FIELDS.forEach(k=>{$('r_'+k).value=r[k]!=null?String(r[k]):''});
   const sc0=resultFor.dir===dir&&!resultFor.result?resultFor.scan:null;
   if(sc0){$('r_finish_pos').value=String(ok(sc0.class_finish)?sc0.class_finish:sc0.finish);const size=ok(sc0.class_size)?sc0.class_size:sc0.cars;if(ok(size))$('r_field_size').value=String(size)}
   $('incRows').replaceChildren(...(Array.isArray(r.incident_laps)?r.incident_laps.slice(0,30):[]).map(incRow));incState();
-  resCsvMe=null;$('resTitle').textContent=resultFor.result?'Edit race result':'Add race result';$('resDelete').hidden=!resultFor.result;
+  resCsvMe=null;resFromCsv=false;resFromScan=!!sc0;resExisting=(resultFor.dir===dir&&resultFor.result)||null;resBase=resSnap();$('resTitle').textContent=resultFor.result?'Edit race result':'Add race result';$('resDelete').hidden=!resultFor.result;
   $('resDelete').dataset.armed='';$('resDelete').textContent='Delete result';setMsg('resMsg','');setMsg('resCsvMsg',resultFor.dir===dir&&!resultFor.result&&resultFor.scan?'Finish filled in from your replay scan, on the road. The results file replaces it with the official one.':'');$('resCsvWho').hidden=true;
   const d=$('dlgResult');if(d.showModal)d.showModal();else d.setAttribute('open','');$('r_finish_pos').focus()}
 /* ---------- 2.7.5: fill the result form from iRacing's results file; nothing is saved until Save */
 let resCsvMe=null;   /* 2.18: a results file loaded in this form: who he is in it ('' until he picks himself) */
 function fillFromCsv(d){resCsvMe=d.name;RES_FIELDS.filter(k=>k!=='notes').forEach(k=>{if(d.fields[k]!=null)$('r_'+k).value=String(d.fields[k])});
+  resFromCsv=true;resBase=resSnap();
   setMsg('resCsvMsg','Filled in for '+d.name+(d.class?' ('+d.class+')':'')+'. Check it, then press Save result.','ok')}
 $('resCsv').addEventListener('change',async()=>{const f=$('resCsv').files[0];$('resCsv').value='';const dir=current.dir;if(!f||!dir)return;
   if(f.size>2*1024*1024){setMsg('resCsvMsg','That file is too big for a results CSV.','bad');return}
@@ -1717,7 +1787,7 @@ $('fbMarkers').addEventListener('click',async()=>{const dir=current.dir;if(!dir)
   if(!j.ok){banner(j.error||'Couldn\'t make the marker file.',true);return}
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([j.edl],{type:'text/plain'}));a.download=j.name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
   banner(j.exact?'Markers saved to Downloads, for a 60 fps timeline. In Resolve, put the green flag at the timeline\'s start.':'Markers saved to Downloads, for a 60 fps timeline. They come from lap times, so they\'re close, not exact. Link RaceCap for exact moments.',false,9000)});
-const HELP={tour:[['Review your race','Press Review last race. If your newest race is already reviewed it opens at once, and Debrief checks Garage 61 in the background for a newer one. Otherwise it pulls the race and writes the review. Cancel stops it at any time.'],
+const HELP={tour:[['Review a session','Press Review a session (Ctrl+Enter). With Garage 61 connected it opens your synced sessions with the newest at the top: press Review on the one you want. A race opens its race review; practice and qualifying open in Practice. Without Garage 61 there is no list: it reviews your newest race from this PC\'s telemetry at once, and practice is under Practice. Cancel stops a build at any time.'],
   ['Start at the top','What to work on comes first: the corners worth the most time. Every number behind it is further down.'],
   ['Compare two laps','Pick any two laps, or a comparison lap, and see where the time went on the track map and traces.'],
   ['Add the result','On a review, Add race result takes the iRacing results file, so there is little or nothing to type.'],
@@ -1774,6 +1844,10 @@ function helpGo(x){if(!x||!(x.go||x.hgo))return null;const b=h('button','btn hgo
   if(x.go)b.dataset.nav=x.go;else b.dataset.hgo=x.hgo;
   b.append(document.createTextNode(x.label||'Open'),h('span','harrow',' →'));b.lastChild.setAttribute('aria-hidden','true');return b}
 function helpBlock(x,id){let el;
+  if(x.box!=null){el=h('div','hbox');el.setAttribute('role','group');el.setAttribute('aria-label',x.box);el.append(h('h3',null,x.box));
+    if(x.lede){const p=h('p');p.append(rich(x.lede));el.append(p)}
+    const ol=h('ol','hsteps');(x.steps||[]).forEach(st=>{const li=h('li','hstep'),c=h('div','hstepc');c.append(h('b','hst',st.t));const p=h('p');p.append(rich(st.d));c.append(p);
+      const g=helpGo(st);if(g)c.append(g);li.append(c);ol.append(li)});el.append(ol);el.id=id;return el}
   if(x.lede!=null)el=h('p','hlede'),el.append(rich(x.lede));
   else if(x.h!=null)el=h('h3','hh',x.h);
   else if(x.p!=null){el=h('div','hpara');if(x.p){const p=h('p');p.append(rich(x.p));el.append(p)}}
@@ -1871,6 +1945,12 @@ $('fResult').addEventListener('submit',async e=>{e.preventDefault();const dir=cu
   if(ok(fields.field_size)&&(fields.finish_pos>fields.field_size||(ok(fields.start_pos)&&fields.start_pos>fields.field_size)||(ok(fields.pos_after_lap1)&&fields.pos_after_lap1>fields.field_size))){
     setMsg('resMsg','A position can\'t be more than the number of cars.','bad');return}
   setMsg('resMsg','Saving...');$('resSave').disabled=true;let r;
+  const same=resSnap()===resBase;
+  if(!same)fields.source='you';
+  else if(resFromCsv)fields.source='results_file';
+  else if(resFromScan)fields.source='scan';   // the replay scan's finish, saved as it was filled in: not typed by you
+  else if(resExisting&&resExisting.source){fields.source=resExisting.source;
+    ['overall_pos','overall_size'].forEach(k=>{if(ok(resExisting[k]))fields[k]=resExisting[k]})}
   const body={review:dir,action:'save',fields};if(resCsvMe!==null)body.field_me=resCsvMe;
   try{r=await post('result',body)}catch(err){connectionLost();return}finally{$('resSave').disabled=false}
   if(!r.ok){setMsg('resMsg',r.error,'bad');return}

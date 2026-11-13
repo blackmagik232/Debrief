@@ -24,9 +24,27 @@ DEAD_PROXY = "http://127.0.0.1:9"
 LOCAL_ONLY = "127.0.0.1,localhost"
 
 
+def _seen_current(path) -> None:
+    """2.35: What's new counts as seen for this version in the test file's own folder (tests of What's new itself
+    point app.HERE elsewhere), so the dialog never covers a window test and the checkout's whatsnew.json is untouched."""
+    if not path:
+        return
+    import json
+    import re
+    try:
+        init = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "debrief", "__init__.py")
+        v = re.search(r'^__version__\s*=\s*"([^"]+)"', open(init, encoding="utf-8").read(), re.M).group(1)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"seen": v}, f)
+    except (OSError, AttributeError):
+        pass
+
+
 def offline_env(tmp: str) -> dict:
-    """Environment for one test file: the updater's state inside tmp, no network."""
-    return {"DEBRIEF_UPDATE_STATE": os.path.join(tmp, "update.json"), "DEBRIEF_NO_NETWORK": "1",
+    """Environment for one test file: the updater's state and What's new's seen-state inside tmp, no network."""
+    return {"DEBRIEF_UPDATE_STATE": os.path.join(tmp, "update.json"), "DEBRIEF_WHATSNEW_STATE": os.path.join(tmp, "whatsnew.json"),
+            "DEBRIEF_NO_NETWORK": "1",
             "HTTPS_PROXY": DEAD_PROXY, "HTTP_PROXY": DEAD_PROXY, "https_proxy": DEAD_PROXY, "http_proxy": DEAD_PROXY,
             "NO_PROXY": LOCAL_ONLY, "no_proxy": LOCAL_ONLY}
 
@@ -43,6 +61,7 @@ def run_file(path: str, env_extra: dict | None = None) -> tuple[int, str]:
         extra.update(TEMP=own_tmp, TMP=own_tmp, TMPDIR=own_tmp)
     tmp = extra.get("TEMP") or extra.get("TMP") or extra.get("TMPDIR")
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1", **offline_env(tmp), **extra)
+    _seen_current(env.get("DEBRIEF_WHATSNEW_STATE"))
     try:
         p = subprocess.run([sys.executable, path], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                            encoding="utf-8", errors="replace")

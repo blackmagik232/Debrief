@@ -14,12 +14,13 @@ Read only: never writes, moves or copies a telemetry file. Makes no network requ
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import statistics as st
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import engine, ibt
+from . import engine, ibt, vsai
 
 SOURCE = "pc"                       # meta.source of a review built here ("garage61" is implied when absent)
 SOURCE_LABEL = "From your PC"
@@ -28,7 +29,7 @@ COLUMNS = {"Speed": "Speed", "LapDistPct": "LapDistPct", "Lat": "Lat", "Lon": "L
            "Throttle": "Throttle", "Gear": "Gear", "ABSActive": "BrakeABSactive", "LatAccel": "LatAccel",
            "LongAccel": "LongAccel", "SteeringWheelAngle": "SteeringWheelAngle", "RPM": "RPM"}
 NO_RACE = ("Debrief found no race in your telemetry files. Turn on Settings > Live data > Make iRacing save my "
-           "telemetry (or press Alt+L in the car), race, then press Review last race.")
+           "telemetry (or press Alt+L in the car), race, then press Review a session.")
 NO_FOLDER = ("Debrief can't find your iRacing telemetry folder, so it can't review a race from this PC. Set the folder "
              "in Settings, or connect Garage 61.")
 
@@ -71,7 +72,8 @@ def event_id(session: dict) -> str:
     sub = (session or {}).get("subsession")
     if sub:
         return f"ir{int(sub)}"
-    return "ir" + str((session or {}).get("id") or "session").replace(" ", "")[-12:]
+    # 2.35: a hash of the whole session id (its last 12 characters were the time of day, so two days collided)
+    return "ir" + hashlib.sha1(str((session or {}).get("id") or "session").encode("utf-8")).hexdigest()[:10]
 
 
 # ---------------------------------------------------------------- the laps
@@ -167,16 +169,24 @@ def result_from(facts: dict, recording: dict | None = None) -> dict:
     classes = {d.get("CarClassID") for d in drivers}
     multiclass = len(classes) > 1
     field = [d for d in drivers if not multiclass or d.get("CarClassID") == my_class]
-    out = {"field_size": len(field) or None, "sof": _sof([d.get("IRating") for d in field])}
+    ai = vsai.ai_count(si) > 0                                         # 2.35: no strength of field or iRating against AI
+    out = {"field_size": len(field) or None, "sof": None if ai else _sof([d.get("IRating") for d in field])}
     mine = next((d for d in drivers if d.get("CarIdx") == me), {})
-    if isinstance(mine.get("IRating"), (int, float)) and mine["IRating"] > 0:
+    if not ai and isinstance(mine.get("IRating"), (int, float)) and mine["IRating"] > 0:
         out["irating_before"] = int(mine["IRating"])
     sess = next((s for s in (si.get("SessionInfo") or {}).get("Sessions") or []
                  if s.get("SessionNum") == facts.get("race_num")), {})
     rp = next((r for r in sess.get("ResultsPositions") or [] if r.get("CarIdx") == me), None)
+    out["source"] = "iracing"
     if rp:
         if multiclass and rp.get("ClassPosition") is not None:
             out["finish_pos"] = int(rp["ClassPosition"]) + 1          # iRacing counts class positions from 0
+            if rp.get("Position"):                                    # 2.35: the overall place too, with the whole field
+                out["overall_pos"], out["overall_size"] = int(rp["Position"]), len(drivers) or None
+        elif rp.get("Position") and multiclass:
+            # 2.35: no class place in the file: the overall place is kept as the overall place and the class finish is
+            # left unset (a place from one base beside a field from another read "P8 of 10")
+            out["overall_pos"], out["overall_size"] = int(rp["Position"]), len(drivers) or None
         elif rp.get("Position"):
             out["finish_pos"] = int(rp["Position"])
         if isinstance(rp.get("Incidents"), (int, float)):
@@ -202,9 +212,18 @@ def result_from(facts: dict, recording: dict | None = None) -> dict:
         pos = fin.get("cpos") if multiclass else fin.get("pos")
         if isinstance(pos, int) and pos > 0:
             out["finish_pos"] = pos                                   # the recording saw the session end
+            out["source"] = "recording"
+            if multiclass and isinstance(fin.get("pos"), int) and fin["pos"] > 0:
+                out["overall_pos"], out["overall_size"] = fin["pos"], len(drivers) or None
         if isinstance(fin.get("incidents"), int):
             out["incidents"] = fin["incidents"]
+    if "finish_pos" not in out:
+        out.pop("source", None)
     return {k: v for k, v in out.items() if v is not None}
+
+
+# 2.35: result fields results.validate doesn't take (it is the form's gate) that a result from iRacing keeps
+EXTRA_RESULT = ("source", "overall_pos", "overall_size")
 
 
 def _recording_for(library_folder, meta: dict) -> dict | None:
@@ -254,7 +273,9 @@ def build(cfg: dict, session: dict, progress=None, info=None) -> tuple:
             "salutation": app.normalise_salutation(cfg.get("salutation", "")), "multiclass": multiclass,
             "source": SOURCE, "source_label": SOURCE_LABEL, "subsession": session.get("subsession"),
             "files": facts.get("files"),
+            "ai_cars": vsai.ai_count(facts.get("session_info")),
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    meta["vs_ai"] = meta["ai_cars"] > 0
     for l in laps:
         if app.lap_start_dt(l):
             l["_start"] = app.lap_start_dt(l).timestamp()
@@ -281,7 +302,8 @@ def build(cfg: dict, session: dict, progress=None, info=None) -> tuple:
         if fields.get("finish_pos"):                                   # nothing to show without a finishing position
             try:
                 res = results.validate(fields)
-                res["source"] = "iracing"
+                res.update({k: fields[k] for k in EXTRA_RESULT if fields.get(k) is not None})
+                res.setdefault("source", "iracing")
                 res["saved_at"] = meta["generated_at"]
                 data["result"] = res
             except ValueError as e:

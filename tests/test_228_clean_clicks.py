@@ -587,10 +587,13 @@ def test_review_last_race_while_another_job_runs_is_never_silent():
     try:
         pg.wait_for_function("() => !document.getElementById('vJob').hidden")
         open_page(pg, "today")
-        pg.click("#btnReview")
+        pg.click("#btnReview")              # 2.35: opens All sessions; a row's Review is what waits for the running job
+        pg.wait_for_function("() => !document.getElementById('vSessions').hidden && document.querySelectorAll('#sessList .revbtn').length > 0")
+        pg.click("#sessList .item.sess >> nth=0 >> .revbtn")
         txt = banner_text(pg)
         assert "Queued: Review starts when the team refresh finishes" in txt, txt
-        assert pg.get_attribute("#btnReview", "aria-disabled") == "true" and "waiting" in pg.get_attribute("#btnReview", "class")
+        assert pg.get_attribute("#sessList .item.sess >> nth=0 >> .revbtn", "aria-disabled") == "true"
+        assert "waiting" in pg.get_attribute("#sessList .item.sess >> nth=0 >> .revbtn", "class")
         assert not any(c[1] == "review" for c in calls), calls
     finally:
         ctx.close()
@@ -672,11 +675,10 @@ def test_review_last_race_opens_the_saved_review_at_once_and_offers_a_newer_race
         pg.wait_for_function("() => !document.getElementById('vToday').hidden")
         n0 = len(calls)
         t0 = time.time()
-        pg.click("#btnReview")
-        pg.wait_for_function("() => !document.getElementById('vFrame').hidden")
+        pg.click("#btnReview")              # 2.35: Review a session opens All sessions at once, with no job
+        pg.wait_for_function("() => !document.getElementById('vSessions').hidden")
         assert time.time() - t0 < 2.0
-        assert pg.get_attribute(".rev.active", "data-dir") == saved["dir"]
-        assert not any(c[0] == "POST" and c[1] == "review" for c in calls[n0:]), "an instant review must not start a job"
+        assert not any(c[0] == "POST" and c[1] == "review" for c in calls[n0:]), "opening the list must not start a job"
         pg.wait_for_function("() => document.getElementById('bannerAct') && !document.getElementById('banner').hidden")
         assert "Newer race found" in banner_text(pg) and pg.text_content("#bannerAct") == "Review it"
         pg.click("#bannerAct")
@@ -696,6 +698,8 @@ def test_review_last_race_runs_the_job_when_nothing_is_saved_or_a_newer_race_is_
     try:
         pg.wait_for_function("() => !document.getElementById('vToday').hidden")
         pg.click("#btnReview")
+        pg.wait_for_function("() => document.querySelectorAll('#sessList .revbtn').length > 0")
+        pg.click("#sessList .item.sess >> nth=0 >> .revbtn")      # 2.35: the row's Review starts the job
         pg.wait_for_function("() => !document.getElementById('vJob').hidden")
         assert any(c[0] == "POST" and c[1] == "review" for c in calls)
     finally:
@@ -711,7 +715,7 @@ def test_a_saved_review_with_no_newer_race_shows_no_banner():
     try:
         pg.wait_for_function("() => !document.getElementById('vToday').hidden")
         pg.click("#btnReview")
-        pg.wait_for_function("() => !document.getElementById('vFrame').hidden")
+        pg.wait_for_function("() => !document.getElementById('vSessions').hidden")
         settle(pg, 500)
         assert "Newer race" not in banner_text(pg)
         assert any(c[1] == "last-race" and "check=1" in c[2] for c in calls), "Garage 61 should be checked in the background"

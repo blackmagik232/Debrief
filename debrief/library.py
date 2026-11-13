@@ -28,7 +28,7 @@ import re
 from pathlib import Path
 
 from .engine import g
-from . import fsutil, report
+from . import fsutil, report, vsai
 
 
 def local_day(iso):
@@ -241,6 +241,10 @@ _RESULT_KEYS = ("start_pos", "finish_pos", "field_size", "incidents", "irating_b
                 "pos_after_lap1", "pit_stops", "penalties", "positions_lap1")
 
 
+def _vs_ai(d: dict) -> bool:
+    return vsai.is_vs_ai(d)
+
+
 def _result(d: dict, review_dir: Path) -> dict | None:
     res = d.get("result")
     if not isinstance(res, dict):
@@ -252,6 +256,9 @@ def _result(d: dict, review_dir: Path) -> dict | None:
     if not isinstance(res, dict) or _num(res.get("finish_pos")) is None:
         return None
     out = {k: res.get(k) for k in _RESULT_KEYS if _num(res.get(k)) is not None}
+    if _vs_ai(d):                                   # 2.35: no strength of field or iRating against AI
+        for k in vsai.HIDDEN_RESULT_KEYS:
+            out.pop(k, None)
     if res.get("notes"):
         out["notes"] = str(res["notes"])[:500]
     return out
@@ -387,10 +394,11 @@ def _row_from(d, p: Path) -> dict | None:
         "ref_gap": round(best - _num(main["t"]), 3) if (main and clean_best(d) is not None) else None,
         "test_data": bool(m.get("test_data")),
         "event_id": str(m.get("event_id") or ""),
+        "vs_ai": _vs_ai(d),     # 2.35: raced against AI cars (a tag only: no field strength or iRating shown)
         "source": "pc" if m.get("source") == "pc" else "garage61",   # 2.34: built from this PC's telemetry files
         # v2 fields (all optional: None/absent on reviews made before Debrief v2)
         "track_id": _int(ids.get("track_id")), "car_id": _int(ids.get("car_id")),
-        "irating": _int(d.get("irating")),
+        "irating": None if _vs_ai(d) else _int(d.get("irating")),
         "season": _season(d, day),
         "consistency": _consistency(d),
         "result": _result(d, p.parent),

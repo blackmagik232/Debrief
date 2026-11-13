@@ -74,7 +74,7 @@ def test_guide_is_complete_and_plain():
     if g is None:
         return
     ids = [s["id"] for s in g["sections"]]
-    assert ids == ["start", "improve", "car", "race", "numbers"], ids
+    assert ids == ["start", "data", "improve", "car", "race", "numbers"], ids   # 2.35: Where your data comes from
     for s in g["sections"]:
         assert s["title"] and s["group"] and len(s["blocks"]) >= 5, s["id"]
         assert "lede" in s["blocks"][0], s["id"] + " starts with a lede"
@@ -171,7 +171,7 @@ def test_help_window():
             # the old texts the other tests look for are all still there
             pg.click("[data-help=keys]")
             keys = pg.text_content("#helpBody")
-            for want in ("Ctrl+1 to Ctrl+9", "Ctrl+1: Today", "Ctrl+Enter: Review last race", "F1 or ?: This list of keys", "Ctrl+Shift+M"):
+            for want in ("Ctrl+1 to Ctrl+9", "Ctrl+1: Today", "Ctrl+Enter: Review a session", "F1 or ?: This list of keys", "Ctrl+Shift+M"):
                 assert want in keys, want
             pg.click("[data-help=words]")
             words = pg.text_content("#helpBody")

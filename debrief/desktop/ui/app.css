@@ -976,3 +976,15 @@ dialog.helpdlg[open]{display:block}
 .emptycard .emptysteps{margin:0 0 10px;padding-left:22px;display:grid;gap:6px;max-width:68ch}
 .emptycard .emptysteps li{line-height:1.5}
 .panel.pvnone.emptycard{padding:18px 20px}
+
+/* ---------- 2.35 "Review a session": the newest row is marked, every row has its own Review, the PC's newest race has a card */
+.item.sess.newest{background:var(--band);box-shadow:inset 4px 0 0 var(--good);padding-left:12px;border-radius:4px}
+.item.sess .revbtn{min-width:84px;min-height:36px}
+.newestpill{font-weight:700}
+.pcrace{border-left:4px solid var(--good)}
+.sessempty{display:grid;gap:8px;justify-items:start;padding:8px 0}
+.hbox{border:2px solid var(--good);background:var(--band);border-radius:6px;padding:14px 16px;margin:0 0 16px}
+.hbox h3{margin:0 0 6px}
+.hbox .hsteps{margin:12px 0 0}
+.hbox .hstep:last-child{padding-bottom:0}
+.hbox>p{margin:0}

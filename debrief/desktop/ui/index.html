@@ -15,8 +15,8 @@
     <img src="static/icon.png" alt="" width="34" height="34">
     <div><div class="name">Debrief</div><div class="eyebrow" id="brandMaker">by Black Magik Studios</div></div>
   </div>
-  <button id="btnReview" class="btn primary big" type="button" title="Review last race (Ctrl+Enter)" aria-keyshortcuts="Control+Enter">
-    <span class="lbl">Review last race</span>
+  <button id="btnReview" class="btn primary big" type="button" title="Review a session: pick one from your synced sessions (Ctrl+Enter)" aria-keyshortcuts="Control+Enter" aria-label="Review a session (Ctrl+Enter)">
+    <span class="lbl">Review a session</span>
     <span class="minibar" aria-hidden="true"><i></i></span>
   </button>
   <button type="button" id="syncStrip" class="syncstrip" data-nav="sessions" hidden>
@@ -152,13 +152,13 @@
     <div class="col">
       <span class="eyebrow">Debrief</span>
       <h1 id="welcomeTitle">Welcome.</h1>
-      <p class="lede" id="welcomeText">No reviews yet. Click Review last race after your next race.</p>
+      <p class="lede" id="welcomeText">No reviews yet. Click Review a session after your next race.</p>
       <div class="row" id="welcomeActions">
-        <button type="button" class="btn primary" data-act="review" title="Review last race (Ctrl+Enter)">Review last race</button>
+        <button type="button" class="btn primary" data-act="review" title="Review a session (Ctrl+Enter)">Review a session</button>
         <button type="button" class="btn" data-nav="settings" title="Settings (Ctrl+,)">Settings</button>
       </div>
 
-      <div class="row" id="gLocal" hidden><button type="button" class="btn primary" data-act="review" title="Review your last race from the telemetry files on this PC (Ctrl+Enter)">Review last race from this PC</button></div>
+      <div class="row" id="gLocal" hidden><button type="button" class="btn primary" data-act="review" title="Review your newest race from the telemetry files on this PC (Ctrl+Enter)">Review a session from this PC</button></div>
       <h3 class="guidehead" id="guideHead" hidden>Optional: connect Garage 61 for comparison laps and your team</h3>
       <ol class="guide" id="guide" hidden aria-label="Connect Garage 61">
         <li class="gstep" id="gs1">
@@ -200,7 +200,7 @@
           <div class="gbody">
             <h3>Review your last race</h3>
             <p class="note">Once your race has uploaded to Garage 61, Debrief builds the review with your teammates' comparison laps. A race Garage 61 doesn't have yet is reviewed from your PC.</p>
-            <div class="row"><button type="button" class="btn primary" data-act="review" id="gReview" disabled>Review last race</button></div>
+            <div class="row"><button type="button" class="btn primary" data-act="review" id="gReview" disabled>Review a session</button></div>
           </div>
         </li>
       </ol>
@@ -235,7 +235,8 @@
     <div class="col">
       <span class="eyebrow">Your Garage 61 history</span>
       <h1>All sessions</h1>
-      <p class="lede">Every race, qualifying and practice session you've driven, kept up to date from Garage 61. Pick one to review it. Reviews you've already made are under Saved reviews in the sidebar.</p>
+      <p class="lede">Every race, qualifying and practice session you've driven, kept up to date from Garage 61. Press Review on the one you want: a race opens its race review, practice and qualifying open in Practice. The newest is at the top. Reviews you've already made are under Saved reviews in the sidebar.</p>
+      <div class="panel pcrace" id="sessPc" hidden></div>
       <div class="panel">
         <div class="phead"><h3 id="sessSyncTitle">Sync</h3><span class="pill" id="sessSyncPill"></span></div>
         <p class="note" id="sessSyncNote"></p>
@@ -1048,6 +1049,7 @@
       <nav class="helpnav" aria-label="Help pages">
         <span class="hgroup">Learn</span>
         <button type="button" class="hnav" data-help="start">Start here</button>
+        <button type="button" class="hnav" data-help="data">Where your data comes from</button>
         <button type="button" class="hnav" data-help="improve">Get faster</button>
         <button type="button" class="hnav" data-help="car">Know your car</button>
         <button type="button" class="hnav" data-help="race">Race smarter</button>

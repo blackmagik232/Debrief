@@ -125,7 +125,7 @@ def test_static_ids_guards_and_order():
     assert s.index('href="#race"') < s.index('href="#racecraft"')
     assert "const RC=isObj(D.racecraft)?D.racecraft:null" in s and "const RX=isObj(D.result)?D.result:null" in s
     assert "const STRAT=isObj(D.strategy)?D.strategy:null" in s
-    assert "if(!RC&&!RX)return" in s and "if(!STRAT)return" in s
+    assert "if(!RC&&!RX)return" in s and "if(!STRAT&&!AF)return" in s   # 2.35: fuel from the recording also draws the panel
     for name in ("race craft", "fuel", "race craft timeline"):
         assert f"'{name}'" in s and (f"safe('{name}'" in s or f"['{name}'," in s), name
     assert "Plan your next race's fuel on the Prepare page." in s

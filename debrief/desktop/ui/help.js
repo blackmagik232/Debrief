@@ -2,17 +2,24 @@
    car, Race smarter, Reading the numbers) and the page cards in Every page. app.js draws them (showHelp) together with
    HELP.tour, HELP.words, HELP.keys and HELP.credits, which the rest of app.js keeps adding to.
    Block kinds: lede, h (heading), p, steps (numbered cards, each can open a page), cards (a grid), list, tip, warn,
-   table {head, rows}, sure (the sureness chips). **two stars** make bold text. go: a sidebar page name (data-nav);
+   box (a highlighted box of steps, {box, lede, steps}; the lede is its first line), table {head, rows}, sure (the sureness chips). **two stars** make bold text. go: a sidebar page name (data-nav);
    hgo: firstrun or whatsnew. Text only: nothing here is ever treated as HTML. */
 window.DEBRIEF_HELP = Object.freeze({
 sections: [
 /* ---------------------------------------------------------------- Start here */
 {id: 'start', group: 'Learn', title: 'Start here', blocks: [
+  {box: 'Review a session', lede: `How to review the session you just drove. Nothing to set up first: this works from the telemetry file iRacing saves on this PC.`, steps: [
+    {t: 'Get out of the car', d: `iRacing saves the telemetry file when the session ends, so finish the session (or go back to the iRacing menu) before you review it.`},
+    {t: 'Press Review a session (Ctrl+Enter)', d: `With Garage 61 connected, the big button at the top of the sidebar opens **All sessions**, with your newest session at the top, highlighted. Without Garage 61 there is no list: it reviews your newest race from this PC at once.`, go: 'sessions', label: 'Open All sessions'},
+    {t: 'Pick the session', d: `With Garage 61, press **Review** on its row: a race opens its race review, and practice and qualifying open in Practice. Without Garage 61, a race is already being built; for practice and qualifying open **Practice** from the sidebar.`},
+    {t: 'After a race: read What to work on first', d: `**What to work on** is at the top of the review. The charts and **Show the numbers** under them are the evidence, so open them only when you want to know why.`},
+    {t: 'After practice or qualifying: One thing, then Coach this', d: `**One thing this session** is at the top of Practice. Press **Coach this** and the live coach watches it for you next time you drive.`, go: 'practice', label: 'Open Practice'},
+    {t: 'Optional: Add comparison laps', d: `Once Garage 61 is connected, a review made from your PC can gain your teammates' laps: press **Add comparison laps** on the review.`, go: 'settings', label: 'Open Settings'}]},
   {lede: `Debrief turns the laps you already drive into a short list of what to work on next, then helps you practise it and shows whether it worked. It reads the telemetry files iRacing saves on this PC, and your laps from Garage 61 if you connect it (optional). It never changes anything in iRacing.`},
   {h: 'Get set up (about 10 minutes)'},
   {steps: [
     {t: 'Turn on telemetry in iRacing', d: `Easiest: tick **Settings > Live data > Make iRacing save my telemetry** (or **Turn it on for me** on the setup checklist) and Debrief turns it on each time you get in the car. Or press **Alt+L** in the car yourself. iRacing then saves a telemetry file (.ibt) for every session. Debrief finds the folder by itself; if it can't, Settings lets you pick it.`, go: 'settings', label: 'Open Settings'},
-    {t: 'Optional: connect Garage 61', d: `Race reviews, Practice, Setup Lab, the Coach and Racing all work without it, from your telemetry files. Garage 61 adds **comparison laps** from your teammates and the drivers you follow, your history from before Debrief, and the Team page. Make a free Garage 61 account, request a personal token, paste it in Settings and press **Save and check**. Debrief then downloads your history in the background, newest first.`, go: 'settings', label: 'Open Settings'},
+    {t: 'Optional: connect Garage 61', d: `Race reviews, Practice, Setup Lab, the Coach and Racing all work without it, from your telemetry files. Garage 61 adds **comparison laps** from your teammates and the drivers you follow, your history from before Debrief, and the Team page. Make a free Garage 61 account, request a personal token, paste it in Settings and press **Save and check**. Debrief then downloads your history in the background, newest first. Connect it when you want to compare with someone else, or see history from before you installed Debrief. Everything about your own driving works without it; see **Where your data comes from**.`, go: 'settings', label: 'Open Settings'},
     {t: 'Drive 10 clean laps in one session', d: `Any car, any track. Ten laps without an incident or a pit stop is what Practice needs to pick your first thing to work on.`},
     {t: 'Optional: the coach', d: `If you want spoken cues while you drive, open the Coach page, pick your headset and press **Test voice**. Everything else in Debrief works without it.`, go: 'coach', label: 'Open Coach'}]},
   {tip: `The **setup checklist** on Today shows which of these are done and the next step, with a button for each.`, hgo: 'firstrun', label: 'Show the setup checklist'},
@@ -20,11 +27,27 @@ sections: [
   {cards: [
     {t: 'Session 1: get a baseline', d: `Drive 10 to 15 laps at a track you know. Don't try anything new. Open **Practice** afterwards: your typical lap, best lap and best possible lap are your starting point.`, go: 'practice', label: 'Open Practice'},
     {t: 'Session 2: one thing', d: `At the top of the Practice session is **One thing this session**. Press **Coach this**, then **Start coaching** on the Coach page, and drive. Work on that one corner only.`, go: 'coach', label: 'Open Coach'},
-    {t: 'After your next race', d: `Press **Review last race** (Ctrl+Enter). Without Garage 61 the review is built from the telemetry file iRacing saved on this PC, result included. Read **What to work on** at the top. Everything below it is the evidence.`},
+    {t: 'After your next race', d: `Press **Review a session** (Ctrl+Enter), then **Review** on the newest row. Without Garage 61 the review is built from the telemetry file iRacing saved on this PC, result included. Read **What to work on** at the top. Everything below it is the evidence.`},
     {t: 'End of the week', d: `Open **Progress** and **Skills** to see whether your typical laps are getting closer to your best ones. That gap is the easiest time you have.`, go: 'library', label: 'Open Progress'}]},
   {h: 'Where things are'},
   {p: `The sidebar follows the order you use it in: **Before you drive** (Prepare, Coach, Race Room), **After you drive** (All sessions, Practice, Racing), **Car** (Setup Lab, Car vs car), **Over time** (Progress, Season, Skills, Goals) and **Team**. **Today** at the top shows your one thing right now, your last race and your last practice. Every page is explained under **Every page** in this Help.`},
-  {p: `Ctrl+1 to Ctrl+9 and Ctrl+0 open the pages in the sidebar's order, Ctrl+Enter reviews your last race, and **F1** opens the keyboard keys.`}]},
+  {p: `Ctrl+1 to Ctrl+9 and Ctrl+0 open the pages in the sidebar's order, Ctrl+Enter is Review a session, and **F1** opens the keyboard keys.`}]},
+
+/* ---------------------------------------------------------------- Where your data comes from */
+{id: 'data', group: 'Learn', title: 'Where your data comes from', blocks: [
+  {lede: `Almost everything about your own driving comes from your own PC. Garage 61 is for comparing with other people and for history from before you installed Debrief. The result and fuel on a review say where their numbers came from.`},
+  {h: 'What comes from where'},
+  {table: {head: ['What you see', 'Where it comes from'], rows: [
+    ['Your race review, result, corners, setup', 'Your PC: the telemetry file iRacing saves when a session ends'],
+    ['Fuel', 'Debrief\'s recorder while you drive (**Settings > Live data**); the telemetry file when there is no recording'],
+    ['Position, gaps, every car\'s pit stops', 'Debrief\'s recorder while you drive (**Settings > Live data**)'],
+    ['Practice, Coach, Setup Lab', 'Your PC'],
+    ['Comparing with OTHER drivers\' laps (teammates and drivers you follow)', 'Garage 61'],
+    ['Your laps from before you installed Debrief', 'Garage 61'],
+    ['Team pages and leaderboards', 'Garage 61']]}, go: 'settings', label: 'Open Settings'},
+  {h: 'When to connect Garage 61'},
+  {p: `Connect it when you want to compare with someone else, or see history from before Debrief. Everything about your own driving works without it: you can review a race, read Practice, use the Coach and Setup Lab with no Garage 61 account at all.`},
+  {tip: `Not sure where a number came from? The result and fuel on a review say where their numbers came from.`}]},
 
 /* ---------------------------------------------------------------- Get faster */
 {id: 'improve', group: 'Learn', title: 'Get faster', blocks: [
@@ -32,7 +55,7 @@ sections: [
   {h: 'The Debrief loop'},
   {steps: [
     {t: 'Drive with telemetry on', d: `Practise in runs of **10 or more clean laps** on one car and track. More laps make every finding surer; with only a few laps Debrief says "a hint" or "no clear pattern yet" instead of guessing.`},
-    {t: 'Read the top, not everything', d: `After practice: **Practice**, open the session. After a race: **Review last race**, then **What to work on**. The top is ranked by time per lap: the first card is worth the most. Read further down only when you want the why.`, go: 'practice', label: 'Open Practice'},
+    {t: 'Read the top, not everything', d: `After practice: **Practice**, open the session. After a race: **Review a session**, press Review on the race, then read **What to work on**. The top is ranked by time per lap: the first card is worth the most. Read further down only when you want the why.`, go: 'practice', label: 'Open Practice'},
     {t: 'Pick one thing', d: `**One thing this session** gives you a corner, what to do and a number you can check, like "peak brake at or below 88%". Work on that alone. Change three things at once and you can't tell which one helped.`},
     {t: 'Practise it with the coach', d: `Press **Coach this**, then **Start coaching** and drive. The coach says a brake marker on the straight before that corner, tells you after it whether you gained or lost, and keeps count. Pick **Quiet** if you want fewer words.`, go: 'coach', label: 'Open Coach'},
     {t: 'Check that it stuck', d: `Open the session afterwards. "You hit it on 7 of 10 laps" means it is becoming a habit and the next session moves on. **Quicker** or **No clear difference** says whether doing it actually paid off in that corner.`},
@@ -106,7 +129,7 @@ sections: [
   {lede: `Pace wins qualifying; races are won on lap 1, in clean laps and in the pits. Debrief looks at your races as a whole as well as one at a time.`},
   {h: 'After every race'},
   {steps: [
-    {t: 'Review last race', d: `Press it (or Ctrl+Enter) after the race. It reads your telemetry file on this PC; with Garage 61 connected it uses Garage 61 once the race is there, and **Add comparison laps** upgrades a review made from your PC. **What to work on** comes first: **Fix first**, ranked by time per lap, then **Keep doing**.`},
+    {t: 'Review a session', d: `Press it (or Ctrl+Enter) after the race, then press **Review** on the race in the list. It reads your telemetry file on this PC; with Garage 61 connected it uses Garage 61 once the race is there, and **Add comparison laps** upgrades a review made from your PC. **What to work on** comes first: **Fix first**, ranked by time per lap, then **Keep doing**.`},
     {t: 'Add the result', d: `**Add race result**, then **Load iRacing results file**: your finish, lap 1 position, pit stops and incidents, with little or nothing to type. It also feeds Car vs car.`},
     {t: 'Scan this race', d: `With the race's replay loaded in iRacing, Debrief fast-forwards through it and adds a race log: every pass, fight, incident and pit stop. It records nothing.`},
     {t: 'Read Race craft', d: `A strip with one box per lap: where you lost time and probably why (traffic, an incident, a pit stop), and your lap 1 against your typical lap.`}]},
@@ -152,7 +175,7 @@ pages: [
   {go: 'prep', t: 'Prepare', what: "This week's race: schedule, your history at the track, track card notes, Plan fuel and Plan stints.", when: 'The days before a race.'},
   {go: 'coach', t: 'Coach', what: 'Short spoken cues while you drive, from your own best lap. Also the crew chief, overlay, driving view and corner notes.', when: 'Every time you drive.'},
   {go: 'room', t: 'Race Room', what: 'The pit board for team and long races: driver, stint timer, fuel, box calls and every stop in your class.', when: 'During team and endurance races.'},
-  {go: 'sessions', t: 'All sessions', what: 'Every race, qualifying and practice session Garage 61 has for you. Pick one to review it.', when: 'To review an older session.'},
+  {go: 'sessions', t: 'All sessions', what: 'Every race, qualifying and practice session Garage 61 has for you, newest first. Press Review on a row: a race opens its race review, practice and qualifying open in Practice. This is where the Review a session button takes you.', when: 'After you drive, and to review an older session.'},
   {go: 'practice', t: 'Practice', what: 'Every time you drove, from your telemetry files: best and typical lap, best possible lap, the Corner coach and One thing this session.', when: 'Straight after you drive.'},
   {go: 'racing', t: 'Racing', what: 'Your starts and incidents across all your races, and the patterns in them.', when: 'Every few races.'},
   {go: 'setuplab', t: 'Setup Lab', what: 'What changed between your setups, which was faster, how the car handles in each corner and one change to try next.', when: 'When you work on the car.'},

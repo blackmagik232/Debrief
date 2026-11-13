@@ -143,7 +143,9 @@ def test_static_review_never_posts_anything_itself():
     # the only postMessage calls are the two replies in the responder, both to the parent, plus (2.6) the
     # keyboard forwarder, which sends the parent nothing but a fixed shortcut name, plus (2.18) Share card handing
     # its picture to the parent (the window saves it and says where); still only ever to the parent
-    assert s.count("postMessage(") == 4 and blk.count("window.parent.postMessage(") == 2, s.count("postMessage(")
+    # plus (2.35) the Setup section's Open in Setup Lab: a fixed type with the car and track names, to the parent only
+    assert s.count("postMessage(") == 5 and blk.count("window.parent.postMessage(") == 2, s.count("postMessage(")
+    assert s.count("parent.postMessage({type:'debrief-open-setuplab',car:String(O.car_path),track:String(O.track_code||'')},'*')") == 1
     assert s.count("window.parent.postMessage({type:'debrief:share-save',name,png},'*')") == 1
     assert s.count("parent.postMessage({type:'debrief-key',key:m},'*')") == 1
     assert "window.parent===window||e.source!==window.parent)return" in blk

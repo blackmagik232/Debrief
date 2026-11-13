@@ -609,10 +609,13 @@ def test_window_session_buttons_say_practice_and_qualifying():
         pg.wait_for_function("() => document.querySelectorAll('#sessList .item.sess').length === 3")
         labels = pg.evaluate("() => [...document.querySelectorAll('#sessList .item.sess')].map(r =>"
                              " [...r.querySelectorAll('button')].map(b => [b.textContent, b.getAttribute('aria-label')]))")
-        assert labels[0] == [["Review practice", None]], labels
-        assert labels[1] == [["Open review", None], ["Review again", "Review qualifying again"]], labels
-        assert labels[2] == [["Review", None]], labels
-        pg.click("#sessList .item.sess >> nth=0 >> text=Review practice")
+        # 2.35: one clear Review on every row (its aria-label says which session)
+        assert [[b[0] for b in r] for r in labels] == [["Review"], ["Review"], ["Review"]], labels
+        assert "practice" in labels[0][0][1] and "qualifying" in labels[1][0][1] and "race" in labels[2][0][1], labels
+        pg.click("#sessList .item.sess >> nth=0 >> text=Review")
+        # 2.35: no telemetry file for it on this PC: it says so and offers the Garage 61 review (it never opens another session)
+        pg.wait_for_function("() => document.getElementById('bannerAct') && /No telemetry file/.test(document.getElementById('bannerText').textContent)")
+        pg.click("#bannerAct")
         pg.wait_for_function("() => !document.getElementById('vJob').hidden")
         assert posts and posts[-1] == ("review", {"event": "EVP", "session_type": 1, "track_id": 1, "car_id": 2}), posts
         assert not errs, errs

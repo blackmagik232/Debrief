@@ -107,7 +107,7 @@ FRAME_BRIDGE = ("<script>/* debrief-frame-bridge */(function(){if(parent===windo
                 "addEventListener('keydown',function(e){var k=String(e.key).toLowerCase(),m=null,t=e.target;"
                 "var w=t&&t.closest&&t.closest('input,select,textarea,[contenteditable]');"
                 "if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&/^[0-9]$/.test(k))m='page'+k;"
-                # 2.18: Ctrl+Enter = Review last race, F1 or ? = the key list
+                # 2.18: Ctrl+Enter = Review a session, F1 or ? = the key list
                 "else if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&k==='enter'&&!w)m='reviewgo';"
                 "else if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&(k==='f1'||(e.key==='?'&&!w)))m='help';"
                 "else if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey&&(k==='j'||k==='k')&&"
@@ -376,10 +376,13 @@ def review_rebuild_params(review_dir: Path) -> dict:
         d = json.loads((Path(review_dir) / "review.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         raise ValueError("This review's saved data can't be read, so Debrief can't tell which race to rebuild. "
-                         "Use Review last race, or Review on the All sessions page.")
+                         "Use Review a session, or Review on the All sessions page.")
     m = d.get("meta") if isinstance(d, dict) and isinstance(d.get("meta"), dict) else {}
     if m.get("source") == "pc":       # 2.34: a review built from this PC is made again from its telemetry files
-        return {"local": True, "subsession": _sub(m.get("subsession")), "rebuild": True}
+        out = {"local": True, "subsession": _sub(m.get("subsession")), "rebuild": True}
+        if out["subsession"] is None and _pc_event(m.get("event_id")):   # 2.35: AI/offline race: find it by its PC id
+            out["pc_event"] = _pc_event(m.get("event_id"))
+        return out
     ids = d.get("combo_ids") if isinstance(d, dict) and isinstance(d.get("combo_ids"), dict) else {}
     st = {"practice": 1, "qualifying": 2}.get(library.session_kind(m.get("session")), 3)
     ev = str(m.get("event_id") or "")
@@ -392,6 +395,11 @@ def review_rebuild_params(review_dir: Path) -> dict:
         if isinstance(v, int) and not isinstance(v, bool) and v > 0:
             out[k] = v
     return out
+
+
+def _pc_event(v):
+    v = str(v or "")
+    return v if re.match(r"^ir[A-Za-z0-9]{1,40}$", v) else None
 
 
 def _sub(v):
@@ -562,7 +570,7 @@ def sample_page() -> bytes:
                 "salutation": "", "generated_at": "2026-01-01T19:00:00+00:00"}
         data = engine.analyze(meta, laps, tel, [], {}, log=lambda m: None)
         with tempfile.TemporaryDirectory() as td:
-            html = Path(report.write(Path(td), data)).read_bytes()
+            html = Path(report.write(Path(td), data, setup=False)).read_bytes()
         m = re.search(rb"<body\b[^>]*>", html)
         at = m.end() if m else 0
         _SAMPLE_PAGE.append(html[:at] + SAMPLE_LABEL.encode("utf-8") + html[at:])
@@ -758,7 +766,8 @@ class Jobs:
                 info = {}
                 if params.get("local"):        # 2.34: from the telemetry files on this PC, no Garage 61
                     page = app.cmd_review_local(cfg, open_after=False, progress=cb, rebuild=bool(params.get("rebuild")),
-                                                subsession=params.get("subsession"), info=info)
+                                                subsession=params.get("subsession"), info=info,
+                                                event_id=params.get("pc_event"))
                 elif params.get("upgrade"):    # 2.34: Add comparison laps (the Garage 61 review replaces the PC one)
                     page = app.cmd_review_upgrade(cfg, params.get("subsession"), progress=cb, info=info)
                 else:
@@ -3419,7 +3428,7 @@ class Handler(BaseHTTPRequestHandler):
             data = None
         if isinstance(data, dict) and data.get("laps"):
             try:
-                report.write(d, data, log=app.say)
+                report.write(d, data, log=app.say, setup=False)
                 return self._file(page, lib=True)
             except Exception:  # noqa: BLE001
                 app.say("ERROR remaking a missing review page:\n" + traceback.format_exc())
@@ -3487,6 +3496,11 @@ class Handler(BaseHTTPRequestHandler):
                     params = clean_review_params(body)
                     if isinstance(body, dict) and body.get("local") is True and not params:
                         params = {"local": True}
+                        sub = _sub(body.get("subsession")) if body.get("subsession") not in (None, "") else None
+                        if sub:        # 2.35: a row's Review builds THAT race from this PC, not just the newest
+                            params["subsession"] = sub
+                        elif _pc_event(body.get("pc_event")):   # 2.35: a row whose PC file has no subsession
+                            params["pc_event"] = _pc_event(body.get("pc_event"))
             except ValueError as e:
                 return self._json({"ok": False, "error": str(e)}, 400)
             if not self._token_saved():
@@ -4445,6 +4459,7 @@ class Handler(BaseHTTPRequestHandler):
             folder_ok = folder.is_dir()
         except OSError:
             folder_ok = False
+        from .. import localrace
         ss, idx = self.server.practice_sessions(cfg)
         _idx, keys = self._setuplab_index(cfg)
         keep = ("id", "car", "car_path", "track", "track_code", "date", "last", "sort", "subsession", "files",
@@ -4452,7 +4467,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(_jsonable({
             "ok": True, "folder": str(folder), "folder_ok": folder_ok, "indexed": idx is not None,
             "unread": unread_files(folder, keys) if folder_ok else None, "running": self.server.jobs.kind == "setuplab",
-            "sessions": [{k: x.get(k) for k in keep} for x in ss]}))
+            "sessions": [{**{k: x.get(k) for k in keep}, "event_id": localrace.event_id(x)} for x in ss]}))
 
     def _practice_session(self, cfg, q) -> tuple:
         sid = q.get("id")

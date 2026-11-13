@@ -1156,8 +1156,13 @@ def _newest_local_unseen(cfg, api, step):
     try:
         from . import localrace
         s = localrace.newest()
-        if not s or not s.get("subsession") or _g61_has(cfg["library_folder"], s):
+        if not s or _g61_has(cfg["library_folder"], s):
             return None
+        if not s.get("subsession"):
+            # 2.35: no iRacing session number = an offline or AI race. Garage 61 never has it, so it is reviewed from
+            # this PC without asking Garage 61 (no request at all).
+            step("This race has no iRacing session number (an offline or AI race), so Debrief reviews it from your telemetry files.", 0.08)
+            return s
         if api.event_for_subsession(s["subsession"]):
             return None
         step("Garage 61 doesn't have your newest race yet, so Debrief reviews it from your telemetry files.", 0.08)
@@ -1170,8 +1175,9 @@ def _newest_local_unseen(cfg, api, step):
         return None
 
 
-def cmd_review_local(cfg, session=None, open_after=True, progress=None, rebuild=False, info=None, subsession=None):
-    """2.34: review your newest race (or the race with this subsession) from the telemetry files on this PC: no
+def cmd_review_local(cfg, session=None, open_after=True, progress=None, rebuild=False, info=None, subsession=None,
+                     event_id=None):
+    """2.34: review your newest race (or the race with this subsession or PC event id) from the telemetry files on this PC: no
     Garage 61 needed. Same page, folder rules and library as a Garage 61 review; meta.source is "pc". A saved review of
     the race opens at once unless rebuild (info["saved"] = True, like cmd_review)."""
     from . import localrace
@@ -1186,6 +1192,11 @@ def cmd_review_local(cfg, session=None, open_after=True, progress=None, rebuild=
         rs = localrace.races(folder)
         if subsession:
             rs = [r for r in rs if str(r.get("subsession")) == str(subsession)]
+        if event_id:       # 2.35: a race with no subsession (AI/offline) is found by its PC event id
+            rs = [r for r in rs if localrace.event_id(r) == str(event_id)]
+            if not rs:
+                raise SystemExit("This race's telemetry file isn't on this PC any more, so Debrief can't read it again. "
+                                 "The review is left as it is.")
         if not rs:
             raise SystemExit(localrace.NO_RACE)
         session = rs[0]

@@ -15,6 +15,7 @@ setup checklist), and any time from Help > What's new.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -133,7 +134,14 @@ def release_notes(text: str, version: str) -> str:
 # ------------------------------------------------------------------ shown once per version
 def _seen_path() -> Path:
     from . import app
-    return Path(app.HERE) / "whatsnew.json"
+    here = Path(app.HERE)
+    # 2.35: the tests keep this file in each test file's own temp folder (DEBRIEF_WHATSNEW_STATE, set by
+    # tests/ci_run.py), so a test never rewrites the checkout's whatsnew.json and What's new never pops up over a
+    # window test because of the order the files ran in. Only for a source run; the installed app ignores it.
+    env = os.environ.get("DEBRIEF_WHATSNEW_STATE")
+    if env and not getattr(app, "FROZEN", False) and here == Path(__file__).resolve().parent.parent:
+        return Path(env)
+    return here / "whatsnew.json"
 
 
 def _read_seen() -> str | None:

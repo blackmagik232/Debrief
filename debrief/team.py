@@ -52,7 +52,7 @@ def _num(x):
 
 # 2.18: the skipped note says what to do next
 NO_MATCH_NOTE = ("Couldn't match this track or car to Garage 61, so it was skipped. Garage 61 may name it differently "
-                 "or not list it yet. Next step: review your next race here with Review last race (a new review "
+                 "or not list it yet. Next step: review your next race here with Review a session (a new review "
                  "usually keeps Garage 61's own track and car numbers), then press Refresh team data again. "
                  "Your own reviews of this track still work.")
 

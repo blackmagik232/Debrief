@@ -72,7 +72,7 @@ def test_readme_for_buddies():
     assert "**Skills**" in s
     assert "## Teams on Garage 61" in s and "invite you to it on Garage 61" in s
     assert "still work if you ever need them" not in s          # the .bat files aren't recommended any more
-    assert "Ctrl+Enter" in s and "Ctrl+R" not in s         # 2.18: Review last race moved off the reload key
+    assert "Ctrl+Enter" in s and "Ctrl+R" not in s         # 2.18: Review a session moved off the reload key
 
 
 def test_updater_strings_point_at_the_public_releases():
@@ -165,7 +165,7 @@ def test_window_static_bits():
     assert 'id="pIracing" hidden' in html                           # credentials panel hidden; keys still work
     assert 'id="btnCheck">Save and check<' in html and "Save token" not in html and ">Check connection<" not in html
     assert 'id="jobSaved"' in html and ">Open saved reviews<" in html and "Open Sessions" not in html    # 2.28: one main button
-    assert 'title="Review last race (Ctrl+Enter)"' in html and 'title="Settings (Ctrl+,)"' in html     # 2.18: not Ctrl+R
+    assert 'title="Review a session: pick one from your synced sessions (Ctrl+Enter)"' in html and 'title="Settings (Ctrl+,)"' in html     # 2.18: not Ctrl+R
 
 
 # ---------------------------------------------------------------- window (browser, mocked API)
@@ -361,16 +361,17 @@ def test_window_opens_on_last_race_shortcuts_and_banners():
         assert st["extras"] is False and st["ir"] is True and st["adv"] is False, st
         pg.wait_for_function("() => document.getElementById('teamLine').textContent.includes('not in a team yet')")
         assert pg.text_content("#teamLine") == "Teams: you are not in a team yet (join one on Garage 61)"
-        # 2.18: Ctrl+R neither reloads nor starts a review; Ctrl+Enter = Review last race; the error banner stays until it's closed
+        # 2.18: Ctrl+R neither reloads nor starts a review; Ctrl+Enter = Review a session; the error banner stays until it's closed
         pg.evaluate("() => { window.__alive = 1 }")
         pg.keyboard.press("Control+r")
         pg.wait_for_function("() => /Ctrl\\+Enter/.test(document.getElementById('bannerText').textContent)")
         assert not [c for c in calls if c[0] == "POST" and c[1] == "review"]
+        # 2.35: Ctrl+Enter = Review a session: it opens All sessions (a review starts from a row's own Review button)
         pg.keyboard.press("Control+Enter")
-        pg.wait_for_function("() => document.getElementById('bannerText').textContent === 'Garage 61 is busy.' && !document.getElementById('banner').hidden")
+        pg.wait_for_function("() => !document.getElementById('vSessions').hidden")
         assert pg.evaluate("() => window.__alive") == 1
-        assert [c for c in calls if c[0] == "POST" and c[1] == "review"]
-        assert pg.text_content("#bannerText") == "Garage 61 is busy."
+        assert not [c for c in calls if c[0] == "POST" and c[1] == "review"]
+        assert not pg.evaluate("() => document.getElementById('banner').hidden")
         pg.wait_for_timeout(5600)
         assert pg.evaluate("() => !document.getElementById('banner').hidden")
         pg.click("#bannerClose")
@@ -413,7 +414,10 @@ def test_window_sessions_page_by_page_and_team_join():
 
 def test_window_job_error_offers_sessions():
     st = {"s": {"state": "idle"}}
-    api = _api(review={"ok": True, "id": 9}, status=lambda _: st["s"])
+    one = {"key": "k", "event": "E1", "type": 3, "session": "Race", "track": "Roval", "car": "GT4", "start": "2026-10-27T12:00:00Z",
+           "laps": 5, "best": 85.0, "best_clean": 85.0, "track_id": 1, "car_id": 2, "review": None}
+    api = _api(review={"ok": True, "id": 9}, status=lambda _: st["s"],
+               sessions={"ok": True, "token": True, "summary": None, "sessions": [one], "total": 1})
     r = _window(api)
     if not r:
         return
@@ -421,7 +425,8 @@ def test_window_job_error_offers_sessions():
     try:
         pg.wait_for_function("() => !document.getElementById('vToday').hidden", timeout=10000)
         st["s"] = {"state": "error", "kind": "review", "id": 9, "error": "No new race found.", "steps": []}
-        pg.click("#btnReview")
+        pg.click("#btnReview")              # 2.35: opens All sessions; the row's Review starts the job
+        pg.click("#sessList .revbtn")
         pg.wait_for_function("() => !document.getElementById('jobErr').hidden")
         btns = pg.evaluate("() => [...document.querySelectorAll('#jobErr button')].map(b => b.textContent)")
         assert btns == ["Open saved reviews", "Try again", "Open Settings"], btns      # 2.28: no Sessions button

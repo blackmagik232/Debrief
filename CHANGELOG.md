@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.35.0 "See it"
+
+Your race review now shows the race at a glance, never contradicts itself, and tells you about your setup. The button you press after driving is now **Review a session**.
+
+- **Review a session** (Ctrl+Enter). With Garage 61 connected it opens All sessions with your newest session at the top and highlighted. Press **Review** on any row: a race opens its race review, a practice or qualifying session opens in Practice. Without Garage 61 it reviews your newest race straight from this PC, as before. **Help > Start here** now begins with a "Review a session" box that walks you through it.
+- **Charts instead of long tables.** The From iRacing part of a race review draws fuel per lap (with your average and how many laps a full tank lasts), your position over the race (your class too in multi-class races, with your stops and incidents marked), the gap to the car ahead and behind, a pit-stop strip for every car that stopped, the tread left on each tyre, your driver-aid changes, and your incidents on the track map, named by corner. Every table is still there under **Show the numbers**, and Save as PDF opens them.
+- **One answer per fact.** Finish, start and incidents come from one place and every section says the same thing, overall and class together in multi-class races. There is one fuel figure, one lap count (Debrief lines up iRacing's lap numbers with the review's), and one position chart. The result says where it came from: iRacing, your results file, or you. If two sources still disagree, a note near the top says so plainly and which number is used.
+- **Setup section.** Race reviews built from now on (and older ones when you press Rebuild) show the setup you raced and what changed since your last session at that track and car; whether it was faster, only when the numbers are strong enough to say; where the car pushed or rotated and whether that looks like the setup or your driving; hot tyre pressures and temperatures from iRacing's pit readings; and one change to try (a suggestion) with **Open in Setup Lab**. Fixed-setup races show only brake bias, traction control, ABS and fuel.
+- **Races against AI** are marked **vs AI** on the review and in your library, with no strength of field or iRating. The telemetry counts like any other race. A race with no iRacing session number is always reviewed from your PC.
+- **Help > Where your data comes from** says what works from your PC alone and what Garage 61 adds: comparison laps from your teammates and the drivers you follow, your laps from before Debrief, and the Team pages.
+- Fixes to what Debrief records: no more false "lap 0" driver-aid changes, pit-lane starts don't count as stops, a stop split in two is counted once, and "Tyre sets used: 0" is gone. Older recordings are worked out again when you open them, and your saved reviews are drawn again once with the new layout.
+
+### For the record
+
+- Recorder: `liverec` SUMMARY_V 2 (green-flag start for stops, visits under 30 s merged, aids from whole laps after lap 1, per-lap gaps from CarIdxF2Time, ai_cars, official). `recordings.view` adds `charts`, `facts` and block keys; `recordings.agree` and `report._agree` save `data["agree"]`; `recordings.lap_offset` renumbers recorded laps to the review's when at least 3 lap times match.
+- Review page (`templates/review.html`): `FI_DRAW` charts, "Show the numbers", `checkFacts` and `#agreeNote`, the incident map placed like the corner maps, the Setup section, the vs AI chip. `report.LAYOUT` 2.35.0.
+- Results: `source` (you, results_file, iracing, recording) and `overall_pos`/`overall_size` kept by `results.validate`; `localrace.result_from` stores both class and overall places.
+- New `debrief/racesetup.py` (Setup section from the race's .ibt via Setup Lab, `handling.analyze` and `setupadvice`), new `debrief/vsai.py`; `localrace.event_id` hashes the session id when there is no subsession.
+- Window: `reviewASession`, per-row Review in All sessions (practice rows open Practice only when a telemetry file of the same track, car and session type matches), "Newest race on this PC" card, Help sections "Review a session" and "Where your data comes from".
+- Tests: test_235_seeit, test_235_consistency, test_235_sessions, test_235_setup, test_235_setup_page, test_235_vsai (+ updated expectations in test_218_home, test_228_clean_clicks, test_231_help, test_23_d, test_24_c, test_25_c, test_26_c; test_26_b, test_227_library in the step 2 commit). `tests/ci_run.py` gives each test file its own What's new seen-state (DEBRIEF_WHATSNEW_STATE, source runs only), so the dialog no longer covers window tests depending on run order and tests no longer rewrite whatsnew.json.
+- Not proven yet: real recordings (gaps, merged stops, aids), lap renumbering against real Garage 61 laps, a real setup file and pit-stop hot pressures, fixed-setup detection on a real official race, an AI race file, practice-row matching against real Garage 61 session times, Setup section speed on a large telemetry folder.
+
 ## 2.34.0 "No token needed"
 
 You can review a race without Garage 61 now. Debrief reads the race straight from the telemetry file iRacing saves on your PC.

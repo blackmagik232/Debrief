@@ -180,7 +180,7 @@ def test_sidebar_groups_and_keys_in_order():
     foot = html[html.index('<div class="sidefoot">'):html.index("</aside>")]
     assert 'data-nav="settings"' in foot and 'id="btnHelp"' in foot and 'data-theme-set="dark"' in foot
     assert html.index('id="btnReview"') < html.index('id="sideScroll"') < html.index('id="revlist"') < html.index('class="sidefoot"')
-    assert "Ctrl+R" not in html and 'title="Review last race (Ctrl+Enter)"' in html
+    assert "Ctrl+R" not in html and 'title="Review a session: pick one from your synced sessions (Ctrl+Enter)"' in html
     js = (UI / "app.js").read_text(encoding="utf-8")
     assert "const PAGE_KEYS=[...document.querySelectorAll('.nav .navbtn[data-nav]:not(.sub)')]" in js
     from debrief.desktop import server as S
@@ -308,7 +308,7 @@ def test_window_today_keys_and_returning_user():
         pg.keyboard.press("F1")
         pg.wait_for_function("() => document.getElementById('dlgHelp').open")
         txt = pg.text_content("#helpBody")
-        for want in ("Ctrl+Enter: Review last race", "Ctrl+1: Today", "Ctrl+6: Racing", "Ctrl+8: Car vs car", "Ctrl+0: Team",
+        for want in ("Ctrl+Enter: Review a session", "Ctrl+1: Today", "Ctrl+6: Racing", "Ctrl+8: Car vs car", "Ctrl+0: Team",
                      "F1 or ?: This list of keys", "Ctrl+Shift+M"):
             assert want in txt, (want, txt)
         pg.keyboard.press("Escape")
@@ -316,15 +316,15 @@ def test_window_today_keys_and_returning_user():
         pg.keyboard.press("Shift+Slash")
         pg.wait_for_function("() => document.getElementById('dlgHelp').open && document.querySelector('[data-help=keys]').getAttribute('aria-pressed') === 'true'")
         pg.keyboard.press("Escape")
-        # Ctrl+R starts nothing (and doesn't reload): it says where Review last race went; Ctrl+Enter starts it
+        # Ctrl+R starts nothing (and doesn't reload): it says where Review a session went; Ctrl+Enter opens All sessions
         pg.evaluate("() => { window.__alive = 1 }")
         pg.keyboard.press("Control+r")
         pg.wait_for_function("() => /Ctrl\\+Enter/.test(document.getElementById('bannerText').textContent)")
         assert pg.evaluate("() => window.__alive") == 1
         assert not [c for c in calls if c[0] == "POST" and c[1] == "review"]
-        pg.keyboard.press("Control+Enter")
-        pg.wait_for_function("() => document.getElementById('bannerText').textContent === 'Garage 61 is busy.'")
-        assert [c for c in calls if c[0] == "POST" and c[1] == "review"]
+        pg.keyboard.press("Control+Enter")     # 2.35: Review a session opens All sessions; a row's Review starts the job
+        pg.wait_for_function("() => !document.getElementById('vSessions').hidden")
+        assert not [c for c in calls if c[0] == "POST" and c[1] == "review"]
         # Season and Skills are under Progress; their own sidebar entries light up
         if not pg.is_visible(".navbtn[data-nav=skills]"):   # 2.33: on a short window it is folded under Progress
             pg.click(".navbtn[data-nav=library]")

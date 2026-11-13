@@ -1,0 +1,2060 @@
+{
+"note": "History up to 2.35.0, taken from the retired System Board (12 Nov 2026). Newer releases, chats and decisions live in the Command Center's database.",
+"releases": [
+{
+"v": "2.0.0",
+"date": "2026-10-26",
+"commit": "d73fb0f",
+"name": "Debrief 2.0",
+"lede": "Debrief 2.0.0: race reviews from Garage 61 with Windows installer",
+"points": [],
+"mods": [
+"debrief/__main__.py",
+"debrief/analysis_plus.py",
+"debrief/app.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/__main__.py",
+"debrief/desktop/make_icon.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/engine.py",
+"debrief/fsutil.py",
+"debrief/g61.py",
+"debrief/goals.py",
+"debrief/iracing.py",
+"debrief/library.py",
+"debrief/prep.py",
+"debrief/report.py",
+"debrief/results.py",
+"debrief/team.py",
+"debrief/templates/library.html",
+"debrief/templates/prep.html",
+"debrief/templates/review.html",
+"debrief/templates/team.html"
+],
+"tests": 4,
+"state": "published"
+},
+{
+"v": "2.1.0",
+"date": "2026-10-27",
+"commit": "286ee1b",
+"name": "History sync",
+"lede": "Debrief 2.1.0: Garage 61 history sync and Sessions page",
+"points": [],
+"mods": [
+"debrief/app.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/g61.py",
+"debrief/library.py",
+"debrief/sync.py"
+],
+"tests": 1,
+"state": "published"
+},
+{
+"v": "2.2.0",
+"date": "2026-10-28",
+"commit": "6a24c5b",
+"name": "Prepare",
+"lede": "Debrief 2.2.0: Prepare page, track cards, multi-class awareness",
+"points": [],
+"mods": [
+"debrief/app.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/engine.py",
+"debrief/g61.py",
+"debrief/notes.py",
+"debrief/prepare.py",
+"debrief/schedule.py",
+"debrief/series.py",
+"debrief/templates/review.html"
+],
+"tests": 1,
+"state": "published"
+},
+{
+"v": "2.2.1",
+"date": "2026-10-28",
+"commit": "c1918fd",
+"name": "Updater",
+"lede": "Debrief 2.2.1: clearer reviews and a built-in updater",
+"points": [],
+"mods": [
+"debrief/app.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/insights.py",
+"debrief/report.py",
+"debrief/templates/review.html",
+"debrief/updater.py"
+],
+"tests": 2,
+"state": "published"
+},
+{
+"v": "2.2.2",
+"date": "2026-10-29",
+"commit": "da4e028",
+"name": "Review-team fixes",
+"lede": "Debrief 2.2.2 (work in progress): merged fixes from the four review teams",
+"points": [],
+"mods": [
+"debrief/analysis_plus.py",
+"debrief/app.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/engine.py",
+"debrief/fsutil.py",
+"debrief/g61.py",
+"debrief/insights.py",
+"debrief/iracing.py",
+"debrief/library.py",
+"debrief/notes.py",
+"debrief/prep.py",
+"debrief/prepare.py",
+"debrief/report.py",
+"debrief/schedule.py",
+"debrief/series.py",
+"debrief/sync.py",
+"debrief/templates/library.html",
+"debrief/templates/prep.html",
+"debrief/templates/review.html",
+"debrief/templates/team.html",
+"debrief/updater.py"
+],
+"tests": 5,
+"state": "published"
+},
+{
+"v": "2.3.0",
+"date": "2026-10-29",
+"commit": "2e248e7",
+"name": "Know your driving",
+"lede": "Debrief 2.3.0 \"Know your driving\"",
+"points": [],
+"mods": [
+"debrief/analysis_plus.py",
+"debrief/app.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/engine.py",
+"debrief/g61.py",
+"debrief/insights.py",
+"debrief/library.py",
+"debrief/profile.py",
+"debrief/report.py",
+"debrief/schedule.py",
+"debrief/session_review.py",
+"debrief/skills.py",
+"debrief/technique_plus.py",
+"debrief/templates/library.html",
+"debrief/templates/review.html"
+],
+"tests": 46,
+"state": "published"
+},
+{
+"v": "2.4.0",
+"date": "2026-10-29",
+"commit": "d4accc3",
+"name": "Race smarter",
+"lede": "Debrief 2.4.0: race smarter — fuel/stint strategy, race craft, shared track cards, Track Intel import",
+"points": [],
+"mods": [
+"debrief/analysis_plus.py",
+"debrief/app.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/insights.py",
+"debrief/intel.py",
+"debrief/library.py",
+"debrief/notes.py",
+"debrief/prepare.py",
+"debrief/profile.py",
+"debrief/racecraft.py",
+"debrief/report.py",
+"debrief/results.py",
+"debrief/session_review.py",
+"debrief/skills.py",
+"debrief/strategy.py",
+"debrief/technique_plus.py",
+"debrief/templates/library.html",
+"debrief/templates/prep.html",
+"debrief/templates/review.html",
+"debrief/xlsx.py"
+],
+"tests": 39,
+"state": "published"
+},
+{
+"v": "2.5.0",
+"date": "2026-10-29",
+"commit": "0ce4a5f",
+"name": "Team and sharing",
+"lede": "Debrief 2.5.0: team and sharing — weekly leaderboards, who to learn from, Post to Discord (confirm every time), signed updates v1",
+"points": [],
+"mods": [
+"debrief/app.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/discord.py",
+"debrief/ed25519.py",
+"debrief/insights.py",
+"debrief/intel.py",
+"debrief/leaderboards.py",
+"debrief/notes.py",
+"debrief/prepare.py",
+"debrief/report.py",
+"debrief/strategy.py",
+"debrief/team.py",
+"debrief/templates/review.html",
+"debrief/templates/team.html",
+"debrief/updater.py",
+"debrief/xlsx.py"
+],
+"tests": 21,
+"state": "published"
+},
+{
+"v": "2.6.0",
+"date": "2026-10-30",
+"commit": "5ffc728",
+"name": "Code review",
+"lede": "2.6.0: start release; add brand.py (Midfield Menace single source of truth)",
+"points": [],
+"mods": [
+"debrief/brand.py",
+"debrief/desktop/ui/app.js",
+"debrief/discord.py",
+"debrief/leaderboards.py",
+"debrief/templates/review.html",
+"debrief/templates/team.html"
+],
+"tests": 9,
+"state": "published"
+},
+{
+"v": "2.7.0",
+"date": "2026-11-01",
+"commit": "4c6ee30",
+"name": "Trust",
+"lede": "2.7.0: version and layout bump (saved reviews re-render with the new wording)",
+"points": [],
+"mods": [
+"debrief/analysis_plus.py",
+"debrief/app.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/engine.py",
+"debrief/fsutil.py",
+"debrief/g61.py",
+"debrief/insights.py",
+"debrief/iracing.py",
+"debrief/leaderboards.py",
+"debrief/library.py",
+"debrief/prep.py",
+"debrief/profile.py",
+"debrief/racecraft.py",
+"debrief/report.py",
+"debrief/sync.py",
+"debrief/team.py",
+"debrief/templates/library.html",
+"debrief/templates/prep.html",
+"debrief/templates/review.html",
+"debrief/templates/team.html",
+"debrief/updater.py",
+"debrief/xlsx.py"
+],
+"tests": 39,
+"state": "published"
+},
+{
+"v": "2.7.5",
+"date": "2026-11-02",
+"commit": "f0fdf65",
+"name": "Race log",
+"lede": "Debrief 2.7.5: results file import, RaceCap link, race log and stories, rival laps, Resolve markers, Help",
+"points": [],
+"mods": [
+"debrief/app.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/g61.py",
+"debrief/goals.py",
+"debrief/library.py",
+"debrief/markers.py",
+"debrief/profile.py",
+"debrief/racecap_link.py",
+"debrief/report.py",
+"debrief/results_csv.py",
+"debrief/strategy.py",
+"debrief/sync.py",
+"debrief/templates/library.html",
+"debrief/templates/review.html"
+],
+"tests": 7,
+"state": "published"
+},
+{
+"v": "2.7.6",
+"date": "2026-11-02",
+"commit": "43c4624",
+"name": "Scan fix",
+"lede": "2.7.6: fix Scan this race: progress screen, iRacing library in the build, incomplete scans never saved, closing the window stops a scan, stricter race match",
+"points": [],
+"mods": [
+"debrief/app.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/engine.py",
+"debrief/insights.py",
+"debrief/library.py",
+"debrief/racecap_link.py",
+"debrief/replay_scan.py",
+"debrief/results_csv.py",
+"debrief/templates/review.html"
+],
+"tests": 3,
+"state": "published"
+},
+{
+"v": "2.8.0",
+"date": "2026-11-02",
+"commit": "6d7b07f",
+"name": "Polish",
+"lede": "2.8.0: race timeline and verdict at the top, racecraft and pace sections, positions from iRacing's own reading, laps lined up with the replay, camera on your car during a scan",
+"points": [],
+"mods": [
+"debrief/markers.py",
+"debrief/race_analysis.py",
+"debrief/racecap_link.py",
+"debrief/replay_scan.py",
+"debrief/report.py",
+"debrief/templates/review.html"
+],
+"tests": 4,
+"state": "published"
+},
+{
+"v": "2.9.0",
+"date": "2026-11-02",
+"commit": "c1f046c",
+"name": "Depth",
+"lede": "2.9.0: merge polish, depth and profile work; Save as PDF, Discord digest posting from Season, comparison laps matched on conditions",
+"points": [],
+"mods": [
+"debrief/app.py",
+"debrief/depth.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/discord.py",
+"debrief/engine.py",
+"debrief/insights.py",
+"debrief/library.py",
+"debrief/prep.py",
+"debrief/profile.py",
+"debrief/race_analysis.py",
+"debrief/racecap_link.py",
+"debrief/report.py",
+"debrief/templates/library.html",
+"debrief/templates/prep.html",
+"debrief/templates/review.html"
+],
+"tests": 11,
+"state": "published"
+},
+{
+"v": "2.9.1",
+"date": "2026-11-02",
+"commit": "eb4cc27",
+"name": "Scan finish",
+"lede": "2.9.1: the bar, result form and summary use the replay scan's finish, within class when known",
+"points": [],
+"mods": [
+"debrief/app.py",
+"debrief/depth.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.js",
+"debrief/leaderboards.py",
+"debrief/prep.py",
+"debrief/prepare.py",
+"debrief/profile.py",
+"debrief/race_analysis.py",
+"debrief/racecap_link.py",
+"debrief/schedule.py",
+"debrief/series.py",
+"debrief/templates/review.html"
+],
+"tests": 4,
+"state": "published"
+},
+{
+"v": "2.10.0",
+"date": "2026-11-02",
+"commit": "d0afe59",
+"name": "Season plan",
+"lede": "2.10.0: rival laps from the replay, season plan, sharper brief, polish",
+"points": [],
+"mods": [
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/prep.py",
+"debrief/prepare.py",
+"debrief/profile.py",
+"debrief/racecap_link.py",
+"debrief/replay_scan.py",
+"debrief/report.py",
+"debrief/rival_read.py",
+"debrief/series.py",
+"debrief/templates/library.html",
+"debrief/templates/prep.html",
+"debrief/templates/review.html"
+],
+"tests": 5,
+"state": "published"
+},
+{
+"v": "2.11.0",
+"date": "2026-11-02",
+"commit": "f6383c7",
+"name": "Prepare redesign",
+"lede": "2.11.0: Prepare redesign: picker, one prep view, season strip, tools under More",
+"points": [],
+"mods": [
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/prepare.py",
+"debrief/rival_read.py",
+"debrief/series.py"
+],
+"tests": 4,
+"state": "published"
+},
+{
+"v": "2.12.0",
+"date": "2026-11-03",
+"commit": "1d05be6",
+"name": "Setup Lab",
+"lede": "- Setup Lab (new page, Ctrl+8): Debrief reads the telemetry files iRacing saves on your PC (only reads them, never changes them) and shows your setups (A, B, C), what changed between them in plain words, which one was faster (only when the clean laps clearly s",
+"points": [
+"Setup Lab",
+"Check a setup file",
+"Coach"
+],
+"mods": [
+"debrief/cornercoach.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/ibt.py",
+"debrief/livecoach.py",
+"debrief/prepare.py",
+"debrief/series.py",
+"debrief/sessionibt.py",
+"debrief/setuplab.py",
+"debrief/voice.py"
+],
+"tests": 12,
+"state": "published"
+},
+{
+"v": "2.13.0",
+"date": "2026-11-03",
+"commit": "9580dab",
+"name": "Practice",
+"lede": "- Practice (new page, Ctrl+0): every time you drove, straight from the telemetry files iRacing saves on your PC, newest first, without waiting for Garage 61. Open one to see your best and typical lap, how consistent you were, and how it compares with last time",
+"points": [
+"Practice",
+"Best possible lap",
+"Corner coach",
+"Honest statistics in the Corner coach",
+"What the corner time means",
+"Coach these corners"
+],
+"mods": [
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/ibt.py",
+"debrief/livecoach.py",
+"debrief/sessionibt.py",
+"debrief/setuplab.py",
+"debrief/voice.py"
+],
+"tests": 7,
+"state": "published"
+},
+{
+"v": "2.14.0",
+"date": "2026-11-03",
+"commit": "c9c220b",
+"name": "Practice loop",
+"lede": "- This session's one thing (top of Practice): Debrief picks one change for your next session at that car and track from the Corner coach, with a number to aim for and the check that counts a lap as a hit (\"We'll count laps where your peak brake in Turn 4 stays",
+"points": [
+"This session's one thing",
+"Honest plans",
+"Scored afterwards",
+"The coach watches it",
+"Mute from a wheel button",
+"Setup checklist"
+],
+"mods": [
+"debrief/cornercoach.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/firstrun.py",
+"debrief/livecoach.py",
+"debrief/practiceplan.py",
+"debrief/sessionibt.py",
+"debrief/wheelmute.py"
+],
+"tests": 9,
+"state": "published"
+},
+{
+"v": "2.15.0",
+"date": "2026-11-03",
+"commit": "9f56db6",
+"name": "Car and setup",
+"lede": "- How the car handles (Setup Lab, under Try next): a map of every corner on the way in, in the middle and on the way out, marked Pushes (understeer: the front slides first), Rotates (oversteer: the rear slides first), Neutral or Not clear yet, in words as well",
+"points": [
+"How the car handles",
+"Setup ideas",
+"Tyre pressures over time",
+"Share what changed",
+"Compare with a teammate's lap",
+"Coach against their lap"
+],
+"mods": [
+"debrief/balance.py",
+"debrief/cornercoach.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/carsetup.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/firstrun.py",
+"debrief/livecoach.py",
+"debrief/practiceplan.py",
+"debrief/pressurelearn.py",
+"debrief/setupshare.py",
+"debrief/teamref.py",
+"debrief/wheelmute.py"
+],
+"tests": 11,
+"state": "published"
+},
+{
+"v": "2.16.0",
+"date": "2026-11-03",
+"commit": "075b578",
+"name": "Racing",
+"lede": "- Racing (new page, after Practice in the sidebar): your starts and your incidents across all your races, from the replay scans, telemetry files and saved reviews already on your PC. Debrief only reads them (RaceCap's folder too, when you have linked it); noth",
+"points": [
+"Racing",
+"Your starts",
+"Corner by corner on lap 1",
+"Your incidents",
+"Patterns only when they hold up"
+],
+"mods": [
+"debrief/balance.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/carsetup.py",
+"debrief/desktop/racing.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/incidentmap.py",
+"debrief/livecoach.py",
+"debrief/pressurelearn.py",
+"debrief/setupshare.py",
+"debrief/startreport.py",
+"debrief/teamref.py"
+],
+"tests": 11,
+"state": "published"
+},
+{
+"v": "2.17.0",
+"date": "2026-11-03",
+"commit": "97b157e",
+"name": "Coach 2.0",
+"lede": "- Coach 2.0: a natural voice. The live coach now speaks with recorded neural voices instead of Windows speech. It comes with one voice, George (British male), tuned for the coach. George covers every phrase the coach can say (785 phrases, corners T1 to T25), a",
+"points": [
+"Coach 2.0: a natural voice.",
+"Voice and sound",
+"Coach log",
+"Rehearse with a session",
+"Repeat that",
+"Already fixed"
+],
+"mods": [
+"debrief/audioout.py",
+"debrief/coachvoice.py",
+"debrief/cuelog.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/coach2.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/livecoach.py",
+"debrief/voice.py",
+"debrief/voicepack.py"
+],
+"tests": 2,
+"state": "published"
+},
+{
+"v": "2.18.0",
+"date": "2026-11-03",
+"commit": "83161d9",
+"name": "Car vs car",
+"lede": "- Car vs car (new page, after Racing in the sidebar): pick a track and class (any class at any track: GT4 at Zolder, GT3 at Spa) and see every car of that class side by side: drivers, typical race lap, best lap, the gap for drivers of similar iRating, and how ",
+"points": [
+"Car vs car",
+"The verdict is careful.",
+"One model for every race",
+"One season at a time",
+"Finishers",
+"You vs the field"
+],
+"mods": [
+"debrief/carcompare.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/carcompare.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/results_csv.py"
+],
+"tests": 2,
+"state": "published"
+},
+{
+"v": "2.19.0",
+"date": "2026-11-03",
+"commit": "e44a3de",
+"name": "Coach overlay",
+"lede": "- Coach overlay (Coach > Overlay, off until you turn it on): a small see-through box on top of iRacing while the coach runs, showing Coaching, Muted (in red), Rehearsing or Off, your one thing and its count, the last cue and your gap to your reference lap. Cli",
+"points": [
+"Coach overlay",
+"Setup Lab is more careful about which setup was faster:",
+"Coasting and both pedals together",
+"Plain words:",
+"One track, one entry:"
+],
+"mods": [
+"debrief/app.py",
+"debrief/audioout.py",
+"debrief/balance.py",
+"debrief/brand.py",
+"debrief/carcompare.py",
+"debrief/coachvoice.py",
+"debrief/cornercoach.py",
+"debrief/credits.py",
+"debrief/cuelog.py",
+"debrief/desktop/carcompare.py",
+"debrief/desktop/carsetup.py",
+"debrief/desktop/coach2.py",
+"debrief/desktop/home.py",
+"debrief/desktop/racing.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/firstrun.py",
+"debrief/incidentmap.py",
+"debrief/insights.py",
+"debrief/library.py",
+"debrief/livecoach.py",
+"debrief/names.py",
+"debrief/overlay.py",
+"debrief/pressurelearn.py",
+"debrief/profile.py",
+"debrief/race_analysis.py",
+"debrief/report.py",
+"debrief/results_csv.py",
+"debrief/sessionibt.py",
+"debrief/setuplab.py",
+"debrief/setupshare.py",
+"debrief/startreport.py",
+"debrief/team.py",
+"debrief/teamref.py",
+"debrief/templates/library.html",
+"debrief/templates/review.html",
+"debrief/templates/team.html",
+"debrief/today.py",
+"debrief/units.py",
+"debrief/voicepack.py"
+],
+"tests": 36,
+"state": "published"
+},
+{
+"v": "2.19.1",
+"date": "2026-11-03",
+"commit": "cac1622",
+"name": "Overlay fixes",
+"lede": "- The coach overlay can no longer get in the coach's way. Everything the Coach page asks of it (show, hide, Edit position, size, opacity, place) now goes to the overlay window in a queue, so Windows' \"main thread is not in main loop\" errors and hangs should be",
+"points": [
+"The coach overlay can no longer get in the coach's way.",
+"Easy to move.",
+"Checking it without iRacing:",
+"Clearer numbers and advice"
+],
+"mods": [
+"debrief/app.py",
+"debrief/desktop/coach2.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/overlay.py"
+],
+"tests": 1,
+"state": "published"
+},
+{
+"v": "2.19.2",
+"date": "2026-11-04",
+"commit": "36fea51",
+"name": "Tester fixes",
+"lede": "Quick fixes from four testers. No statistic changed; these are words, layout and what Debrief remembers.",
+"points": [
+"Today:",
+"Practice:",
+"Overlay:",
+"Progress:",
+"A review that can't be built",
+"Racing"
+],
+"mods": [
+"debrief/cornercoach.py",
+"debrief/desktop/carsetup.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/engine.py",
+"debrief/firstrun.py",
+"debrief/goals.py",
+"debrief/livecoach.py",
+"debrief/overlay.py",
+"debrief/profile.py",
+"debrief/setuplab.py",
+"debrief/team.py",
+"debrief/templates/library.html",
+"debrief/templates/review.html",
+"debrief/templates/team.html",
+"debrief/units.py"
+],
+"tests": 7,
+"state": "published"
+},
+{
+"v": "2.20.0",
+"date": "2026-11-04",
+"commit": "4d18f9b",
+"name": "Corner notes",
+"lede": "Corner notes, and a coach that helps you learn a track before you have a reference lap.",
+"points": [
+"Corner notes.",
+"Your notes are played back before their corners",
+"Practice > Corner notes",
+"Coach page:",
+"Learning the track.",
+"All six voices say the new words:"
+],
+"mods": [
+"debrief/audioin.py",
+"debrief/coachvoice.py",
+"debrief/cornernotes.py",
+"debrief/cuelog.py",
+"debrief/desktop/coach2.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/livecoach.py",
+"debrief/noterec.py",
+"debrief/voice.py",
+"debrief/voicepack.py",
+"debrief/wheelmute.py"
+],
+"tests": 5,
+"state": "published"
+},
+{
+"v": "2.20.1",
+"date": "2026-11-04",
+"commit": "229c1cf",
+"name": "No vanishing teammates",
+"lede": "A teammate no longer disappears from the Team page, Prepare or the teammate list without saying why.",
+"points": [
+"The bug.",
+"Now it tries once more.",
+"Every missing teammate is named.",
+"A slower teammate is kept.",
+"Coach page wording (from 2.20)."
+],
+"mods": [
+"debrief/desktop/carsetup.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/prep.py",
+"debrief/team.py",
+"debrief/teamref.py",
+"debrief/templates/prep.html",
+"debrief/templates/team.html"
+],
+"tests": 2,
+"state": "published"
+},
+{
+"v": "2.21.0",
+"date": "2026-11-04",
+"commit": "de2f57e",
+"name": "Team page",
+"lede": "The Team page now works end to end, and it knows who your team is.",
+"points": [
+"Midfield Menace is the team; Overdriver Academy is where the laps come from.",
+"The Team page sees the series you picked on Prepare.",
+"One failing track no longer costs the rest.",
+"iRating next to every teammate",
+"Speeds follow Settings > Units",
+"Prepare follows the Team page's rules."
+],
+"mods": [
+"debrief/app.py",
+"debrief/brand.py",
+"debrief/carcompare.py",
+"debrief/desktop/carcompare.py",
+"debrief/desktop/carsetup.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/leaderboards.py",
+"debrief/prep.py",
+"debrief/series.py",
+"debrief/team.py",
+"debrief/templates/team.html"
+],
+"tests": 5,
+"state": "published"
+},
+{
+"v": "2.22.0",
+"date": "2026-11-04",
+"commit": "e27c60f",
+"name": "Member pages",
+"lede": "Every team member now has a page, and the Team page opens with a Members strip.",
+"points": [
+"Click a name to open that person's page.",
+"Nothing is fetched when you open a page.",
+"Members strip"
+],
+"mods": [
+"debrief/app.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/members.py",
+"debrief/prep.py",
+"debrief/team.py",
+"debrief/templates/team.html"
+],
+"tests": 3,
+"state": "published"
+},
+{
+"v": "2.22.1",
+"date": "2026-11-04",
+"commit": "bccf6a2",
+"name": "Teammates found",
+"lede": "Teammates who drive different tracks or cars from you now show up.",
+"points": [
+"Finding the team's tracks works again.",
+"Clearer log wording."
+],
+"mods": [
+"debrief/g61.py",
+"debrief/team.py"
+],
+"tests": 2,
+"state": "published"
+},
+{
+"v": "2.23.0",
+"date": "2026-11-05",
+"commit": "81185ff",
+"name": "Auto setup advice",
+"lede": "Set-Up Lab now gives setup advice on its own, for any car and track. There is no button: open Set-Up Lab (or a Practice session) and it has already read your laps.",
+"points": [
+"Car balance: what to try next",
+"Setup or driving?",
+"One change at a time, ranked.",
+"A short card on the Practice session page",
+"How did the car feel?",
+"Setup history."
+],
+"mods": [
+"debrief/balance.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/carsetup.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/handling.py",
+"debrief/setupadvice.py"
+],
+"tests": 2,
+"state": "published"
+},
+{
+"v": "2.23.1",
+"date": "2026-11-05",
+"commit": "52b951f",
+"name": "Generic teams",
+"lede": "Team pages now use whatever Garage 61 teams you're in; no team names are built into Debrief.",
+"points": [
+"Teams and members come from Garage 61 only.",
+"Teammates are searched by track, not by your car.",
+"Your newest race comes first.",
+"Fewer, smarter Garage 61 questions.",
+"Same race first.",
+"Race review fix."
+],
+"mods": [
+"debrief/g61.py",
+"debrief/team.py",
+"debrief/templates/team.html"
+],
+"tests": 2,
+"state": "published"
+},
+{
+"v": "2.24.0",
+"date": "2026-11-05",
+"commit": "c6258e2",
+"name": "Team sync",
+"lede": "Refresh team data is now a real sync of your teams' shared data, the way your own history sync works: it keeps a copy of your teammates' practice, qualifying and race laps on this PC, and the member pages and the reference picker read that copy.",
+"points": [
+"What Refresh does now.",
+"Telemetry.",
+"Gentle on Garage 61.",
+"Member pages.",
+"Teammate laps as references.",
+"Every gap says why"
+],
+"mods": [
+"debrief/app.py",
+"debrief/brand.py",
+"debrief/desktop/carsetup.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/g61.py",
+"debrief/leaderboards.py",
+"debrief/members.py",
+"debrief/prep.py",
+"debrief/setupshare.py",
+"debrief/team.py",
+"debrief/teamref.py",
+"debrief/teamsync.py",
+"debrief/templates/prep.html",
+"debrief/templates/review.html",
+"debrief/templates/team.html"
+],
+"tests": 17,
+"state": "published"
+},
+{
+"v": "2.24.1",
+"date": "2026-11-05",
+"commit": "f5913d5",
+"name": "Careful advice",
+"lede": "Set-Up Lab's automatic advice is much more careful: it only blames the setup when the evidence is strong.",
+"points": [
+"Setup calls must pass a real test.",
+"Noisy yaw signal.",
+"Entry is driving advice, never a setup verdict.",
+"Sureness is honest.",
+"A corner that swings",
+"Diff ramp suggestions"
+],
+"mods": [
+"debrief/balance.py",
+"debrief/desktop/carsetup.py",
+"debrief/desktop/ui/app.js",
+"debrief/handling.py",
+"debrief/setupadvice.py"
+],
+"tests": 2,
+"state": "published"
+},
+{
+"v": "2.25.0",
+"date": "2026-11-06",
+"commit": "c6bc794",
+"name": "Save as picture",
+"lede": "The Team page and the member pages can now save nice information cards as .png pictures, ready to post in Discord or on socials.",
+"points": [
+"Five kinds of card",
+"Where the buttons are.",
+"Where it goes.",
+"Team boards fixed.",
+"Team data keeps between updates, and syncs on its own."
+],
+"mods": [
+"debrief/cards.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.js",
+"debrief/members.py",
+"debrief/team.py",
+"debrief/templates/team.html"
+],
+"tests": 1,
+"state": "published"
+},
+{
+"v": "2.26.0",
+"date": "2026-11-08",
+"commit": "5e6b9c5",
+"name": "Stint plan",
+"lede": "Plan a long race with your teammates before it starts, and see that Debrief's live coach barely touches your PC.",
+"points": [
+"Plan stints.",
+"What you get.",
+"iRacing's rules are built in.",
+"Timed races count the pit stops.",
+"Options, compared over the same distance.",
+"Save for this track"
+],
+"mods": [
+"debrief/app.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/endurance.py",
+"debrief/g61.py",
+"debrief/livecoach.py",
+"debrief/perfmeter.py",
+"debrief/team.py",
+"debrief/teamsync.py",
+"debrief/templates/team.html"
+],
+"tests": 2,
+"state": "published"
+},
+{
+"v": "2.27.0",
+"date": "2026-11-08",
+"commit": "f6a21d9",
+"name": "Live data",
+"lede": "Debrief now reads iRacing directly while you drive and keeps a record of every session, so your own sessions get what Garage 61 never has: fuel, driver aids, pit stops, tyres, incidents and what every other car did. Garage 61 stays where your teammates, compar",
+"points": [
+"It records by itself.",
+"A small icon near the clock.",
+"Settings > Live data.",
+"All sessions shows them.",
+"Reviews get a \"From iRacing\" section",
+"One reader."
+],
+"mods": [
+"debrief/app.py",
+"debrief/credits.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/livecoach.py",
+"debrief/livedata.py",
+"debrief/liverec.py",
+"debrief/livetray.py",
+"debrief/recordings.py",
+"debrief/report.py",
+"debrief/templates/review.html"
+],
+"tests": 4,
+"state": "published"
+},
+{
+"v": "2.28.0",
+"date": "2026-11-09",
+"commit": "aef60b4",
+"name": "Clean clicks",
+"lede": "Fewer dead ends: nothing that only looks or saves is ever blocked, long jobs can be cancelled, a missing internet fails in seconds, and the last review opens at once.",
+"points": [
+"Never blocked.",
+"Cancel.",
+"Instant last review.",
+"One-click Prepare.",
+"Driving view.",
+"Tidier review page."
+],
+"mods": [
+"debrief/app.py",
+"debrief/desktop/home.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/g61.py",
+"debrief/report.py",
+"debrief/teamsync.py",
+"debrief/templates/library.html",
+"debrief/templates/prep.html",
+"debrief/templates/review.html",
+"debrief/templates/team.html"
+],
+"tests": 12,
+"state": "published"
+},
+{
+"v": "2.28.1",
+"date": "2026-11-09",
+"commit": "7d323a5",
+"name": "Clearer habits",
+"lede": "The habits part of a review (\"Driving style / habits\") now reads the same way everywhere: what happened, what it costs, what to try next race. Nothing was dropped: the detailed numbers moved into a Show the numbers fold on each card.",
+"points": [
+"Fix these.",
+"Corner by corner.",
+"Keep doing",
+"Fading late.",
+"Plain words.",
+"Layout."
+],
+"mods": [
+"debrief/g61.py",
+"debrief/insights.py",
+"debrief/report.py",
+"debrief/templates/review.html"
+],
+"tests": 14,
+"state": "published"
+},
+{
+"v": "2.29.0",
+"date": "2026-11-09",
+"commit": "d57e303",
+"name": "Crew chief",
+"lede": "In a race Debrief now acts as your crew chief. It reads your car and your class live from iRacing and tells you, in a few short words, what matters: fuel, when to box, what a caution means for you, and who is around you.",
+"points": [
+"Fuel.",
+"Laps to go.",
+"Pit window.",
+"Your last chance to pit.",
+"Caution.",
+"The cars around you"
+],
+"mods": [
+"debrief/crewchief.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/insights.py",
+"debrief/livecoach.py",
+"debrief/overlay.py",
+"debrief/templates/review.html",
+"debrief/voicepack.py"
+],
+"tests": 11,
+"state": "published"
+},
+{
+"v": "2.30.0",
+"date": "2026-11-10",
+"commit": "aaf03b9",
+"name": "Endurance Race Room",
+"lede": "A new Race Room page (in the sidebar under Coach, and in the Today \"More\" links) for team and long races. It works for the driver in the car and for any teammate in the same race on their own PC.",
+"points": [
+"A pit board",
+"Who is driving and for how long.",
+"A swap card",
+"The rest of the race, worked out again",
+"Below that:",
+"A Race Room line on the overlay"
+],
+"mods": [
+"debrief/credits.py",
+"debrief/crewchief.py",
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/desktop/ui/raceroom.js",
+"debrief/endurance.py",
+"debrief/endurancelog.py",
+"debrief/endureview.py",
+"debrief/livecoach.py",
+"debrief/overlay.py",
+"debrief/raceroom.py",
+"debrief/replan.py",
+"debrief/voicepack.py"
+],
+"tests": 10,
+"state": "published"
+},
+{
+"v": "2.30.1",
+"date": "2026-11-10",
+"commit": "19398d5",
+"name": "Siyanqaba link",
+"lede": "Nothing changes in the window. This release gets Debrief ready to work with Siyanqaba, your own offline engine on the Zerver, so both give the same numbers from one source.",
+"points": [
+"One door for Siyanqaba (`debrief/c1.py`).",
+"Fact sheets (`debrief/factsheet.py`).",
+"Corners are matched by where they are on the lap",
+"The contract (`CONTRACT.md`)"
+],
+"mods": [],
+"tests": 1,
+"state": "published"
+},
+{
+"v": "2.30.2",
+"date": "2026-11-10",
+"commit": "3e5853d",
+"name": "Siyanqaba side",
+"lede": "Siyanqaba, your own offline engine on the Zerver, now has a place in the window.",
+"points": [
+"Settings > Siyanqaba",
+"Sessions reach the Zerver by themselves.",
+"Summary and how it felt",
+"Fix for the Zerver install:",
+"CONTRACT.md"
+],
+"mods": [
+"debrief/app.py",
+"debrief/desktop/home.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html"
+],
+"tests": 1,
+"state": "published"
+},
+{
+"v": "2.30.3",
+"date": "2026-11-11",
+"commit": "77c22b7",
+"name": "Siyanqaba out",
+"lede": "Siyanqaba is not ready, so everything for it has been taken out of Debrief. It will be its own thing, separate from Debrief, and comes back only when it is finished and fully explained.",
+"points": [
+"Settings"
+],
+"mods": [
+"debrief/app.py",
+"debrief/desktop/home.py",
+"debrief/desktop/server.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html"
+],
+"tests": 2,
+"state": "published"
+},
+{
+"v": "2.30.4",
+"date": "2026-11-11",
+"commit": "050246c",
+"name": "What's new",
+"lede": "Every Debrief update now tells you what changed.",
+"points": [
+"What's new",
+"Help > What's new"
+],
+"mods": [
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/index.html",
+"debrief/whatsnew.py"
+],
+"tests": 1,
+"state": "published"
+},
+{
+"v": "2.31.0",
+"date": "2026-11-11",
+"commit": "3a3552f",
+"name": "Help",
+"lede": "Help is now a proper guide instead of a wall of text, and it teaches you how to use Debrief to get faster and understand your car.",
+"points": [
+"A bigger Help window",
+"Get faster",
+"Know your car",
+"Race smarter",
+"Start here",
+"Every page"
+],
+"mods": [
+"debrief/desktop/__init__.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/help.js",
+"debrief/desktop/ui/index.html"
+],
+"tests": 6,
+"state": "published"
+},
+{
+"v": "2.31.1",
+"date": "2026-11-12",
+"commit": "df79a75",
+"name": "Tidy",
+"lede": "Two small fixes from a full check of Debrief. Nothing new to learn, and your reviews and settings are untouched.",
+"points": [
+"Error messages no longer get stuck on screen.",
+"A cleaner log."
+],
+"mods": [
+"debrief/balance.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.js"
+],
+"tests": 2,
+"state": "published"
+},
+{
+"v": "2.32.0",
+"date": "2026-11-12",
+"commit": "e12e763",
+"name": "Telemetry on",
+"lede": "Debrief can now make sure iRacing saves your telemetry, so Practice, Setup Lab and the Coach always have something to work with.",
+"points": [
+"Make iRacing save my telemetry",
+"On the setup checklist"
+],
+"mods": [
+"debrief/app.py",
+"debrief/desktop/settings_io.py",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/help.js",
+"debrief/desktop/ui/index.html",
+"debrief/firstrun.py",
+"debrief/livedata.py",
+"debrief/liverec.py"
+],
+"tests": 5,
+"state": "published"
+},
+{
+"v": "2.33.0",
+"date": "2026-11-12",
+"commit": "37c1c8e",
+"name": "Fits any screen",
+"lede": "Debrief is tidier on laptop screens and on pages that are still empty.",
+"points": [
+"The sidebar fits a laptop screen.",
+"Empty pages say what to do once.",
+"Rebuild all.",
+"A shorter setup checklist."
+],
+"mods": [
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.css",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/help.js",
+"debrief/desktop/ui/index.html",
+"debrief/firstrun.py",
+"debrief/profile.py",
+"debrief/templates/library.html",
+"debrief/today.py"
+],
+"tests": 7,
+"state": "published"
+},
+{
+"v": "2.34.0",
+"date": "2026-11-12",
+"commit": "2f93fb0",
+"name": "No token needed",
+"lede": "You can review a race without Garage 61 now. Debrief reads the race straight from the telemetry file iRacing saves on your PC.",
+"points": [
+"Review last race works without Garage 61.",
+"Your result fills itself in.",
+"Garage 61 is optional.",
+"Add comparison laps.",
+"Review last race doesn't miss a race."
+],
+"mods": [
+"debrief/app.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/help.js",
+"debrief/desktop/ui/index.html",
+"debrief/engine.py",
+"debrief/firstrun.py",
+"debrief/insights.py",
+"debrief/library.py",
+"debrief/localrace.py",
+"debrief/markers.py",
+"debrief/racecraft.py",
+"debrief/recordings.py",
+"debrief/templates/review.html"
+],
+"tests": 3,
+"state": "published"
+},
+{
+"v": "2.35.0",
+"date": "2026-11-12",
+"commit": "fbb6751",
+"name": "See it",
+"lede": "Charts for the iRacing data, one answer per fact, a Setup section in every race review, vs AI races tagged, and Review a session.",
+"points": [
+"From iRacing charts",
+"One answer per fact",
+"Setup section",
+"vs AI",
+"Review a session"
+],
+"mods": [
+"debrief/liverec.py",
+"debrief/recordings.py",
+"debrief/racesetup.py",
+"debrief/vsai.py",
+"debrief/report.py",
+"debrief/results.py",
+"debrief/app.py",
+"debrief/desktop/server.py",
+"debrief/desktop/ui/app.js",
+"debrief/desktop/ui/help.js",
+"debrief/templates/review.html",
+"debrief/templates/library.html"
+],
+"tests": 7,
+"state": "published"
+}
+],
+"chats": [
+{
+"id": "b52ceb9f-802d-4823-8328-e6b22355013f",
+"date": "2026-10-25",
+"title": "Garage 61 race analysis app",
+"sum": "Where it began: the CLI tool renamed from RaceCap to Debrief, first real review, then rebuilt as a windowed desktop app.",
+"rels": [
+"2.0.0"
+],
+"url": "https://claude.ai/chat/b52ceb9f-802d-4823-8328-e6b22355013f"
+},
+{
+"id": "437b53d4-1c9a-4f24-97ad-847c413f1032",
+"date": "2026-10-26",
+"title": "Model choice for two-hour credit",
+"sum": "Which model to use for build sessions to stretch credit (Sonnet for most work).",
+"rels": [],
+"url": "https://claude.ai/chat/437b53d4-1c9a-4f24-97ad-847c413f1032"
+},
+{
+"id": "06088714-6846-4cb1-9463-92fc5e5c77a8",
+"date": "2026-10-26",
+"title": "Debrief tool features",
+"sum": "\"Implement all and more\": deeper review page, Season and Goals, Prep, Team hub; hard rules (Garage 61 only on click, token never logged, correlational coaching).",
+"rels": [
+"2.0.0"
+],
+"url": "https://claude.ai/chat/06088714-6846-4cb1-9463-92fc5e5c77a8"
+},
+{
+"id": "165d3221-de00-4087-adb5-e79feaed6f36",
+"date": "2026-10-27",
+"title": "Debrief GitHub repo",
+"sum": "Sharing Debrief with friends: collaborators vs sharing the installer; repo description.",
+"rels": [
+"2.1.0"
+],
+"url": "https://claude.ai/chat/165d3221-de00-4087-adb5-e79feaed6f36"
+},
+{
+"id": "d875b417-a455-4324-ab0c-83542569aa53",
+"date": "2026-10-28",
+"title": "Garage 61 race data sync",
+"sum": "History sync and the Sessions page (2.1.0), the release process via CI, buddy installer and own-token decision.",
+"rels": [
+"2.1.0",
+"2.2.0"
+],
+"url": "https://claude.ai/chat/d875b417-a455-4324-ab0c-83542569aa53"
+},
+{
+"id": "6ec46079-4cbc-486a-b4ed-a06430d0f0ea",
+"date": "2026-10-29",
+"title": "Commit update status",
+"sum": "Progress doc catch-up, the Prepare page plan, and shipping 2.2 through 2.5.0 \"Team and sharing\".",
+"rels": [
+"2.2.0",
+"2.2.1",
+"2.2.2",
+"2.3.0",
+"2.4.0",
+"2.5.0"
+],
+"url": "https://claude.ai/chat/6ec46079-4cbc-486a-b4ed-a06430d0f0ea"
+},
+{
+"id": "076873a2-9e5a-426d-abb3-f1df4ea177f8",
+"date": "2026-10-29",
+"title": "Repeating track ideas",
+"sum": "Season 4 PDF: tracks that repeat across starred series, for extra practice before the main series. Became the season plan.",
+"rels": [
+"2.10.0",
+"2.11.0"
+],
+"url": "https://claude.ai/chat/076873a2-9e5a-426d-abb3-f1df4ea177f8"
+},
+{
+"id": "ade6feb2-aa3b-4d78-972b-ac90b3395f18",
+"date": "2026-10-30",
+"title": "Code review and optimization",
+"sum": "\"JUST DEBRIEF\": 28 findings approved, four teams, two verifier rounds, 2.6.0 published.",
+"rels": [
+"2.6.0"
+],
+"url": "https://claude.ai/chat/ade6feb2-aa3b-4d78-972b-ac90b3395f18"
+},
+{
+"id": "d0a920e4-352a-4d7a-923f-4f2f03dfece2",
+"date": "2026-10-30",
+"title": "Additions to push",
+"sum": "Next releases after 2.5: real-data checks, plan the season, crew ready, Resolve markers.",
+"rels": [
+"2.7.5",
+"2.10.0"
+],
+"url": "https://claude.ai/chat/d0a920e4-352a-4d7a-923f-4f2f03dfece2"
+},
+{
+"id": "c8917464-3a84-489e-bd15-a22334f469c4",
+"date": "2026-11-01",
+"title": "Track map corner highlighting",
+"sum": "A track map on each Fix first card, corner highlighted, linking to Compare.",
+"rels": [
+"2.8.0"
+],
+"url": "https://claude.ai/chat/c8917464-3a84-489e-bd15-a22334f469c4"
+},
+{
+"id": "aa21e20a-d257-4c62-85d2-37a22f19f212",
+"date": "2026-11-02",
+"title": "Approve all steps",
+"sum": "\"Top tier application\": audit, then 2.7.0 Trust, 2.8 Polish, 2.9 Depth, built by parallel teams.",
+"rels": [
+"2.7.0",
+"2.7.5",
+"2.7.6",
+"2.8.0",
+"2.9.0",
+"2.9.1"
+],
+"url": "https://claude.ai/chat/aa21e20a-d257-4c62-85d2-37a22f19f212"
+},
+{
+"id": "ab9da0b9-8f76-4680-9f33-5576e383cf98",
+"date": "2026-11-05",
+"title": "Setup Lab premium roadmap",
+"sum": "Setup Lab planning; Debrief stays free with no paywall, ever.",
+"rels": [
+"2.12.0",
+"2.23.0"
+],
+"url": "https://claude.ai/chat/ab9da0b9-8f76-4680-9f33-5576e383cf98"
+},
+{
+"id": "9fd75d55-959a-43a3-ad37-3f2bf746c8eb",
+"date": "2026-11-05",
+"title": "Driver aids telemetry in debrief",
+"sum": "Where ABS, TC and brake bias come from: iRacing's channels and .ibt files, not Garage 61.",
+"rels": [
+"2.27.0"
+],
+"url": "https://claude.ai/chat/9fd75d55-959a-43a3-ad37-3f2bf746c8eb"
+},
+{
+"id": "986d5bd0-b24d-4536-8247-c034f4dd00ef",
+"date": "2026-11-05",
+"title": "Debrief presentation and flyer",
+"sum": "A Debrief flyer for the boys; release status at the time.",
+"rels": [],
+"url": "https://claude.ai/chat/986d5bd0-b24d-4536-8247-c034f4dd00ef"
+},
+{
+"id": "e0c3c097-4bd7-4179-8282-d6e61e611ab6",
+"date": "2026-11-05",
+"title": "Connectors for project",
+"sum": "Which connectors help Debrief (none for Garage 61 or iRacing).",
+"rels": [],
+"url": "https://claude.ai/chat/e0c3c097-4bd7-4179-8282-d6e61e611ab6"
+},
+{
+"id": "d9237357-2862-42e9-9824-edbc6b847523",
+"date": "2026-11-05",
+"title": "ChatGPT project board setup",
+"sum": "Using ChatGPT alongside Claude; a ChatGPT tab on the Office board.",
+"rels": [],
+"url": "https://claude.ai/chat/d9237357-2862-42e9-9824-edbc6b847523"
+},
+{
+"id": "38cd794d-1795-4c1e-a557-93e35688f4de",
+"date": "2026-11-08",
+"title": "RaceCap code review for Debrief",
+"sum": "The long build, 2.12 to 2.25: Setup Lab, Practice, Coach, Racing, Car vs car, Team. Honest statistics, generic teams, model budget.",
+"rels": [
+"2.12.0",
+"2.13.0",
+"2.14.0",
+"2.15.0",
+"2.16.0",
+"2.17.0",
+"2.18.0",
+"2.19.0",
+"2.19.1",
+"2.19.2",
+"2.20.0",
+"2.20.1",
+"2.21.0",
+"2.22.0",
+"2.22.1",
+"2.23.0",
+"2.23.1",
+"2.24.0",
+"2.24.1",
+"2.25.0"
+],
+"url": "https://claude.ai/chat/38cd794d-1795-4c1e-a557-93e35688f4de"
+},
+{
+"id": "6c8832b6-7116-45e1-a031-ebaa284b2adf",
+"date": "2026-11-08",
+"title": "Endurance race planning app",
+"sum": "Endurance spec from iRacing's own SDK: Stint plan, Crew chief, Relay, Endurance review. 2.26 built.",
+"rels": [
+"2.26.0",
+"2.27.0"
+],
+"url": "https://claude.ai/chat/6c8832b6-7116-45e1-a031-ebaa284b2adf"
+},
+{
+"id": "53e78d49-ff70-439f-b573-19206f6f99e9",
+"date": "2026-11-09",
+"title": "iRacing info integration",
+"sum": "After the Spa race: finish Stint plan, Crew chief next, Close the gap for team races.",
+"rels": [
+"2.26.0",
+"2.27.0",
+"2.28.0",
+"2.29.0"
+],
+"url": "https://claude.ai/chat/53e78d49-ff70-439f-b573-19206f6f99e9"
+},
+{
+"id": "5855e6ee-dc9e-41e5-b8aa-64bbc079fa6a",
+"date": "2026-11-09",
+"title": "Live race strategy agents",
+"sum": "The 3-hour Spa race: live Race Room artifact from Garage 61 timing, P34 to P25, and the retro.",
+"rels": [
+"2.29.0",
+"2.30.0"
+],
+"url": "https://claude.ai/chat/5855e6ee-dc9e-41e5-b8aa-64bbc079fa6a"
+},
+{
+"id": "d6847a97-dde6-49bc-bda8-268f3bffb476",
+"date": "2026-11-11",
+"title": "Siyanqaba integration design brief",
+"sum": "Design proposal for linking Siyanqaba to Debrief.",
+"rels": [
+"2.30.1",
+"2.30.2"
+],
+"url": "https://claude.ai/chat/d6847a97-dde6-49bc-bda8-268f3bffb476"
+},
+{
+"id": "259e1575-03ae-4d9c-b2dd-d3423418ee9e",
+"date": "2026-11-11",
+"title": "Debrief artifact and Fable implementation",
+"sum": "Siyanqaba contract, C1 analysis door and C2 fact sheets.",
+"rels": [
+"2.30.1",
+"2.30.2"
+],
+"url": "https://claude.ai/chat/259e1575-03ae-4d9c-b2dd-d3423418ee9e"
+},
+{
+"id": "42bbbe00-314f-4409-9b46-35ba0a85ee81",
+"date": "2026-11-11",
+"title": "Debrief updates",
+"sum": "What's new: 2.26 to 2.28 published, 2.28.1 review rework in progress.",
+"rels": [
+"2.28.0",
+"2.28.1"
+],
+"url": "https://claude.ai/chat/42bbbe00-314f-4409-9b46-35ba0a85ee81"
+},
+{
+"id": "92175fb6-cbe6-4677-9128-3e592247dab5",
+"date": "2026-11-11",
+"title": "Cncava server debrief integration",
+"sum": "Cncava server and Siyanqaba integration put on hold.",
+"rels": [
+"2.30.3"
+],
+"url": "https://claude.ai/chat/92175fb6-cbe6-4677-9128-3e592247dab5"
+},
+{
+"id": "65a1a973-a16c-48b2-997d-2d3e01df997c",
+"date": "2026-11-11",
+"title": "Debrief status and siyanqaba removal",
+"sum": "Full status; Siyanqaba removed; every update gets a What's new; Labs or remove question.",
+"rels": [
+"2.30.3",
+"2.30.4"
+],
+"url": "https://claude.ai/chat/65a1a973-a16c-48b2-997d-2d3e01df997c"
+},
+{
+"id": "a9c1f2cb-9ed9-47b9-96cd-c0c2aaa07b4a",
+"date": "2026-11-12",
+"title": "Debrief help page redesign",
+"sum": "Help rebuilt as a real guide to getting faster and knowing your car.",
+"rels": [
+"2.31.0"
+],
+"url": "https://claude.ai/chat/a9c1f2cb-9ed9-47b9-96cd-c0c2aaa07b4a"
+},
+{
+"id": "session_01AsJJ7GZcZiChG8JZ3ey1iQ",
+"date": "2026-11-12",
+"title": "Audit, Paddock, telemetry, no token needed (this session)",
+"sum": "Office became the Paddock; audit and roadmap; Telemetry on; Fits any screen; code map; Garage 61 vs iRacing; No token needed; this board. Then the handoff, the 2.35 plan and the after-every-push rule.",
+"rels": [
+"2.31.1",
+"2.32.0",
+"2.33.0",
+"2.34.0",
+"2.35.0"
+],
+"url": "https://claude.ai/code/session_01AsJJ7GZcZiChG8JZ3ey1iQ"
+},
+{
+"id": "73c5f3e3-a240-47d8-b3b1-32d546e37216",
+"date": "2026-11-12",
+"title": "2.35 \"See it\" release plan",
+"sum": "Built 2.35: iRacing charts, one answer per fact, Setup section, vs AI, Review a session. 119/119 tests. Pushed release-2.35.0 (fbb6751); published as v2.35.0.",
+"rels": [
+"2.35.0"
+],
+"url": "https://claude.ai/chat/73c5f3e3-a240-47d8-b3b1-32d546e37216"
+}
+],
+"decisions": [
+{
+"date": "2026-10-25",
+"title": "It's Debrief, and RaceCap is separate",
+"text": "The tool was renamed from RaceCap to Debrief. Swazi's own RaceCap app is never touched; Debrief only reads RaceCap's race folders.",
+"chats": [
+"b52ceb9f-802d-4823-8328-e6b22355013f",
+"38cd794d-1795-4c1e-a557-93e35688f4de"
+],
+"mods": [
+"debrief/racecap_link.py"
+]
+},
+{
+"date": "2026-10-26",
+"title": "Garage 61 only when you click; the token is never shown",
+"text": "Debrief never polls Garage 61 in a loop, and the token is never printed, logged or committed. It is stored encrypted.",
+"chats": [
+"06088714-6846-4cb1-9463-92fc5e5c77a8"
+],
+"mods": [
+"debrief/g61.py",
+"debrief/desktop/settings_io.py",
+"debrief/sync.py"
+]
+},
+{
+"date": "2026-10-26",
+"title": "Coaching says what tended to happen, not what caused it",
+"text": "Advice is correlational: patterns in your laps, not proof of cause.",
+"chats": [
+"06088714-6846-4cb1-9463-92fc5e5c77a8"
+],
+"mods": [
+"debrief/insights.py",
+"debrief/cornercoach.py"
+]
+},
+{
+"date": "2026-10-28",
+"title": "Friends use their own Garage 61 tokens, no OAuth",
+"text": "No Garage 61 sign-in flow and no emails: each driver requests a personal token.",
+"chats": [
+"d875b417-a455-4324-ab0c-83542569aa53",
+"165d3221-de00-4087-adb5-e79feaed6f36"
+],
+"mods": [
+"debrief/firstrun.py",
+"debrief/desktop/settings_io.py"
+]
+},
+{
+"date": "2026-10-28",
+"title": "Nothing is published without \"publish\"",
+"text": "Every release waits for Swazi's explicit word. Never force-push.",
+"chats": [
+"d875b417-a455-4324-ab0c-83542569aa53",
+"ade6feb2-aa3b-4d78-972b-ac90b3395f18"
+],
+"mods": [
+"debrief/updater.py"
+]
+},
+{
+"date": "2026-10-29",
+"title": "Discord posts are confirmed every time",
+"text": "Debrief never posts for you without a confirm.",
+"chats": [
+"6ec46079-4cbc-486a-b4ed-a06430d0f0ea"
+],
+"mods": [
+"debrief/discord.py"
+]
+},
+{
+"date": "2026-10-30",
+"title": "Keep the Overdriver Academy Garage 61 app as it is",
+"text": "The personal API app stays registered where it is.",
+"chats": [
+"ade6feb2-aa3b-4d78-972b-ac90b3395f18"
+],
+"mods": [
+"debrief/g61.py",
+"debrief/brand.py"
+]
+},
+{
+"date": "2026-11-05",
+"title": "Debrief is free, forever",
+"text": "No paywall, including Setup Lab. Licence: free to use, all rights reserved, Black Magik Studios.",
+"chats": [
+"ab9da0b9-8f76-4680-9f33-5576e383cf98",
+"38cd794d-1795-4c1e-a557-93e35688f4de"
+],
+"mods": [
+"debrief/brand.py",
+"debrief/credits.py"
+]
+},
+{
+"date": "2026-11-04",
+"title": "Team features are generic",
+"text": "Teams and members come only from your own Garage 61 teams. No team names or people are built in.",
+"chats": [
+"38cd794d-1795-4c1e-a557-93e35688f4de"
+],
+"mods": [
+"debrief/team.py",
+"debrief/members.py",
+"debrief/teamsync.py",
+"debrief/leaderboards.py"
+]
+},
+{
+"date": "2026-11-03",
+"title": "Every verdict must beat a shuffle test",
+"text": "A tip or verdict is shown only when it holds up on your own laps (permutation tests). Overclaims found by reviewers were fixed.",
+"chats": [
+"38cd794d-1795-4c1e-a557-93e35688f4de"
+],
+"mods": [
+"debrief/setuplab.py",
+"debrief/cornercoach.py",
+"debrief/carcompare.py",
+"debrief/balance.py",
+"debrief/practiceplan.py",
+"debrief/handling.py",
+"debrief/setupadvice.py"
+]
+},
+{
+"date": "2026-11-03",
+"title": "Speeds in mph by default",
+"text": "Units follow Settings > Units everywhere.",
+"chats": [
+"38cd794d-1795-4c1e-a557-93e35688f4de"
+],
+"mods": [
+"debrief/units.py"
+]
+},
+{
+"date": "2026-11-08",
+"title": "Keep credits low",
+"text": "Sonnet builds, Haiku tests, Opus only for statistics reviews; one helper at a time where possible.",
+"chats": [
+"38cd794d-1795-4c1e-a557-93e35688f4de",
+"437b53d4-1c9a-4f24-97ad-847c413f1032"
+],
+"mods": []
+},
+{
+"date": "2026-11-08",
+"title": "Endurance reads iRacing, not Garage 61",
+"text": "Fuel, pit service and swaps come from iRacing's own live data; Garage 61 has no fuel data.",
+"chats": [
+"6c8832b6-7116-45e1-a031-ebaa284b2adf",
+"5855e6ee-dc9e-41e5-b8aa-64bbc079fa6a"
+],
+"mods": [
+"debrief/endurance.py",
+"debrief/crewchief.py",
+"debrief/livedata.py",
+"debrief/raceroom.py"
+]
+},
+{
+"date": "2026-11-11",
+"title": "Siyanqaba out of Debrief until it's finished",
+"text": "The Siyanqaba link and the Cncava server integration are on hold; the code was taken out in 2.30.3.",
+"chats": [
+"92175fb6-cbe6-4677-9128-3e592247dab5",
+"65a1a973-a16c-48b2-997d-2d3e01df997c"
+],
+"mods": []
+},
+{
+"date": "2026-11-11",
+"title": "Every update ships a What's new",
+"text": "Plain words for drivers first, then For the record with Not proven yet. The build checks it.",
+"chats": [
+"65a1a973-a16c-48b2-997d-2d3e01df997c"
+],
+"mods": [
+"debrief/whatsnew.py"
+]
+},
+{
+"date": "2026-11-12",
+"title": "Analysis, prep and practice are the core",
+"text": "No new voice, mic or recording work. The coach stays and gets integrated with a full guide.",
+"chats": [
+"session_01AsJJ7GZcZiChG8JZ3ey1iQ"
+],
+"mods": [
+"debrief/livecoach.py",
+"debrief/desktop/coach2.py",
+"debrief/practiceplan.py"
+]
+},
+{
+"date": "2026-11-12",
+"title": "Telemetry is only ever turned on",
+"text": "Make iRacing save my telemetry is off until ticked and never turns telemetry off.",
+"chats": [
+"session_01AsJJ7GZcZiChG8JZ3ey1iQ"
+],
+"mods": [
+"debrief/liverec.py",
+"debrief/livedata.py"
+]
+},
+{
+"date": "2026-11-12",
+"title": "No token needed; Garage 61 is optional",
+"text": "Race reviews come from the PC's .ibt files. Garage 61 adds comparison laps, older history and teams.",
+"chats": [
+"session_01AsJJ7GZcZiChG8JZ3ey1iQ"
+],
+"mods": [
+"debrief/localrace.py",
+"debrief/app.py",
+"debrief/desktop/server.py",
+"debrief/engine.py"
+]
+},
+{
+"date": "2026-11-12",
+"title": "Every push updates the tracking",
+"text": "After every push: the handoff and status docs, code map, history index, System Board, roadmap doc, Whiteboard and Paddock are brought up to date in the same chat.",
+"chats": [
+"session_01AsJJ7GZcZiChG8JZ3ey1iQ"
+],
+"mods": []
+}
+]
+}

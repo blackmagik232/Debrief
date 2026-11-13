@@ -48,3 +48,4 @@ team/
 *.egg-info/
 codemap.json
 CODEMAP.md
+commandcenter/

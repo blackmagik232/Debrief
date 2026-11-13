@@ -14,10 +14,23 @@ words and say what he will see differently in the window.
 ## Code map
 - Before changing code, read the project doc `claude/debrief-codemap.md` (or run `python tools/codemap.py`, which writes
   `codemap.json` and `CODEMAP.md`; both are generated, so don't commit them). It lists every module, what it imports, what
-  imports it, the window routes it answers and the exact test files to run. The visual version is the "Debrief System
-  Board" artifact (the older Code Constellation is its Sky view). Regenerate both after every push (see below).
+  imports it, the window routes it answers and the exact test files to run. The visual version is the Command Center's
+  Components and Code map tabs. Regenerate both after every push (see below).
 - Before a change, `python tools/codemap.py --which <thing>` (a module, function or method, #element, .class, nav:page or
   api/route; repeat --which for several) prints the test files to run for it. Run those first, then the full suite before a release.
+
+## The hub: Debrief Command Center (owner's rule, 12 Nov 2026)
+https://claude.ai/artifact/HwmaZGkTr4xoVa7K7wu4K5 is the one hub. It replaced the game plan Whiteboard and the System
+Board (both retired, history only). Two halves:
+- **Live half** (its database; any chat updates it with db_write, no republish): `status/now` (published, waiting,
+  next, not proven, after-push list, links, docs), `plan/<id>` (lane next/later/parked, order, version, title, text,
+  done_when, state planned/building/built/published), `decisions/<id>` (text, state open/decided, answer, date),
+  `releases/v2-36-0` style (v, date, commit, name, state waiting/published, lede, points, mods), `chats/<id>`,
+  `dlog/<id>` (standing decisions). Releases, chats and decisions up to 2.35 are built in from
+  `tools/commandcenter_history.json`.
+- **Code half** (components, code map, which tests): `python tools/codemap.py`, then `python tools/commandcenter.py`
+  writes `commandcenter/index.html` (generated, not committed); republish it to the artifact (publish_files,
+  as index.html). `tools/commandcenter.py` keeps the page-to-code map by hand: update PAGES when a page changes.
 
 ## After every push (owner's rule, 12 Nov 2026)
 Every push to this repo (a release branch, main, or a work-in-progress branch) is followed, in the same session, by
@@ -29,13 +42,14 @@ bringing the project's tracking up to date. Do all of these before telling him t
 3. **Code map**: `python tools/codemap.py`, then upload `CODEMAP.md` as project `claude/debrief-codemap.md`.
 4. **History index** (project `claude/debrief-history-index.md`): the chat that did the work, any release, any new
    decision (date, chat, files it governs).
-5. **System Board** artifact (https://claude.ai/artifact/MXMaE1K9QstX8N1TQeDNPd): rebuild its embedded JSON
-   (code = codemap.json minus `window` and node `methods`; releases; chats; decisions) and republish.
+5. **Command Center**: rebuild and republish the code half, then update the live half (status, plan cards, the
+   release, the chat, any decisions).
 6. **Roadmap doc** (https://claude.ai/artifact/LSqCxCqT1spRdHa5SmzJoS): move items between built, published and next;
    add the Discord post for a new release.
-7. **Game plan Whiteboard** (https://claude.ai/artifact/6Z7eKPKpZXUKMU8WU33sdW): update the step boxes and decisions.
-8. **The Paddock** (https://claude.ai/artifact/664XggfeYjNdBHBU6M9x9H): its `boards/roadmap` document.
+7. **The Paddock** (https://claude.ai/artifact/664XggfeYjNdBHBU6M9x9H): its `boards/roadmap` document.
+8. **Always-consult doc** (project `claude/debrief-always-consult.md`): its "Where things stand" section.
 If one can't be updated (no access, a tool refused), say which in the handoff doc and in the reply.
+Between pushes too: when a plan, decision or version changes, update the Command Center's live half right away.
 
 ## Commands
 - `python3 tests/run_all.py`: all tests (about 6 minutes). Must be 100% green before every commit.

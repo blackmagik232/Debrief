@@ -554,6 +554,77 @@ def test_every_other_review_last_race_is_gone_from_the_window():
         assert "Review last race" not in txt, f
 
 
+# 2.38.1: a Test Drive's telemetry file says "Offline Testing"; its practice row must still find it
+def test_test_drive_row_opens_its_own_file():
+    td = [x for x in IBT if x["id"] != "pc-practice-1"] + [
+        {"id": "pc-testdrive", "track": ZOLDER, "car": CAR, "sort": EPOCH_P - 200, "session_types": ["Offline Testing"], "subsession": None}]
+    r = window(make_api(**{"sessions-ibt": {"ok": True, "folder_ok": True, "indexed": True, "unread": 0, "sessions": td}}))
+    if not r:
+        return
+    ctx, pg, errs, calls = r
+    try:
+        pg.click("#btnReview")
+        pg.wait_for_function("() => document.querySelectorAll('#sessList .item.sess').length === 3")
+        pg.click("#sessList .item.newest .revbtn")
+        pg.wait_for_function("() => !document.getElementById('vPractice').hidden")
+        pg.wait_for_function("() => /stand-in/.test(document.getElementById('prReport').textContent)")
+        assert any(c[1] == "session-review" and "id=pc-testdrive" in c[2] for c in calls), [c[1:3] for c in calls]
+        assert not posts(calls, "setuplab/read")
+        assert not errs, errs
+    finally:
+        ctx.close()
+
+
+# 2.38.1 one click: no match yet but new files on the PC, so Review reads them itself, then opens the session
+def test_review_reads_new_telemetry_then_opens():
+    st = {"read": False, "n": 0}
+    before = [x for x in IBT if x["id"] != "pc-practice-1"]
+
+    def ibt(method, qs, body):
+        if not st["read"]:
+            return {"ok": True, "folder_ok": True, "indexed": True, "unread": 1, "running": False, "sessions": before}
+        st["n"] += 1
+        if st["n"] < 2:
+            return {"ok": True, "folder_ok": True, "indexed": True, "unread": 1, "running": True, "sessions": before}
+        return {"ok": True, "folder_ok": True, "indexed": True, "unread": 0, "running": False, "sessions": IBT}
+
+    def read(method, qs, body):
+        st["read"] = True
+        return {"ok": True, "id": 99}
+    r = window(make_api(**{"sessions-ibt": ibt, "setuplab/read": read}))
+    if not r:
+        return
+    ctx, pg, errs, calls = r
+    try:
+        pg.click("#btnReview")
+        pg.wait_for_function("() => document.querySelectorAll('#sessList .item.sess').length === 3")
+        pg.click("#sessList .item.newest .revbtn")
+        pg.wait_for_function("() => !document.getElementById('vPractice').hidden", timeout=15000)
+        pg.wait_for_function("() => /stand-in/.test(document.getElementById('prReport').textContent)")
+        assert len(posts(calls, "setuplab/read")) == 1
+        assert any(c[1] == "session-review" and "id=pc-practice-1" in c[2] for c in calls), [c[1:3] for c in calls]
+        assert not errs, errs
+    finally:
+        ctx.close()
+
+
+# 2.38.1: a Test Drive row sits with practice and says it is an offline test drive
+def test_test_drive_row_says_so_under_practice():
+    td = dict(row(4, 1, "Practice", "2026-11-04T19:00:00+00:00"), test_drive=True)
+    r = window(make_api(sessions={"ok": True, "token": True, "summary": {"synced": True}, "sessions": SESSIONS + [td], "total": 4}))
+    if not r:
+        return
+    ctx, pg, errs, calls = r
+    try:
+        pg.click("#btnReview")
+        pg.wait_for_function("() => document.querySelectorAll('#sessList .item.sess').length === 4")
+        assert "offline test drive" in pg.text_content("#sessList .item.newest .kind").lower()
+        assert "practice" in pg.get_attribute("#sessList .item.newest .kind", "class")
+        assert not errs, errs
+    finally:
+        ctx.close()
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in list(globals().items()) if n.startswith("test_") and callable(f)]
     failed = 0

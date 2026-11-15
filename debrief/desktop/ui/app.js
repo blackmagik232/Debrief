@@ -757,7 +757,7 @@ function renderSessions(focusNewest){
   let newest=null;for(const s of all){const t=Date.parse(s.start||'');if(isFinite(t)&&(!newest||t>Date.parse(newest.start)))newest=s}
   if(!newest&&all.length)newest=all[0];
   all.forEach(s=>{const row=h('div','item sess');const tx=h('div','itx');
-    const top=h('span','row');top.append(h('span','when',localWhen(s.start)),h('span','kind '+(KIND[s.type]||''),s.session||'Session'));
+    const top=h('span','row');top.append(h('span','when',localWhen(s.start)),h('span','kind '+(KIND[s.type]||''),s.test_drive?'Practice · offline test drive':(s.session||'Session')));
     tx.append(top,h('b',null,s.track),h('span','sub2',s.car));
     const src=s.recorded_only?'from iRacing':'from Garage 61';
     const line=h('span','sub2');line.append(document.createTextNode(s.laps+' lap'+(s.laps===1?'':'s')+' · '+(s.recorded_only?'typical ':'best ')),h('b','num',fmtT(s.recorded_only?s.best_clean:s.best)));
@@ -791,25 +791,44 @@ function sameName(a,b){const x=alnum(a),y=alnum(b);if(!x||!y)return false;if(x==
   const f=t=>t.split(' ').slice(0,2).join(' ');return f(x)===f(y)}
 // the telemetry session on this PC that IS this row: same track (always), same car (when both are known), the same kind of
 // session and a start within a short window. Nothing close enough means no match: a different session is never opened.
+// 2.38.1: iRacing's session type as the row's kind, the same way the session list reads it (recordings.kind_of):
+// a Test Drive ("Offline Testing") and a warmup count as practice, so a test drive row finds its own telemetry file.
+function pcKind(k){k=String(k||'').toLowerCase();if(k.indexOf('qualif')>=0)return 'qualify';if(k.indexOf('race')>=0)return 'race';
+  return /practice|warm|test/.test(k)?'practice':''}
 function pcSessionFor(s,ibt){const t0=Date.parse(s.start||'')/1000;if(!isFinite(t0)||!ibt||!Array.isArray(ibt.sessions))return null;
   const kind={1:'practice',2:'qualify',3:'race'}[s.type];if(!kind)return null;let best=null,bd=Infinity;
   for(const x of ibt.sessions){const t=Number(x.sort);if(!isFinite(t))continue;const d=t-t0;if(d<-1800||d>7200)continue;
     if(!sameName(s.track,x.track))continue;if(s.car&&x.car&&!sameName(s.car,x.car))continue;
-    if(!(Array.isArray(x.session_types)&&x.session_types.some(k=>String(k).toLowerCase().indexOf(kind)>=0)))continue;
+    if(!(Array.isArray(x.session_types)&&x.session_types.some(k=>pcKind(k)===kind)))continue;
     if(Math.abs(d)<bd){bd=Math.abs(d);best=x}}
   return best}
 async function rowReview(btn,s){
   const g61=!!(s.event&&s.track_id!=null&&s.car_id!=null),job=()=>startJob('review',{event:s.event,session_type:s.type,track_id:s.track_id,car_id:s.car_id},btn);
   if(s.type===3){if(s.review){openReview(s.review);return}if(g61){job();return}}
-  btn.disabled=true;let ibt=null;try{ibt=await api('sessions-ibt')}catch(e){}btn.disabled=false;
-  const m=ibt&&ibt.ok?pcSessionFor(s,ibt):null;
+  btn.disabled=true;let ibt=null;try{ibt=await api('sessions-ibt')}catch(e){}
+  let m=ibt&&ibt.ok?pcSessionFor(s,ibt):null;
+  // 2.38.1 one click: nothing matches yet but there are new telemetry files (or a read is running), so read them here
+  // and look again, instead of sending him to Practice > Read my telemetry first.
+  if(!m&&ibt&&ibt.ok&&ibt.folder_ok&&(ibt.running||!ibt.indexed||(Number.isInteger(ibt.unread)&&ibt.unread>0))){
+    const again=await readTelemetryFor(btn,ibt);if(again&&again.ok){ibt=again;m=pcSessionFor(s,ibt)}}
+  btn.disabled=false;
   if(m&&s.type!==3){openPractice(m.id);return}
   if(m&&Number.isInteger(m.subsession)&&m.subsession>0){startJob('review',{local:true,subsession:m.subsession},btn);return}   // THAT race, from this PC's telemetry
   if(m&&s.type===3&&typeof m.event_id==='string'&&m.event_id){startJob('review',{local:true,pc_event:m.event_id},btn);return}   // a PC race with no iRacing session number (AI/offline): found by its PC id
   if(s.type===3){banner('Garage 61 doesn\'t have this race, and no telemetry file on this PC matches it, so there is nothing to build a review from. Turn on Settings > Live data and drive, or try again after Garage 61 has it.',false,10000);return}
   if(s.review)bannerAction('No telemetry file on this PC matches this session, so it can\'t open in Practice.','Open the Garage 61 review',()=>openReview(s.review),0);
   else if(g61)bannerAction('No telemetry file on this PC matches this session, so it can\'t open in Practice.','Review from Garage 61',job,0);
-  else banner('No telemetry file on this PC matches this session. Open Practice and press Read my telemetry, then try again.',false,9000)}
+  else banner('No telemetry file on this PC matches this session, even after reading your newest files. iRacing may not have saved one for it: turn on Settings > Live data > Make iRacing save my telemetry (or press Alt+L in the car) next time.',false,12000)}
+// 2.38.1: read the new telemetry files for a session row's Review, with the button saying so, then return the fresh list.
+// Waits for a read that is already running; another job running first means no read (null), as before.
+let rowRead=null;
+async function readTelemetryFor(btn,ibt){const txt=btn.textContent;btn.textContent='Reading your telemetry...';
+  try{if(!ibt.running){if(conflicting())return null;let r;try{r=await post('setuplab/read')}catch(e){return null}
+      if(!r.ok)return null;rowRead=r.id;lastJob={state:'running',kind:'setuplab',id:r.id};if(sl.data)sl.data.running=true;poll()}
+    for(let i=0;i<1200;i++){await new Promise(z=>setTimeout(z,i<5?300:1000));let j;try{j=await api('sessions-ibt')}catch(e){return null}
+      if(j&&j.ok&&!j.running)return j}
+    return null}
+  finally{btn.textContent=txt}}
 // 2.35: the newest race on this PC, for a race Garage 61 doesn't list (yet): reviewed from the telemetry file, no Garage 61 needed
 async function loadPcCard(){const host=$('sessPc');host.hidden=true;host.replaceChildren();if(!localOK)return;
   let j;try{j=await api('last-race')}catch(e){return}
@@ -2142,7 +2161,7 @@ function renderSlJob(s){const pct=Math.round((s.frac||0)*100);$('slBar').firstEl
   if(handled.has(s.id))return;handled.add(s.id);$('slStop').disabled=false;
   if(s.state==='error'){setMsg('slMsg',s.error,'bad');if(current.view!=='setuplab')banner('Reading your telemetry stopped: '+s.error,true,9000)}
   else{const r=s.result||{};setMsg('slMsg',r.stopped?'Stopped. What was read is kept; the rest is read next time.':'Done: '+plural(r.files||0,'file')+' for '+carTracks(r.combos||0)+'.','ok');
-    if(current.view!=='setuplab'&&current.view!=='practice')banner('Your telemetry has been read. Open Setup Lab to see your setups.')}
+    if(current.view!=='setuplab'&&current.view!=='practice'&&s.id!==rowRead)banner('Your telemetry has been read. Open Setup Lab to see your setups.')}
   if(sl.data)sl.data.running=false;
   if(current.view==='setuplab')loadSetupLab(true);else renderSlTel()}
 $('slCheckBtn').addEventListener('click',()=>$('slCheckFile').click());

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.38.1 "One click"
+
+**Review opens your Test Drives, in one click.**
+
+- **Test Drives open in Practice.** A Test Drive shows as practice in All sessions, but pressing **Review** on it said "No telemetry file on this PC matches this session", even after Read my telemetry. iRacing calls a Test Drive "Offline Testing", and Review was only looking for "practice". Now a Test Drive (or a warmup) finds its own telemetry file and opens in Practice.
+- **Test Drives sit with practice, and say so.** In All sessions a Test Drive stays under **Practice** (and **All**), and its row is labelled **Practice · offline test drive**, so you can tell it apart from a hosted or official practice.
+- **No more trip to Practice first.** If the session's telemetry file hasn't been read yet, **Review** reads your new files itself (the button says **Reading your telemetry...**), then opens the session. You don't need to go to Practice and press Read my telemetry first.
+- **A clearer message when there really is no file.** If nothing matches even after reading, Debrief says iRacing may not have saved a telemetry file for that session, and how to make sure it does next time (Settings > Live data > Make iRacing save my telemetry, or Alt+L in the car).
+
+### For the record
+
+- Files: debrief/desktop/ui/app.js (pcKind: iRacing's session type read the same way as recordings.kind_of; rowReview reads new files with readTelemetryFor when nothing matches and sessions-ibt reports unread files, an unread index or a running read, then matches again; no "Open Setup Lab" banner for a read Review started), debrief/desktop/ui/help.js (Pick the session), debrief/recordings.py (is_test_drive; recorded sections and the rows built from them carry test_drive, still kind 1).
+- A Garage 61 row is labelled a test drive only when Debrief recorded that session too; Garage 61 itself doesn't say.
+- Found on Swazi's PC on 14 Nov: an 11-lap Suzuka Test Drive in the McLaren 720S GT3 EVO, recorded by Debrief, that Review couldn't open.
+- Tests: tests/test_235_sessions.py (+3: a Test Drive row opens its own file and is labelled under practice; Review reads new telemetry, then opens), tests/test_227_library.py (+1: test_drive on recorded rows) and the full suite.
+- Not proven yet: the Suzuka Test Drive opening from its row on Swazi's PC, and its new label; the read-then-open on a real telemetry folder (a first read of hundreds of files takes minutes, and the button waits that long).
+
 ## 2.38.0 "Coach, explained"
 
 The coach is now simple to use: pick one thing, drive, check how it went. And you decide whether it talks.

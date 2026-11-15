@@ -45,6 +45,12 @@ def kind_of(session_type: str) -> int | None:
     return None
 
 
+def is_test_drive(session_type) -> bool:
+    """2.38.1: an offline Test Drive (iRacing's "Offline Testing"). Still practice (kind 1); the row just says so."""
+    s = str(session_type or "").lower()
+    return "test" in s or "offline" in s
+
+
 def kind_of_label(label) -> int | None:
     return kind_of(label)
 
@@ -148,7 +154,8 @@ def sections(library_folder) -> list:
                         "car": (sm.get("car") or {}).get("name") or "", "start": s.get("started"), "end": s.get("ended") or s.get("started"),
                         "subsession": sm.get("subsession"), "laps": s.get("laps") or 0, "best": s.get("best"),
                         "typical": s.get("typical"), "fuel_per_lap_l": fuel.get("per_lap_median_l"),
-                        "incidents": inc.get("total"), "final": bool(sm.get("final"))})
+                        "incidents": inc.get("total"), "final": bool(sm.get("final")),
+                        "test_drive": is_test_drive(s.get("type"))})
     out.sort(key=lambda r: epoch(r["start"]) or 0.0, reverse=True)
     return out
 
@@ -198,6 +205,8 @@ def merge_rows(g61_rows: list, secs: list) -> list:
         s = joined.get(i)
         if s:
             r["rec"] = brief(s)
+            if s.get("test_drive"):
+                r["test_drive"] = True
         out.append(r)
     for s in secs:
         if s["id"] in taken:
@@ -205,7 +214,7 @@ def merge_rows(g61_rows: list, secs: list) -> list:
         out.append({"key": "rec:" + s["id"], "event": None, "track_id": None, "car_id": None, "track": s["track_short"] or s["track"],
                     "car": s["car"], "type": s["kind"], "session": s["session"], "start": s["start"], "laps": s["laps"],
                     "clean_laps": None, "best": s["best"], "best_clean": s["typical"], "review": None, "source": "recorded",
-                    "recorded_only": True, "rec": brief(s)})
+                    "recorded_only": True, "rec": brief(s), "test_drive": bool(s.get("test_drive"))})
     out.sort(key=lambda r: epoch(r.get("start")) or 0.0, reverse=True)
     return out
 

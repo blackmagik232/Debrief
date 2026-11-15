@@ -789,6 +789,20 @@ def test_the_garage_61_token_is_nowhere_in_the_live_modules():
             assert bad not in src, (f, bad)
 
 
+# 2.38.1: a Test Drive stays practice (kind 1) and its row says it is an offline test drive
+def test_test_drive_is_practice_marked_as_a_test_drive():
+    assert recordings.is_test_drive("Offline Testing") and not recordings.is_test_drive("Practice")
+    assert recordings.kind_of("Offline Testing") == 1
+    lib = TMP / "td"
+    record(lib=lib, seconds=330)
+    secs = [dict(x, kind=1, session="Practice", type="Offline Testing", test_drive=True) for x in recordings.sections(lib)]
+    own = recordings.merge_rows([], secs)
+    assert own[0]["type"] == 1 and own[0]["test_drive"] is True and own[0]["recorded_only"]
+    joined = recordings.merge_rows([g61("2026-10-01T23:31:10+00:00", type_=1)], secs)
+    assert len(joined) == 1 and joined[0]["test_drive"] is True
+    assert not recordings.merge_rows([g61("2026-10-01T23:31:10+00:00")], recordings.sections(lib))[0].get("test_drive")
+
+
 if __name__ == "__main__":
     failed = 0
     tests = [(k, v) for k, v in list(globals().items()) if k.startswith("test_") and callable(v)]
